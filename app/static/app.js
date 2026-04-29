@@ -294,6 +294,7 @@
     const errorStats = document.querySelector("[data-dashboard-error-stats]");
     if ((!taskRail && !errorStats) || !token()) return;
 
+    let activeTask = null;
     let activeTaskId = null;
 
     function formatDateTime(value) {
@@ -323,6 +324,7 @@
     function renderTaskDetail(task) {
       if (!taskDetailModal || !taskDetailBody) return;
 
+      activeTask = task;
       activeTaskId = task.id;
       taskDetailTitle.textContent = task.title;
       taskDetailSubtitle.textContent = (task.department && task.department.name) || "-";
@@ -341,9 +343,24 @@
         detailRow("Erledigt am", formatDateTime(task.completed_at))
       );
 
-      if (taskStartButton) taskStartButton.disabled = task.status !== "open";
-      if (taskCompleteButton) taskCompleteButton.disabled = task.status === "done" || task.status === "cancelled";
-      if (taskDetailMessage) taskDetailMessage.textContent = "";
+      updateTaskActionButtons(task);
+      showTaskMessage("");
+    }
+
+    function updateTaskActionButtons(task, isBusy) {
+      if (taskStartButton) {
+        taskStartButton.disabled = Boolean(isBusy) || task.status !== "open";
+      }
+      if (taskCompleteButton) {
+        taskCompleteButton.disabled = Boolean(isBusy) || task.status === "done" || task.status === "cancelled";
+      }
+    }
+
+    function showTaskMessage(message, isError) {
+      if (!taskDetailMessage) return;
+      taskDetailMessage.textContent = message;
+      taskDetailMessage.classList.toggle("is-error", Boolean(isError));
+      taskDetailMessage.classList.toggle("is-success", Boolean(message && !isError));
     }
 
     async function openTaskDetail(taskId) {
@@ -356,8 +373,22 @@
       if (!activeTaskId) return;
       const task = await api("/api/tasks/" + activeTaskId);
       renderTaskDetail(task);
-      if (taskDetailMessage) taskDetailMessage.textContent = message;
+      showTaskMessage(message);
       await loadDashboardTasks();
+    }
+
+    async function runTaskAction(path, successMessage) {
+      if (!activeTaskId || !activeTask) return;
+      updateTaskActionButtons(activeTask, true);
+      showTaskMessage("Wird verarbeitet...");
+
+      try {
+        await api(path, { method: "POST" });
+        await refreshActiveTask(successMessage);
+      } catch (error) {
+        updateTaskActionButtons(activeTask);
+        showTaskMessage(error.message, true);
+      }
     }
 
     async function loadDashboardTasks() {
@@ -394,17 +425,19 @@
 
     if (taskStartButton) {
       taskStartButton.addEventListener("click", async () => {
-        if (!activeTaskId) return;
-        await api("/api/tasks/" + activeTaskId + "/start", { method: "POST" });
-        await refreshActiveTask("Task gestartet.");
+        await runTaskAction(
+          "/api/tasks/" + activeTaskId + "/start",
+          "Task gestartet."
+        );
       });
     }
 
     if (taskCompleteButton) {
       taskCompleteButton.addEventListener("click", async () => {
-        if (!activeTaskId) return;
-        await api("/api/tasks/" + activeTaskId + "/complete", { method: "POST" });
-        await refreshActiveTask("Task abgeschlossen.");
+        await runTaskAction(
+          "/api/tasks/" + activeTaskId + "/complete",
+          "Task abgeschlossen."
+        );
       });
     }
 

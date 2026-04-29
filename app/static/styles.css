@@ -306,12 +306,26 @@ a:hover {
 }
 
 .task-card {
+  width: 100%;
   min-height: 150px;
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: rgba(255, 255, 255, 0.1);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
   scroll-snap-align: start;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.task-card:hover,
+.task-card:focus-visible {
+  border-color: rgba(84, 240, 176, 0.55);
+  background: rgba(255, 255, 255, 0.14);
+  outline: none;
+  transform: translateY(-2px);
 }
 
 .task-card-top {
@@ -383,6 +397,14 @@ a:hover {
   margin: 4px 0 0;
   color: var(--muted);
   font-size: 13px;
+}
+
+.panel-meta.is-success {
+  color: var(--accent-strong);
+}
+
+.panel-meta.is-error {
+  color: #ffd6de;
 }
 
 .stat-value {
@@ -459,6 +481,12 @@ a:hover {
   background: rgba(255, 255, 255, 0.11);
   text-decoration: none;
   transform: translateY(-1px);
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+  transform: none;
 }
 
 .button.is-primary {
@@ -716,6 +744,61 @@ a:hover {
   box-shadow: 0 0 0 3px rgba(0, 208, 132, 0.14);
 }
 
+.task-detail-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: rgba(5, 12, 20, 0.72);
+  backdrop-filter: blur(8px);
+}
+
+.task-detail-modal[hidden] {
+  display: none;
+}
+
+.task-detail-dialog {
+  width: min(760px, 100%);
+  max-height: min(760px, calc(100vh - 44px));
+  overflow: auto;
+  padding: 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: rgba(16, 32, 49, 0.98);
+  box-shadow: var(--shadow);
+}
+
+.task-detail-body {
+  display: grid;
+  gap: 8px;
+}
+
+.task-detail-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 190px) minmax(0, 1fr);
+  gap: 14px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.task-detail-row span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.task-detail-row strong {
+  min-width: 0;
+  color: var(--muted-strong);
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 720px) {
   .app-shell {
     display: grid;
@@ -780,5 +863,10 @@ a:hover {
 
   .chat-panel-form {
     grid-template-columns: 1fr;
+  }
+
+  .task-detail-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
   }
 }
