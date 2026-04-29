@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
@@ -105,6 +105,50 @@ def update_task(task, data, user):
     except SQLAlchemyError:
         db.session.rollback()
         return None, {"error": "Database error while updating task"}, 500
+
+    return task, None, 200
+
+
+def start_task(task, user):
+    """Mark a task as in progress and assign it to the given user."""
+    if task.status == TaskStatus.DONE:
+        return None, {"error": "Done tasks cannot be started"}, 400
+    if task.status == TaskStatus.CANCELLED:
+        return None, {"error": "Cancelled tasks cannot be started"}, 400
+    if task.status == TaskStatus.IN_PROGRESS:
+        return None, {"error": "Task is already in progress"}, 409
+
+    task.status = TaskStatus.IN_PROGRESS
+    task.current_worker = user
+    task.started_at = datetime.utcnow()
+    task.completed_by_user = None
+    task.completed_at = None
+
+    try:
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        return None, {"error": "Database error while starting task"}, 500
+
+    return task, None, 200
+
+
+def complete_task(task, user):
+    """Mark a task as done and store who completed it."""
+    if task.status == TaskStatus.DONE:
+        return None, {"error": "Task is already done"}, 409
+    if task.status == TaskStatus.CANCELLED:
+        return None, {"error": "Cancelled tasks cannot be completed"}, 400
+
+    task.status = TaskStatus.DONE
+    task.completed_by_user = user
+    task.completed_at = datetime.utcnow()
+
+    try:
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        return None, {"error": "Database error while completing task"}, 500
 
     return task, None, 200
 
