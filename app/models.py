@@ -51,7 +51,21 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     department = db.relationship("Department", back_populates="users")
-    created_tasks = db.relationship("Task", back_populates="creator")
+    created_tasks = db.relationship(
+        "Task",
+        foreign_keys="Task.created_by",
+        back_populates="creator",
+    )
+    assigned_tasks = db.relationship(
+        "Task",
+        foreign_keys="Task.current_worker_id",
+        back_populates="current_worker",
+    )
+    completed_tasks = db.relationship(
+        "Task",
+        foreign_keys="Task.completed_by_id",
+        back_populates="completed_by_user",
+    )
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -84,6 +98,10 @@ class Task(db.Model):
     due_date = db.Column(db.Date, nullable=False, default=date.today)
     department_id = db.Column(db.Integer, db.ForeignKey("department.id"), nullable=False)
     created_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    current_worker_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+    started_at = db.Column(db.DateTime)
+    completed_by_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+    completed_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(
         db.DateTime,
@@ -93,9 +111,24 @@ class Task(db.Model):
     )
 
     department = db.relationship("Department", back_populates="tasks")
-    creator = db.relationship("User", back_populates="created_tasks")
+    creator = db.relationship(
+        "User",
+        foreign_keys=[created_by],
+        back_populates="created_tasks",
+    )
+    current_worker = db.relationship(
+        "User",
+        foreign_keys=[current_worker_id],
+        back_populates="assigned_tasks",
+    )
+    completed_by_user = db.relationship(
+        "User",
+        foreign_keys=[completed_by_id],
+        back_populates="completed_tasks",
+    )
 
     def to_dict(self):
+        """Return a JSON-serializable representation of the task."""
         return {
             "id": self.id,
             "title": self.title,
@@ -105,6 +138,17 @@ class Task(db.Model):
             "due_date": self.due_date.isoformat(),
             "department": self.department.to_dict() if self.department else None,
             "created_by": self.created_by,
+            "creator": self.creator.to_dict() if self.creator else None,
+            "current_worker_id": self.current_worker_id,
+            "current_worker": (
+                self.current_worker.to_dict() if self.current_worker else None
+            ),
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "completed_by": self.completed_by_id,
+            "completed_by_user": (
+                self.completed_by_user.to_dict() if self.completed_by_user else None
+            ),
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
