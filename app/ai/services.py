@@ -10,6 +10,7 @@ from app.tasks.services import visible_tasks_query
 
 
 def looks_like_today_tasks_question(message):
+    """Check whether a message asks for today's visible tasks."""
     text = message.lower()
     task_words = ["task", "tasks", "aufgabe", "aufgaben"]
     today_words = ["heute", "today", "anstehend"]
@@ -17,6 +18,7 @@ def looks_like_today_tasks_question(message):
 
 
 def extract_error_query(message):
+    """Extract a likely error code or machine reference from a user message."""
     code_match = re.search(r"\b[A-Z]?\d{2,5}\b", message.upper())
     if code_match:
         return code_match.group(0)
@@ -28,6 +30,7 @@ def extract_error_query(message):
 
 
 def format_tasks_today(user):
+    """Return a formatted answer and structured data for today's visible tasks."""
     tasks = (
         visible_tasks_query(user)
         .filter(Task.due_date == date.today())
@@ -46,6 +49,7 @@ def format_tasks_today(user):
 
 
 def build_error_context(entries):
+    """Build a text context block from matching error catalog entries."""
     if not entries:
         return ""
     blocks = []
@@ -67,6 +71,7 @@ def build_error_context(entries):
 
 
 def build_task_context(user):
+    """Build a text context block from the user's visible tasks."""
     tasks = visible_tasks_query(user).order_by(Task.due_date.asc(), Task.id.desc()).limit(20).all()
     if not tasks:
         return "Keine sichtbaren Tasks vorhanden."
@@ -88,6 +93,7 @@ def build_task_context(user):
 
 
 def build_catalog_context(user, preferred_entries):
+    """Build a combined error catalog context for the AI assistant."""
     entries = list(preferred_entries)
     seen = {entry.id for entry in entries}
     query = ErrorEntry.query
@@ -101,6 +107,7 @@ def build_catalog_context(user, preferred_entries):
 
 
 def fallback_error_answer(entries):
+    """Return a local fallback answer when no OpenAI response is available."""
     if not entries:
         return (
             "Ich habe dazu keinen passenden Eintrag im Fehlerkatalog gefunden. "
@@ -116,6 +123,7 @@ def fallback_error_answer(entries):
 
 
 def openai_error_answer(message, error_context, task_context):
+    """Generate an AI answer using OpenAI and the provided maintenance context."""
     api_key = current_app.config.get("OPENAI_API_KEY")
     if not api_key:
         return None
@@ -149,6 +157,7 @@ def openai_error_answer(message, error_context, task_context):
 
 
 def answer_chat(message, user):
+    """Route the user message to the correct assistant behavior."""
     if looks_like_today_tasks_question(message):
         answer, data = format_tasks_today(user)
         return {"type": "tasks_today", "answer": answer, "data": data}
@@ -165,6 +174,7 @@ def answer_chat(message, user):
 
 
 def save_chat_message(user, message, response):
+    """Persist a chat message and its assistant response in the database."""
     chat = ChatMessage(user_id=user.id, message=message, response=response)
     db.session.add(chat)
     db.session.commit()
