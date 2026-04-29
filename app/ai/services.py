@@ -1,5 +1,6 @@
 import re
 from datetime import date
+from sqlalchemy.exc import SQLAlchemyError
 
 from flask import current_app
 
@@ -176,5 +177,11 @@ def answer_chat(message, user):
 def save_chat_message(user, message, response):
     """Persist a chat message and its assistant response in the database."""
     chat = ChatMessage(user_id=user.id, message=message, response=response)
+
     db.session.add(chat)
-    db.session.commit()
+
+    try:
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        current_app.logger.exception("Failed to save AI chat message")
