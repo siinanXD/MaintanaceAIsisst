@@ -88,7 +88,9 @@
     window.localStorage.setItem("maintenance_user", JSON.stringify(data.user));
     loginMessage.textContent = "Login erfolgreich. Du wirst weitergeleitet...";
     window.dispatchEvent(new Event("maintenance-auth-changed"));
-    window.location.href = "/";
+    window.location.href = window.maintenanceAuth && window.maintenanceAuth.destinationForUser
+      ? window.maintenanceAuth.destinationForUser(data.user)
+      : "/";
   });
 </script>
 {% endblock %}
