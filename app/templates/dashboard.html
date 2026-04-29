@@ -27,6 +27,24 @@
     </div>
   </article>
 
+  <div class="task-detail-modal" data-task-detail-modal hidden>
+    <div class="task-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="task-detail-title">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title" id="task-detail-title" data-task-detail-title>Task</h2>
+          <p class="panel-meta" data-task-detail-subtitle>Details und Workflow</p>
+        </div>
+        <button class="button" type="button" data-task-detail-close>Schliessen</button>
+      </div>
+      <div class="task-detail-body" data-task-detail-body></div>
+      <div class="toolbar form-actions">
+        <button class="button is-primary" type="button" data-task-start-button>Task starten</button>
+        <button class="button" type="button" data-task-complete-button>Task abschliessen</button>
+        <span class="panel-meta" data-task-detail-message></span>
+      </div>
+    </div>
+  </div>
+
   <article class="panel is-full">
     <div class="panel-header">
       <div>
