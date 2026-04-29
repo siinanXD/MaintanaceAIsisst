@@ -18,8 +18,10 @@ from app.web.routes import web_bp
 
 
 def _run_lightweight_migrations():
+    """Apply small SQLite-safe schema updates for existing installations."""
     inspector = inspect(db.engine)
-    if "user" not in inspector.get_table_names():
+    table_names = inspector.get_table_names()
+    if "user" not in table_names:
         return
 
     columns = {column["name"] for column in inspector.get_columns("user")}
@@ -28,6 +30,23 @@ def _run_lightweight_migrations():
             connection.exec_driver_sql(
                 "ALTER TABLE user ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1"
             )
+
+    if "task" not in table_names:
+        return
+
+    task_columns = {column["name"] for column in inspector.get_columns("task")}
+    task_migrations = {
+        "current_worker_id": "INTEGER",
+        "started_at": "DATETIME",
+        "completed_by_id": "INTEGER",
+        "completed_at": "DATETIME",
+    }
+    with db.engine.begin() as connection:
+        for column_name, column_type in task_migrations.items():
+            if column_name not in task_columns:
+                connection.exec_driver_sql(
+                    f"ALTER TABLE task ADD COLUMN {column_name} {column_type}"
+                )
 
 
 def create_app(config_class=Config):
