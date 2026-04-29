@@ -1,6 +1,7 @@
 import re
 from datetime import date
 from sqlalchemy.exc import SQLAlchemyError
+from openai import OpenAI, OpenAIError
 
 from flask import current_app
 
@@ -126,34 +127,38 @@ def fallback_error_answer(entries):
 def openai_error_answer(message, error_context, task_context):
     """Generate an AI answer using OpenAI and the provided maintenance context."""
     api_key = current_app.config.get("OPENAI_API_KEY")
+
     if not api_key:
         return None
 
-    from openai import OpenAI
+    try:
+        client = OpenAI(api_key=api_key)
+        completion = client.chat.completions.create(
+            model=current_app.config.get("OPENAI_MODEL", "gpt-4o-mini"),
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Du bist ein Wartungsassistent. Nutze ausschließlich den "
+                        "bereitgestellten Fehlerkatalog und die sichtbaren Tasks. "
+                        "Wenn etwas nicht im Kontext steht, sage das klar."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Fehlerkatalog:\n{error_context}\n\n"
+                        f"Tasks:\n{task_context}\n\n"
+                        f"Frage:\n{message}"
+                    ),
+                },
+            ],
+            temperature=0.2,
+        )
+    except OpenAIError:
+        current_app.logger.exception("OpenAI request failed")
+        return None
 
-    client = OpenAI(api_key=api_key)
-    completion = client.chat.completions.create(
-        model=current_app.config.get("OPENAI_MODEL", "gpt-4o-mini"),
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "Du bist ein Wartungsassistent. Nutze ausschließlich den "
-                    "bereitgestellten Fehlerkatalog und die sichtbaren Tasks. "
-                    "Wenn etwas nicht im Kontext steht, sage das klar."
-                ),
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"Fehlerkatalog:\n{error_context}\n\n"
-                    f"Tasks:\n{task_context}\n\n"
-                    f"Frage:\n{message}"
-                ),
-            },
-        ],
-        temperature=0.2,
-    )
     return completion.choices[0].message.content
 
 
