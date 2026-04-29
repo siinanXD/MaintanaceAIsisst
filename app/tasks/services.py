@@ -1,4 +1,5 @@
 from datetime import date
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
 from app.models import Department, Priority, Role, Task, TaskStatus
@@ -69,7 +70,13 @@ def create_task(data, user):
         return None, {"error": str(exc)}, 400
 
     db.session.add(task)
-    db.session.commit()
+
+    try:
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        return None, {"error": "Database error while creating task"}, 500
+
     return task, None, 201
 
 
@@ -93,7 +100,12 @@ def update_task(task, data, user):
     except ValueError as exc:
         return None, {"error": str(exc)}, 400
 
-    db.session.commit()
+    try:
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        return None, {"error": "Database error while updating task"}, 500
+
     return task, None, 200
 
 
