@@ -1,0 +1,206 @@
+from datetime import date, datetime
+from enum import Enum
+
+from werkzeug.security import check_password_hash, generate_password_hash
+
+from app.extensions import db
+
+
+class Role(str, Enum):
+    MASTER_ADMIN = "master_admin"
+    IT = "it"
+    VERWALTUNG = "verwaltung"
+    INSTANDHALTUNG = "instandhaltung"
+    PRODUKTION = "produktion"
+    PERSONALABTEILUNG = "personalabteilung"
+
+
+class Priority(str, Enum):
+    URGENT = "urgent"
+    SOON = "soon"
+    NORMAL = "normal"
+
+
+class TaskStatus(str, Enum):
+    OPEN = "open"
+    IN_PROGRESS = "in_progress"
+    DONE = "done"
+    CANCELLED = "cancelled"
+
+
+class Department(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(80), unique=True, nullable=False)
+
+    users = db.relationship("User", back_populates="department")
+    tasks = db.relationship("Task", back_populates="department")
+    errors = db.relationship("ErrorEntry", back_populates="department")
+
+    def to_dict(self):
+        return {"id": self.id, "name": self.name}
+
+
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    role = db.Column(db.Enum(Role), nullable=False, default=Role.PRODUKTION)
+    department_id = db.Column(db.Integer, db.ForeignKey("department.id"))
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    department = db.relationship("Department", back_populates="users")
+    created_tasks = db.relationship("Task", back_populates="creator")
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+    @property
+    def is_admin(self):
+        return self.role == Role.MASTER_ADMIN
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "username": self.username,
+            "email": self.email,
+            "role": self.role.value,
+            "department": self.department.to_dict() if self.department else None,
+            "is_active": self.is_active,
+            "created_at": self.created_at.isoformat(),
+        }
+
+
+class Task(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(160), nullable=False)
+    description = db.Column(db.Text, nullable=False, default="")
+    priority = db.Column(db.Enum(Priority), nullable=False, default=Priority.NORMAL)
+    status = db.Column(db.Enum(TaskStatus), nullable=False, default=TaskStatus.OPEN)
+    due_date = db.Column(db.Date, nullable=False, default=date.today)
+    department_id = db.Column(db.Integer, db.ForeignKey("department.id"), nullable=False)
+    created_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
+    department = db.relationship("Department", back_populates="tasks")
+    creator = db.relationship("User", back_populates="created_tasks")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "description": self.description,
+            "priority": self.priority.value,
+            "status": self.status.value,
+            "due_date": self.due_date.isoformat(),
+            "department": self.department.to_dict() if self.department else None,
+            "created_by": self.created_by,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+        }
+
+
+class ErrorEntry(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    machine = db.Column(db.String(160), nullable=False)
+    error_code = db.Column(db.String(80), nullable=False, index=True)
+    title = db.Column(db.String(160), nullable=False)
+    description = db.Column(db.Text, nullable=False, default="")
+    possible_causes = db.Column(db.Text, nullable=False, default="")
+    solution = db.Column(db.Text, nullable=False, default="")
+    department_id = db.Column(db.Integer, db.ForeignKey("department.id"), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    department = db.relationship("Department", back_populates="errors")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "machine": self.machine,
+            "error_code": self.error_code,
+            "title": self.title,
+            "description": self.description,
+            "possible_causes": self.possible_causes,
+            "solution": self.solution,
+            "department": self.department.to_dict() if self.department else None,
+            "created_at": self.created_at.isoformat(),
+        }
+
+
+class ChatMessage(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    response = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class Employee(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    personnel_number = db.Column(db.String(80), unique=True, nullable=False)
+    name = db.Column(db.String(160), nullable=False)
+    birth_date = db.Column(db.Date)
+    city = db.Column(db.String(120), nullable=False, default="")
+    street = db.Column(db.String(160), nullable=False, default="")
+    postal_code = db.Column(db.String(20), nullable=False, default="")
+    department = db.Column(db.String(120), nullable=False, default="")
+    shift_model = db.Column(db.String(80), nullable=False, default="")
+    current_shift = db.Column(db.String(120), nullable=False, default="")
+    team = db.Column(db.Integer)
+    salary_group = db.Column(db.String(80), nullable=False, default="")
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    documents = db.relationship(
+        "EmployeeDocument",
+        back_populates="employee",
+        cascade="all, delete-orphan",
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "personnel_number": self.personnel_number,
+            "name": self.name,
+            "birth_date": self.birth_date.isoformat() if self.birth_date else None,
+            "city": self.city,
+            "street": self.street,
+            "postal_code": self.postal_code,
+            "department": self.department,
+            "shift_model": self.shift_model,
+            "current_shift": self.current_shift,
+            "team": self.team,
+            "salary_group": self.salary_group,
+            "documents": [document.to_dict() for document in self.documents],
+            "created_at": self.created_at.isoformat(),
+        }
+
+
+class EmployeeDocument(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.Integer, db.ForeignKey("employee.id"), nullable=False)
+    original_filename = db.Column(db.String(255), nullable=False)
+    stored_filename = db.Column(db.String(255), nullable=False)
+    content_type = db.Column(db.String(120), nullable=False, default="")
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    employee = db.relationship("Employee", back_populates="documents")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "employee_id": self.employee_id,
+            "original_filename": self.original_filename,
+            "content_type": self.content_type,
+            "uploaded_at": self.uploaded_at.isoformat(),
+            "download_url": f"/api/employees/{self.employee_id}/documents/{self.id}",
+        }

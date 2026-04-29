@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Maintenance Assistant{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=20260429-sql1">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="sidebar-tab">Menue</div>
+        <div class="brand">
+          <div class="brand-mark">MA</div>
+          <div>
+            <p class="brand-title">Maintenance Assistant</p>
+            <p class="brand-subtitle">Tasks, Fehlerwissen, KI-Hilfe</p>
+          </div>
+        </div>
+        <nav aria-label="Hauptnavigation">
+          <ul class="nav-list">
+            <li><a class="nav-link {% if request.path == '/' %}is-active{% endif %}" href="/">Dashboard</a></li>
+            <li><a class="nav-link {% if request.path == '/tasks' %}is-active{% endif %}" href="/tasks">Tasks</a></li>
+            <li><a class="nav-link {% if request.path == '/errors' %}is-active{% endif %}" href="/errors">Fehlerliste</a></li>
+            <li data-hr-only><a class="nav-link {% if request.path == '/employees' %}is-active{% endif %}" href="/employees">Mitarbeiter</a></li>
+            <li data-admin-only><a class="nav-link {% if request.path == '/admin/users' %}is-active{% endif %}" href="/admin/users">Users</a></li>
+            <li data-auth-login-link><a class="nav-link {% if request.path == '/login' %}is-active{% endif %}" href="/login">Login</a></li>
+          </ul>
+        </nav>
+      </aside>
+      <main class="main">
+        <div class="session-actions" data-auth-session hidden>
+          <span class="session-pill" data-session-name>Eingeloggt</span>
+          <button class="button is-danger" type="button" data-logout-button>Logout</button>
+        </div>
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+    <section class="chat-widget" aria-label="KI-Chat">
+      <button class="chat-toggle" type="button" aria-expanded="false" aria-controls="chat-panel">
+        KI
+      </button>
+      <div class="chat-panel" id="chat-panel" aria-hidden="true">
+        <div class="chat-panel-header">
+          <div>
+            <p class="chat-panel-kicker">Assistent</p>
+            <h2 class="chat-panel-title">KI direkt fragen</h2>
+          </div>
+          <button class="chat-close" type="button" aria-label="Chat schliessen">x</button>
+        </div>
+        <div class="chat-panel-body" data-chat-messages>
+          <div class="chat-message is-assistant">
+            Frag mich nach Fehlercodes, Maschinenstoerungen oder heutigen Tasks.
+          </div>
+        </div>
+        <form class="chat-panel-form" data-chat-form>
+          <input class="chat-input" name="message" autocomplete="off" placeholder="z. B. Maschine 3 zeigt E104">
+          <button class="button is-primary" type="submit">Senden</button>
+        </form>
+      </div>
+    </section>
+    <script src="{{ url_for('static', filename='auth.js') }}?v=20260429-sql1"></script>
+    <script src="{{ url_for('static', filename='app.js') }}?v=20260429-sql1"></script>
+    <script src="{{ url_for('static', filename='chat.js') }}?v=20260429-sql1"></script>
+  </body>
+</html>

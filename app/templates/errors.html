@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Fehlerliste - Maintenance Assistant{% endblock %}
+
+{% block content %}
+<section class="topbar">
+  <div>
+    <p class="page-kicker">Fehlerwissen</p>
+    <h1 class="page-title">Fehlerliste</h1>
+    <p class="page-description">Fehler nach Bereich, Maschine, Code und Loesung dokumentieren.</p>
+  </div>
+</section>
+
+<section class="dashboard-grid">
+  <form class="panel is-wide" data-error-form>
+    <div class="panel-header">
+      <div>
+        <h2 class="panel-title">Fehler anlegen</h2>
+        <p class="panel-meta">Bereich, Maschine, Fehler und Loesung</p>
+      </div>
+    </div>
+    <div class="form-grid">
+      <div class="field">
+        <label for="error-department">Bereich</label>
+        <select class="select" id="error-department" name="department"></select>
+      </div>
+      <div class="field">
+        <label for="error-machine">Maschine</label>
+        <input class="input" id="error-machine" name="machine" required>
+      </div>
+      <div class="field">
+        <label for="error-code">Fehlercode</label>
+        <input class="input" id="error-code" name="error_code" placeholder="E104" required>
+      </div>
+      <div class="field">
+        <label for="error-title">Fehler</label>
+        <input class="input" id="error-title" name="title" required>
+      </div>
+      <div class="field is-full">
+        <label for="error-solution">Loesung</label>
+        <textarea class="textarea" id="error-solution" name="solution"></textarea>
+      </div>
+    </div>
+    <div class="toolbar form-actions">
+      <button class="button is-primary" type="submit">Fehler speichern</button>
+      <span class="panel-meta" data-error-message></span>
+    </div>
+  </form>
+
+  <article class="panel is-full">
+    <div class="panel-header">
+      <div>
+        <h2 class="panel-title">Fehlerkatalog</h2>
+        <p class="panel-meta">Suchbarer Wissensspeicher fuer den KI-Assistenten</p>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Maschine</th>
+            <th>Fehler</th>
+            <th>Bereich</th>
+            <th>Loesung</th>
+          </tr>
+        </thead>
+        <tbody data-error-list></tbody>
+      </table>
+    </div>
+  </article>
+</section>
+{% endblock %}

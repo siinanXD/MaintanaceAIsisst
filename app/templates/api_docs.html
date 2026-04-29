@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}API-Protokoll - Maintenance Assistant{% endblock %}
+
+{% block content %}
+<section class="topbar">
+  <div>
+    <p class="page-kicker">HTTPS Protokoll</p>
+    <h1 class="page-title">API-Endpunkte</h1>
+    <p class="page-description">
+      Schnelluebersicht fuer Auth, Departments, Tasks, Fehlerkatalog und KI-Assistent.
+      Die vollstaendige Datei liegt unter <code>docs/API_PROTOCOL.md</code>.
+    </p>
+  </div>
+</section>
+
+<section class="dashboard-grid">
+  <article class="panel is-full">
+    <div class="panel-header">
+      <div>
+        <h2 class="panel-title">Basis</h2>
+        <p class="panel-meta">Lokale HTTPS-Entwicklung</p>
+      </div>
+      <span class="badge is-normal">HTTPS</span>
+    </div>
+    <pre class="code-block">Base URL: https://127.0.0.1:5000
+Authorization: Bearer &lt;access_token&gt;
+Content-Type: application/json</pre>
+  </article>
+
+  <article class="panel is-full">
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Methode</th>
+            <th>Route</th>
+            <th>Beschreibung</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>POST</td><td><code>/api/auth/register</code></td><td>Benutzer erstellen</td></tr>
+          <tr><td>POST</td><td><code>/api/auth/login</code></td><td>JWT-Token erhalten</td></tr>
+          <tr><td>GET</td><td><code>/api/auth/me</code></td><td>Aktuellen Benutzer lesen</td></tr>
+          <tr><td>GET</td><td><code>/api/departments</code></td><td>Bereiche auflisten</td></tr>
+          <tr><td>POST</td><td><code>/api/departments</code></td><td>Bereich erstellen</td></tr>
+          <tr><td>GET</td><td><code>/api/tasks</code></td><td>Tasks auflisten</td></tr>
+          <tr><td>POST</td><td><code>/api/tasks</code></td><td>Task erstellen</td></tr>
+          <tr><td>GET</td><td><code>/api/tasks/today</code></td><td>Heutige Tasks</td></tr>
+          <tr><td>GET</td><td><code>/api/errors/search?query=E104</code></td><td>Fehler suchen</td></tr>
+          <tr><td>POST</td><td><code>/api/ai/chat</code></td><td>KI-Chat verwenden</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </article>
+</section>
+{% endblock %}

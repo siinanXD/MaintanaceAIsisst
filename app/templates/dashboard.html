@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Maintenance Assistant{% endblock %}
+
+{% block content %}
+<section class="topbar">
+  <div>
+    <p class="page-kicker">Live Betrieb</p>
+    <h1 class="page-title">Maintenance Cockpit</h1>
+    <p class="page-description">
+      Eine zentrale Oberflaeche fuer Aufgaben, Bereiche, Fehlerkatalog und KI-gestuetzte Stoerungshilfe.
+    </p>
+  </div>
+</section>
+
+<section class="dashboard-grid">
+  <article class="panel is-wide">
+    <div class="panel-header">
+      <div>
+        <h2 class="panel-title">Aktuelle Tasks</h2>
+        <p class="panel-meta">Wischbare Uebersicht aller sichtbaren Aufgaben</p>
+      </div>
+      <span class="badge is-normal" data-dashboard-task-count>0</span>
+    </div>
+    <div class="task-rail" data-dashboard-task-rail>
+      <div class="empty-state">Noch keine Tasks vorhanden.</div>
+    </div>
+  </article>
+
+  <article class="panel is-full">
+    <div class="panel-header">
+      <div>
+        <h2 class="panel-title">Bereiche</h2>
+        <p class="panel-meta">Rollenbasiert gefiltert</p>
+      </div>
+      <span class="badge is-normal">aktiv</span>
+    </div>
+    <p class="stat-value">4</p>
+    <p class="stat-label">IT, Verwaltung, Instandhaltung, Produktion</p>
+  </article>
+
+  <article class="panel">
+    <div class="panel-header">
+      <div>
+        <h2 class="panel-title">Fehlerstatistik</h2>
+        <p class="panel-meta">Gesammelte Fehler nach Bereich</p>
+      </div>
+      <span class="badge is-soon">wissen</span>
+    </div>
+    <div class="stats-list" data-dashboard-error-stats>
+      <div class="empty-state">Noch keine Fehler erfasst.</div>
+    </div>
+  </article>
+
+</section>
+{% endblock %}

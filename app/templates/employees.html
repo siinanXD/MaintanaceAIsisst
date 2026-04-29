@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}Mitarbeiter - Maintenance Assistant{% endblock %}
+
+{% block content %}
+<section class="topbar">
+  <div>
+    <p class="page-kicker">Personalabteilung</p>
+    <h1 class="page-title">Mitarbeiter</h1>
+    <p class="page-description">Mitarbeiterdaten erfassen und Dokumente direkt an der Person ablegen.</p>
+  </div>
+</section>
+
+<section class="dashboard-grid">
+  <form class="panel is-full" data-employee-form>
+    <div class="panel-header">
+      <div>
+        <h2 class="panel-title">Mitarbeiter anlegen</h2>
+        <p class="panel-meta">Personalnummer, Stammdaten, Schicht, Team und Gehaltsklasse</p>
+      </div>
+    </div>
+    <div class="form-grid">
+      <div class="field">
+        <label for="personnel-number">Personalnummer</label>
+        <input class="input" id="personnel-number" name="personnel_number" required>
+      </div>
+      <div class="field">
+        <label for="employee-name">Name</label>
+        <input class="input" id="employee-name" name="name" required>
+      </div>
+      <div class="field">
+        <label for="birth-date">Geburtsdatum</label>
+        <input class="input" id="birth-date" name="birth_date" type="date">
+      </div>
+      <div class="field">
+        <label for="city">Wohnort</label>
+        <input class="input" id="city" name="city">
+      </div>
+      <div class="field">
+        <label for="street">Strasse</label>
+        <input class="input" id="street" name="street">
+      </div>
+      <div class="field">
+        <label for="postal-code">Postleitzahl</label>
+        <input class="input" id="postal-code" name="postal_code">
+      </div>
+      <div class="field">
+        <label for="employee-department">Abteilung</label>
+        <input class="input" id="employee-department" name="department">
+      </div>
+      <div class="field">
+        <label for="shift-model">Schichtmodell</label>
+        <select class="select" id="shift-model" name="shift_model">
+          <option value="gleitzeit">Gleitzeit</option>
+          <option value="kontischicht">Kontischicht</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="current-shift">Aktuelle Schicht / Rhythmus</label>
+        <input class="input" id="current-shift" name="current_shift">
+      </div>
+      <div class="field">
+        <label for="team">Team 1-5</label>
+        <select class="select" id="team" name="team">
+          <option value="">-</option>
+          <option value="1">Team 1</option>
+          <option value="2">Team 2</option>
+          <option value="3">Team 3</option>
+          <option value="4">Team 4</option>
+          <option value="5">Team 5</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="salary-group">Gehaltsklasse</label>
+        <input class="input" id="salary-group" name="salary_group">
+      </div>
+    </div>
+    <div class="toolbar form-actions">
+      <button class="button is-primary" type="submit">Mitarbeiter speichern</button>
+      <span class="panel-meta" data-employee-message></span>
+    </div>
+  </form>
+
+  <article class="panel is-full">
+    <div class="panel-header">
+      <div>
+        <h2 class="panel-title">Mitarbeiterliste</h2>
+        <p class="panel-meta">Dokumente koennen direkt pro Person hochgeladen werden</p>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Personalnr.</th>
+            <th>Name</th>
+            <th>Abteilung</th>
+            <th>Schicht</th>
+            <th>Team</th>
+            <th>Gehaltsklasse</th>
+            <th>Dokumente</th>
+          </tr>
+        </thead>
+        <tbody data-employee-list></tbody>
+      </table>
+    </div>
+  </article>
+</section>
+{% endblock %}

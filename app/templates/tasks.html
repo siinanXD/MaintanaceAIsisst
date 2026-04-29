@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Tasks - Maintenance Assistant{% endblock %}
+
+{% block content %}
+<section class="topbar">
+  <div>
+    <p class="page-kicker">Aufgaben</p>
+    <h1 class="page-title">Tasks</h1>
+    <p class="page-description">Tasks nach Bereich planen, priorisieren und abarbeiten.</p>
+  </div>
+</section>
+
+<section class="dashboard-grid">
+  <form class="panel is-wide" data-task-form>
+    <div class="panel-header">
+      <div>
+        <h2 class="panel-title">Task anlegen</h2>
+        <p class="panel-meta">Bereich, Ueberschrift, Beschreibung und Faelligkeit</p>
+      </div>
+    </div>
+    <div class="form-grid">
+      <div class="field">
+        <label for="task-department">Bereich</label>
+        <select class="select" id="task-department" name="department"></select>
+      </div>
+      <div class="field">
+        <label for="task-title">Ueberschrift</label>
+        <input class="input" id="task-title" name="title" required>
+      </div>
+      <div class="field">
+        <label for="task-priority">Prioritaet</label>
+        <select class="select" id="task-priority" name="priority">
+          <option value="urgent">urgent</option>
+          <option value="soon">soon</option>
+          <option value="normal" selected>normal</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="task-due-date">Faellig am</label>
+        <input class="input" id="task-due-date" name="due_date" type="date">
+      </div>
+      <div class="field is-full">
+        <label for="task-description">Beschreibung</label>
+        <textarea class="textarea" id="task-description" name="description"></textarea>
+      </div>
+    </div>
+    <div class="toolbar form-actions">
+      <button class="button is-primary" type="submit">Task speichern</button>
+      <span class="panel-meta" data-task-message></span>
+    </div>
+  </form>
+
+  <article class="panel is-full">
+    <div class="panel-header">
+      <div>
+        <h2 class="panel-title">Taskliste</h2>
+        <p class="panel-meta">Admin sieht alles, Bereiche sehen ihre eigenen Tasks</p>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Titel</th>
+            <th>Bereich</th>
+            <th>Prioritaet</th>
+            <th>Status</th>
+            <th>Faellig</th>
+          </tr>
+        </thead>
+        <tbody data-task-list></tbody>
+      </table>
+    </div>
+  </article>
+</section>
+{% endblock %}

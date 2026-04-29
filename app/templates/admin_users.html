@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Nutzer - Maintenance Assistant{% endblock %}
+
+{% block content %}
+<section class="topbar">
+  <div>
+    <p class="page-kicker">Admin</p>
+    <h1 class="page-title">Nutzerverwaltung</h1>
+    <p class="page-description">Nutzer anzeigen, sperren, entsperren, Passwort zuruecksetzen und loeschen.</p>
+  </div>
+</section>
+
+<section class="dashboard-grid">
+  <article class="panel is-full">
+    <div class="panel-header">
+      <div>
+        <h2 class="panel-title">Alle Nutzer</h2>
+        <p class="panel-meta">Nur fuer Master/Admin sichtbar</p>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Nutzer</th>
+            <th>E-Mail</th>
+            <th>Rolle</th>
+            <th>Bereich</th>
+            <th>Status</th>
+            <th>Aktionen</th>
+          </tr>
+        </thead>
+        <tbody data-user-list></tbody>
+      </table>
+    </div>
+  </article>
+</section>
+{% endblock %}
