@@ -6,7 +6,13 @@ from flask_jwt_extended import jwt_required
 from app.extensions import db
 from app.models import Priority, Task, TaskStatus
 from app.security import current_user, same_department_or_admin
-from app.tasks.services import create_task, update_task, visible_tasks_query
+from app.tasks.services import (
+    complete_task,
+    create_task,
+    start_task,
+    update_task,
+    visible_tasks_query,
+)
 
 
 tasks_bp = Blueprint("tasks", __name__)
@@ -71,6 +77,38 @@ def edit_task(task_id):
     if error:
         return jsonify(error), status
     return jsonify(updated.to_dict())
+
+
+@tasks_bp.post("/<int:task_id>/start")
+@jwt_required()
+def start_task_endpoint(task_id):
+    """Start a visible task for the current user."""
+    task = Task.query.get(task_id)
+    if not task:
+        return jsonify({"error": "Task not found"}), 404
+    if not same_department_or_admin(task):
+        return jsonify({"error": "Forbidden"}), 403
+
+    updated, error, status = start_task(task, current_user())
+    if error:
+        return jsonify(error), status
+    return jsonify(updated.to_dict()), status
+
+
+@tasks_bp.post("/<int:task_id>/complete")
+@jwt_required()
+def complete_task_endpoint(task_id):
+    """Complete a visible task for the current user."""
+    task = Task.query.get(task_id)
+    if not task:
+        return jsonify({"error": "Task not found"}), 404
+    if not same_department_or_admin(task):
+        return jsonify({"error": "Forbidden"}), 403
+
+    updated, error, status = complete_task(task, current_user())
+    if error:
+        return jsonify(error), status
+    return jsonify(updated.to_dict()), status
 
 
 @tasks_bp.delete("/<int:task_id>")
