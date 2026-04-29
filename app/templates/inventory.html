@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Lager - Maintenance Assistant{% endblock %}
+
+{% block content %}
+<section class="topbar">
+  <div>
+    <p class="page-kicker">Material</p>
+    <h1 class="page-title">Lager</h1>
+    <p class="page-description">Materialien mit Kosten, Anzahl, Hersteller und verbauter Maschine verwalten.</p>
+  </div>
+</section>
+
+<section class="dashboard-grid">
+  <form class="panel is-full" data-inventory-form>
+    <div class="panel-header">
+      <div>
+        <h2 class="panel-title">Material anlegen</h2>
+        <p class="panel-meta">Bestand und Wert werden automatisch im Dashboard summiert.</p>
+      </div>
+    </div>
+    <div class="form-grid">
+      <div class="field">
+        <label for="material-name">Name</label>
+        <input class="input" id="material-name" name="name" required>
+      </div>
+      <div class="field">
+        <label for="unit-cost">Kosten pro Stueck</label>
+        <input class="input" id="unit-cost" name="unit_cost" type="number" min="0" step="0.01" required>
+      </div>
+      <div class="field">
+        <label for="quantity">Anzahl</label>
+        <input class="input" id="quantity" name="quantity" type="number" min="0" required>
+      </div>
+      <div class="field">
+        <label for="manufacturer">Hersteller</label>
+        <input class="input" id="manufacturer" name="manufacturer">
+      </div>
+      <div class="field">
+        <label for="material-machine">Verbaut an Maschine</label>
+        <select class="select" id="material-machine" name="machine_id" data-machine-select>
+          <option value="">Keine Maschine</option>
+        </select>
+      </div>
+    </div>
+    <div class="toolbar form-actions">
+      <button class="button is-primary" type="submit">Material speichern</button>
+      <span class="panel-meta" data-inventory-message></span>
+    </div>
+  </form>
+
+  <article class="panel is-full">
+    <div class="panel-header">
+      <div>
+        <h2 class="panel-title">Lagerbestand</h2>
+        <p class="panel-meta">Materialien, Mengen und Gesamtwert je Position</p>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Kosten</th>
+            <th>Anzahl</th>
+            <th>Maschine</th>
+            <th>Hersteller</th>
+            <th>Gesamtwert</th>
+            <th>Aktion</th>
+          </tr>
+        </thead>
+        <tbody data-inventory-list></tbody>
+      </table>
+    </div>
+  </article>
+</section>
+{% endblock %}

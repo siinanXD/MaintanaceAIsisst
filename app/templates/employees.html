@@ -16,7 +16,7 @@
     <div class="panel-header">
       <div>
         <h2 class="panel-title">Mitarbeiter anlegen</h2>
-        <p class="panel-meta">Personalnummer, Stammdaten, Schicht, Team und Gehaltsklasse</p>
+        <p class="panel-meta">Personalnummer, Stammdaten, Schicht, Team, Qualifikationen und Lieblingsmaschine</p>
       </div>
     </div>
     <div class="form-grid">
@@ -74,6 +74,14 @@
         <label for="salary-group">Gehaltsklasse</label>
         <input class="input" id="salary-group" name="salary_group">
       </div>
+      <div class="field">
+        <label for="favorite-machine">Favoritenmaschine</label>
+        <input class="input" id="favorite-machine" name="favorite_machine">
+      </div>
+      <div class="field is-full">
+        <label for="qualifications">Qualifikationen</label>
+        <textarea class="textarea" id="qualifications" name="qualifications" placeholder="z. B. CNC, Staplerschein, Anlage 4"></textarea>
+      </div>
     </div>
     <div class="toolbar form-actions">
       <button class="button is-primary" type="submit">Mitarbeiter speichern</button>
@@ -98,6 +106,8 @@
             <th>Schicht</th>
             <th>Team</th>
             <th>Gehaltsklasse</th>
+            <th>Qualifikationen</th>
+            <th>Favoritenmaschine</th>
             <th>Dokumente</th>
           </tr>
         </thead>

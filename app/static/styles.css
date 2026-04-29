@@ -351,6 +351,20 @@ a:hover {
   gap: 10px;
 }
 
+.shiftplan-list {
+  display: grid;
+  gap: 16px;
+}
+
+.shiftplan-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.07);
+}
+
 .stat-row {
   display: flex;
   min-height: 52px;

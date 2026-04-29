@@ -13,6 +13,12 @@
     if (authToken) headers.Authorization = "Bearer " + authToken;
 
     const response = await fetch(path, Object.assign({}, options, { headers }));
+    if (response.status === 401 || response.status === 422) {
+      if (window.maintenanceAuth && window.maintenanceAuth.clearSession) {
+        window.maintenanceAuth.clearSession({ redirect: true });
+      }
+      throw new Error("Sitzung abgelaufen. Bitte neu einloggen.");
+    }
     if (response.status === 204) return null;
     const data = await response.json().catch(() => null);
     if (!response.ok) throw new Error((data && data.error) || "API error");
@@ -65,6 +71,19 @@
       tr.appendChild(td);
     });
     return tr;
+  }
+
+  function formatMoney(value) {
+    return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(Number(value || 0));
+  }
+
+  function actionButton(label, onClick, danger) {
+    const button = document.createElement("button");
+    button.className = danger ? "button is-danger" : "button";
+    button.type = "button";
+    button.textContent = label;
+    button.addEventListener("click", onClick);
+    return button;
   }
 
   async function initDepartments() {
@@ -262,6 +281,8 @@
           employee.current_shift || employee.shift_model,
           employee.team ? "Team " + employee.team : "-",
           employee.salary_group,
+          employee.qualifications,
+          employee.favorite_machine,
           docs
         ]));
       });
@@ -280,6 +301,188 @@
     await load();
   }
 
+  async function fillMachineSelects() {
+    const selects = document.querySelectorAll("[data-machine-select]");
+    if (!selects.length || !token()) return [];
+    const machines = await api("/api/machines");
+    selects.forEach((select) => {
+      const current = select.value;
+      select.innerHTML = '<option value="">Keine Maschine</option>';
+      machines.forEach((machine) => {
+        const option = document.createElement("option");
+        option.value = machine.id;
+        option.textContent = machine.name;
+        select.appendChild(option);
+      });
+      select.value = current;
+    });
+    return machines;
+  }
+
+  async function initMachines() {
+    const list = document.querySelector("[data-machine-list]");
+    const form = document.querySelector("[data-machine-form]");
+    if (!list || !form || !token()) return;
+
+    async function load() {
+      const machines = await api("/api/machines");
+      list.innerHTML = "";
+      machines.forEach((machine) => {
+        const actions = document.createElement("div");
+        actions.className = "table-actions";
+        actions.appendChild(actionButton("Loeschen", async () => {
+          if (!window.confirm(machine.name + " wirklich loeschen?")) return;
+          await api("/api/machines/" + machine.id, { method: "DELETE" });
+          await load();
+        }, true));
+        list.appendChild(row([
+          machine.name,
+          machine.produced_item,
+          String(machine.required_employees),
+          actions
+        ]));
+      });
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const data = Object.fromEntries(new FormData(form).entries());
+      await api("/api/machines", { method: "POST", body: JSON.stringify(data) });
+      form.reset();
+      form.elements.required_employees.value = "1";
+      await load();
+      const message = document.querySelector("[data-machine-message]");
+      if (message) message.textContent = "Maschine gespeichert.";
+    });
+
+    await load();
+  }
+
+  async function initInventory() {
+    const list = document.querySelector("[data-inventory-list]");
+    const form = document.querySelector("[data-inventory-form]");
+    if (!list || !form || !token()) return;
+
+    async function load() {
+      await fillMachineSelects();
+      const materials = await api("/api/inventory");
+      list.innerHTML = "";
+      materials.forEach((material) => {
+        const actions = document.createElement("div");
+        actions.className = "table-actions";
+        actions.appendChild(actionButton("Loeschen", async () => {
+          if (!window.confirm(material.name + " wirklich loeschen?")) return;
+          await api("/api/inventory/" + material.id, { method: "DELETE" });
+          await load();
+        }, true));
+        list.appendChild(row([
+          material.name,
+          formatMoney(material.unit_cost),
+          String(material.quantity),
+          material.machine && material.machine.name,
+          material.manufacturer,
+          formatMoney(material.total_value),
+          actions
+        ]));
+      });
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const data = Object.fromEntries(new FormData(form).entries());
+      await api("/api/inventory", { method: "POST", body: JSON.stringify(data) });
+      form.reset();
+      await load();
+      const message = document.querySelector("[data-inventory-message]");
+      if (message) message.textContent = "Material gespeichert.";
+    });
+
+    await load();
+  }
+
+  async function initShiftPlans() {
+    const list = document.querySelector("[data-shiftplan-list]");
+    const form = document.querySelector("[data-shiftplan-form]");
+    if (!list || !form || !token()) return;
+
+    const startInput = form.querySelector("[name='start_date']");
+    if (startInput && !startInput.value) {
+      startInput.value = new Date().toISOString().slice(0, 10);
+    }
+
+    function renderPlan(plan) {
+      const article = document.createElement("article");
+      article.className = "shiftplan-card";
+
+      const header = document.createElement("div");
+      header.className = "panel-header";
+      const title = document.createElement("div");
+      title.innerHTML = `<h3 class="panel-title">${plan.title}</h3><p class="panel-meta">${plan.start_date} - ${plan.days} Tage - ${plan.rhythm || "Rhythmus offen"}</p>`;
+      const remove = actionButton("Loeschen", async () => {
+        if (!window.confirm(plan.title + " wirklich loeschen?")) return;
+        await api("/api/shiftplans/" + plan.id, { method: "DELETE" });
+        await load();
+      }, true);
+      header.append(title, remove);
+
+      const notes = document.createElement("p");
+      notes.className = "panel-meta";
+      notes.textContent = plan.notes || "Plan wurde gespeichert.";
+
+      const wrap = document.createElement("div");
+      wrap.className = "table-wrap";
+      const table = document.createElement("table");
+      table.className = "data-table";
+      table.innerHTML = "<thead><tr><th>Datum</th><th>Schicht</th><th>Zeit</th><th>Mitarbeiter</th><th>Maschine</th><th>Notiz</th></tr></thead>";
+      const body = document.createElement("tbody");
+      plan.entries.forEach((entry) => {
+        body.appendChild(row([
+          entry.work_date,
+          entry.shift,
+          entry.start_time + " - " + entry.end_time,
+          entry.employee && entry.employee.name,
+          entry.machine && entry.machine.name,
+          entry.notes
+        ]));
+      });
+      table.appendChild(body);
+      wrap.appendChild(table);
+      article.append(header, notes, wrap);
+      return article;
+    }
+
+    async function load() {
+      const plans = await api("/api/shiftplans");
+      list.innerHTML = "";
+      if (!plans.length) {
+        list.innerHTML = '<div class="empty-state">Noch kein Schichtplan generiert.</div>';
+        return;
+      }
+      plans.forEach((plan) => list.appendChild(renderPlan(plan)));
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const message = document.querySelector("[data-shiftplan-message]");
+      if (message) message.textContent = "KI plant...";
+      const data = Object.fromEntries(new FormData(form).entries());
+      try {
+        await api("/api/shiftplans/generate", { method: "POST", body: JSON.stringify(data) });
+        form.reset();
+        if (startInput) startInput.value = new Date().toISOString().slice(0, 10);
+        if (message) message.textContent = "Schichtplan generiert.";
+        await load();
+      } catch (error) {
+        if (message) {
+          message.textContent = error.message;
+          message.classList.add("is-error");
+        }
+      }
+    });
+
+    await load();
+  }
+
   async function initDashboard() {
     const taskRail = document.querySelector("[data-dashboard-task-rail]");
     const taskCount = document.querySelector("[data-dashboard-task-count]");
@@ -292,7 +495,8 @@
     const taskCompleteButton = document.querySelector("[data-task-complete-button]");
     const taskDetailClose = document.querySelector("[data-task-detail-close]");
     const errorStats = document.querySelector("[data-dashboard-error-stats]");
-    if ((!taskRail && !errorStats) || !token()) return;
+    const inventoryStats = document.querySelector("[data-dashboard-inventory-stats]");
+    if ((!taskRail && !errorStats && !inventoryStats) || !token()) return;
 
     let activeTask = null;
     let activeTaskId = null;
@@ -464,6 +668,23 @@
         });
       }
     }
+
+    if (inventoryStats && window.maintenanceAuth && window.maintenanceAuth.isAdmin()) {
+      const summary = await api("/api/inventory/summary");
+      inventoryStats.innerHTML = "";
+      inventoryStats.append(
+        rowLikeStat("Materialien", String(summary.material_count)),
+        rowLikeStat("Gesamtanzahl", String(summary.total_quantity)),
+        rowLikeStat("Gesamtwert", formatMoney(summary.total_value))
+      );
+    }
+
+    function rowLikeStat(label, value) {
+      const item = document.createElement("div");
+      item.className = "stat-row";
+      item.innerHTML = `<span>${label}</span><strong>${value}</strong>`;
+      return item;
+    }
   }
 
   document.addEventListener("DOMContentLoaded", async () => {
@@ -478,6 +699,9 @@
       await initErrors();
       await initUsers();
       await initEmployees();
+      await initMachines();
+      await initInventory();
+      await initShiftPlans();
     } catch (error) {
       console.warn(error);
     }

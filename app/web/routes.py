@@ -37,3 +37,18 @@ def admin_users_page():
 @web_bp.get("/employees")
 def employees_page():
     return render_template("employees.html")
+
+
+@web_bp.get("/shiftplans")
+def shiftplans_page():
+    return render_template("shiftplans.html")
+
+
+@web_bp.get("/machines")
+def machines_page():
+    return render_template("machines.html")
+
+
+@web_bp.get("/inventory")
+def inventory_page():
+    return render_template("inventory.html")

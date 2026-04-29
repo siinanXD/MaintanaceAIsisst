@@ -38,6 +38,7 @@ Passwoerter werden nicht im Klartext gespeichert, sondern als Hash. Der Token wi
 | Produktion | `produktion` | Eigener Bereich |
 
 Normale Rollen sehen und bearbeiten nur Tasks und Fehlerkatalogeintraege ihres eigenen Bereichs.
+In der Webnavigation sehen normale Rollen nur Tasks und Fehlerliste. Dashboard, Mitarbeiter, Schichtplan, Maschinen, Lager und Userverwaltung sind Admin-only.
 
 ## Standardantworten
 
@@ -468,6 +469,10 @@ Response `200`:
 {
   "type": "error_help",
   "answer": "Der Fehler E104 an Verpackungsmaschine 3 passt zu: Sensor erkennt Produkt nicht...",
+  "diagnostics": {
+    "status": "openai_used",
+    "fallback_used": false
+  },
   "data": [
     {
       "id": 1,
@@ -493,6 +498,10 @@ Response `200`:
 {
   "type": "tasks_today",
   "answer": "Heute stehen diese Tasks an:\n- Motor M12 pruefen (urgent, open, Bereich: Instandhaltung)",
+  "diagnostics": {
+    "status": "local_answer",
+    "fallback_used": false
+  },
   "data": [
     {
       "id": 1,
@@ -501,6 +510,136 @@ Response `200`:
   ]
 }
 ```
+
+Moegliche Diagnosewerte:
+
+| Status | Bedeutung |
+| --- | --- |
+| `local_answer` | Lokale Antwort ohne OpenAI, z. B. heutige Tasks |
+| `api_key_missing` | Kein OpenAI-Key konfiguriert, lokaler Fallback genutzt |
+| `openai_error` | OpenAI-Anfrage fehlgeschlagen, lokaler Fallback genutzt |
+| `fallback_used` | Fallback wurde ohne genauere Kategorie genutzt |
+| `openai_used` | OpenAI-Antwort wurde verwendet |
+
+### KI-Konfiguration pruefen
+
+Nur `master_admin`.
+
+```http
+GET /api/ai/status
+Authorization: Bearer <access_token>
+```
+
+Response `200`:
+
+```json
+{
+  "api_key_configured": true,
+  "model": "gpt-4o-mini",
+  "last_error": null
+}
+```
+
+Der API-Key wird nie im Response-Body ausgegeben.
+
+## Mitarbeiter
+
+Alle Mitarbeiter-Endpunkte sind `master_admin` vorbehalten.
+
+```http
+GET /api/employees
+POST /api/employees
+PUT /api/employees/1
+DELETE /api/employees/1
+```
+
+Mitarbeiter enthalten fuer die Schichtplanung:
+
+```json
+{
+  "qualifications": "CNC, Staplerschein",
+  "favorite_machine": "Anlage 4"
+}
+```
+
+## Maschinen
+
+Alle Maschinen-Endpunkte sind `master_admin` vorbehalten.
+
+```http
+GET /api/machines
+POST /api/machines
+PUT /api/machines/1
+DELETE /api/machines/1
+```
+
+Request:
+
+```json
+{
+  "name": "Anlage 4",
+  "produced_item": "Gehaeuse",
+  "required_employees": 2
+}
+```
+
+## Lager
+
+Alle Lager-Endpunkte sind `master_admin` vorbehalten.
+
+```http
+GET /api/inventory
+GET /api/inventory/summary
+POST /api/inventory
+PUT /api/inventory/1
+DELETE /api/inventory/1
+```
+
+Request:
+
+```json
+{
+  "name": "Schraube M6",
+  "unit_cost": 0.12,
+  "quantity": 500,
+  "machine_id": 1,
+  "manufacturer": "ACME"
+}
+```
+
+Summary:
+
+```json
+{
+  "material_count": 1,
+  "total_quantity": 500,
+  "total_value": 60.0
+}
+```
+
+## Schichtplanung
+
+Alle Schichtplan-Endpunkte sind `master_admin` vorbehalten.
+
+```http
+GET /api/shiftplans
+POST /api/shiftplans/generate
+DELETE /api/shiftplans/1
+```
+
+Request:
+
+```json
+{
+  "title": "KW 18 Produktion",
+  "start_date": "2026-05-01",
+  "days": 7,
+  "rhythm": "2-Schicht",
+  "preferences": "Max bevorzugt Fruehschicht, Lisa bevorzugt Anlage 4"
+}
+```
+
+Die Generierung beruecksichtigt Produktionsmitarbeiter, Rhythmus, Praeferenzen, Qualifikationen, Favoritenmaschine und Maschinenbedarf. Ohne OpenAI-Key oder bei OpenAI-Fehlern wird ein lokaler Fallback genutzt.
 
 ## cURL-Beispiele
 

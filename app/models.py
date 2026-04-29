@@ -202,6 +202,8 @@ class Employee(db.Model):
     current_shift = db.Column(db.String(120), nullable=False, default="")
     team = db.Column(db.Integer)
     salary_group = db.Column(db.String(80), nullable=False, default="")
+    qualifications = db.Column(db.Text, nullable=False, default="")
+    favorite_machine = db.Column(db.String(160), nullable=False, default="")
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     documents = db.relationship(
@@ -224,6 +226,8 @@ class Employee(db.Model):
             "current_shift": self.current_shift,
             "team": self.team,
             "salary_group": self.salary_group,
+            "qualifications": self.qualifications,
+            "favorite_machine": self.favorite_machine,
             "documents": [document.to_dict() for document in self.documents],
             "created_at": self.created_at.isoformat(),
         }
@@ -247,4 +251,110 @@ class EmployeeDocument(db.Model):
             "content_type": self.content_type,
             "uploaded_at": self.uploaded_at.isoformat(),
             "download_url": f"/api/employees/{self.employee_id}/documents/{self.id}",
+        }
+
+
+class Machine(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(160), unique=True, nullable=False)
+    produced_item = db.Column(db.String(160), nullable=False, default="")
+    required_employees = db.Column(db.Integer, nullable=False, default=1)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    materials = db.relationship("InventoryMaterial", back_populates="machine")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "produced_item": self.produced_item,
+            "required_employees": self.required_employees,
+            "created_at": self.created_at.isoformat(),
+        }
+
+
+class InventoryMaterial(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(160), nullable=False)
+    unit_cost = db.Column(db.Float, nullable=False, default=0)
+    quantity = db.Column(db.Integer, nullable=False, default=0)
+    manufacturer = db.Column(db.String(160), nullable=False, default="")
+    machine_id = db.Column(db.Integer, db.ForeignKey("machine.id"))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    machine = db.relationship("Machine", back_populates="materials")
+
+    @property
+    def total_value(self):
+        return round((self.unit_cost or 0) * (self.quantity or 0), 2)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "unit_cost": self.unit_cost,
+            "quantity": self.quantity,
+            "manufacturer": self.manufacturer,
+            "machine_id": self.machine_id,
+            "machine": self.machine.to_dict() if self.machine else None,
+            "total_value": self.total_value,
+            "created_at": self.created_at.isoformat(),
+        }
+
+
+class ShiftPlan(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(160), nullable=False)
+    start_date = db.Column(db.Date, nullable=False)
+    days = db.Column(db.Integer, nullable=False, default=7)
+    rhythm = db.Column(db.String(160), nullable=False, default="")
+    preferences = db.Column(db.Text, nullable=False, default="")
+    notes = db.Column(db.Text, nullable=False, default="")
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    entries = db.relationship(
+        "ShiftPlanEntry",
+        back_populates="plan",
+        cascade="all, delete-orphan",
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "start_date": self.start_date.isoformat(),
+            "days": self.days,
+            "rhythm": self.rhythm,
+            "preferences": self.preferences,
+            "notes": self.notes,
+            "entries": [entry.to_dict() for entry in self.entries],
+            "created_at": self.created_at.isoformat(),
+        }
+
+
+class ShiftPlanEntry(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    plan_id = db.Column(db.Integer, db.ForeignKey("shift_plan.id"), nullable=False)
+    employee_id = db.Column(db.Integer, db.ForeignKey("employee.id"), nullable=False)
+    machine_id = db.Column(db.Integer, db.ForeignKey("machine.id"))
+    work_date = db.Column(db.Date, nullable=False)
+    shift = db.Column(db.String(80), nullable=False)
+    start_time = db.Column(db.String(5), nullable=False)
+    end_time = db.Column(db.String(5), nullable=False)
+    notes = db.Column(db.Text, nullable=False, default="")
+
+    plan = db.relationship("ShiftPlan", back_populates="entries")
+    employee = db.relationship("Employee")
+    machine = db.relationship("Machine")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "employee": self.employee.to_dict() if self.employee else None,
+            "machine": self.machine.to_dict() if self.machine else None,
+            "work_date": self.work_date.isoformat(),
+            "shift": self.shift,
+            "start_time": self.start_time,
+            "end_time": self.end_time,
+            "notes": self.notes,
         }

@@ -1,41 +1,19 @@
-# Maintenance Assistant API
+# Maintenance Assistant
 
-Eine modulare Flask-API zur Unterstützung von Wartungs- und Instandhaltungsprozessen.
-Die Anwendung bietet Benutzerverwaltung, Aufgabenmanagement, Fehlerkataloge sowie eine optionale KI-gestützte Assistenz.
-
----
+Modulare Flask-Anwendung fuer Wartung, Produktion und Instandhaltung. Die App bietet JWT-Login, rollenbasierte Navigation, Aufgaben, Fehlerkataloge, Mitarbeiterdaten, Maschinen, Lager und optionale KI-Funktionen.
 
 ## Features
 
-* Benutzer-Authentifizierung (JWT)
+* Benutzer-Authentifizierung mit JWT
 * Rollen- und Rechteverwaltung
-* Department-basierte Zugriffskontrolle
-* Task-Management (CRUD + Tagesübersicht)
-* Fehlerkatalog mit Suchfunktion
-* KI-gestützter Chat-Assistent (optional mit OpenAI)
+* Bereichsbasierte Tasks und Fehlerlisten
+* Admin-only Dashboard, Mitarbeiter, Schichtplan, Maschinen, Lager und Userverwaltung
+* Mitarbeiterverwaltung mit Qualifikationen und Favoritenmaschine
+* Maschinenverwaltung mit Produktionsinhalt und benoetigter Mitarbeiterzahl
+* Lagerverwaltung mit Materialname, Kosten, Anzahl, Maschine, Hersteller und Gesamtwert
+* KI-Chat fuer Fehlerhilfe und heutige Tasks
+* KI-gestuetzte Schichtplanung fuer Produktionsmitarbeiter mit lokalem Fallback
 * Persistente Datenspeicherung via SQLite
-
----
-
-## Projektstruktur
-
-```text
-app/
-├── auth/           # Login & Registrierung
-├── employees/      # Mitarbeiterverwaltung
-├── departments/    # Bereiche (IT, Produktion, etc.)
-├── tasks/          # Aufgabenverwaltung
-├── errors/         # Fehlerkatalog
-├── ai/             # KI-Integration
-├── health/         # System-Checks
-├── static/         # CSS / Assets
-└── templates/      # HTML Templates
-
-data/               # Datenbank & Uploads
-docs/               # API-Dokumentation
-```
-
----
 
 ## Setup
 
@@ -43,183 +21,86 @@ docs/               # API-Dokumentation
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python run.py
+python run.py --host 127.0.0.1 --port 5050
 ```
 
-Optional mit HTTPS:
+Optional mit lokalem HTTPS:
 
 ```powershell
 python run.py --https
 ```
 
-Danach erreichbar unter:
+Die Standarddatenbank liegt unter `data/maintenance.db`. Beim Start werden die Standardbereiche IT, Verwaltung, Instandhaltung und Produktion angelegt.
 
-```
-https://127.0.0.1:5000
-```
+## Rollen und Navigation
 
-Hinweis: Das Zertifikat ist selbstsigniert und führt zu einer Browserwarnung (nur Entwicklungsumgebung).
+`master_admin` sieht alle Bereiche: Dashboard, Tasks, Fehlerliste, Mitarbeiter, Schichtplan, Maschinen, Lager und Users.
 
----
+Alle anderen Rollen sehen nur Tasks und Fehlerliste. Die API filtert Tasks und Fehler fuer normale Rollen auf den eigenen Bereich.
 
-## Datenbank
+## Wichtige API-Bereiche
 
-Die SQLite-Datenbank wird automatisch erstellt:
-
-```
-data/maintenance.db
-```
-
-Initial werden folgende Departments angelegt:
-
-* IT
-* Verwaltung
-* Instandhaltung
-* Produktion
-
----
-
-## Authentifizierung
-
-### Registrierung
+Alle geschuetzten Endpunkte verwenden:
 
 ```http
-POST /api/auth/register
-```
-
-Beispiel:
-
-```json
-{
-  "username": "admin",
-  "email": "admin@example.com",
-  "password": "secret",
-  "role": "master_admin"
-}
-```
-
----
-
-### Login
-
-```http
-POST /api/auth/login
-```
-
-```json
-{
-  "login": "admin",
-  "password": "secret"
-}
-```
-
-Danach:
-
-```
 Authorization: Bearer <access_token>
 ```
 
----
+Auth:
 
-## Rollen
+* `POST /api/auth/login`
+* `GET /api/auth/me`
 
-| Rolle          | Beschreibung |
-| -------------- | ------------ |
-| master_admin   | Vollzugriff  |
-| it             | Bereich IT   |
-| verwaltung     | Verwaltung   |
-| instandhaltung | Wartung      |
-| produktion     | Produktion   |
+Tasks und Fehler:
 
----
+* `GET/POST /api/tasks`
+* `GET/PUT/DELETE /api/tasks/<id>`
+* `POST /api/tasks/<id>/start`
+* `POST /api/tasks/<id>/complete`
+* `GET/POST /api/errors`
+* `GET/PUT/DELETE /api/errors/<id>`
+* `GET /api/errors/search?query=...`
 
-## API Endpoints
+Admin-only Erweiterungen:
 
-### Departments
-
-* `GET /api/departments`
-* `POST /api/departments`
-
----
-
-### Tasks
-
-* `GET /api/tasks`
-* `POST /api/tasks`
-* `GET /api/tasks/<id>`
-* `PUT /api/tasks/<id>`
-* `DELETE /api/tasks/<id>`
-* `GET /api/tasks/today`
-
----
-
-### Fehlerkatalog
-
-* `GET /api/errors`
-* `POST /api/errors`
-* `GET /api/errors/<id>`
-* `PUT /api/errors/<id>`
-* `DELETE /api/errors/<id>`
-* `GET /api/errors/search`
-
----
-
-### KI-Chat
-
-```http
-POST /api/ai/chat
-```
-
-```json
-{
-  "message": "Maschine zeigt Fehler E104"
-}
-```
-
----
+* `GET/POST /api/employees`
+* `GET/POST /api/machines`
+* `GET/POST /api/inventory`
+* `GET /api/inventory/summary`
+* `GET /api/shiftplans`
+* `POST /api/shiftplans/generate`
+* `DELETE /api/shiftplans/<id>`
 
 ## KI-Integration
 
-Wenn ein API-Key gesetzt ist, wird OpenAI genutzt:
+OpenAI ist optional. Ohne API-Key nutzt die App lokale Fallbacks fuer Chat und Schichtplanung.
 
 ```env
-OPENAI_API_KEY=your_key_here
+OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_MODEL=gpt-4o-mini
 ```
 
-Ohne API-Key wird ein lokaler Fallback verwendet.
+Die Chat-API gibt sichere Diagnosestati zurueck, ohne Keys offenzulegen:
 
----
+* `api_key_missing`
+* `openai_error`
+* `fallback_used`
+* `openai_used`
+
+Die Schichtplanung nutzt Produktionsmitarbeiter, Rhythmus, Praeferenzen, Qualifikationen, Favoritenmaschine und Maschinenbedarf. Der lokale Fallback plant mit max. 8h Schichtdauer und 11h Ruhezeit als Regelhinweis.
 
 ## Konfiguration
 
 ```env
+FLASK_ENV=development
 DATABASE_URL=sqlite:///../data/maintenance.db
-JWT_SECRET_KEY=your-secret-key
-OPENAI_API_KEY=
+JWT_SECRET_KEY=change-this-secret-in-production
+OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_MODEL=gpt-4o-mini
 ```
 
----
+`.env` darf nicht committed werden. `.env.example` enthaelt nur Platzhalter.
 
 ## Dokumentation
 
-Detaillierte API-Beschreibung:
-
-```
-docs/API_PROTOCOL.md
-```
-
----
-
-## Ziel des Projekts
-
-Ziel ist die Entwicklung eines praxisnahen Tools für technische Bereiche (z. B. Instandhaltung), um:
-
-* Fehler schneller zu analysieren
-* Wissen zentral zu speichern
-* Aufgaben effizient zu verwalten
-* KI sinnvoll im Arbeitsalltag einzusetzen
-
-```
-```
+Das ausfuehrliche API-Protokoll liegt in `docs/API_PROTOCOL.md`.

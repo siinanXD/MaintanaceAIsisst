@@ -26,14 +26,14 @@ def employee_upload_dir(employee_id):
 
 
 @employees_bp.get("")
-@roles_required(Role.MASTER_ADMIN, Role.PERSONALABTEILUNG)
+@roles_required(Role.MASTER_ADMIN)
 def list_employees():
     employees = Employee.query.order_by(Employee.name.asc()).all()
     return jsonify([employee.to_dict() for employee in employees])
 
 
 @employees_bp.post("")
-@roles_required(Role.MASTER_ADMIN, Role.PERSONALABTEILUNG)
+@roles_required(Role.MASTER_ADMIN)
 def create_employee():
     data = request.get_json(silent=True) or {}
     required = ["personnel_number", "name"]
@@ -57,6 +57,8 @@ def create_employee():
             current_shift=data.get("current_shift", ""),
             team=int(data["team"]) if data.get("team") else None,
             salary_group=data.get("salary_group", ""),
+            qualifications=data.get("qualifications", ""),
+            favorite_machine=data.get("favorite_machine", ""),
         )
     except ValueError:
         return jsonify({"error": "Invalid birth_date or team"}), 400
@@ -67,7 +69,7 @@ def create_employee():
 
 
 @employees_bp.put("/<int:employee_id>")
-@roles_required(Role.MASTER_ADMIN, Role.PERSONALABTEILUNG)
+@roles_required(Role.MASTER_ADMIN)
 def update_employee(employee_id):
     employee = Employee.query.get_or_404(employee_id)
     data = request.get_json(silent=True) or {}
@@ -82,6 +84,8 @@ def update_employee(employee_id):
         "shift_model",
         "current_shift",
         "salary_group",
+        "qualifications",
+        "favorite_machine",
     ]
     for field in fields:
         if field in data:
@@ -96,7 +100,7 @@ def update_employee(employee_id):
 
 
 @employees_bp.delete("/<int:employee_id>")
-@roles_required(Role.MASTER_ADMIN, Role.PERSONALABTEILUNG)
+@roles_required(Role.MASTER_ADMIN)
 def delete_employee(employee_id):
     employee = Employee.query.get_or_404(employee_id)
     db.session.delete(employee)
@@ -105,7 +109,7 @@ def delete_employee(employee_id):
 
 
 @employees_bp.post("/<int:employee_id>/documents")
-@roles_required(Role.MASTER_ADMIN, Role.PERSONALABTEILUNG)
+@roles_required(Role.MASTER_ADMIN)
 def upload_document(employee_id):
     employee = Employee.query.get_or_404(employee_id)
     file = request.files.get("document")
@@ -129,7 +133,7 @@ def upload_document(employee_id):
 
 
 @employees_bp.get("/<int:employee_id>/documents/<int:document_id>")
-@roles_required(Role.MASTER_ADMIN, Role.PERSONALABTEILUNG)
+@roles_required(Role.MASTER_ADMIN)
 def download_document(employee_id, document_id):
     document = EmployeeDocument.query.filter_by(
         id=document_id,

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Maintenance Assistant{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=20260429-workflow1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=20260430-planning1">
   </head>
   <body>
     <div class="app-shell">
@@ -19,11 +19,14 @@
         </div>
         <nav aria-label="Hauptnavigation">
           <ul class="nav-list">
-            <li><a class="nav-link {% if request.path == '/' %}is-active{% endif %}" href="/">Dashboard</a></li>
+            <li data-admin-only hidden><a class="nav-link {% if request.path == '/' %}is-active{% endif %}" href="/">Dashboard</a></li>
             <li><a class="nav-link {% if request.path == '/tasks' %}is-active{% endif %}" href="/tasks">Tasks</a></li>
             <li><a class="nav-link {% if request.path == '/errors' %}is-active{% endif %}" href="/errors">Fehlerliste</a></li>
-            <li data-hr-only><a class="nav-link {% if request.path == '/employees' %}is-active{% endif %}" href="/employees">Mitarbeiter</a></li>
-            <li data-admin-only><a class="nav-link {% if request.path == '/admin/users' %}is-active{% endif %}" href="/admin/users">Users</a></li>
+            <li data-admin-only hidden><a class="nav-link {% if request.path == '/employees' %}is-active{% endif %}" href="/employees">Mitarbeiter</a></li>
+            <li data-admin-only hidden><a class="nav-link {% if request.path == '/shiftplans' %}is-active{% endif %}" href="/shiftplans">Schichtplan</a></li>
+            <li data-admin-only hidden><a class="nav-link {% if request.path == '/machines' %}is-active{% endif %}" href="/machines">Maschinen</a></li>
+            <li data-admin-only hidden><a class="nav-link {% if request.path == '/inventory' %}is-active{% endif %}" href="/inventory">Lager</a></li>
+            <li data-admin-only hidden><a class="nav-link {% if request.path == '/admin/users' %}is-active{% endif %}" href="/admin/users">Users</a></li>
             <li data-auth-login-link><a class="nav-link {% if request.path == '/login' %}is-active{% endif %}" href="/login">Login</a></li>
           </ul>
         </nav>
@@ -59,8 +62,8 @@
         </form>
       </div>
     </section>
-    <script src="{{ url_for('static', filename='auth.js') }}?v=20260429-workflow1"></script>
-    <script src="{{ url_for('static', filename='app.js') }}?v=20260429-workflow1"></script>
-    <script src="{{ url_for('static', filename='chat.js') }}?v=20260429-workflow1"></script>
+    <script src="{{ url_for('static', filename='auth.js') }}?v=20260430-planning1"></script>
+    <script src="{{ url_for('static', filename='app.js') }}?v=20260430-planning1"></script>
+    <script src="{{ url_for('static', filename='chat.js') }}?v=20260430-planning1"></script>
   </body>
 </html>

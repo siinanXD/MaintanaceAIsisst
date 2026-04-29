@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Maschinen - Maintenance Assistant{% endblock %}
+
+{% block content %}
+<section class="topbar">
+  <div>
+    <p class="page-kicker">Produktion</p>
+    <h1 class="page-title">Maschinen</h1>
+    <p class="page-description">Maschinen anlegen, Produktionsinhalt und benoetigte Mitarbeiterzahl pflegen.</p>
+  </div>
+</section>
+
+<section class="dashboard-grid">
+  <form class="panel is-full" data-machine-form>
+    <div class="panel-header">
+      <div>
+        <h2 class="panel-title">Maschine anlegen</h2>
+        <p class="panel-meta">Diese Daten werden auch fuer den KI-Schichtplan genutzt.</p>
+      </div>
+    </div>
+    <div class="form-grid">
+      <div class="field">
+        <label for="machine-name">Name</label>
+        <input class="input" id="machine-name" name="name" required>
+      </div>
+      <div class="field">
+        <label for="produced-item">Was wird produziert?</label>
+        <input class="input" id="produced-item" name="produced_item">
+      </div>
+      <div class="field">
+        <label for="required-employees">Mitarbeiter pro Maschine</label>
+        <input class="input" id="required-employees" name="required_employees" type="number" min="1" value="1" required>
+      </div>
+    </div>
+    <div class="toolbar form-actions">
+      <button class="button is-primary" type="submit">Maschine speichern</button>
+      <span class="panel-meta" data-machine-message></span>
+    </div>
+  </form>
+
+  <article class="panel is-full">
+    <div class="panel-header">
+      <div>
+        <h2 class="panel-title">Maschinenliste</h2>
+        <p class="panel-meta">Aktuelle Produktionsanlagen</p>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Produktion</th>
+            <th>Mitarbeiter</th>
+            <th>Aktion</th>
+          </tr>
+        </thead>
+        <tbody data-machine-list></tbody>
+      </table>
+    </div>
+  </article>
+</section>
+{% endblock %}
