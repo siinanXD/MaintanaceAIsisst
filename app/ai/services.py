@@ -11,6 +11,9 @@ from app.models import ChatMessage, ErrorEntry, Task
 from app.tasks.services import visible_tasks_query
 
 
+LAST_OPENAI_ERROR = None
+
+
 def looks_like_today_tasks_question(message):
     """Check whether a message asks for today's visible tasks."""
     text = message.lower()
@@ -124,12 +127,40 @@ def fallback_error_answer(entries):
     )
 
 
+def ai_diagnostics(status, fallback_used=False, error=None):
+    """Build a safe diagnostic payload without exposing secrets."""
+    payload = {
+        "status": status,
+        "fallback_used": fallback_used,
+    }
+    if error:
+        payload["error"] = error
+    return payload
+
+
+def ai_status():
+    """Return redacted OpenAI configuration status for admins."""
+    return {
+        "api_key_configured": bool(current_app.config.get("OPENAI_API_KEY")),
+        "model": current_app.config.get("OPENAI_MODEL", "gpt-4o-mini"),
+        "last_error": LAST_OPENAI_ERROR,
+    }
+
+
+def redacted_openai_error(error):
+    """Return a user-safe error category for OpenAI failures."""
+    name = error.__class__.__name__
+    return name if name.endswith("Error") else "OpenAIError"
+
+
 def openai_error_answer(message, error_context, task_context):
     """Generate an AI answer using OpenAI and the provided maintenance context."""
+    global LAST_OPENAI_ERROR
     api_key = current_app.config.get("OPENAI_API_KEY")
 
     if not api_key:
-        return None
+        LAST_OPENAI_ERROR = "api_key_missing"
+        return None, ai_diagnostics("api_key_missing", fallback_used=True)
 
     try:
         client = OpenAI(api_key=api_key)
@@ -155,26 +186,37 @@ def openai_error_answer(message, error_context, task_context):
             ],
             temperature=0.2,
         )
-    except OpenAIError:
+    except OpenAIError as exc:
+        LAST_OPENAI_ERROR = redacted_openai_error(exc)
         current_app.logger.exception("OpenAI request failed")
-        return None
+        return None, ai_diagnostics("openai_error", fallback_used=True, error=LAST_OPENAI_ERROR)
 
-    return completion.choices[0].message.content
+    LAST_OPENAI_ERROR = None
+    return completion.choices[0].message.content, ai_diagnostics("openai_used")
 
 
 def answer_chat(message, user):
     """Route the user message to the correct assistant behavior."""
     if looks_like_today_tasks_question(message):
         answer, data = format_tasks_today(user)
-        return {"type": "tasks_today", "answer": answer, "data": data}
+        return {
+            "type": "tasks_today",
+            "answer": answer,
+            "diagnostics": ai_diagnostics("local_answer"),
+            "data": data,
+        }
 
     entries = search_errors(extract_error_query(message), user)
     error_context = build_catalog_context(user, entries)
     task_context = build_task_context(user)
-    answer = openai_error_answer(message, error_context, task_context) or fallback_error_answer(entries)
+    answer, diagnostics = openai_error_answer(message, error_context, task_context)
+    if not answer:
+        answer = fallback_error_answer(entries)
+        diagnostics = diagnostics or ai_diagnostics("fallback_used", fallback_used=True)
     return {
         "type": "error_help",
         "answer": answer,
+        "diagnostics": diagnostics,
         "data": [entry.to_dict() for entry in entries],
     }
 

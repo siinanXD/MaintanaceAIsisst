@@ -32,7 +32,7 @@
   async function askAssistant(message) {
     const token = window.localStorage.getItem("maintenance_access_token");
     if (!token) {
-      return "Bitte zuerst einloggen. Danach kann ich echte Antworten ueber /api/ai/chat geben.";
+      return "Bitte zuerst einloggen. Danach kann ich die KI-Funktionen nutzen.";
     }
 
     const response = await fetch("/api/ai/chat", {
@@ -45,15 +45,34 @@
     });
 
     if (!response.ok) {
-      if (response.status === 401) {
-        window.localStorage.removeItem("maintenance_access_token");
+      if (response.status === 401 || response.status === 422) {
+        if (window.maintenanceAuth && window.maintenanceAuth.clearSession) {
+          window.maintenanceAuth.clearSession({ redirect: false });
+        } else {
+          window.localStorage.removeItem("maintenance_access_token");
+          window.localStorage.removeItem("maintenance_user");
+          window.dispatchEvent(new Event("maintenance-auth-changed"));
+        }
         return "Deine Sitzung ist abgelaufen. Bitte neu einloggen.";
       }
-      return "Die KI-Anfrage konnte gerade nicht verarbeitet werden.";
+      const errorData = await response.json().catch(() => null);
+      return (errorData && errorData.error) || "Die KI-Anfrage konnte gerade nicht verarbeitet werden.";
     }
 
     const data = await response.json();
-    return data.answer || "Ich habe keine Antwort erhalten.";
+    const diagnostics = data.diagnostics || {};
+    const answer = data.answer || "Ich habe keine Antwort erhalten.";
+
+    if (diagnostics.status === "api_key_missing") {
+      return answer + "\n\nHinweis: Es ist kein OpenAI API-Key konfiguriert. Ich nutze den lokalen Fallback.";
+    }
+    if (diagnostics.status === "openai_error") {
+      return answer + "\n\nHinweis: OpenAI ist gerade nicht erreichbar oder der Key ist ungueltig. Ich nutze den lokalen Fallback.";
+    }
+    if (diagnostics.fallback_used) {
+      return answer + "\n\nHinweis: Diese Antwort kommt aus dem lokalen Fallback.";
+    }
+    return answer;
   }
 
   toggle.addEventListener("click", () => setOpen(!widget.classList.contains("is-open")));

@@ -1,8 +1,9 @@
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required
 
-from app.ai.services import answer_chat, save_chat_message
-from app.security import current_user
+from app.ai.services import ai_status, answer_chat, save_chat_message
+from app.models import Role
+from app.security import current_user, roles_required
 
 
 ai_bp = Blueprint("ai", __name__)
@@ -23,3 +24,10 @@ def chat():
     save_chat_message(user, message, result["answer"])
 
     return jsonify(result)
+
+
+@ai_bp.get("/status")
+@roles_required(Role.MASTER_ADMIN)
+def status():
+    """Return redacted AI configuration and last-error status."""
+    return jsonify(ai_status())
