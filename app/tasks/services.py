@@ -50,13 +50,12 @@ def visible_tasks_query(user):
 
 
 def create_task(data, user):
-    if not data.get("title"):
-        return None, {"error": "title is required"}, 400
-
     try:
+        validate_task_payload(data, require_title=True)
         department = get_department_for_payload(data, user)
+
         task = Task(
-            title=data["title"],
+            title=data["title"].strip(),
             description=data.get("description", ""),
             priority=parse_enum(Priority, data.get("priority"), Priority.NORMAL),
             status=parse_enum(TaskStatus, data.get("status"), TaskStatus.OPEN),
@@ -76,10 +75,11 @@ def create_task(data, user):
 
 def update_task(task, data, user):
     try:
+        validate_task_payload(data, require_title=False)
         if "department_id" in data or "department" in data:
             task.department = get_department_for_payload(data, user)
         if "title" in data:
-            task.title = data["title"]
+            task.title = data["title"].strip()
         if "description" in data:
             task.description = data["description"]
         if "priority" in data:
@@ -95,3 +95,12 @@ def update_task(task, data, user):
 
     db.session.commit()
     return task, None, 200
+
+
+def validate_task_payload(data, require_title=True):
+    """Validate task payload before creating or updating a task."""
+    if require_title and not data.get("title"):
+        raise ValueError("title is required")
+
+    if "title" in data and not str(data["title"]).strip():
+        raise ValueError("title must not be empty")
