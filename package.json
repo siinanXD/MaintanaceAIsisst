@@ -1,0 +1,32 @@
+{
+  "name": "maintanaceaisisst",
+  "version": "1.0.0",
+  "description": "Modulare Flask-Anwendung fuer Wartung, Produktion und Instandhaltung. Die App bietet JWT-Login, rollenbasierte Navigation, Aufgaben, Fehlerkataloge, Mitarbeiterdaten, Maschinen, Lager und optionale KI-Funktionen.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/siinanXD/MaintanaceAIsisst.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/siinanXD/MaintanaceAIsisst/issues"
+  },
+  "homepage": "https://github.com/siinanXD/MaintanaceAIsisst#readme",
+  "devDependencies": {
+    "autoprefixer": "^10.5.0",
+    "postcss": "^8.5.12",
+    "tailwindcss": "^3.4.17"
+  },
+  "dependencies": {
+    "daisyui": "^5.5.19"
+  }
+}
