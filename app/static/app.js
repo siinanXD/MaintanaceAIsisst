@@ -946,6 +946,352 @@
     }
   }
 
+  async function initDailyCockpit() {
+    const taskBoard = document.querySelector("[data-dashboard-task-board]");
+    const taskCount = document.querySelector("[data-dashboard-task-count]");
+    const taskDetailModal = document.querySelector("[data-task-detail-modal]");
+    const taskDetailTitle = document.querySelector("[data-task-detail-title]");
+    const taskDetailSubtitle = document.querySelector("[data-task-detail-subtitle]");
+    const taskDetailBody = document.querySelector("[data-task-detail-body]");
+    const taskDetailMessage = document.querySelector("[data-task-detail-message]");
+    const taskStartButton = document.querySelector("[data-task-start-button]");
+    const taskCompleteButton = document.querySelector("[data-task-complete-button]");
+    const taskDetailClose = document.querySelector("[data-task-detail-close]");
+    const reportGenerate = document.querySelector("[data-report-generate]");
+    const cockpitSuggestForm = document.querySelector("[data-cockpit-suggest-form]");
+    const cockpitDraft = document.querySelector("[data-cockpit-draft]");
+    const cockpitDraftCancel = document.querySelector("[data-cockpit-draft-cancel]");
+    const cockpitMessage = document.querySelector("[data-cockpit-message]");
+    const globalLive = document.querySelector("[data-global-live-region]");
+    const errorStats = document.querySelector("[data-dashboard-error-stats]");
+    const inventoryStats = document.querySelector("[data-dashboard-inventory-stats]");
+    if ((!taskBoard && !errorStats && !inventoryStats) || !token()) return;
+
+    let activeTask = null;
+    let activeTaskId = null;
+
+    function announce(message, isError) {
+      if (globalLive) globalLive.textContent = message;
+      if (cockpitMessage) {
+        cockpitMessage.textContent = message;
+        cockpitMessage.classList.toggle("is-error", Boolean(isError));
+        cockpitMessage.classList.toggle("is-success", Boolean(message && !isError));
+      }
+    }
+
+    function todayIso() {
+      return new Date().toISOString().slice(0, 10);
+    }
+
+    function formatDateTime(value) {
+      if (!value) return "-";
+      return new Date(value).toLocaleString("de-DE");
+    }
+
+    function formatUser(value) {
+      if (!value) return "-";
+      return value.username || value.email || "User #" + value.id;
+    }
+
+    function detailRow(label, value) {
+      const item = document.createElement("div");
+      item.className = "task-detail-row";
+      const labelElement = document.createElement("span");
+      labelElement.textContent = label;
+      const valueElement = document.createElement("strong");
+      valueElement.textContent = value || "-";
+      item.append(labelElement, valueElement);
+      return item;
+    }
+
+    function showTaskMessage(message, isError) {
+      if (!taskDetailMessage) return;
+      taskDetailMessage.textContent = message;
+      taskDetailMessage.classList.toggle("is-error", Boolean(isError));
+      taskDetailMessage.classList.toggle("is-success", Boolean(message && !isError));
+      if (globalLive && message) globalLive.textContent = message;
+    }
+
+    function reportPayload() {
+      const payload = {};
+      if (reportGenerate && reportGenerate.checked) {
+        payload.generate_report = true;
+        document.querySelectorAll("[data-report-field]").forEach((field) => {
+          payload[field.dataset.reportField] = field.value;
+        });
+        payload.notes = payload.action || "";
+      }
+      return payload;
+    }
+
+    function updateTaskActionButtons(task, isBusy) {
+      if (taskStartButton) {
+        taskStartButton.hidden = !canWrite("tasks");
+        taskStartButton.disabled = Boolean(isBusy) || task.status !== "open";
+      }
+      if (taskCompleteButton) {
+        taskCompleteButton.hidden = !canWrite("tasks");
+        taskCompleteButton.disabled = Boolean(isBusy) || task.status === "done" || task.status === "cancelled";
+      }
+    }
+
+    function renderTaskDetail(task) {
+      if (!taskDetailModal || !taskDetailBody) return;
+      activeTask = task;
+      activeTaskId = task.id;
+      taskDetailTitle.textContent = task.title;
+      taskDetailSubtitle.textContent = (task.department && task.department.name) || "-";
+      taskDetailBody.innerHTML = "";
+      taskDetailBody.append(
+        detailRow("Titel", task.title),
+        detailRow("Beschreibung", task.description || "Keine Beschreibung"),
+        detailRow("Prioritaet", task.priority),
+        detailRow("Status", task.status),
+        detailRow("Bereich", task.department && task.department.name),
+        detailRow("Ersteller", formatUser(task.creator)),
+        detailRow("Erstellt am", formatDateTime(task.created_at)),
+        detailRow("Aktuell bearbeitet von", formatUser(task.current_worker)),
+        detailRow("Gestartet am", formatDateTime(task.started_at)),
+        detailRow("Erledigt von", formatUser(task.completed_by_user)),
+        detailRow("Erledigt am", formatDateTime(task.completed_at))
+      );
+      updateTaskActionButtons(task);
+      showTaskMessage("");
+    }
+
+    async function openTaskDetail(taskId) {
+      const task = await api("/api/tasks/" + taskId);
+      renderTaskDetail(task);
+      if (taskDetailModal) {
+        taskDetailModal.hidden = false;
+        const closeButton = taskDetailModal.querySelector("[data-task-detail-close]");
+        if (closeButton) closeButton.focus();
+      }
+    }
+
+    async function runTaskAction(taskId, action, body) {
+      const path = "/api/tasks/" + taskId + "/" + action;
+      const success = action === "start" ? "Task gestartet." : "Task abgeschlossen.";
+      const options = { method: "POST" };
+      if (body && Object.keys(body).length) {
+        options.body = JSON.stringify(body);
+      }
+      try {
+        const result = await api(path, options);
+        const suffix = result && result.generated_document
+          ? " Wartungsbericht wurde erzeugt."
+          : "";
+        announce(success + suffix);
+        if (activeTaskId === taskId) {
+          renderTaskDetail(await api("/api/tasks/" + taskId));
+          showTaskMessage(success + suffix);
+        }
+        await loadDashboardTasks();
+      } catch (error) {
+        announce(error.message, true);
+        showTaskMessage(error.message, true);
+      }
+    }
+
+    function emptyCockpitCard(groupName) {
+      const card = document.createElement("article");
+      card.className = "cockpit-task-card is-empty";
+      const text = document.createElement("p");
+      text.textContent = groupName === "urgent"
+        ? "Keine dringenden Tasks."
+        : groupName === "today"
+          ? "Keine Tasks fuer heute."
+          : "Keine Tasks in Arbeit.";
+      card.appendChild(text);
+      if (cockpitSuggestForm && canWrite("tasks")) {
+        card.appendChild(actionButton("Stoerung erfassen", () => {
+          cockpitSuggestForm.scrollIntoView({ behavior: "smooth", block: "start" });
+          const input = cockpitSuggestForm.querySelector("textarea");
+          if (input) input.focus();
+        }));
+      }
+      return card;
+    }
+
+    function cockpitTaskCard(task) {
+      const card = document.createElement("article");
+      card.className = "cockpit-task-card";
+      const title = document.createElement("h4");
+      title.className = "cockpit-task-title";
+      title.textContent = task.title;
+      const badge = document.createElement("span");
+      badge.className = "badge " + (
+        task.priority === "urgent" ? "is-urgent" : task.priority === "soon" ? "is-soon" : "is-normal"
+      );
+      badge.textContent = task.priority;
+      const meta = document.createElement("div");
+      meta.className = "cockpit-task-meta";
+      [
+        task.department && task.department.name,
+        task.status,
+        task.due_date,
+        task.current_worker ? formatUser(task.current_worker) : null
+      ].filter(Boolean).forEach((value) => {
+        const item = document.createElement("span");
+        item.textContent = value;
+        meta.appendChild(item);
+      });
+      const actions = document.createElement("div");
+      actions.className = "cockpit-task-actions";
+      actions.appendChild(actionButton("Details", () => openTaskDetail(task.id)));
+      if (canWrite("tasks") && task.status === "open") {
+        actions.appendChild(actionButton("Starten", () => runTaskAction(task.id, "start")));
+      }
+      if (canWrite("tasks") && task.status !== "done" && task.status !== "cancelled") {
+        actions.appendChild(actionButton("Abschliessen", () => runTaskAction(task.id, "complete")));
+        actions.appendChild(actionButton("Bericht erzeugen", () => runTaskAction(
+          task.id,
+          "complete",
+          { generate_report: true, result: "Abgeschlossen" }
+        )));
+      }
+      card.append(title, badge, meta, actions);
+      return card;
+    }
+
+    async function loadDashboardTasks() {
+      const tasks = await api("/api/tasks");
+      const lists = {
+        urgent: document.querySelector("[data-cockpit-list='urgent']"),
+        today: document.querySelector("[data-cockpit-list='today']"),
+        progress: document.querySelector("[data-cockpit-list='progress']")
+      };
+      Object.values(lists).forEach((list) => {
+        if (list) list.innerHTML = "";
+      });
+      if (taskCount) taskCount.textContent = String(tasks.length);
+      const groups = { urgent: [], today: [], progress: [] };
+      tasks.forEach((task) => {
+        if (task.status === "in_progress") groups.progress.push(task);
+        else if (task.priority === "urgent") groups.urgent.push(task);
+        else if (task.due_date === todayIso()) groups.today.push(task);
+      });
+      Object.entries(groups).forEach(([name, group]) => {
+        const list = lists[name];
+        if (!list) return;
+        if (!group.length) {
+          list.appendChild(emptyCockpitCard(name));
+          return;
+        }
+        group.forEach((task) => list.appendChild(cockpitTaskCard(task)));
+      });
+    }
+
+    if (taskDetailClose && taskDetailModal) {
+      taskDetailClose.addEventListener("click", () => {
+        taskDetailModal.hidden = true;
+      });
+    }
+
+    if (taskStartButton) {
+      taskStartButton.addEventListener("click", () => {
+        if (activeTaskId) runTaskAction(activeTaskId, "start");
+      });
+    }
+
+    if (taskCompleteButton) {
+      taskCompleteButton.addEventListener("click", () => {
+        if (activeTaskId) runTaskAction(activeTaskId, "complete", reportPayload());
+      });
+    }
+
+    if (cockpitSuggestForm && cockpitDraft) {
+      cockpitSuggestForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const data = Object.fromEntries(new FormData(cockpitSuggestForm).entries());
+        announce("KI erstellt Vorschlag...");
+        try {
+          const suggestion = await api("/api/tasks/suggest", {
+            method: "POST",
+            body: JSON.stringify(data)
+          });
+          cockpitDraft.hidden = false;
+          cockpitDraft.elements.title.value = suggestion.title || "";
+          cockpitDraft.elements.department.value = suggestion.department || "";
+          cockpitDraft.elements.priority.value = suggestion.priority || "normal";
+          cockpitDraft.elements.status.value = suggestion.status || "open";
+          cockpitDraft.elements.description.value = [
+            suggestion.description,
+            suggestion.possible_cause ? "Moegliche Ursache: " + suggestion.possible_cause : "",
+            suggestion.recommended_action ? "Naechste Aktion: " + suggestion.recommended_action : ""
+          ].filter(Boolean).join("\n\n");
+          announce("Vorschlag erstellt. Bitte pruefen und speichern.");
+        } catch (error) {
+          announce(error.message, true);
+        }
+      });
+
+      cockpitDraft.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const data = Object.fromEntries(new FormData(cockpitDraft).entries());
+        try {
+          await api("/api/tasks", { method: "POST", body: JSON.stringify(data) });
+          cockpitSuggestForm.reset();
+          cockpitDraft.reset();
+          cockpitDraft.hidden = true;
+          announce("Task gespeichert.");
+          await loadDashboardTasks();
+        } catch (error) {
+          announce(error.message, true);
+        }
+      });
+    }
+
+    if (cockpitDraftCancel && cockpitDraft) {
+      cockpitDraftCancel.addEventListener("click", () => {
+        cockpitDraft.reset();
+        cockpitDraft.hidden = true;
+        announce("Vorschlag verworfen.");
+      });
+    }
+
+    if (taskBoard && canView("tasks")) {
+      await loadDashboardTasks();
+    }
+
+    if (errorStats && canView("errors")) {
+      const errors = await api("/api/errors");
+      const counts = new Map();
+      errors.forEach((entry) => {
+        const name = entry.department ? entry.department.name : "Ohne Bereich";
+        counts.set(name, (counts.get(name) || 0) + 1);
+      });
+      errorStats.innerHTML = "";
+      if (!counts.size) {
+        errorStats.innerHTML = '<div class="empty-state">Noch keine Fehler erfasst.</div>';
+      } else {
+        counts.forEach((count, name) => {
+          const item = document.createElement("div");
+          item.className = "stat-row";
+          item.innerHTML = `<span>${name}</span><strong>${count}</strong>`;
+          errorStats.appendChild(item);
+        });
+      }
+    }
+
+    if (inventoryStats && canView("inventory")) {
+      const summary = await api("/api/inventory/summary");
+      inventoryStats.innerHTML = "";
+      inventoryStats.append(
+        rowLikeStat("Materialien", String(summary.material_count)),
+        rowLikeStat("Gesamtanzahl", String(summary.total_quantity)),
+        rowLikeStat("Gesamtwert", formatMoney(summary.total_value))
+      );
+    }
+
+    function rowLikeStat(label, value) {
+      const item = document.createElement("div");
+      item.className = "stat-row";
+      item.innerHTML = `<span>${label}</span><strong>${value}</strong>`;
+      return item;
+    }
+  }
+
   async function initDocuments() {
     const list = document.querySelector("[data-document-list]");
     const form = document.querySelector("[data-document-filter-form]");
@@ -1015,7 +1361,7 @@
         await window.maintenanceAuth.ensureReady();
       }
       await initDepartments();
-      await initDashboard();
+      await initDailyCockpit();
       await initTasks();
       await initErrors();
       await initUsers();

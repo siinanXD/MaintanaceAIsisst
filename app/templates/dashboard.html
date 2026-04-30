@@ -14,16 +14,83 @@
 </section>
 
 <section class="dashboard-grid">
-  <article class="panel is-wide">
+  <article class="panel is-full cockpit-capture" data-permission-write="tasks">
     <div class="panel-header">
       <div>
-        <h2 class="panel-title">Aktuelle Tasks</h2>
-        <p class="panel-meta">Wischbare Uebersicht aller sichtbaren Aufgaben</p>
+        <h2 class="panel-title">Stoerung erfassen</h2>
+        <p class="panel-meta">Kurz beschreiben, KI-Vorschlag pruefen und direkt als Task speichern</p>
+      </div>
+    </div>
+    <form data-cockpit-suggest-form>
+      <div class="form-grid">
+        <div class="field is-full">
+          <label for="cockpit-suggest-text">Was ist passiert?</label>
+          <textarea class="textarea" id="cockpit-suggest-text" name="text" placeholder="z. B. Maschine 3 macht laute Geraeusche am Lager."></textarea>
+        </div>
+      </div>
+      <div class="toolbar form-actions">
+        <button class="button is-primary" type="submit">KI-Vorschlag erstellen</button>
+        <span class="panel-meta" data-cockpit-message role="status" aria-live="polite"></span>
+      </div>
+    </form>
+    <form class="suggestion-box" data-cockpit-draft hidden>
+      <div class="form-grid">
+        <div class="field">
+          <label for="cockpit-draft-title">Titel</label>
+          <input class="input" id="cockpit-draft-title" name="title" required>
+        </div>
+        <div class="field">
+          <label for="cockpit-draft-department">Bereich</label>
+          <input class="input" id="cockpit-draft-department" name="department" required>
+        </div>
+        <div class="field">
+          <label for="cockpit-draft-priority">Prioritaet</label>
+          <select class="select" id="cockpit-draft-priority" name="priority">
+            <option value="urgent">urgent</option>
+            <option value="soon">soon</option>
+            <option value="normal">normal</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="cockpit-draft-status">Status</label>
+          <select class="select" id="cockpit-draft-status" name="status">
+            <option value="open">open</option>
+            <option value="in_progress">in_progress</option>
+          </select>
+        </div>
+        <div class="field is-full">
+          <label for="cockpit-draft-description">Beschreibung</label>
+          <textarea class="textarea" id="cockpit-draft-description" name="description"></textarea>
+        </div>
+      </div>
+      <div class="toolbar form-actions">
+        <button class="button is-primary" type="submit">Task speichern</button>
+        <button class="button" type="button" data-cockpit-draft-cancel>Verwerfen</button>
+      </div>
+    </form>
+  </article>
+
+  <article class="panel is-full">
+    <div class="panel-header">
+      <div>
+        <h2 class="panel-title">Tagescockpit</h2>
+        <p class="panel-meta">Dringende, heutige und laufende Aufgaben auf einen Blick</p>
       </div>
       <span class="badge is-normal" data-dashboard-task-count>0</span>
     </div>
-    <div class="task-rail" data-dashboard-task-rail>
-      <div class="empty-state">Noch keine Tasks vorhanden.</div>
+    <div class="cockpit-board" data-dashboard-task-board>
+      <section class="cockpit-column" aria-labelledby="cockpit-urgent-title">
+        <h3 id="cockpit-urgent-title" class="cockpit-column-title">Dringend</h3>
+        <div class="cockpit-task-list" data-cockpit-list="urgent"></div>
+      </section>
+      <section class="cockpit-column" aria-labelledby="cockpit-today-title">
+        <h3 id="cockpit-today-title" class="cockpit-column-title">Heute</h3>
+        <div class="cockpit-task-list" data-cockpit-list="today"></div>
+      </section>
+      <section class="cockpit-column" aria-labelledby="cockpit-progress-title">
+        <h3 id="cockpit-progress-title" class="cockpit-column-title">In Arbeit</h3>
+        <div class="cockpit-task-list" data-cockpit-list="progress"></div>
+      </section>
     </div>
   </article>
 
@@ -62,7 +129,7 @@
       <div class="toolbar form-actions">
         <button class="button is-primary" type="button" data-task-start-button>Task starten</button>
         <button class="button" type="button" data-task-complete-button>Task abschliessen</button>
-        <span class="panel-meta" data-task-detail-message></span>
+        <span class="panel-meta" data-task-detail-message role="status" aria-live="polite"></span>
       </div>
     </div>
   </div>

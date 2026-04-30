@@ -7,8 +7,8 @@
   --line: rgba(255, 255, 255, 0.12);
   --line-strong: rgba(255, 255, 255, 0.2);
   --text: #f8fbff;
-  --muted: #bad3e9;
-  --muted-strong: #dcecff;
+  --muted: #d5e7f7;
+  --muted-strong: #f0f7ff;
   --accent: #20e3a2;
   --accent-strong: #79ffd0;
   --warning: #ffc857;
@@ -17,8 +17,82 @@
   --shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
   --radius: 8px;
   --radius-sm: 6px;
+  --focus-ring: 0 0 0 3px rgba(121, 255, 208, 0.38);
   --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+}
+
+html.high-contrast,
+body.high-contrast {
+  --bg: #07131f;
+  --bg-elevated: #0d2538;
+  --surface: #12304a;
+  --surface-strong: #184766;
+  --line: rgba(255, 255, 255, 0.24);
+  --line-strong: rgba(255, 255, 255, 0.42);
+  --text: #ffffff;
+  --muted: #e8f4ff;
+  --muted-strong: #ffffff;
+  --accent: #5cffc2;
+  --accent-strong: #a6ffdf;
+  --warning: #ffe082;
+  --danger: #ff8ba0;
+  --info: #8bd4ff;
+}
+
+html.high-contrast {
+  background: #050b12;
+}
+
+body.high-contrast {
+  background: #050b12;
+}
+
+body.high-contrast .sidebar,
+body.high-contrast .panel,
+body.high-contrast .cockpit-capture,
+body.high-contrast .task-detail-dialog,
+body.high-contrast .chat-panel {
+  border-color: var(--line-strong);
+  background: #0b1b2a;
+  box-shadow: none;
+}
+
+body.high-contrast .cockpit-column,
+body.high-contrast .cockpit-task-card,
+body.high-contrast .task-card,
+body.high-contrast .stat-row,
+body.high-contrast .shiftplan-card,
+body.high-contrast .chat-message {
+  border-color: var(--line-strong);
+  background: #10263a;
+}
+
+body.high-contrast .button,
+body.high-contrast .input,
+body.high-contrast .select,
+body.high-contrast .textarea,
+body.high-contrast .chat-input {
+  border-color: var(--line-strong);
+  background: #07131f;
+  color: #ffffff;
+}
+
+body.high-contrast .button.is-primary,
+body.high-contrast .chat-toggle {
+  background: #a6ffdf;
+  color: #00140c;
+}
+
+body.high-contrast .badge {
+  border-color: var(--line-strong);
+  background: #07131f;
+  color: #ffffff;
+}
+
+body.high-contrast .nav-link:hover,
+body.high-contrast .nav-link.is-active {
+  background: #173d5c;
 }
 
 * {
@@ -50,6 +124,26 @@ a {
 
 a:hover {
   text-decoration: underline;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 3px;
+  box-shadow: var(--focus-ring);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
 }
 
 .app-shell {
@@ -263,7 +357,7 @@ a:hover {
   padding: 18px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(24, 56, 82, 0.76);
+  background: rgba(24, 56, 82, 0.88);
   box-shadow: var(--shadow);
 }
 
@@ -303,6 +397,72 @@ a:hover {
   overflow-x: auto;
   padding: 4px 2px 12px;
   scroll-snap-type: x mandatory;
+}
+
+.cockpit-capture {
+  background: rgba(18, 64, 82, 0.88);
+}
+
+.cockpit-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.cockpit-column {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.cockpit-column-title {
+  margin: 0 0 12px;
+  color: var(--muted-strong);
+  font-size: 15px;
+  font-weight: 850;
+}
+
+.cockpit-task-list {
+  display: grid;
+  gap: 10px;
+}
+
+.cockpit-task-card {
+  display: grid;
+  gap: 10px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.cockpit-task-card.is-empty {
+  color: var(--muted);
+  border-style: dashed;
+}
+
+.cockpit-task-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.cockpit-task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.cockpit-task-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .task-card {
@@ -484,7 +644,7 @@ a:hover {
   background: rgba(255, 255, 255, 0.07);
   color: var(--text);
   font: inherit;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 750;
   cursor: pointer;
   transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
@@ -527,7 +687,7 @@ a:hover {
 
 .field label {
   color: var(--muted-strong);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
 }
 
@@ -542,6 +702,7 @@ a:hover {
   background: rgba(255, 255, 255, 0.1);
   color: var(--text);
   font: inherit;
+  font-size: 15px;
   outline: none;
 }
 
@@ -554,7 +715,7 @@ a:hover {
 .select:focus,
 .textarea:focus {
   border-color: rgba(84, 240, 176, 0.75);
-  box-shadow: 0 0 0 3px rgba(0, 208, 132, 0.14);
+  box-shadow: var(--focus-ring);
 }
 
 .select option {
@@ -585,6 +746,7 @@ a:hover {
   border-bottom: 1px solid var(--line);
   text-align: left;
   vertical-align: top;
+  color: var(--muted-strong);
 }
 
 .data-table th {
@@ -622,7 +784,7 @@ a:hover {
   padding: 12px 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.1);
   color: var(--muted-strong);
   line-height: 1.55;
 }
@@ -653,7 +815,7 @@ a:hover {
   color: var(--muted-strong);
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   padding: 5px 8px;
 }
 
@@ -879,6 +1041,10 @@ a:hover {
   .panel,
   .panel.is-wide {
     grid-column: 1 / -1;
+  }
+
+  .cockpit-board {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -1,6 +1,7 @@
 (function () {
   const TOKEN_KEY = "maintenance_access_token";
   const USER_KEY = "maintenance_user";
+  const CONTRAST_KEY = "maintenance_high_contrast";
 
   function hasToken() {
     return Boolean(window.localStorage.getItem(TOKEN_KEY));
@@ -117,6 +118,20 @@
     clearSession({ redirect: true });
   }
 
+  function highContrastEnabled() {
+    return window.localStorage.getItem(CONTRAST_KEY) === "true";
+  }
+
+  function applyContrastPreference() {
+    const enabled = highContrastEnabled();
+    document.documentElement.classList.toggle("high-contrast", enabled);
+    document.body.classList.toggle("high-contrast", enabled);
+    document.querySelectorAll("[data-contrast-toggle]").forEach((button) => {
+      button.setAttribute("aria-pressed", String(enabled));
+      button.textContent = enabled ? "Standard-Kontrast" : "Hoher Kontrast";
+    });
+  }
+
   let authReadyPromise;
   let refreshInFlight;
 
@@ -149,6 +164,7 @@
     const isAdmin = isAdminUser(user);
     document.body.classList.toggle("is-authenticated", loggedIn);
     document.body.classList.toggle("is-admin", isAdmin);
+    applyContrastPreference();
 
     document.querySelectorAll("[data-auth-session]").forEach((element) => {
       element.hidden = !loggedIn;
@@ -197,9 +213,18 @@
     if (button) {
       logout();
     }
+
+    const contrastButton = event.target.closest("[data-contrast-toggle]");
+    if (contrastButton) {
+      window.localStorage.setItem(CONTRAST_KEY, String(!highContrastEnabled()));
+      applyContrastPreference();
+    }
   });
 
-  window.addEventListener("storage", updateAuthUi);
+  window.addEventListener("storage", () => {
+    updateAuthUi();
+    applyContrastPreference();
+  });
   window.addEventListener("maintenance-auth-changed", updateAuthUi);
   document.addEventListener("DOMContentLoaded", ensureAuthReady);
 
