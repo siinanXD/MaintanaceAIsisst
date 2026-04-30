@@ -37,7 +37,42 @@ class Department(db.Model):
     errors = db.relationship("ErrorEntry", back_populates="department")
 
     def to_dict(self):
+        """Return a JSON-serializable representation of the department."""
         return {"id": self.id, "name": self.name}
+
+
+class DashboardPermission(db.Model):
+    """Store dashboard-level permissions for one user."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    dashboard = db.Column(db.String(40), nullable=False)
+    can_view = db.Column(db.Boolean, default=False, nullable=False)
+    can_write = db.Column(db.Boolean, default=False, nullable=False)
+    employee_access_level = db.Column(
+        db.String(40),
+        default="none",
+        nullable=False,
+    )
+
+    user = db.relationship("User", back_populates="dashboard_permissions")
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "user_id",
+            "dashboard",
+            name="uq_dashboard_permission_user_dashboard",
+        ),
+    )
+
+    def to_dict(self):
+        """Return a JSON-serializable representation of the permission."""
+        return {
+            "dashboard": self.dashboard,
+            "can_view": self.can_view,
+            "can_write": self.can_write,
+            "employee_access_level": self.employee_access_level,
+        }
 
 
 class User(db.Model):
@@ -66,18 +101,29 @@ class User(db.Model):
         foreign_keys="Task.completed_by_id",
         back_populates="completed_by_user",
     )
+    dashboard_permissions = db.relationship(
+        "DashboardPermission",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
     def set_password(self, password):
+        """Hash and store the user's password."""
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
+        """Return whether the provided password matches the stored hash."""
         return check_password_hash(self.password_hash, password)
 
     @property
     def is_admin(self):
+        """Return whether the user has the master administrator role."""
         return self.role == Role.MASTER_ADMIN
 
     def to_dict(self):
+        """Return a JSON-serializable representation of the user."""
+        from app.permissions import serialize_permissions
+
         return {
             "id": self.id,
             "username": self.username,
@@ -86,6 +132,7 @@ class User(db.Model):
             "department": self.department.to_dict() if self.department else None,
             "is_active": self.is_active,
             "created_at": self.created_at.isoformat(),
+            "permissions": serialize_permissions(self),
         }
 
 
@@ -189,6 +236,63 @@ class ChatMessage(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
+class AIFeedback(db.Model):
+    """Store user feedback for AI answers."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    prompt = db.Column(db.Text, nullable=False)
+    response = db.Column(db.Text, nullable=False)
+    rating = db.Column(db.String(40), nullable=False)
+    comment = db.Column(db.Text, nullable=False, default="")
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    user = db.relationship("User")
+
+    def to_dict(self):
+        """Return a JSON-serializable representation of the feedback."""
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "rating": self.rating,
+            "comment": self.comment,
+            "created_at": self.created_at.isoformat(),
+        }
+
+
+class GeneratedDocument(db.Model):
+    """Store metadata for generated maintenance documents."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    task_id = db.Column(db.Integer, db.ForeignKey("task.id"), nullable=False)
+    document_type = db.Column(db.String(80), nullable=False)
+    title = db.Column(db.String(180), nullable=False)
+    relative_path = db.Column(db.String(500), nullable=False)
+    department = db.Column(db.String(120), nullable=False, default="")
+    machine = db.Column(db.String(160), nullable=False, default="")
+    created_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    task = db.relationship("Task")
+    creator = db.relationship("User")
+
+    def to_dict(self):
+        """Return a JSON-serializable representation of the document metadata."""
+        return {
+            "id": self.id,
+            "task_id": self.task_id,
+            "document_type": self.document_type,
+            "title": self.title,
+            "relative_path": self.relative_path,
+            "department": self.department,
+            "machine": self.machine,
+            "created_by": self.created_by,
+            "created_at": self.created_at.isoformat(),
+            "download_url": f"/api/documents/{self.id}/download",
+            "detail_url": f"/api/documents/{self.id}",
+        }
+
+
 class Employee(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     personnel_number = db.Column(db.String(80), unique=True, nullable=False)
@@ -212,25 +316,43 @@ class Employee(db.Model):
         cascade="all, delete-orphan",
     )
 
-    def to_dict(self):
-        return {
+    def to_dict(self, access_level="confidential"):
+        """Return employee data filtered by the requested access level."""
+        base_data = {
             "id": self.id,
             "personnel_number": self.personnel_number,
             "name": self.name,
-            "birth_date": self.birth_date.isoformat() if self.birth_date else None,
-            "city": self.city,
-            "street": self.street,
-            "postal_code": self.postal_code,
             "department": self.department,
-            "shift_model": self.shift_model,
-            "current_shift": self.current_shift,
             "team": self.team,
-            "salary_group": self.salary_group,
-            "qualifications": self.qualifications,
-            "favorite_machine": self.favorite_machine,
-            "documents": [document.to_dict() for document in self.documents],
-            "created_at": self.created_at.isoformat(),
         }
+        if access_level in ("none", "basic"):
+            return base_data
+
+        base_data.update(
+            {
+                "shift_model": self.shift_model,
+                "current_shift": self.current_shift,
+                "qualifications": self.qualifications,
+                "favorite_machine": self.favorite_machine,
+            }
+        )
+        if access_level == "shift":
+            return base_data
+
+        base_data.update(
+            {
+                "birth_date": (
+                    self.birth_date.isoformat() if self.birth_date else None
+                ),
+                "city": self.city,
+                "street": self.street,
+                "postal_code": self.postal_code,
+                "salary_group": self.salary_group,
+                "documents": [document.to_dict() for document in self.documents],
+                "created_at": self.created_at.isoformat(),
+            }
+        )
+        return base_data
 
 
 class EmployeeDocument(db.Model):
@@ -286,6 +408,7 @@ class InventoryMaterial(db.Model):
 
     @property
     def total_value(self):
+        """Return the total material value based on unit cost and quantity."""
         return round((self.unit_cost or 0) * (self.quantity or 0), 2)
 
     def to_dict(self):
@@ -318,7 +441,8 @@ class ShiftPlan(db.Model):
         cascade="all, delete-orphan",
     )
 
-    def to_dict(self):
+    def to_dict(self, employee_access_level="confidential"):
+        """Return shift plan data with filtered employee fields."""
         return {
             "id": self.id,
             "title": self.title,
@@ -327,7 +451,9 @@ class ShiftPlan(db.Model):
             "rhythm": self.rhythm,
             "preferences": self.preferences,
             "notes": self.notes,
-            "entries": [entry.to_dict() for entry in self.entries],
+            "entries": [
+                entry.to_dict(employee_access_level) for entry in self.entries
+            ],
             "created_at": self.created_at.isoformat(),
         }
 
@@ -347,10 +473,15 @@ class ShiftPlanEntry(db.Model):
     employee = db.relationship("Employee")
     machine = db.relationship("Machine")
 
-    def to_dict(self):
+    def to_dict(self, employee_access_level="confidential"):
+        """Return shift plan entry data with filtered employee fields."""
         return {
             "id": self.id,
-            "employee": self.employee.to_dict() if self.employee else None,
+            "employee": (
+                self.employee.to_dict(employee_access_level)
+                if self.employee and employee_access_level != "none"
+                else None
+            ),
             "machine": self.machine.to_dict() if self.machine else None,
             "work_date": self.work_date.isoformat(),
             "shift": self.shift,

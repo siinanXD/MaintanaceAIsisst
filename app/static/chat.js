@@ -20,19 +20,82 @@
     }
   }
 
-  function appendMessage(text, type) {
+  function statusText(diagnostics) {
+    const status = diagnostics && diagnostics.status;
+    const provider = (diagnostics && diagnostics.provider) || "OpenAI";
+    const model = diagnostics && diagnostics.model;
+
+    if (status === "openai_used") {
+      return provider + (model ? " · " + model : "");
+    }
+    if (status === "local_answer") {
+      return "Lokale Antwort";
+    }
+    if (status === "api_key_missing") {
+      return "Fallback · OPENAI_API_KEY fehlt in .env";
+    }
+    if (status === "openai_error") {
+      return "Fallback · OpenAI nicht erreichbar";
+    }
+    if (status === "permission_denied") {
+      return "Berechtigung fehlt";
+    }
+    if (diagnostics && diagnostics.fallback_used) {
+      return "Fallback";
+    }
+    return "";
+  }
+
+  function appendMessage(text, type, diagnostics) {
     const bubble = document.createElement("div");
     bubble.className = "chat-message " + (type === "user" ? "is-user" : "is-assistant");
-    bubble.textContent = text;
+
+    const body = document.createElement("div");
+    body.className = "chat-message-text";
+    body.textContent = text;
+    bubble.appendChild(body);
+
+    if (type !== "user") {
+      const label = statusText(diagnostics);
+      if (label) {
+        const meta = document.createElement("div");
+        meta.className = "chat-message-meta";
+        meta.textContent = label;
+        bubble.appendChild(meta);
+      }
+    }
+
     messages.appendChild(bubble);
     messages.scrollTop = messages.scrollHeight;
     return bubble;
   }
 
+  function updateAssistantMessage(bubble, text, diagnostics) {
+    const body = bubble.querySelector(".chat-message-text");
+    const meta = bubble.querySelector(".chat-message-meta");
+    if (body) body.textContent = text;
+    const label = statusText(diagnostics);
+    if (label) {
+      if (meta) {
+        meta.textContent = label;
+      } else {
+        const newMeta = document.createElement("div");
+        newMeta.className = "chat-message-meta";
+        newMeta.textContent = label;
+        bubble.appendChild(newMeta);
+      }
+    } else if (meta) {
+      meta.remove();
+    }
+  }
+
   async function askAssistant(message) {
     const token = window.localStorage.getItem("maintenance_access_token");
     if (!token) {
-      return "Bitte zuerst einloggen. Danach kann ich die KI-Funktionen nutzen.";
+      return {
+        answer: "Bitte zuerst einloggen. Danach kann ich die KI-Funktionen nutzen.",
+        diagnostics: { status: "permission_denied" }
+      };
     }
 
     const response = await fetch("/api/ai/chat", {
@@ -53,26 +116,69 @@
           window.localStorage.removeItem("maintenance_user");
           window.dispatchEvent(new Event("maintenance-auth-changed"));
         }
-        return "Deine Sitzung ist abgelaufen. Bitte neu einloggen.";
+        return {
+          answer: "Deine Sitzung ist abgelaufen. Bitte neu einloggen.",
+          diagnostics: { status: "permission_denied" }
+        };
       }
       const errorData = await response.json().catch(() => null);
-      return (errorData && errorData.error) || "Die KI-Anfrage konnte gerade nicht verarbeitet werden.";
+      return {
+        answer: (errorData && errorData.error) || "Die KI-Anfrage konnte gerade nicht verarbeitet werden.",
+        diagnostics: { status: "openai_error", fallback_used: true }
+      };
     }
 
     const data = await response.json();
     const diagnostics = data.diagnostics || {};
-    const answer = data.answer || "Ich habe keine Antwort erhalten.";
+    let answer = data.answer || "Ich habe keine Antwort erhalten.";
 
     if (diagnostics.status === "api_key_missing") {
-      return answer + "\n\nHinweis: Es ist kein OpenAI API-Key konfiguriert. Ich nutze den lokalen Fallback.";
+      answer += "\n\nHinweis: Es ist kein OpenAI API-Key in .env konfiguriert. Ich nutze den lokalen Fallback.";
     }
     if (diagnostics.status === "openai_error") {
-      return answer + "\n\nHinweis: OpenAI ist gerade nicht erreichbar oder der Key ist ungueltig. Ich nutze den lokalen Fallback.";
+      answer += "\n\nHinweis: OpenAI ist gerade nicht erreichbar oder der Key ist ungueltig. Ich nutze den lokalen Fallback.";
     }
     if (diagnostics.fallback_used) {
-      return answer + "\n\nHinweis: Diese Antwort kommt aus dem lokalen Fallback.";
+      answer += "\n\nHinweis: Diese Antwort kommt aus dem lokalen Fallback.";
     }
-    return answer;
+    return { answer, diagnostics, prompt: message };
+  }
+
+  async function sendFeedback(prompt, response, rating) {
+    const token = window.localStorage.getItem("maintenance_access_token");
+    if (!token) return;
+    await fetch("/api/ai/feedback", {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ prompt, response, rating })
+    });
+  }
+
+  function addFeedbackButtons(bubble, prompt, response) {
+    const actions = document.createElement("div");
+    actions.className = "chat-feedback";
+    const helpful = document.createElement("button");
+    helpful.type = "button";
+    helpful.textContent = "Hilfreich";
+    const notHelpful = document.createElement("button");
+    notHelpful.type = "button";
+    notHelpful.textContent = "Nicht hilfreich";
+    [helpful, notHelpful].forEach((button) => {
+      button.className = "chat-feedback-button";
+    });
+    helpful.addEventListener("click", async () => {
+      await sendFeedback(prompt, response, "helpful");
+      actions.textContent = "Feedback gespeichert.";
+    });
+    notHelpful.addEventListener("click", async () => {
+      await sendFeedback(prompt, response, "not_helpful");
+      actions.textContent = "Feedback gespeichert.";
+    });
+    actions.append(helpful, notHelpful);
+    bubble.appendChild(actions);
   }
 
   toggle.addEventListener("click", () => setOpen(!widget.classList.contains("is-open")));
@@ -86,12 +192,21 @@
 
     input.value = "";
     appendMessage(message, "user");
-    const loading = appendMessage("Ich pruefe das gerade...", "assistant");
+    const loading = appendMessage(
+      "Ich sende deine Frage an den Assistenten und pruefe die freigegebenen Daten...",
+      "assistant"
+    );
 
     try {
-      loading.textContent = await askAssistant(message);
+      const result = await askAssistant(message);
+      updateAssistantMessage(loading, result.answer, result.diagnostics);
+      addFeedbackButtons(loading, result.prompt || message, result.answer);
     } catch (error) {
-      loading.textContent = "Keine Verbindung zur API. Bitte pruefe, ob der Server laeuft.";
+      updateAssistantMessage(
+        loading,
+        "Keine Verbindung zur API. Bitte pruefe, ob der Server laeuft.",
+        { status: "openai_error", fallback_used: true }
+      );
     }
   });
 })();

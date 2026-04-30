@@ -3,6 +3,11 @@ from flask import Blueprint, jsonify, request
 from app.auth.services import find_department, parse_role
 from app.extensions import db
 from app.models import Role, User
+from app.permissions import (
+    replace_user_permissions,
+    serialize_permissions,
+    upsert_default_permissions,
+)
 from app.security import roles_required
 
 
@@ -12,6 +17,7 @@ admin_bp = Blueprint("admin", __name__)
 @admin_bp.get("/users")
 @roles_required(Role.MASTER_ADMIN)
 def list_users():
+    """Return all users for the master admin user management view."""
     users = User.query.order_by(User.id.asc()).all()
     return jsonify([user.to_dict() for user in users])
 
@@ -19,13 +25,17 @@ def list_users():
 @admin_bp.post("/users")
 @roles_required(Role.MASTER_ADMIN)
 def create_user():
+    """Create a user and assign default permissions for the selected role."""
     data = request.get_json(silent=True) or {}
     required = ["username", "email", "password", "role"]
     missing = [field for field in required if not data.get(field)]
     if missing:
         return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
 
-    if User.query.filter((User.username == data["username"]) | (User.email == data["email"])).first():
+    existing_user = User.query.filter(
+        (User.username == data["username"]) | (User.email == data["email"])
+    ).first()
+    if existing_user:
         return jsonify({"error": "Username or email already exists"}), 409
 
     try:
@@ -46,6 +56,8 @@ def create_user():
     )
     user.set_password(data["password"])
     db.session.add(user)
+    db.session.flush()
+    upsert_default_permissions(user)
     db.session.commit()
     return jsonify(user.to_dict()), 201
 
@@ -53,6 +65,7 @@ def create_user():
 @admin_bp.put("/users/<int:user_id>")
 @roles_required(Role.MASTER_ADMIN)
 def update_user(user_id):
+    """Update a user account and fill missing default permissions."""
     user = User.query.get_or_404(user_id)
     data = request.get_json(silent=True) or {}
 
@@ -70,6 +83,29 @@ def update_user(user_id):
     if "is_active" in data:
         user.is_active = bool(data["is_active"])
 
+    upsert_default_permissions(user)
+    db.session.commit()
+    return jsonify(user.to_dict())
+
+
+@admin_bp.get("/users/<int:user_id>/permissions")
+@roles_required(Role.MASTER_ADMIN)
+def get_user_permissions(user_id):
+    """Return effective dashboard permissions for a user."""
+    user = User.query.get_or_404(user_id)
+    return jsonify(serialize_permissions(user))
+
+
+@admin_bp.put("/users/<int:user_id>/permissions")
+@roles_required(Role.MASTER_ADMIN)
+def update_user_permissions(user_id):
+    """Replace dashboard permissions for a user."""
+    user = User.query.get_or_404(user_id)
+    data = request.get_json(silent=True) or {}
+    try:
+        replace_user_permissions(user, data)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     db.session.commit()
     return jsonify(user.to_dict())
 
@@ -77,6 +113,7 @@ def update_user(user_id):
 @admin_bp.post("/users/<int:user_id>/reset-password")
 @roles_required(Role.MASTER_ADMIN)
 def reset_password(user_id):
+    """Reset a user's password."""
     user = User.query.get_or_404(user_id)
     password = (request.get_json(silent=True) or {}).get("password")
     if not password:
@@ -89,6 +126,7 @@ def reset_password(user_id):
 @admin_bp.post("/users/<int:user_id>/lock")
 @roles_required(Role.MASTER_ADMIN)
 def lock_user(user_id):
+    """Lock a user account."""
     user = User.query.get_or_404(user_id)
     user.is_active = False
     db.session.commit()
@@ -98,6 +136,7 @@ def lock_user(user_id):
 @admin_bp.post("/users/<int:user_id>/unlock")
 @roles_required(Role.MASTER_ADMIN)
 def unlock_user(user_id):
+    """Unlock a user account."""
     user = User.query.get_or_404(user_id)
     user.is_active = True
     db.session.commit()
@@ -107,6 +146,7 @@ def unlock_user(user_id):
 @admin_bp.delete("/users/<int:user_id>")
 @roles_required(Role.MASTER_ADMIN)
 def delete_user(user_id):
+    """Delete a user account."""
     user = User.query.get_or_404(user_id)
     db.session.delete(user)
     db.session.commit()

@@ -52,3 +52,9 @@ def machines_page():
 @web_bp.get("/inventory")
 def inventory_page():
     return render_template("inventory.html")
+
+
+@web_bp.get("/documents")
+def documents_page():
+    """Render the generated documents overview."""
+    return render_template("documents.html")

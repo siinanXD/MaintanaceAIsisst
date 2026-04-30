@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request
-from flask_jwt_extended import jwt_required
 
 from app.errors.services import (
+    analyze_error_description,
     create_error_entry,
     search_errors,
     update_error_entry,
@@ -9,39 +9,60 @@ from app.errors.services import (
 )
 from app.extensions import db
 from app.models import ErrorEntry
-from app.security import current_user, same_department_or_admin
+from app.security import (
+    current_user,
+    dashboard_permission_required,
+    same_department_or_admin,
+)
 
 
 errors_bp = Blueprint("errors", __name__)
 
 
 @errors_bp.get("")
-@jwt_required()
+@dashboard_permission_required("errors", "view")
 def list_errors():
+    """Return visible error catalog entries."""
     user = current_user()
     entries = visible_errors_query(user).order_by(ErrorEntry.error_code.asc()).all()
     return jsonify([entry.to_dict() for entry in entries])
 
 
 @errors_bp.post("")
-@jwt_required()
+@dashboard_permission_required("errors", "write")
 def add_error():
+    """Create an error catalog entry in an allowed department."""
     entry, error, status = create_error_entry(request.get_json(silent=True) or {}, current_user())
     if error:
         return jsonify(error), status
     return jsonify(entry.to_dict()), status
 
 
+@errors_bp.post("/analyze")
+@dashboard_permission_required("errors", "write")
+def analyze_error():
+    """Return a non-persisted AI analysis for an error description."""
+    analysis, error, status = analyze_error_description(
+        request.get_json(silent=True) or {},
+        current_user(),
+    )
+    if error:
+        return jsonify(error), status
+    return jsonify(analysis)
+
+
 @errors_bp.get("/search")
-@jwt_required()
+@dashboard_permission_required("errors", "view")
 def search():
+    """Search visible error catalog entries."""
     entries = search_errors(request.args.get("query", ""), current_user())
     return jsonify([entry.to_dict() for entry in entries])
 
 
 @errors_bp.get("/<int:error_id>")
-@jwt_required()
+@dashboard_permission_required("errors", "view")
 def get_error(error_id):
+    """Return a visible error catalog entry by id."""
     entry = ErrorEntry.query.get_or_404(error_id)
     if not same_department_or_admin(entry):
         return jsonify({"error": "Forbidden"}), 403
@@ -49,8 +70,9 @@ def get_error(error_id):
 
 
 @errors_bp.put("/<int:error_id>")
-@jwt_required()
+@dashboard_permission_required("errors", "write")
 def edit_error(error_id):
+    """Update a visible error catalog entry."""
     entry = ErrorEntry.query.get_or_404(error_id)
     if not same_department_or_admin(entry):
         return jsonify({"error": "Forbidden"}), 403
@@ -65,8 +87,9 @@ def edit_error(error_id):
 
 
 @errors_bp.delete("/<int:error_id>")
-@jwt_required()
+@dashboard_permission_required("errors", "write")
 def delete_error(error_id):
+    """Delete a visible error catalog entry."""
     entry = ErrorEntry.query.get_or_404(error_id)
     if not same_department_or_admin(entry):
         return jsonify({"error": "Forbidden"}), 403

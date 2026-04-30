@@ -1,26 +1,31 @@
 from datetime import date
 
 from flask import Blueprint, jsonify, request
-from flask_jwt_extended import jwt_required
 
 from app.extensions import db
 from app.models import Priority, Task, TaskStatus
-from app.security import current_user, same_department_or_admin
+from app.security import (
+    current_user,
+    dashboard_permission_required,
+    same_department_or_admin,
+)
 from app.tasks.services import (
-    complete_task,
     create_task,
     start_task,
+    suggest_task_from_text,
     update_task,
     visible_tasks_query,
 )
+from app.services.workflow_service import complete_task_workflow
 
 
 tasks_bp = Blueprint("tasks", __name__)
 
 
 @tasks_bp.get("")
-@jwt_required()
+@dashboard_permission_required("tasks", "view")
 def list_tasks():
+    """Return visible tasks for the current user."""
     user = current_user()
     query = visible_tasks_query(user)
     status = request.args.get("status")
@@ -37,17 +42,30 @@ def list_tasks():
 
 
 @tasks_bp.post("")
-@jwt_required()
+@dashboard_permission_required("tasks", "write")
 def add_task():
+    """Create a task in an allowed department."""
     task, error, status = create_task(request.get_json(silent=True) or {}, current_user())
     if error:
         return jsonify(error), status
     return jsonify(task.to_dict()), status
 
 
+@tasks_bp.post("/suggest")
+@dashboard_permission_required("tasks", "write")
+def suggest_task():
+    """Return a non-persisted AI task suggestion from free text."""
+    data = request.get_json(silent=True) or {}
+    suggestion, error, status = suggest_task_from_text(data, current_user())
+    if error:
+        return jsonify(error), status
+    return jsonify(suggestion)
+
+
 @tasks_bp.get("/today")
-@jwt_required()
+@dashboard_permission_required("tasks", "view")
 def today_tasks():
+    """Return today's visible tasks."""
     user = current_user()
     tasks = (
         visible_tasks_query(user)
@@ -59,8 +77,9 @@ def today_tasks():
 
 
 @tasks_bp.get("/<int:task_id>")
-@jwt_required()
+@dashboard_permission_required("tasks", "view")
 def get_task(task_id):
+    """Return a visible task by id."""
     task = Task.query.get_or_404(task_id)
     if not same_department_or_admin(task):
         return jsonify({"error": "Forbidden"}), 403
@@ -68,8 +87,9 @@ def get_task(task_id):
 
 
 @tasks_bp.put("/<int:task_id>")
-@jwt_required()
+@dashboard_permission_required("tasks", "write")
 def edit_task(task_id):
+    """Update a visible task."""
     task = Task.query.get_or_404(task_id)
     if not same_department_or_admin(task):
         return jsonify({"error": "Forbidden"}), 403
@@ -80,7 +100,7 @@ def edit_task(task_id):
 
 
 @tasks_bp.post("/<int:task_id>/start")
-@jwt_required()
+@dashboard_permission_required("tasks", "write")
 def start_task_endpoint(task_id):
     """Start a visible task for the current user."""
     task = Task.query.get(task_id)
@@ -96,7 +116,7 @@ def start_task_endpoint(task_id):
 
 
 @tasks_bp.post("/<int:task_id>/complete")
-@jwt_required()
+@dashboard_permission_required("tasks", "write")
 def complete_task_endpoint(task_id):
     """Complete a visible task for the current user."""
     task = Task.query.get(task_id)
@@ -105,15 +125,23 @@ def complete_task_endpoint(task_id):
     if not same_department_or_admin(task):
         return jsonify({"error": "Forbidden"}), 403
 
-    updated, error, status = complete_task(task, current_user())
+    updated, document, error, status = complete_task_workflow(
+        task,
+        current_user(),
+        request.get_json(silent=True) or {},
+    )
     if error:
         return jsonify(error), status
-    return jsonify(updated.to_dict()), status
+    payload = updated.to_dict()
+    if document:
+        payload["generated_document"] = document.to_dict()
+    return jsonify(payload), status
 
 
 @tasks_bp.delete("/<int:task_id>")
-@jwt_required()
+@dashboard_permission_required("tasks", "write")
 def delete_task(task_id):
+    """Delete a visible task."""
     task = Task.query.get_or_404(task_id)
     if not same_department_or_admin(task):
         return jsonify({"error": "Forbidden"}), 403

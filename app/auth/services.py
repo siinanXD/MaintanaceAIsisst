@@ -3,9 +3,11 @@ from sqlalchemy import or_
 
 from app.extensions import db
 from app.models import Department, Role, User
+from app.permissions import upsert_default_permissions
 
 
 def parse_role(value):
+    """Parse a role value or return the production default."""
     if not value:
         return Role.PRODUKTION
     try:
@@ -16,6 +18,7 @@ def parse_role(value):
 
 
 def find_department(department_id=None, department_name=None):
+    """Find a department by id or name."""
     if department_id:
         return Department.query.get(department_id)
     if department_name:
@@ -24,6 +27,7 @@ def find_department(department_id=None, department_name=None):
 
 
 def register_user(data):
+    """Register a new user and assign default dashboard permissions."""
     required = ["username", "email", "password"]
     missing = [field for field in required if not data.get(field)]
     if missing:
@@ -48,11 +52,14 @@ def register_user(data):
     )
     user.set_password(data["password"])
     db.session.add(user)
+    db.session.flush()
+    upsert_default_permissions(user)
     db.session.commit()
     return user, None, 201
 
 
 def authenticate(login, password):
+    """Authenticate a user and return a JWT payload."""
     user = User.query.filter(
         or_(User.email == login, User.username == login)
     ).first()

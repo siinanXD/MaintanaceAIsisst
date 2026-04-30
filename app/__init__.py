@@ -7,6 +7,7 @@ from app.auth.routes import auth_bp
 from app.config import Config
 from app.departments.services import ensure_default_departments
 from app.departments.routes import departments_bp
+from app.documents.routes import documents_bp
 from app.errors.routes import errors_bp
 from app.employees.routes import employees_bp
 from app.extensions import db, jwt, migrate
@@ -17,7 +18,9 @@ from app.tasks.routes import tasks_bp
 from app.ai.routes import ai_bp
 from app.admin.routes import admin_bp
 from app.shiftplans.routes import shiftplans_bp
+from app.search.routes import search_bp
 from app.web.routes import web_bp
+from app.permissions import ensure_all_user_default_permissions
 
 
 def _run_lightweight_migrations():
@@ -26,6 +29,24 @@ def _run_lightweight_migrations():
     table_names = inspector.get_table_names()
     if "user" not in table_names:
         return
+
+    if "dashboard_permission" not in table_names:
+        with db.engine.begin() as connection:
+            connection.exec_driver_sql(
+                """
+                CREATE TABLE dashboard_permission (
+                    id INTEGER NOT NULL PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    dashboard VARCHAR(40) NOT NULL,
+                    can_view BOOLEAN NOT NULL DEFAULT 0,
+                    can_write BOOLEAN NOT NULL DEFAULT 0,
+                    employee_access_level VARCHAR(40) NOT NULL DEFAULT 'none',
+                    FOREIGN KEY(user_id) REFERENCES user (id),
+                    CONSTRAINT uq_dashboard_permission_user_dashboard
+                        UNIQUE (user_id, dashboard)
+                )
+                """
+            )
 
     columns = {column["name"] for column in inspector.get_columns("user")}
     if "is_active" not in columns:
@@ -69,6 +90,7 @@ def create_app(config_class=Config):
     Path(app.instance_path).mkdir(parents=True, exist_ok=True)
     Path("data").mkdir(parents=True, exist_ok=True)
     Path(app.config["UPLOAD_FOLDER"]).mkdir(parents=True, exist_ok=True)
+    Path(app.config["DOCUMENTS_FOLDER"]).mkdir(parents=True, exist_ok=True)
 
     db.init_app(app)
     migrate.init_app(app, db)
@@ -82,6 +104,8 @@ def create_app(config_class=Config):
     app.register_blueprint(machines_bp, url_prefix="/api/machines")
     app.register_blueprint(inventory_bp, url_prefix="/api/inventory")
     app.register_blueprint(shiftplans_bp, url_prefix="/api/shiftplans")
+    app.register_blueprint(documents_bp, url_prefix="/api/documents")
+    app.register_blueprint(search_bp, url_prefix="/api/search")
     app.register_blueprint(health_bp, url_prefix="/api/health")
     app.register_blueprint(ai_bp, url_prefix="/api/ai")
     app.register_blueprint(admin_bp, url_prefix="/api/admin")
@@ -91,5 +115,6 @@ def create_app(config_class=Config):
         db.create_all()
         _run_lightweight_migrations()
         ensure_default_departments()
+        ensure_all_user_default_permissions()
 
     return app

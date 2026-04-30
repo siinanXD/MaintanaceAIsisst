@@ -7,6 +7,39 @@
     return window.maintenanceAuth ? window.maintenanceAuth.user() : null;
   }
 
+  function canView(dashboard) {
+    return window.maintenanceAuth && window.maintenanceAuth.canView
+      ? window.maintenanceAuth.canView(dashboard)
+      : false;
+  }
+
+  function canWrite(dashboard) {
+    return window.maintenanceAuth && window.maintenanceAuth.canWrite
+      ? window.maintenanceAuth.canWrite(dashboard)
+      : false;
+  }
+
+  function employeeAccessLevel() {
+    return window.maintenanceAuth && window.maintenanceAuth.employeeAccessLevel
+      ? window.maintenanceAuth.employeeAccessLevel()
+      : "none";
+  }
+
+  const DASHBOARD_LABELS = {
+    dashboard: "Dashboard",
+    tasks: "Tasks",
+    errors: "Fehlerliste",
+    employees: "Mitarbeiter",
+    shiftplans: "Schichtplan",
+    machines: "Maschinen",
+    inventory: "Lager",
+    documents: "Dokumente",
+    admin_users: "Users"
+  };
+
+  const DASHBOARD_KEYS = Object.keys(DASHBOARD_LABELS);
+  const EMPLOYEE_ACCESS_LEVELS = ["none", "basic", "shift", "confidential"];
+
   async function api(path, options) {
     const headers = Object.assign({ "Content-Type": "application/json" }, options && options.headers);
     const authToken = token();
@@ -109,7 +142,11 @@
   async function initTasks() {
     const list = document.querySelector("[data-task-list]");
     const form = document.querySelector("[data-task-form]");
+    const suggestForm = document.querySelector("[data-task-suggest-form]");
+    const suggestionBox = document.querySelector("[data-task-suggestion]");
+    const applySuggestion = document.querySelector("[data-apply-task-suggestion]");
     if (!list || !form || !token()) return;
+    let currentSuggestion = null;
 
     async function load() {
       const tasks = await api("/api/tasks");
@@ -136,13 +173,57 @@
       if (message) message.textContent = "Task gespeichert.";
     });
 
+    if (suggestForm && suggestionBox) {
+      suggestForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const message = document.querySelector("[data-task-suggest-message]");
+        const data = Object.fromEntries(new FormData(suggestForm).entries());
+        if (message) message.textContent = "KI erstellt Vorschlag...";
+        try {
+          currentSuggestion = await api("/api/tasks/suggest", {
+            method: "POST",
+            body: JSON.stringify(data)
+          });
+          suggestionBox.hidden = false;
+          suggestionBox.querySelectorAll("[data-suggest-field]").forEach((field) => {
+            field.value = currentSuggestion[field.dataset.suggestField] || "";
+          });
+          if (message) message.textContent = "Vorschlag erstellt.";
+        } catch (error) {
+          if (message) message.textContent = error.message;
+        }
+      });
+    }
+
+    if (applySuggestion) {
+      applySuggestion.addEventListener("click", () => {
+        if (!currentSuggestion) return;
+        const values = {};
+        suggestionBox.querySelectorAll("[data-suggest-field]").forEach((field) => {
+          values[field.dataset.suggestField] = field.value;
+        });
+        form.elements.title.value = values.title || "";
+        form.elements.department.value = values.department || "";
+        form.elements.priority.value = values.priority || "normal";
+        form.elements.description.value = [
+          values.description,
+          values.possible_cause ? "Moegliche Ursache: " + values.possible_cause : "",
+          values.recommended_action ? "Naechste Aktion: " + values.recommended_action : ""
+        ].filter(Boolean).join("\n\n");
+      });
+    }
+
     await load();
   }
 
   async function initErrors() {
     const list = document.querySelector("[data-error-list]");
     const form = document.querySelector("[data-error-form]");
+    const analyzeForm = document.querySelector("[data-error-analyze-form]");
+    const analysisBox = document.querySelector("[data-error-analysis]");
+    const applyAnalysis = document.querySelector("[data-apply-error-analysis]");
     if (!list || !form || !token()) return;
+    let currentAnalysis = null;
 
     async function load() {
       const errors = await api("/api/errors");
@@ -162,7 +243,6 @@
       event.preventDefault();
       const data = Object.fromEntries(new FormData(form).entries());
       data.description = data.title;
-      data.possible_causes = "";
       await api("/api/errors", { method: "POST", body: JSON.stringify(data) });
       form.reset();
       await initDepartments();
@@ -171,12 +251,150 @@
       if (message) message.textContent = "Fehler gespeichert.";
     });
 
+    if (analyzeForm && analysisBox) {
+      analyzeForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const message = document.querySelector("[data-error-analyze-message]");
+        const data = Object.fromEntries(new FormData(analyzeForm).entries());
+        if (message) message.textContent = "KI analysiert...";
+        try {
+          currentAnalysis = await api("/api/errors/analyze", {
+            method: "POST",
+            body: JSON.stringify(data)
+          });
+          analysisBox.hidden = false;
+          analysisBox.querySelectorAll("[data-error-analysis-field]").forEach((field) => {
+            field.value = currentAnalysis[field.dataset.errorAnalysisField] || "";
+          });
+          if (message) message.textContent = "Analyse erstellt.";
+        } catch (error) {
+          if (message) message.textContent = error.message;
+        }
+      });
+    }
+
+    if (applyAnalysis) {
+      applyAnalysis.addEventListener("click", () => {
+        if (!currentAnalysis) return;
+        const values = {};
+        analysisBox.querySelectorAll("[data-error-analysis-field]").forEach((field) => {
+          values[field.dataset.errorAnalysisField] = field.value;
+        });
+        form.elements.machine.value = values.machine || "";
+        form.elements.department.value = values.department || "";
+        form.elements.title.value = values.title || "";
+        form.elements.possible_causes.value = values.possible_causes || "";
+        form.elements.solution.value = values.solution || "";
+      });
+    }
+
     await load();
   }
 
   async function initUsers() {
     const list = document.querySelector("[data-user-list]");
     if (!list || !token()) return;
+    const editor = document.querySelector("[data-permission-editor]");
+    const editorTitle = document.querySelector("[data-permission-editor-title]");
+    const permissionList = document.querySelector("[data-permission-list]");
+    const permissionForm = document.querySelector("[data-permission-form]");
+    const permissionMessage = document.querySelector("[data-permission-message]");
+    let selectedUser = null;
+
+    function checkboxCell(dashboard, action, checked, disabled) {
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = Boolean(checked);
+      input.disabled = Boolean(disabled);
+      input.dataset.dashboard = dashboard;
+      input.dataset.permissionAction = action;
+      return input;
+    }
+
+    function accessLevelSelect(dashboard, selected, disabled) {
+      const select = document.createElement("select");
+      select.className = "select";
+      select.disabled = Boolean(disabled);
+      select.dataset.dashboard = dashboard;
+      select.dataset.permissionAction = "employee_access_level";
+      EMPLOYEE_ACCESS_LEVELS.forEach((level) => {
+        const option = document.createElement("option");
+        option.value = level;
+        option.textContent = level;
+        select.appendChild(option);
+      });
+      select.value = selected || "none";
+      return select;
+    }
+
+    function renderPermissionEditor(item) {
+      if (!editor || !permissionList || !permissionForm) return;
+      selectedUser = item;
+      editor.hidden = false;
+      if (editorTitle) {
+        editorTitle.textContent = item.username + " - Rechte je Dashboard";
+      }
+      if (permissionMessage) permissionMessage.textContent = "";
+      permissionList.innerHTML = "";
+
+      DASHBOARD_KEYS.forEach((dashboard) => {
+        const permission = (item.permissions && item.permissions[dashboard]) || {};
+        const isAdminUsersDashboard = dashboard === "admin_users";
+        const isMasterAdmin = item.role === "master_admin";
+        permissionList.appendChild(row([
+          DASHBOARD_LABELS[dashboard],
+          checkboxCell(
+            dashboard,
+            "can_view",
+            isAdminUsersDashboard ? isMasterAdmin : permission.can_view,
+            isAdminUsersDashboard
+          ),
+          checkboxCell(
+            dashboard,
+            "can_write",
+            isAdminUsersDashboard ? isMasterAdmin : permission.can_write,
+            isAdminUsersDashboard
+          ),
+          dashboard === "employees"
+            ? accessLevelSelect(dashboard, permission.employee_access_level)
+            : "-"
+        ]));
+      });
+    }
+
+    if (permissionForm) {
+      permissionForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!selectedUser) return;
+        const payload = { permissions: {} };
+        DASHBOARD_KEYS.forEach((dashboard) => {
+          payload.permissions[dashboard] = {
+            can_view: false,
+            can_write: false,
+            employee_access_level: "none"
+          };
+        });
+        permissionForm.querySelectorAll("[data-dashboard]").forEach((input) => {
+          const dashboard = input.dataset.dashboard;
+          const action = input.dataset.permissionAction;
+          if (action === "employee_access_level") {
+            payload.permissions[dashboard].employee_access_level = input.value;
+          } else {
+            payload.permissions[dashboard][action] = input.checked;
+          }
+        });
+        payload.permissions.admin_users.can_view = selectedUser.role === "master_admin";
+        payload.permissions.admin_users.can_write = selectedUser.role === "master_admin";
+        const updated = await api("/api/admin/users/" + selectedUser.id + "/permissions", {
+          method: "PUT",
+          body: JSON.stringify(payload)
+        });
+        selectedUser = updated;
+        renderPermissionEditor(updated);
+        await load();
+        if (permissionMessage) permissionMessage.textContent = "Rechte gespeichert.";
+      });
+    }
 
     async function load() {
       const users = await api("/api/admin/users");
@@ -217,7 +435,13 @@
           await load();
         });
 
-        actions.append(reset, lock, remove);
+        const permissions = document.createElement("button");
+        permissions.className = "button";
+        permissions.type = "button";
+        permissions.textContent = "Rechte";
+        permissions.addEventListener("click", () => renderPermissionEditor(item));
+
+        actions.append(permissions, reset, lock, remove);
         list.appendChild(row([
           item.username,
           item.email,
@@ -257,7 +481,7 @@
 
         const links = document.createElement("div");
         links.className = "document-links";
-        employee.documents.forEach((document) => {
+        (employee.documents || []).forEach((document) => {
           const link = document.createElement("a");
           link.href = document.download_url;
           link.textContent = document.original_filename;
@@ -265,24 +489,28 @@
           links.appendChild(link);
         });
 
-        const input = document.createElement("input");
-        input.type = "file";
-        input.addEventListener("change", async () => {
-          if (!input.files.length) return;
-          await uploadDocument(employee.id, input.files[0]);
-          await load();
-        });
+        if (canWrite("employees") && employeeAccessLevel() === "confidential") {
+          const input = document.createElement("input");
+          input.type = "file";
+          input.addEventListener("change", async () => {
+            if (!input.files.length) return;
+            await uploadDocument(employee.id, input.files[0]);
+            await load();
+          });
+          docs.append(links, input);
+        } else {
+          docs.append(links);
+        }
 
-        docs.append(links, input);
         list.appendChild(row([
           employee.personnel_number,
           employee.name,
           employee.department,
           employee.current_shift || employee.shift_model,
           employee.team ? "Team " + employee.team : "-",
-          employee.salary_group,
-          employee.qualifications,
-          employee.favorite_machine,
+          employee.salary_group || "-",
+          employee.qualifications || "-",
+          employee.favorite_machine || "-",
           docs
         ]));
       });
@@ -304,6 +532,7 @@
   async function fillMachineSelects() {
     const selects = document.querySelectorAll("[data-machine-select]");
     if (!selects.length || !token()) return [];
+    if (!canView("machines")) return [];
     const machines = await api("/api/machines");
     selects.forEach((select) => {
       const current = select.value;
@@ -330,11 +559,13 @@
       machines.forEach((machine) => {
         const actions = document.createElement("div");
         actions.className = "table-actions";
-        actions.appendChild(actionButton("Loeschen", async () => {
-          if (!window.confirm(machine.name + " wirklich loeschen?")) return;
-          await api("/api/machines/" + machine.id, { method: "DELETE" });
-          await load();
-        }, true));
+        if (canWrite("machines")) {
+          actions.appendChild(actionButton("Loeschen", async () => {
+            if (!window.confirm(machine.name + " wirklich loeschen?")) return;
+            await api("/api/machines/" + machine.id, { method: "DELETE" });
+            await load();
+          }, true));
+        }
         list.appendChild(row([
           machine.name,
           machine.produced_item,
@@ -370,11 +601,13 @@
       materials.forEach((material) => {
         const actions = document.createElement("div");
         actions.className = "table-actions";
-        actions.appendChild(actionButton("Loeschen", async () => {
-          if (!window.confirm(material.name + " wirklich loeschen?")) return;
-          await api("/api/inventory/" + material.id, { method: "DELETE" });
-          await load();
-        }, true));
+        if (canWrite("inventory")) {
+          actions.appendChild(actionButton("Loeschen", async () => {
+            if (!window.confirm(material.name + " wirklich loeschen?")) return;
+            await api("/api/inventory/" + material.id, { method: "DELETE" });
+            await load();
+          }, true));
+        }
         list.appendChild(row([
           material.name,
           formatMoney(material.unit_cost),
@@ -418,12 +651,15 @@
       header.className = "panel-header";
       const title = document.createElement("div");
       title.innerHTML = `<h3 class="panel-title">${plan.title}</h3><p class="panel-meta">${plan.start_date} - ${plan.days} Tage - ${plan.rhythm || "Rhythmus offen"}</p>`;
-      const remove = actionButton("Loeschen", async () => {
-        if (!window.confirm(plan.title + " wirklich loeschen?")) return;
-        await api("/api/shiftplans/" + plan.id, { method: "DELETE" });
-        await load();
-      }, true);
-      header.append(title, remove);
+      header.append(title);
+      if (canWrite("shiftplans")) {
+        const remove = actionButton("Loeschen", async () => {
+          if (!window.confirm(plan.title + " wirklich loeschen?")) return;
+          await api("/api/shiftplans/" + plan.id, { method: "DELETE" });
+          await load();
+        }, true);
+        header.append(remove);
+      }
 
       const notes = document.createElement("p");
       notes.className = "panel-meta";
@@ -494,6 +730,7 @@
     const taskStartButton = document.querySelector("[data-task-start-button]");
     const taskCompleteButton = document.querySelector("[data-task-complete-button]");
     const taskDetailClose = document.querySelector("[data-task-detail-close]");
+    const reportGenerate = document.querySelector("[data-report-generate]");
     const errorStats = document.querySelector("[data-dashboard-error-stats]");
     const inventoryStats = document.querySelector("[data-dashboard-inventory-stats]");
     if ((!taskRail && !errorStats && !inventoryStats) || !token()) return;
@@ -553,9 +790,11 @@
 
     function updateTaskActionButtons(task, isBusy) {
       if (taskStartButton) {
+        taskStartButton.hidden = !canWrite("tasks");
         taskStartButton.disabled = Boolean(isBusy) || task.status !== "open";
       }
       if (taskCompleteButton) {
+        taskCompleteButton.hidden = !canWrite("tasks");
         taskCompleteButton.disabled = Boolean(isBusy) || task.status === "done" || task.status === "cancelled";
       }
     }
@@ -581,13 +820,32 @@
       await loadDashboardTasks();
     }
 
-    async function runTaskAction(path, successMessage) {
+    function reportPayload() {
+      const payload = {};
+      if (reportGenerate && reportGenerate.checked) {
+        payload.generate_report = true;
+        document.querySelectorAll("[data-report-field]").forEach((field) => {
+          payload[field.dataset.reportField] = field.value;
+        });
+        payload.notes = payload.action || "";
+      }
+      return payload;
+    }
+
+    async function runTaskAction(path, successMessage, body) {
       if (!activeTaskId || !activeTask) return;
       updateTaskActionButtons(activeTask, true);
       showTaskMessage("Wird verarbeitet...");
 
       try {
-        await api(path, { method: "POST" });
+        const options = { method: "POST" };
+        if (body && Object.keys(body).length) {
+          options.body = JSON.stringify(body);
+        }
+        const result = await api(path, options);
+        if (result && result.generated_document) {
+          successMessage += " Wartungsbericht wurde erzeugt.";
+        }
         await refreshActiveTask(successMessage);
       } catch (error) {
         updateTaskActionButtons(activeTask);
@@ -640,16 +898,17 @@
       taskCompleteButton.addEventListener("click", async () => {
         await runTaskAction(
           "/api/tasks/" + activeTaskId + "/complete",
-          "Task abgeschlossen."
+          "Task abgeschlossen.",
+          reportPayload()
         );
       });
     }
 
-    if (taskRail) {
+    if (taskRail && canView("tasks")) {
       await loadDashboardTasks();
     }
 
-    if (errorStats) {
+    if (errorStats && canView("errors")) {
       const errors = await api("/api/errors");
       const counts = new Map();
       errors.forEach((entry) => {
@@ -669,7 +928,7 @@
       }
     }
 
-    if (inventoryStats && window.maintenanceAuth && window.maintenanceAuth.isAdmin()) {
+    if (inventoryStats && canView("inventory")) {
       const summary = await api("/api/inventory/summary");
       inventoryStats.innerHTML = "";
       inventoryStats.append(
@@ -687,6 +946,68 @@
     }
   }
 
+  async function initDocuments() {
+    const list = document.querySelector("[data-document-list]");
+    const form = document.querySelector("[data-document-filter-form]");
+    const reset = document.querySelector("[data-document-filter-reset]");
+    if (!list || !form || !token()) return;
+
+    async function downloadDocument(documentItem) {
+      const response = await fetch(documentItem.download_url, {
+        headers: { "Authorization": "Bearer " + token() }
+      });
+      if (!response.ok) throw new Error("Download fehlgeschlagen");
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "maintenance_report_task_" + documentItem.task_id + ".html";
+      link.click();
+      window.URL.revokeObjectURL(url);
+    }
+
+    async function load() {
+      const params = new URLSearchParams();
+      new FormData(form).forEach((value, key) => {
+        if (value) params.set(key, value);
+      });
+      const suffix = params.toString() ? "?" + params.toString() : "";
+      const documents = await api("/api/documents" + suffix);
+      list.innerHTML = "";
+      if (!documents.length) {
+        list.innerHTML = '<tr><td colspan="6">Keine Dokumente gefunden.</td></tr>';
+        return;
+      }
+      documents.forEach((documentItem) => {
+        const link = actionButton("Download", async () => {
+          await downloadDocument(documentItem);
+        });
+        list.appendChild(row([
+          documentItem.title,
+          String(documentItem.task_id),
+          documentItem.department,
+          documentItem.machine,
+          new Date(documentItem.created_at).toLocaleString("de-DE"),
+          link
+        ]));
+      });
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await load();
+    });
+
+    if (reset) {
+      reset.addEventListener("click", async () => {
+        form.reset();
+        await load();
+      });
+    }
+
+    await load();
+  }
+
   document.addEventListener("DOMContentLoaded", async () => {
     if (!token()) return;
     try {
@@ -702,6 +1023,7 @@
       await initMachines();
       await initInventory();
       await initShiftPlans();
+      await initDocuments();
     } catch (error) {
       console.warn(error);
     }

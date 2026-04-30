@@ -27,7 +27,7 @@ Authorization: Bearer eyJhbGciOi...
 
 Passwoerter werden nicht im Klartext gespeichert, sondern als Hash. Der Token wird ueber `/api/auth/login` ausgestellt.
 
-## Rollenmodell
+## Rollen- und Rechtemodell
 
 | Rolle | Wert | Zugriff |
 | --- | --- | --- |
@@ -37,8 +37,24 @@ Passwoerter werden nicht im Klartext gespeichert, sondern als Hash. Der Token wi
 | Instandhaltung | `instandhaltung` | Eigener Bereich |
 | Produktion | `produktion` | Eigener Bereich |
 
-Normale Rollen sehen und bearbeiten nur Tasks und Fehlerkatalogeintraege ihres eigenen Bereichs.
-In der Webnavigation sehen normale Rollen nur Tasks und Fehlerliste. Dashboard, Mitarbeiter, Schichtplan, Maschinen, Lager und Userverwaltung sind Admin-only.
+Zusaetzlich zur Rolle gibt es Dashboard-Rechte pro User. Der Admin kann fuer jedes Dashboard `can_view` und `can_write` setzen. Die API prueft diese Rechte serverseitig.
+
+Dashboard-Keys:
+
+```text
+dashboard, tasks, errors, employees, shiftplans, machines, inventory, admin_users
+```
+
+`admin_users` bleibt effektiv `master_admin` vorbehalten. Normale Rollen sehen und bearbeiten Tasks und Fehlerkatalogeintraege weiterhin nur im eigenen Bereich.
+
+Mitarbeiterdaten werden gestuft ausgeliefert:
+
+| Stufe | Felder |
+| --- | --- |
+| `none` | Keine Mitarbeiterdaten |
+| `basic` | Personalnummer, Name, Abteilung, Team |
+| `shift` | Basic plus Schicht, Qualifikationen, Favoritenmaschine |
+| `confidential` | Shift plus Geburtsdatum, Adresse, Gehaltsklasse, Dokumente |
 
 ## Standardantworten
 
@@ -113,6 +129,13 @@ Response `201`:
   "email": "admin@example.com",
   "role": "master_admin",
   "department": null,
+  "permissions": {
+    "tasks": {
+      "can_view": true,
+      "can_write": true,
+      "employee_access_level": "none"
+    }
+  },
   "created_at": "2026-04-28T18:30:00"
 }
 ```
@@ -167,9 +190,75 @@ Response `200`:
   "email": "admin@example.com",
   "role": "master_admin",
   "department": null,
+  "permissions": {
+    "employees": {
+      "can_view": true,
+      "can_write": true,
+      "employee_access_level": "confidential"
+    }
+  },
   "created_at": "2026-04-28T18:30:00"
 }
 ```
+
+## Admin-Rechteverwaltung
+
+### Rechte eines Users lesen
+
+Nur `master_admin`.
+
+```http
+GET /api/admin/users/2/permissions
+Authorization: Bearer <access_token>
+```
+
+Response `200`:
+
+```json
+{
+  "tasks": {
+    "can_view": true,
+    "can_write": true,
+    "employee_access_level": "none"
+  },
+  "employees": {
+    "can_view": true,
+    "can_write": false,
+    "employee_access_level": "basic"
+  }
+}
+```
+
+### Rechte eines Users ersetzen
+
+Nur `master_admin`.
+
+```http
+PUT /api/admin/users/2/permissions
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+Request:
+
+```json
+{
+  "permissions": {
+    "tasks": {
+      "can_view": true,
+      "can_write": true,
+      "employee_access_level": "none"
+    },
+    "employees": {
+      "can_view": true,
+      "can_write": false,
+      "employee_access_level": "basic"
+    }
+  }
+}
+```
+
+Ungueltige Dashboard-Keys oder Mitarbeiterdatenstufen liefern `400`.
 
 ## Departments
 
@@ -219,6 +308,36 @@ Response `201`:
 ```
 
 ## Tasks
+
+### Task-Vorschlag aus Freitext
+
+```http
+POST /api/tasks/suggest
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+Request:
+
+```json
+{
+  "text": "Maschine 3 macht laute Geraeusche am Lager."
+}
+```
+
+Response `200` ist ein Vorschlag und wird nicht gespeichert:
+
+```json
+{
+  "title": "Pruefung: Maschine 3 macht laute Geraeusche am Lager.",
+  "description": "Maschine 3 macht laute Geraeusche am Lager.",
+  "department": "Instandhaltung",
+  "priority": "soon",
+  "status": "open",
+  "possible_cause": "Lager verschlissen...",
+  "recommended_action": "Maschine 3 sicher pruefen..."
+}
+```
 
 ### Tasks auflisten
 
@@ -341,6 +460,27 @@ Authorization: Bearer <access_token>
 Response `200`: Liste der Tasks mit `due_date` gleich dem aktuellen Datum des Servers.
 
 ## Fehlerkatalog
+
+### Fehlerbeschreibung analysieren
+
+```http
+POST /api/errors/analyze
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+Response `200` ist ein Vorschlag und wird nicht gespeichert:
+
+```json
+{
+  "machine": "Maschine 3",
+  "title": "Stoerung: Sensor meldet sporadisch kein Signal",
+  "description": "Sensor meldet sporadisch kein Signal an Maschine 3.",
+  "possible_causes": "Sensor verschmutzt...",
+  "solution": "Anlage sichern...",
+  "department": "Instandhaltung"
+}
+```
 
 ### Fehler auflisten
 
@@ -521,6 +661,8 @@ Moegliche Diagnosewerte:
 | `fallback_used` | Fallback wurde ohne genauere Kategorie genutzt |
 | `openai_used` | OpenAI-Antwort wurde verwendet |
 
+`diagnostics` enthaelt zusaetzlich `provider` und `model`, aber niemals den API-Key. Die Chat-Bubble zeigt diese Werte als kleine Statuszeile pro Antwort.
+
 ### KI-Konfiguration pruefen
 
 Nur `master_admin`.
@@ -535,16 +677,71 @@ Response `200`:
 ```json
 {
   "api_key_configured": true,
+  "provider": "OpenAI",
   "model": "gpt-4o-mini",
+  "ready": true,
   "last_error": null
 }
 ```
 
 Der API-Key wird nie im Response-Body ausgegeben.
 
+Wenn `api_key_configured` false ist, fehlt die lokale `.env` oder `OPENAI_API_KEY` ist leer. `.env.example` ist nur eine Vorlage und darf keine echten Secrets enthalten.
+
+### AI-Feedback speichern
+
+```http
+POST /api/ai/feedback
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+```json
+{
+  "prompt": "Was bedeutet E104?",
+  "response": "Der Fehler deutet auf...",
+  "rating": "helpful",
+  "comment": "optional"
+}
+```
+
+## Dokumente
+
+```http
+GET /api/documents
+GET /api/documents?task_id=1&department=Instandhaltung&machine=Maschine
+GET /api/documents/1
+GET /api/documents/1/download
+```
+
+Dokumente benoetigen `documents.view`. Berichte werden lokal als HTML unter `documents/YYYY/MM/task_<id>/maintenance_report.html` gespeichert.
+
+## Wissenssuche
+
+```http
+GET /api/search?q=Sensorfehler
+Authorization: Bearer <access_token>
+```
+
+Response:
+
+```json
+{
+  "query": "Sensorfehler",
+  "results": [
+    {
+      "type": "task",
+      "title": "Sensor pruefen",
+      "summary": "Beschreibung",
+      "url": "/api/tasks/1"
+    }
+  ]
+}
+```
+
 ## Mitarbeiter
 
-Alle Mitarbeiter-Endpunkte sind `master_admin` vorbehalten.
+Mitarbeiter-Endpunkte benoetigen `employees.view`. Schreibzugriffe, Uploads und Downloads vertraulicher Dokumente benoetigen `employees.write` und `employee_access_level=confidential`.
 
 ```http
 GET /api/employees
@@ -564,7 +761,7 @@ Mitarbeiter enthalten fuer die Schichtplanung:
 
 ## Maschinen
 
-Alle Maschinen-Endpunkte sind `master_admin` vorbehalten.
+Maschinen-Endpunkte benoetigen `machines.view` oder `machines.write`.
 
 ```http
 GET /api/machines
@@ -585,7 +782,7 @@ Request:
 
 ## Lager
 
-Alle Lager-Endpunkte sind `master_admin` vorbehalten.
+Lager-Endpunkte benoetigen `inventory.view` oder `inventory.write`.
 
 ```http
 GET /api/inventory
@@ -619,7 +816,7 @@ Summary:
 
 ## Schichtplanung
 
-Alle Schichtplan-Endpunkte sind `master_admin` vorbehalten.
+Schichtplan-Endpunkte benoetigen `shiftplans.view` oder `shiftplans.write`. Die Generierung benoetigt zusaetzlich mindestens Mitarbeiterdatenstufe `shift`, weil dabei Produktionsmitarbeiter geplant werden.
 
 ```http
 GET /api/shiftplans

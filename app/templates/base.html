@@ -19,14 +19,15 @@
         </div>
         <nav aria-label="Hauptnavigation">
           <ul class="nav-list">
-            <li data-admin-only hidden><a class="nav-link {% if request.path == '/' %}is-active{% endif %}" href="/">Dashboard</a></li>
-            <li><a class="nav-link {% if request.path == '/tasks' %}is-active{% endif %}" href="/tasks">Tasks</a></li>
-            <li><a class="nav-link {% if request.path == '/errors' %}is-active{% endif %}" href="/errors">Fehlerliste</a></li>
-            <li data-admin-only hidden><a class="nav-link {% if request.path == '/employees' %}is-active{% endif %}" href="/employees">Mitarbeiter</a></li>
-            <li data-admin-only hidden><a class="nav-link {% if request.path == '/shiftplans' %}is-active{% endif %}" href="/shiftplans">Schichtplan</a></li>
-            <li data-admin-only hidden><a class="nav-link {% if request.path == '/machines' %}is-active{% endif %}" href="/machines">Maschinen</a></li>
-            <li data-admin-only hidden><a class="nav-link {% if request.path == '/inventory' %}is-active{% endif %}" href="/inventory">Lager</a></li>
-            <li data-admin-only hidden><a class="nav-link {% if request.path == '/admin/users' %}is-active{% endif %}" href="/admin/users">Users</a></li>
+            <li data-dashboard-nav="dashboard" hidden><a class="nav-link {% if request.path == '/' %}is-active{% endif %}" href="/">Dashboard</a></li>
+            <li data-dashboard-nav="tasks" hidden><a class="nav-link {% if request.path == '/tasks' %}is-active{% endif %}" href="/tasks">Tasks</a></li>
+            <li data-dashboard-nav="errors" hidden><a class="nav-link {% if request.path == '/errors' %}is-active{% endif %}" href="/errors">Fehlerliste</a></li>
+            <li data-dashboard-nav="employees" hidden><a class="nav-link {% if request.path == '/employees' %}is-active{% endif %}" href="/employees">Mitarbeiter</a></li>
+            <li data-dashboard-nav="shiftplans" hidden><a class="nav-link {% if request.path == '/shiftplans' %}is-active{% endif %}" href="/shiftplans">Schichtplan</a></li>
+            <li data-dashboard-nav="machines" hidden><a class="nav-link {% if request.path == '/machines' %}is-active{% endif %}" href="/machines">Maschinen</a></li>
+            <li data-dashboard-nav="inventory" hidden><a class="nav-link {% if request.path == '/inventory' %}is-active{% endif %}" href="/inventory">Lager</a></li>
+            <li data-dashboard-nav="documents" hidden><a class="nav-link {% if request.path == '/documents' %}is-active{% endif %}" href="/documents">Dokumente</a></li>
+            <li data-dashboard-nav="admin_users" hidden><a class="nav-link {% if request.path == '/admin/users' %}is-active{% endif %}" href="/admin/users">Users</a></li>
             <li data-auth-login-link><a class="nav-link {% if request.path == '/login' %}is-active{% endif %}" href="/login">Login</a></li>
           </ul>
         </nav>
@@ -34,8 +35,10 @@
       <main class="main">
         <div class="session-actions" data-auth-session hidden>
           <span class="session-pill" data-session-name>Eingeloggt</span>
+          <button class="button" type="button" data-contrast-toggle aria-pressed="false">Hoher Kontrast</button>
           <button class="button is-danger" type="button" data-logout-button>Logout</button>
         </div>
+        <div class="sr-only" aria-live="polite" aria-atomic="true" data-global-live-region></div>
         {% block content %}{% endblock %}
       </main>
     </div>
@@ -51,7 +54,7 @@
           </div>
           <button class="chat-close" type="button" aria-label="Chat schliessen">x</button>
         </div>
-        <div class="chat-panel-body" data-chat-messages>
+        <div class="chat-panel-body" data-chat-messages aria-live="polite">
           <div class="chat-message is-assistant">
             Frag mich nach Fehlercodes, Maschinenstoerungen oder heutigen Tasks.
           </div>

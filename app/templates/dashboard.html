@@ -37,6 +37,28 @@
         <button class="button" type="button" data-task-detail-close>Schliessen</button>
       </div>
       <div class="task-detail-body" data-task-detail-body></div>
+      <div class="form-grid" data-report-options>
+        <label class="field">
+          <span>Wartungsbericht erzeugen</span>
+          <input type="checkbox" data-report-generate>
+        </label>
+        <div class="field">
+          <label for="report-machine">Maschine</label>
+          <input class="input" id="report-machine" data-report-field="machine">
+        </div>
+        <div class="field">
+          <label for="report-result">Ergebnis</label>
+          <input class="input" id="report-result" data-report-field="result">
+        </div>
+        <div class="field">
+          <label for="report-cause">Ursache</label>
+          <input class="input" id="report-cause" data-report-field="cause">
+        </div>
+        <div class="field is-full">
+          <label for="report-action">Massnahme / Notizen</label>
+          <textarea class="textarea" id="report-action" data-report-field="action"></textarea>
+        </div>
+      </div>
       <div class="toolbar form-actions">
         <button class="button is-primary" type="button" data-task-start-button>Task starten</button>
         <button class="button" type="button" data-task-complete-button>Task abschliessen</button>

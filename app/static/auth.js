@@ -10,8 +10,62 @@
     return Boolean(user && user.role === "master_admin");
   }
 
+  const DASHBOARD_PATHS = {
+    "/": "dashboard",
+    "/tasks": "tasks",
+    "/errors": "errors",
+    "/employees": "employees",
+    "/shiftplans": "shiftplans",
+    "/machines": "machines",
+    "/inventory": "inventory",
+    "/documents": "documents",
+    "/admin/users": "admin_users"
+  };
+
+  const DASHBOARD_DESTINATIONS = {
+    dashboard: "/",
+    tasks: "/tasks",
+    errors: "/errors",
+    employees: "/employees",
+    shiftplans: "/shiftplans",
+    machines: "/machines",
+    inventory: "/inventory",
+    documents: "/documents",
+    admin_users: "/admin/users"
+  };
+
+  const DASHBOARD_ORDER = [
+    "dashboard",
+    "tasks",
+    "errors",
+    "employees",
+    "shiftplans",
+    "machines",
+    "inventory",
+    "documents",
+    "admin_users"
+  ];
+
+  function permissionFor(user, dashboard) {
+    if (isAdminUser(user)) return { can_view: true, can_write: true, employee_access_level: "confidential" };
+    return (user && user.permissions && user.permissions[dashboard]) || {};
+  }
+
+  function canView(user, dashboard) {
+    return Boolean(permissionFor(user, dashboard).can_view);
+  }
+
+  function canWrite(user, dashboard) {
+    return Boolean(permissionFor(user, dashboard).can_write);
+  }
+
+  function employeeAccessLevel(user) {
+    return permissionFor(user, "employees").employee_access_level || "none";
+  }
+
   function destinationForUser(user) {
-    return isAdminUser(user) ? "/" : "/tasks";
+    const firstDashboard = DASHBOARD_ORDER.find((dashboard) => canView(user, dashboard));
+    return DASHBOARD_DESTINATIONS[firstDashboard] || "/login";
   }
 
   function displayName(user) {
@@ -108,8 +162,16 @@
       element.hidden = loggedIn;
     });
 
-    document.querySelectorAll("[data-admin-only]").forEach((element) => {
-      element.hidden = !isAdmin;
+    document.querySelectorAll("[data-dashboard-nav]").forEach((element) => {
+      element.hidden = !loggedIn || !canView(user, element.dataset.dashboardNav);
+    });
+
+    document.querySelectorAll("[data-permission-view]").forEach((element) => {
+      element.hidden = !canView(user, element.dataset.permissionView);
+    });
+
+    document.querySelectorAll("[data-permission-write]").forEach((element) => {
+      element.hidden = !canWrite(user, element.dataset.permissionWrite);
     });
 
     document.querySelectorAll("[data-hr-only]").forEach((element) => {
@@ -124,9 +186,9 @@
       element.hidden = !loggedIn;
     });
 
-    const limitedPaths = ["/tasks", "/errors", "/login"];
-    if (loggedIn && !isAdmin && !limitedPaths.includes(window.location.pathname)) {
-      window.location.href = "/tasks";
+    const requiredDashboard = DASHBOARD_PATHS[window.location.pathname];
+    if (loggedIn && requiredDashboard && !canView(user, requiredDashboard)) {
+      window.location.href = destinationForUser(user);
     }
   }
 
@@ -150,9 +212,12 @@
     refreshUserInBackground,
     ensureReady: ensureAuthReady,
     isAdmin: () => isAdminUser(currentUser()),
+    canView: (dashboard) => canView(currentUser(), dashboard),
+    canWrite: (dashboard) => canWrite(currentUser(), dashboard),
+    employeeAccessLevel: () => employeeAccessLevel(currentUser()),
     canManageEmployees: () => {
       const user = currentUser();
-      return isAdminUser(user);
+      return canWrite(user, "employees") && employeeAccessLevel(user) === "confidential";
     }
   };
 })();

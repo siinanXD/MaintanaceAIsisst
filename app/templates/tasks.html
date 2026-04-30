@@ -12,7 +12,70 @@
 </section>
 
 <section class="dashboard-grid">
-  <form class="panel is-wide" data-task-form>
+  <article class="panel is-wide" data-permission-write="tasks">
+    <div class="panel-header">
+      <div>
+        <h2 class="panel-title">KI-Task vorschlagen</h2>
+        <p class="panel-meta">Freitext analysieren und als bearbeitbaren Task uebernehmen</p>
+      </div>
+    </div>
+    <form data-task-suggest-form>
+      <div class="field">
+        <label for="task-suggest-text">Beschreibung</label>
+        <textarea class="textarea" id="task-suggest-text" name="text" placeholder="z. B. Maschine 3 macht laute Geraeusche am Lager."></textarea>
+      </div>
+      <div class="toolbar form-actions">
+        <button class="button" type="submit">KI-Vorschlag erstellen</button>
+        <span class="panel-meta" data-task-suggest-message></span>
+      </div>
+    </form>
+    <div class="suggestion-box" data-task-suggestion hidden>
+      <div class="form-grid">
+        <div class="field">
+          <label for="suggest-title">Titel</label>
+          <input class="input" id="suggest-title" data-suggest-field="title">
+        </div>
+        <div class="field">
+          <label for="suggest-department">Bereich</label>
+          <input class="input" id="suggest-department" data-suggest-field="department">
+        </div>
+        <div class="field">
+          <label for="suggest-priority">Prioritaet</label>
+          <select class="select" id="suggest-priority" data-suggest-field="priority">
+            <option value="urgent">urgent</option>
+            <option value="soon">soon</option>
+            <option value="normal">normal</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="suggest-status">Status</label>
+          <select class="select" id="suggest-status" data-suggest-field="status">
+            <option value="open">open</option>
+            <option value="in_progress">in_progress</option>
+            <option value="done">done</option>
+            <option value="cancelled">cancelled</option>
+          </select>
+        </div>
+        <div class="field is-full">
+          <label for="suggest-description">Beschreibung</label>
+          <textarea class="textarea" id="suggest-description" data-suggest-field="description"></textarea>
+        </div>
+        <div class="field">
+          <label for="suggest-cause">Moegliche Ursache</label>
+          <textarea class="textarea" id="suggest-cause" data-suggest-field="possible_cause"></textarea>
+        </div>
+        <div class="field">
+          <label for="suggest-action">Naechste Aktion</label>
+          <textarea class="textarea" id="suggest-action" data-suggest-field="recommended_action"></textarea>
+        </div>
+      </div>
+      <div class="toolbar form-actions">
+        <button class="button is-primary" type="button" data-apply-task-suggestion>In Taskformular uebernehmen</button>
+      </div>
+    </div>
+  </article>
+
+  <form class="panel is-wide" data-task-form data-permission-write="tasks">
     <div class="panel-header">
       <div>
         <h2 class="panel-title">Task anlegen</h2>

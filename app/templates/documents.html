@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Dokumente - Maintenance Assistant{% endblock %}
+
+{% block content %}
+<section class="topbar">
+  <div>
+    <p class="page-kicker">Berichte</p>
+    <h1 class="page-title">Dokumentenuebersicht</h1>
+    <p class="page-description">Generierte Wartungsberichte suchen, filtern und herunterladen.</p>
+  </div>
+</section>
+
+<section class="dashboard-grid">
+  <form class="panel is-full" data-document-filter-form>
+    <div class="panel-header">
+      <div>
+        <h2 class="panel-title">Filter</h2>
+        <p class="panel-meta">Nach Task, Bereich, Maschine oder Datum suchen</p>
+      </div>
+    </div>
+    <div class="form-grid">
+      <div class="field">
+        <label for="document-task-id">Task-ID</label>
+        <input class="input" id="document-task-id" name="task_id" type="number" min="1">
+      </div>
+      <div class="field">
+        <label for="document-department">Bereich</label>
+        <input class="input" id="document-department" name="department">
+      </div>
+      <div class="field">
+        <label for="document-machine">Maschine</label>
+        <input class="input" id="document-machine" name="machine">
+      </div>
+      <div class="field">
+        <label for="document-date-from">Von</label>
+        <input class="input" id="document-date-from" name="date_from" type="date">
+      </div>
+      <div class="field">
+        <label for="document-date-to">Bis</label>
+        <input class="input" id="document-date-to" name="date_to" type="date">
+      </div>
+    </div>
+    <div class="toolbar form-actions">
+      <button class="button is-primary" type="submit">Filtern</button>
+      <button class="button" type="button" data-document-filter-reset>Zuruecksetzen</button>
+      <span class="panel-meta" data-document-message></span>
+    </div>
+  </form>
+
+  <article class="panel is-full">
+    <div class="panel-header">
+      <div>
+        <h2 class="panel-title">Generierte Dokumente</h2>
+        <p class="panel-meta">HTML-Berichte aus abgeschlossenen Tasks</p>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Titel</th>
+            <th>Task</th>
+            <th>Bereich</th>
+            <th>Maschine</th>
+            <th>Erstellt</th>
+            <th>Aktion</th>
+          </tr>
+        </thead>
+        <tbody data-document-list></tbody>
+      </table>
+    </div>
+  </article>
+</section>
+{% endblock %}

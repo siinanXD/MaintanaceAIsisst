@@ -1,17 +1,19 @@
 import re
 from datetime import date
 from sqlalchemy.exc import SQLAlchemyError
-from openai import OpenAI, OpenAIError
 
 from flask import current_app
 
 from app.errors.services import search_errors
 from app.extensions import db
-from app.models import ChatMessage, ErrorEntry, Task
+from app.models import ChatMessage, Employee, ErrorEntry, Task
+from app.security import employee_access_level, has_dashboard_permission
+from app.services.ai_service import AIServiceError, get_ai_provider
 from app.tasks.services import visible_tasks_query
 
 
 LAST_OPENAI_ERROR = None
+OPENAI_PROVIDER = "OpenAI"
 
 
 def looks_like_today_tasks_question(message):
@@ -34,8 +36,28 @@ def extract_error_query(message):
     return message
 
 
+def looks_like_employee_question(message):
+    """Check whether a message asks for employee or personnel data."""
+    text = message.lower()
+    employee_words = [
+        "mitarbeiter",
+        "personal",
+        "personaldaten",
+        "gehalt",
+        "gehaltsklasse",
+        "adresse",
+        "geburtsdatum",
+        "qualifikation",
+        "schicht",
+    ]
+    return any(word in text for word in employee_words)
+
+
 def format_tasks_today(user):
     """Return a formatted answer and structured data for today's visible tasks."""
+    if not has_dashboard_permission(user, "tasks", "view"):
+        return "Dir fehlt die Berechtigung, Tasks ueber die KI abzufragen.", []
+
     tasks = (
         visible_tasks_query(user)
         .filter(Task.due_date == date.today())
@@ -48,7 +70,8 @@ def format_tasks_today(user):
     lines = ["Heute stehen diese Tasks an:"]
     for task in tasks:
         lines.append(
-            f"- {task.title} ({task.priority.value}, {task.status.value}, Bereich: {task.department.name})"
+            f"- {task.title} ({task.priority.value}, {task.status.value}, "
+            f"Bereich: {task.department.name})"
         )
     return "\n".join(lines), [task.to_dict() for task in tasks]
 
@@ -77,7 +100,15 @@ def build_error_context(entries):
 
 def build_task_context(user):
     """Build a text context block from the user's visible tasks."""
-    tasks = visible_tasks_query(user).order_by(Task.due_date.asc(), Task.id.desc()).limit(20).all()
+    if not has_dashboard_permission(user, "tasks", "view"):
+        return "Keine Berechtigung fuer Taskdaten."
+
+    tasks = (
+        visible_tasks_query(user)
+        .order_by(Task.due_date.asc(), Task.id.desc())
+        .limit(20)
+        .all()
+    )
     if not tasks:
         return "Keine sichtbaren Tasks vorhanden."
     lines = []
@@ -99,6 +130,9 @@ def build_task_context(user):
 
 def build_catalog_context(user, preferred_entries):
     """Build a combined error catalog context for the AI assistant."""
+    if not has_dashboard_permission(user, "errors", "view"):
+        return "Keine Berechtigung fuer Fehlerkatalogdaten."
+
     entries = list(preferred_entries)
     seen = {entry.id for entry in entries}
     query = ErrorEntry.query
@@ -109,6 +143,50 @@ def build_catalog_context(user, preferred_entries):
             entries.append(entry)
             seen.add(entry.id)
     return build_error_context(entries) or "Keine sichtbaren Fehlerkatalogeintraege vorhanden."
+
+
+def build_employee_context(user):
+    """Build a filtered employee context for the AI assistant."""
+    if not has_dashboard_permission(user, "employees", "view"):
+        return "Keine Berechtigung fuer Mitarbeiterdaten.", []
+
+    access_level = employee_access_level(user)
+    if access_level == "none":
+        return "Keine Berechtigung fuer Mitarbeiterdaten.", []
+
+    employees = Employee.query.order_by(Employee.name.asc()).limit(30).all()
+    if not employees:
+        return "Keine sichtbaren Mitarbeiterdaten vorhanden.", []
+
+    lines = []
+    for employee in employees:
+        data = employee.to_dict(access_level)
+        parts = [
+            f"Personalnummer: {data.get('personnel_number')}",
+            f"Name: {data.get('name')}",
+            f"Abteilung: {data.get('department')}",
+            f"Team: {data.get('team')}",
+        ]
+        if access_level in ("shift", "confidential"):
+            parts.extend(
+                [
+                    f"Schichtmodell: {data.get('shift_model')}",
+                    f"Aktuelle Schicht: {data.get('current_shift')}",
+                    f"Qualifikationen: {data.get('qualifications')}",
+                    f"Favoritenmaschine: {data.get('favorite_machine')}",
+                ]
+            )
+        if access_level == "confidential":
+            parts.extend(
+                [
+                    f"Geburtsdatum: {data.get('birth_date')}",
+                    f"Wohnort: {data.get('postal_code')} {data.get('city')}",
+                    f"Strasse: {data.get('street')}",
+                    f"Gehaltsklasse: {data.get('salary_group')}",
+                ]
+            )
+        lines.append(" | ".join(parts))
+    return "\n".join(lines), [employee.to_dict(access_level) for employee in employees]
 
 
 def fallback_error_answer(entries):
@@ -127,11 +205,13 @@ def fallback_error_answer(entries):
     )
 
 
-def ai_diagnostics(status, fallback_used=False, error=None):
+def ai_diagnostics(status, fallback_used=False, error=None, provider=None):
     """Build a safe diagnostic payload without exposing secrets."""
     payload = {
         "status": status,
         "fallback_used": fallback_used,
+        "provider": provider or OPENAI_PROVIDER,
+        "model": current_app.config.get("OPENAI_MODEL", "gpt-4o-mini"),
     }
     if error:
         payload["error"] = error
@@ -140,9 +220,13 @@ def ai_diagnostics(status, fallback_used=False, error=None):
 
 def ai_status():
     """Return redacted OpenAI configuration status for admins."""
+    api_key_configured = bool(current_app.config.get("OPENAI_API_KEY"))
+    provider = current_app.config.get("AI_PROVIDER", "openai")
     return {
-        "api_key_configured": bool(current_app.config.get("OPENAI_API_KEY")),
+        "api_key_configured": api_key_configured,
         "model": current_app.config.get("OPENAI_MODEL", "gpt-4o-mini"),
+        "provider": provider,
+        "ready": api_key_configured and LAST_OPENAI_ERROR is None,
         "last_error": LAST_OPENAI_ERROR,
     }
 
@@ -153,46 +237,40 @@ def redacted_openai_error(error):
     return name if name.endswith("Error") else "OpenAIError"
 
 
-def openai_error_answer(message, error_context, task_context):
+def openai_error_answer(message, error_context, task_context, employee_context):
     """Generate an AI answer using OpenAI and the provided maintenance context."""
     global LAST_OPENAI_ERROR
-    api_key = current_app.config.get("OPENAI_API_KEY")
+    provider = get_ai_provider()
 
-    if not api_key:
+    configured_provider = current_app.config.get("AI_PROVIDER", "openai").lower()
+    if provider.name == "mock" and configured_provider != "mock":
         LAST_OPENAI_ERROR = "api_key_missing"
-        return None, ai_diagnostics("api_key_missing", fallback_used=True)
-
-    try:
-        client = OpenAI(api_key=api_key)
-        completion = client.chat.completions.create(
-            model=current_app.config.get("OPENAI_MODEL", "gpt-4o-mini"),
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Du bist ein Wartungsassistent. Nutze ausschließlich den "
-                        "bereitgestellten Fehlerkatalog und die sichtbaren Tasks. "
-                        "Wenn etwas nicht im Kontext steht, sage das klar."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        f"Fehlerkatalog:\n{error_context}\n\n"
-                        f"Tasks:\n{task_context}\n\n"
-                        f"Frage:\n{message}"
-                    ),
-                },
-            ],
-            temperature=0.2,
+        return None, ai_diagnostics(
+            "api_key_missing",
+            fallback_used=True,
+            error="OPENAI_API_KEY is not configured in .env",
         )
-    except OpenAIError as exc:
+
+    context = (
+        f"Fehlerkatalog:\n{error_context}\n\n"
+        f"Tasks:\n{task_context}\n\n"
+        f"Mitarbeiterdaten:\n{employee_context}"
+    )
+    try:
+        answer = provider.answer_question(message, context)
+    except AIServiceError as exc:
         LAST_OPENAI_ERROR = redacted_openai_error(exc)
-        current_app.logger.exception("OpenAI request failed")
-        return None, ai_diagnostics("openai_error", fallback_used=True, error=LAST_OPENAI_ERROR)
+        current_app.logger.exception("AI provider request failed")
+        return None, ai_diagnostics(
+            "openai_error",
+            fallback_used=True,
+            error=LAST_OPENAI_ERROR,
+        )
 
     LAST_OPENAI_ERROR = None
-    return completion.choices[0].message.content, ai_diagnostics("openai_used")
+    if provider.name == "mock":
+        return answer, ai_diagnostics("local_answer", provider=provider.name)
+    return answer, ai_diagnostics("openai_used", provider=provider.name)
 
 
 def answer_chat(message, user):
@@ -206,10 +284,27 @@ def answer_chat(message, user):
             "data": data,
         }
 
-    entries = search_errors(extract_error_query(message), user)
+    employee_context, employee_data = build_employee_context(user)
+    if looks_like_employee_question(message) and not employee_data:
+        answer = "Dir fehlt die Berechtigung, Mitarbeiterdaten ueber die KI abzufragen."
+        return {
+            "type": "permission_denied",
+            "answer": answer,
+            "diagnostics": ai_diagnostics("permission_denied"),
+            "data": [],
+        }
+
+    entries = []
+    if has_dashboard_permission(user, "errors", "view"):
+        entries = search_errors(extract_error_query(message), user)
     error_context = build_catalog_context(user, entries)
     task_context = build_task_context(user)
-    answer, diagnostics = openai_error_answer(message, error_context, task_context)
+    answer, diagnostics = openai_error_answer(
+        message,
+        error_context,
+        task_context,
+        employee_context,
+    )
     if not answer:
         answer = fallback_error_answer(entries)
         diagnostics = diagnostics or ai_diagnostics("fallback_used", fallback_used=True)

@@ -1,8 +1,8 @@
 from flask import Blueprint, jsonify, request
 
 from app.extensions import db
-from app.models import InventoryMaterial, Machine, Role
-from app.security import roles_required
+from app.models import InventoryMaterial, Machine
+from app.security import dashboard_permission_required
 
 
 inventory_bp = Blueprint("inventory", __name__)
@@ -38,7 +38,7 @@ def machine_for_payload(data):
 
 
 @inventory_bp.get("")
-@roles_required(Role.MASTER_ADMIN)
+@dashboard_permission_required("inventory", "view")
 def list_materials():
     """Return all inventory materials for the admin lager view."""
     materials = InventoryMaterial.query.order_by(InventoryMaterial.name.asc()).all()
@@ -46,7 +46,7 @@ def list_materials():
 
 
 @inventory_bp.get("/summary")
-@roles_required(Role.MASTER_ADMIN)
+@dashboard_permission_required("inventory", "view")
 def inventory_summary():
     """Return material count, quantity and total inventory value."""
     materials = InventoryMaterial.query.order_by(InventoryMaterial.name.asc()).all()
@@ -61,7 +61,7 @@ def inventory_summary():
 
 
 @inventory_bp.post("")
-@roles_required(Role.MASTER_ADMIN)
+@dashboard_permission_required("inventory", "write")
 def create_material():
     """Create an inventory material and link it to a machine if provided."""
     data = request.get_json(silent=True) or {}
@@ -83,7 +83,7 @@ def create_material():
 
 
 @inventory_bp.put("/<int:material_id>")
-@roles_required(Role.MASTER_ADMIN)
+@dashboard_permission_required("inventory", "write")
 def update_material(material_id):
     """Update an inventory material including cost, quantity and machine."""
     material = InventoryMaterial.query.get_or_404(material_id)
@@ -103,7 +103,7 @@ def update_material(material_id):
 
 
 @inventory_bp.delete("/<int:material_id>")
-@roles_required(Role.MASTER_ADMIN)
+@dashboard_permission_required("inventory", "write")
 def delete_material(material_id):
     """Delete an inventory material from the lager."""
     material = InventoryMaterial.query.get_or_404(material_id)

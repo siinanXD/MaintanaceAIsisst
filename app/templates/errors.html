@@ -12,7 +12,53 @@
 </section>
 
 <section class="dashboard-grid">
-  <form class="panel is-wide" data-error-form>
+  <article class="panel is-wide" data-permission-write="errors">
+    <div class="panel-header">
+      <div>
+        <h2 class="panel-title">KI-Fehleranalyse</h2>
+        <p class="panel-meta">Beschreibung analysieren und Vorschlag uebernehmen</p>
+      </div>
+    </div>
+    <form data-error-analyze-form>
+      <div class="field">
+        <label for="error-analysis-description">Fehlerbeschreibung</label>
+        <textarea class="textarea" id="error-analysis-description" name="description" placeholder="z. B. Sensor meldet sporadisch kein Signal an Maschine 3."></textarea>
+      </div>
+      <div class="toolbar form-actions">
+        <button class="button" type="submit">KI-Analyse erstellen</button>
+        <span class="panel-meta" data-error-analyze-message></span>
+      </div>
+    </form>
+    <div class="suggestion-box" data-error-analysis hidden>
+      <div class="form-grid">
+        <div class="field">
+          <label for="analysis-machine">Maschine</label>
+          <input class="input" id="analysis-machine" data-error-analysis-field="machine">
+        </div>
+        <div class="field">
+          <label for="analysis-department">Bereich</label>
+          <input class="input" id="analysis-department" data-error-analysis-field="department">
+        </div>
+        <div class="field is-full">
+          <label for="analysis-title">Fehler</label>
+          <input class="input" id="analysis-title" data-error-analysis-field="title">
+        </div>
+        <div class="field">
+          <label for="analysis-causes">Moegliche Ursachen</label>
+          <textarea class="textarea" id="analysis-causes" data-error-analysis-field="possible_causes"></textarea>
+        </div>
+        <div class="field">
+          <label for="analysis-solution">Loesung</label>
+          <textarea class="textarea" id="analysis-solution" data-error-analysis-field="solution"></textarea>
+        </div>
+      </div>
+      <div class="toolbar form-actions">
+        <button class="button is-primary" type="button" data-apply-error-analysis>In Fehlerformular uebernehmen</button>
+      </div>
+    </div>
+  </article>
+
+  <form class="panel is-wide" data-error-form data-permission-write="errors">
     <div class="panel-header">
       <div>
         <h2 class="panel-title">Fehler anlegen</h2>
@@ -35,6 +81,10 @@
       <div class="field">
         <label for="error-title">Fehler</label>
         <input class="input" id="error-title" name="title" required>
+      </div>
+      <div class="field is-full">
+        <label for="error-causes">Moegliche Ursachen</label>
+        <textarea class="textarea" id="error-causes" name="possible_causes"></textarea>
       </div>
       <div class="field is-full">
         <label for="error-solution">Loesung</label>

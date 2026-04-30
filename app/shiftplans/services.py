@@ -69,14 +69,22 @@ def local_shift_entries(start_date, days, rhythm, employees, machines):
     if not employees:
         return entries
 
-    shift_names = ["Frueh", "Spaet", "Nacht"] if "nacht" in rhythm.lower() or "3" in rhythm else ["Frueh", "Spaet"]
+    shift_names = (
+        ["Frueh", "Spaet", "Nacht"]
+        if "nacht" in rhythm.lower() or "3" in rhythm
+        else ["Frueh", "Spaet"]
+    )
     employee_index = 0
     machines_to_plan = machines or [None]
 
     for day_offset in range(days):
         work_date = start_date + timedelta(days=day_offset)
         for machine in machines_to_plan:
-            required = machine.required_employees if machine else max(1, len(employees) // len(shift_names))
+            required = (
+                machine.required_employees
+                if machine
+                else max(1, len(employees) // len(shift_names))
+            )
             for shift_index, shift in enumerate(shift_names):
                 start_time, end_time = SHIFT_WINDOWS[shift]
                 for _ in range(required):
@@ -90,7 +98,10 @@ def local_shift_entries(start_date, days, rhythm, employees, machines):
                             "shift": shift,
                             "start_time": start_time,
                             "end_time": end_time,
-                            "notes": "Automatisch geplant: max. 8h Schicht, 11h Ruhezeit als Planungsregel.",
+                            "notes": (
+                                "Automatisch geplant: max. 8h Schicht, "
+                                "11h Ruhezeit als Planungsregel."
+                            ),
                         }
                     )
     return entries
@@ -147,10 +158,22 @@ def openai_shift_entries(start_date, days, rhythm, preferences, employees, machi
         "task": "Erstelle einen deutschen Produktions-Schichtplan als JSON.",
         "rules": [
             "Plane nur Mitarbeitende aus der Produktion.",
-            "Beruecksichtige Rhythmus, Praeferenzen, Qualifikationen und Lieblingsmaschine.",
+            (
+                "Beruecksichtige Rhythmus, Praeferenzen, "
+                "Qualifikationen und Lieblingsmaschine."
+            ),
             "Nutze pro Maschine die benoetigte Mitarbeiterzahl.",
-            "Arbeitszeitgesetz: maximal 8 Stunden pro Schicht und mindestens 11 Stunden Ruhezeit zwischen Schichten.",
-            "Antwortformat: {\"notes\":\"...\", \"entries\":[{\"employee_id\":1,\"machine_id\":1,\"work_date\":\"YYYY-MM-DD\",\"shift\":\"Frueh\",\"start_time\":\"06:00\",\"end_time\":\"14:00\",\"notes\":\"...\"}]}",
+            (
+                "Arbeitszeitgesetz: maximal 8 Stunden pro Schicht und "
+                "mindestens 11 Stunden Ruhezeit zwischen Schichten."
+            ),
+            (
+                "Antwortformat: {\"notes\":\"...\", \"entries\":["
+                "{\"employee_id\":1,\"machine_id\":1,"
+                "\"work_date\":\"YYYY-MM-DD\",\"shift\":\"Frueh\","
+                "\"start_time\":\"06:00\",\"end_time\":\"14:00\","
+                "\"notes\":\"...\"}]}"
+            ),
         ],
         "start_date": start_date.isoformat(),
         "days": days,
@@ -165,7 +188,13 @@ def openai_shift_entries(start_date, days, rhythm, preferences, employees, machi
         completion = client.chat.completions.create(
             model=current_app.config.get("OPENAI_MODEL", "gpt-4o-mini"),
             messages=[
-                {"role": "system", "content": "Du bist ein vorsichtiger Schichtplaner fuer deutsche Produktion."},
+                {
+                    "role": "system",
+                    "content": (
+                        "Du bist ein vorsichtiger Schichtplaner "
+                        "fuer deutsche Produktion."
+                    ),
+                },
                 {"role": "user", "content": json.dumps(prompt, ensure_ascii=True)},
             ],
             response_format={"type": "json_object"},
@@ -195,13 +224,23 @@ def generate_shift_plan(data):
     if not employees:
         return None, {"error": "Keine Produktionsmitarbeiter gefunden"}, 400
 
-    ai_result = openai_shift_entries(start_date, days, rhythm, preferences, employees, machines)
+    ai_result = openai_shift_entries(
+        start_date,
+        days,
+        rhythm,
+        preferences,
+        employees,
+        machines,
+    )
     if ai_result and isinstance(ai_result.get("entries"), list):
         raw_entries = ai_result["entries"]
         notes = ai_result.get("notes", "")
     else:
         raw_entries = local_shift_entries(start_date, days, rhythm, employees, machines)
-        notes = "Lokaler Fallback genutzt. Regeln: max. 8h je Schicht, 11h Ruhezeit, Produktionsmitarbeiter und Maschinenbedarf."
+        notes = (
+            "Lokaler Fallback genutzt. Regeln: max. 8h je Schicht, "
+            "11h Ruhezeit, Produktionsmitarbeiter und Maschinenbedarf."
+        )
 
     entries = validate_entries(raw_entries, employees, machines, start_date, days)
     if not entries:

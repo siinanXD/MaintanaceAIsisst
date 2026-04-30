@@ -3,9 +3,11 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
 from app.models import Department, Priority, Role, Task, TaskStatus
+from app.services.ai_service import AIServiceError, MockAIProvider, get_ai_provider
 
 
 def parse_date(value):
+    """Parse an ISO date or default to today."""
     if not value:
         return date.today()
     try:
@@ -15,6 +17,7 @@ def parse_date(value):
 
 
 def parse_enum(enum_cls, value, default=None):
+    """Parse an enum value with a helpful validation error."""
     if not value:
         return default
     try:
@@ -25,6 +28,7 @@ def parse_enum(enum_cls, value, default=None):
 
 
 def get_department_for_payload(data, user):
+    """Resolve and authorize the department from request data."""
     department_id = data.get("department_id")
     department_name = data.get("department")
     department = None
@@ -44,6 +48,7 @@ def get_department_for_payload(data, user):
 
 
 def visible_tasks_query(user):
+    """Return the query for tasks visible to the user."""
     query = Task.query
     if user.role != Role.MASTER_ADMIN:
         query = query.filter(Task.department_id == user.department_id)
@@ -51,6 +56,7 @@ def visible_tasks_query(user):
 
 
 def create_task(data, user):
+    """Create a task for the current user."""
     try:
         validate_task_payload(data, require_title=True)
         department = get_department_for_payload(data, user)
@@ -81,6 +87,7 @@ def create_task(data, user):
 
 
 def update_task(task, data, user):
+    """Update a task for the current user."""
     try:
         validate_task_payload(data, require_title=False)
         if "department_id" in data or "department" in data:
@@ -160,3 +167,55 @@ def validate_task_payload(data, require_title=True):
 
     if "title" in data and not str(data["title"]).strip():
         raise ValueError("title must not be empty")
+
+
+def suggest_task_from_text(data, user):
+    """Build a non-persisted task suggestion using the configured AI provider."""
+    text = str(data.get("text") or "").strip()
+    if not text:
+        return None, {"error": "text is required"}, 400
+    if len(text) > 2000:
+        return None, {"error": "text must not exceed 2000 characters"}, 400
+
+    user_context = {
+        "role": user.role.value,
+        "department": user.department.name if user.department else "",
+    }
+    try:
+        suggestion = get_ai_provider().suggest_task(text, user_context)
+    except AIServiceError:
+        suggestion = MockAIProvider().suggest_task(text, user_context)
+
+    normalized = normalize_task_suggestion(suggestion, text, user)
+    return normalized, None, 200
+
+
+def normalize_task_suggestion(suggestion, original_text, user):
+    """Validate and normalize an AI task suggestion."""
+    suggestion = suggestion or {}
+    department_name = suggestion.get("department")
+    if user.role != Role.MASTER_ADMIN and user.department:
+        department_name = user.department.name
+    if not Department.query.filter_by(name=department_name).first():
+        department_name = user.department.name if user.department else "Instandhaltung"
+
+    priority = suggestion.get("priority", Priority.NORMAL.value)
+    if priority not in {item.value for item in Priority}:
+        priority = Priority.NORMAL.value
+
+    status = suggestion.get("status", TaskStatus.OPEN.value)
+    if status not in {item.value for item in TaskStatus}:
+        status = TaskStatus.OPEN.value
+
+    title = str(suggestion.get("title") or original_text[:80]).strip()
+    return {
+        "title": title[:160],
+        "description": str(suggestion.get("description") or original_text).strip(),
+        "department": department_name,
+        "priority": priority,
+        "status": status,
+        "possible_cause": str(suggestion.get("possible_cause") or "").strip(),
+        "recommended_action": str(
+            suggestion.get("recommended_action") or ""
+        ).strip(),
+    }

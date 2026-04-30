@@ -12,6 +12,34 @@
 </section>
 
 <section class="dashboard-grid">
+  <article class="panel is-full" data-permission-editor hidden>
+    <div class="panel-header">
+      <div>
+        <h2 class="panel-title">Dashboard-Rechte</h2>
+        <p class="panel-meta" data-permission-editor-title>User auswaehlen</p>
+      </div>
+    </div>
+    <form data-permission-form>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Dashboard</th>
+              <th>Anzeigen</th>
+              <th>Bearbeiten</th>
+              <th>Mitarbeiterdaten</th>
+            </tr>
+          </thead>
+          <tbody data-permission-list></tbody>
+        </table>
+      </div>
+      <div class="toolbar form-actions">
+        <button class="button is-primary" type="submit">Rechte speichern</button>
+        <span class="panel-meta" data-permission-message></span>
+      </div>
+    </form>
+  </article>
+
   <article class="panel is-full">
     <div class="panel-header">
       <div>

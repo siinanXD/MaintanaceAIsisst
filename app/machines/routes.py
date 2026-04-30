@@ -1,8 +1,8 @@
 from flask import Blueprint, jsonify, request
 
 from app.extensions import db
-from app.models import InventoryMaterial, Machine, Role, ShiftPlanEntry
-from app.security import roles_required
+from app.models import InventoryMaterial, Machine, ShiftPlanEntry
+from app.security import dashboard_permission_required
 
 
 machines_bp = Blueprint("machines", __name__)
@@ -20,7 +20,7 @@ def parse_required_employees(value):
 
 
 @machines_bp.get("")
-@roles_required(Role.MASTER_ADMIN)
+@dashboard_permission_required("machines", "view")
 def list_machines():
     """Return all machines for admin views and planning forms."""
     machines = Machine.query.order_by(Machine.name.asc()).all()
@@ -28,7 +28,7 @@ def list_machines():
 
 
 @machines_bp.post("")
-@roles_required(Role.MASTER_ADMIN)
+@dashboard_permission_required("machines", "write")
 def create_machine():
     """Create a machine with production output and staffing requirement."""
     data = request.get_json(silent=True) or {}
@@ -50,7 +50,7 @@ def create_machine():
 
 
 @machines_bp.put("/<int:machine_id>")
-@roles_required(Role.MASTER_ADMIN)
+@dashboard_permission_required("machines", "write")
 def update_machine(machine_id):
     """Update machine metadata used by inventory and shift planning."""
     machine = Machine.query.get_or_404(machine_id)
@@ -69,7 +69,7 @@ def update_machine(machine_id):
 
 
 @machines_bp.delete("/<int:machine_id>")
-@roles_required(Role.MASTER_ADMIN)
+@dashboard_permission_required("machines", "write")
 def delete_machine(machine_id):
     """Delete a machine and detach related inventory and plan entries."""
     machine = Machine.query.get_or_404(machine_id)
