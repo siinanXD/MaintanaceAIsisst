@@ -239,6 +239,12 @@ def replace_user_permissions(user, payload):
         )
         if dashboard != "employees":
             access_level = "none"
+        if dashboard == "admin_users" and user.role != Role.MASTER_ADMIN:
+            values = {
+                **values,
+                "can_view": False,
+                "can_write": False,
+            }
 
         permission = existing.get(dashboard)
         if not permission:

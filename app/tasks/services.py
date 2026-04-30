@@ -60,16 +60,18 @@ def create_task(data, user):
     try:
         validate_task_payload(data, require_title=True)
         department = get_department_for_payload(data, user)
+        requested_status = parse_enum(TaskStatus, data.get("status"), TaskStatus.OPEN)
 
         task = Task(
             title=data["title"].strip(),
             description=data.get("description", ""),
             priority=parse_enum(Priority, data.get("priority"), Priority.NORMAL),
-            status=parse_enum(TaskStatus, data.get("status"), TaskStatus.OPEN),
+            status=TaskStatus.OPEN,
             due_date=parse_date(data.get("due_date")),
             department=department,
             created_by=user.id,
         )
+        update_task_status(task, requested_status, user)
     except PermissionError as exc:
         return None, {"error": str(exc)}, 403
     except ValueError as exc:
@@ -99,7 +101,8 @@ def update_task(task, data, user):
         if "priority" in data:
             task.priority = parse_enum(Priority, data["priority"], task.priority)
         if "status" in data:
-            task.status = parse_enum(TaskStatus, data["status"], task.status)
+            status = parse_enum(TaskStatus, data["status"], task.status)
+            update_task_status(task, status, user)
         if "due_date" in data:
             task.due_date = parse_date(data["due_date"])
     except PermissionError as exc:
@@ -114,6 +117,32 @@ def update_task(task, data, user):
         return None, {"error": "Database error while updating task"}, 500
 
     return task, None, 200
+
+
+def update_task_status(task, new_status, user):
+    """Apply a status change and keep workflow tracking fields consistent."""
+    if task.status == new_status:
+        return
+
+    task.status = new_status
+    if new_status == TaskStatus.OPEN:
+        task.current_worker = None
+        task.started_at = None
+        task.completed_by_user = None
+        task.completed_at = None
+    elif new_status == TaskStatus.IN_PROGRESS:
+        task.current_worker = user
+        task.started_at = task.started_at or datetime.utcnow()
+        task.completed_by_user = None
+        task.completed_at = None
+    elif new_status == TaskStatus.DONE:
+        task.current_worker = task.current_worker or user
+        task.started_at = task.started_at or datetime.utcnow()
+        task.completed_by_user = user
+        task.completed_at = datetime.utcnow()
+    elif new_status == TaskStatus.CANCELLED:
+        task.completed_by_user = None
+        task.completed_at = None
 
 
 def start_task(task, user):

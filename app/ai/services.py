@@ -53,6 +53,25 @@ def looks_like_employee_question(message):
     return any(word in text for word in employee_words)
 
 
+def looks_like_employee_count_question(message):
+    """Check whether a message asks for the number of employees."""
+    text = message.lower()
+    count_words = ["wie viele", "wieviele", "anzahl", "count", "many"]
+    employee_words = ["mitarbeiter", "personal", "employees"]
+    return (
+        any(word in text for word in count_words)
+        and any(word in text for word in employee_words)
+    )
+
+
+def can_read_employee_context(user):
+    """Return whether the user may read employee context through the assistant."""
+    return (
+        has_dashboard_permission(user, "employees", "view")
+        and employee_access_level(user) != "none"
+    )
+
+
 def format_tasks_today(user):
     """Return a formatted answer and structured data for today's visible tasks."""
     if not has_dashboard_permission(user, "tasks", "view"):
@@ -147,13 +166,10 @@ def build_catalog_context(user, preferred_entries):
 
 def build_employee_context(user):
     """Build a filtered employee context for the AI assistant."""
-    if not has_dashboard_permission(user, "employees", "view"):
+    if not can_read_employee_context(user):
         return "Keine Berechtigung fuer Mitarbeiterdaten.", []
 
     access_level = employee_access_level(user)
-    if access_level == "none":
-        return "Keine Berechtigung fuer Mitarbeiterdaten.", []
-
     employees = Employee.query.order_by(Employee.name.asc()).limit(30).all()
     if not employees:
         return "Keine sichtbaren Mitarbeiterdaten vorhanden.", []
@@ -187,6 +203,19 @@ def build_employee_context(user):
             )
         lines.append(" | ".join(parts))
     return "\n".join(lines), [employee.to_dict(access_level) for employee in employees]
+
+
+def format_employee_count(user):
+    """Return a local answer for employee count questions."""
+    if not can_read_employee_context(user):
+        return "Dir fehlt die Berechtigung, Mitarbeiterdaten ueber die KI abzufragen.", []
+
+    count = Employee.query.count()
+    if count == 1:
+        answer = "Es ist 1 Mitarbeiter im System erfasst."
+    else:
+        answer = f"Es sind {count} Mitarbeiter im System erfasst."
+    return answer, {"count": count}
 
 
 def fallback_error_answer(entries):
@@ -284,8 +313,22 @@ def answer_chat(message, user):
             "data": data,
         }
 
+    if looks_like_employee_count_question(message):
+        answer, data = format_employee_count(user)
+        status = "local_answer" if data else "permission_denied"
+        return {
+            "type": "employee_count" if data else "permission_denied",
+            "answer": answer,
+            "diagnostics": ai_diagnostics(status),
+            "data": data,
+        }
+
     employee_context, employee_data = build_employee_context(user)
-    if looks_like_employee_question(message) and not employee_data:
+    if (
+        looks_like_employee_question(message)
+        and not employee_data
+        and not can_read_employee_context(user)
+    ):
         answer = "Dir fehlt die Berechtigung, Mitarbeiterdaten ueber die KI abzufragen."
         return {
             "type": "permission_denied",

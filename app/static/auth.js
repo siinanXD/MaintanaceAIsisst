@@ -69,6 +69,38 @@
     return DASHBOARD_DESTINATIONS[firstDashboard] || "/login";
   }
 
+  function dashboardForPath(pathname) {
+    return DASHBOARD_PATHS[pathname] || null;
+  }
+
+  function currentPathWithSearch() {
+    return window.location.pathname + window.location.search;
+  }
+
+  function loginUrlFor(path) {
+    const params = new URLSearchParams();
+    params.set("next", path || currentPathWithSearch());
+    return "/login?" + params.toString();
+  }
+
+  function destinationForUserOrNext(user, nextPath) {
+    let normalizedNext = nextPath || "";
+    try {
+      const nextUrl = new URL(normalizedNext, window.location.origin);
+      if (nextUrl.origin !== window.location.origin) {
+        return destinationForUser(user);
+      }
+      normalizedNext = nextUrl.pathname + nextUrl.search;
+    } catch (error) {
+      return destinationForUser(user);
+    }
+    const dashboard = dashboardForPath(new URL(normalizedNext, window.location.origin).pathname);
+    if (dashboard && canView(user, dashboard)) {
+      return normalizedNext;
+    }
+    return destinationForUser(user);
+  }
+
   function displayName(user) {
     if (!user) return "Benutzer";
     const source = user.username || user.email || "Eingeloggt";
@@ -110,7 +142,7 @@
     window.dispatchEvent(new Event("maintenance-auth-changed"));
     updateAuthUi();
     if (options && options.redirect && window.location.pathname !== "/login") {
-      window.location.href = "/login";
+      window.location.href = loginUrlFor(currentPathWithSearch());
     }
   }
 
@@ -203,6 +235,10 @@
     });
 
     const requiredDashboard = DASHBOARD_PATHS[window.location.pathname];
+    if (!loggedIn && requiredDashboard) {
+      window.location.href = loginUrlFor(currentPathWithSearch());
+      return;
+    }
     if (loggedIn && requiredDashboard && !canView(user, requiredDashboard)) {
       window.location.href = destinationForUser(user);
     }
@@ -219,6 +255,16 @@
       window.localStorage.setItem(CONTRAST_KEY, String(!highContrastEnabled()));
       applyContrastPreference();
     }
+
+    const link = event.target.closest("a[href]");
+    if (link && !hasToken()) {
+      const linkUrl = new URL(link.href, window.location.origin);
+      const dashboard = dashboardForPath(linkUrl.pathname);
+      if (linkUrl.origin === window.location.origin && dashboard) {
+        event.preventDefault();
+        window.location.href = loginUrlFor(linkUrl.pathname + linkUrl.search);
+      }
+    }
   });
 
   window.addEventListener("storage", () => {
@@ -233,6 +279,7 @@
     user: currentUser,
     clearSession,
     destinationForUser,
+    destinationForUserOrNext,
     refreshUser,
     refreshUserInBackground,
     ensureReady: ensureAuthReady,

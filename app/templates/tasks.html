@@ -104,6 +104,15 @@
           </select>
         </div>
         <div class="field">
+          <label for="task-status">Status</label>
+          <select class="select select-bordered" id="task-status" name="status">
+            <option value="open" selected>open</option>
+            <option value="in_progress">in_progress</option>
+            <option value="done">done</option>
+            <option value="cancelled">cancelled</option>
+          </select>
+        </div>
+        <div class="field">
           <label for="task-due-date">Faellig am</label>
           <input class="input input-bordered" id="task-due-date" name="due_date" type="date">
         </div>
@@ -113,7 +122,8 @@
         </div>
       </div>
       <div class="toolbar form-actions">
-        <button class="btn btn-primary" type="submit">Task speichern</button>
+        <button class="btn btn-primary" type="submit" data-task-submit-button>Task speichern</button>
+        <button class="btn btn-ghost" type="button" data-task-edit-cancel hidden>Bearbeiten abbrechen</button>
         <span class="panel-meta" data-task-message></span>
       </div>
     </div>

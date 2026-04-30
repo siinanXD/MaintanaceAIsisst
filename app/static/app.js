@@ -39,6 +39,8 @@
 
   const DASHBOARD_KEYS = Object.keys(DASHBOARD_LABELS);
   const EMPLOYEE_ACCESS_LEVELS = ["none", "basic", "shift", "confidential"];
+  const TASK_PRIORITIES = ["urgent", "soon", "normal"];
+  const TASK_STATUSES = ["open", "in_progress", "done", "cancelled"];
 
   async function api(path, options) {
     const headers = Object.assign({ "Content-Type": "application/json" }, options && options.headers);
@@ -139,6 +141,25 @@
     return button;
   }
 
+  function setSelectOptions(select, options, selectedValue) {
+    select.innerHTML = "";
+    options.forEach((value) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = value;
+      select.appendChild(option);
+    });
+    select.value = selectedValue || options[0] || "";
+  }
+
+  function taskFormPayload(form) {
+    const data = Object.fromEntries(new FormData(form).entries());
+    Object.keys(data).forEach((key) => {
+      if (data[key] === "") delete data[key];
+    });
+    return data;
+  }
+
   async function initDepartments() {
     const selects = document.querySelectorAll("select[name='department']");
     if (!selects.length || !token()) return;
@@ -165,8 +186,34 @@
     const suggestForm = document.querySelector("[data-task-suggest-form]");
     const suggestionBox = document.querySelector("[data-task-suggestion]");
     const applySuggestion = document.querySelector("[data-apply-task-suggestion]");
+    const submitButton = document.querySelector("[data-task-submit-button]");
+    const cancelEditButton = document.querySelector("[data-task-edit-cancel]");
     if (!list || !form || !token()) return;
     let currentSuggestion = null;
+    let editingTaskId = null;
+
+    function resetTaskForm() {
+      editingTaskId = null;
+      form.reset();
+      if (form.elements.status) form.elements.status.value = "open";
+      if (form.elements.priority) form.elements.priority.value = "normal";
+      if (submitButton) submitButton.textContent = "Task speichern";
+      if (cancelEditButton) cancelEditButton.hidden = true;
+    }
+
+    async function editTask(task) {
+      editingTaskId = task.id;
+      form.elements.title.value = task.title || "";
+      form.elements.department.value = (task.department && task.department.name) || "";
+      form.elements.priority.value = task.priority || "normal";
+      if (form.elements.status) form.elements.status.value = task.status || "open";
+      form.elements.due_date.value = task.due_date || "";
+      form.elements.description.value = task.description || "";
+      if (submitButton) submitButton.textContent = "Task aktualisieren";
+      if (cancelEditButton) cancelEditButton.hidden = false;
+      form.scrollIntoView({ behavior: "smooth", block: "start" });
+      form.elements.title.focus();
+    }
 
     async function runTaskAction(task, action) {
       const endpoint = "/api/tasks/" + task.id + "/" + action;
@@ -231,6 +278,9 @@
         complete.className = "btn btn-success btn-sm text-white";
         actions.appendChild(complete);
       }
+      if (canWrite("tasks")) {
+        actions.appendChild(actionButton("Bearbeiten", () => editTask(task)));
+      }
 
       card.append(top, description, meta, actions);
       return card;
@@ -248,14 +298,29 @@
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      const data = Object.fromEntries(new FormData(form).entries());
-      await api("/api/tasks", { method: "POST", body: JSON.stringify(data) });
-      form.reset();
-      await initDepartments();
-      await load();
+      const data = taskFormPayload(form);
+      const wasEditing = Boolean(editingTaskId);
+      const path = editingTaskId ? "/api/tasks/" + editingTaskId : "/api/tasks";
+      const method = editingTaskId ? "PUT" : "POST";
       const message = document.querySelector("[data-task-message]");
-      if (message) message.textContent = "Task gespeichert.";
+      try {
+        await api(path, { method, body: JSON.stringify(data) });
+        resetTaskForm();
+        await initDepartments();
+        await load();
+        if (message) message.textContent = wasEditing ? "Task aktualisiert." : "Task gespeichert.";
+      } catch (error) {
+        if (message) message.textContent = error.message;
+      }
     });
+
+    if (cancelEditButton) {
+      cancelEditButton.addEventListener("click", () => {
+        resetTaskForm();
+        const message = document.querySelector("[data-task-message]");
+        if (message) message.textContent = "Bearbeitung abgebrochen.";
+      });
+    }
 
     if (suggestForm && suggestionBox) {
       suggestForm.addEventListener("submit", async (event) => {
@@ -289,6 +354,7 @@
         form.elements.title.value = values.title || "";
         form.elements.department.value = values.department || "";
         form.elements.priority.value = values.priority || "normal";
+        if (form.elements.status) form.elements.status.value = values.status || "open";
         form.elements.description.value = [
           values.description,
           values.possible_cause ? "Moegliche Ursache: " + values.possible_cause : "",
@@ -469,14 +535,21 @@
         });
         payload.permissions.admin_users.can_view = selectedUser.role === "master_admin";
         payload.permissions.admin_users.can_write = selectedUser.role === "master_admin";
-        const updated = await api("/api/admin/users/" + selectedUser.id + "/permissions", {
-          method: "PUT",
-          body: JSON.stringify(payload)
-        });
-        selectedUser = updated;
-        renderPermissionEditor(updated);
-        await load();
-        if (permissionMessage) permissionMessage.textContent = "Rechte gespeichert.";
+        try {
+          const updated = await api("/api/admin/users/" + selectedUser.id + "/permissions", {
+            method: "PUT",
+            body: JSON.stringify(payload)
+          });
+          const currentSessionUser = user();
+          if (currentSessionUser && currentSessionUser.id === updated.id && window.maintenanceAuth) {
+            await window.maintenanceAuth.refreshUser();
+          }
+          selectedUser = updated;
+          await load();
+          if (permissionMessage) permissionMessage.textContent = "Rechte gespeichert.";
+        } catch (error) {
+          if (permissionMessage) permissionMessage.textContent = error.message;
+        }
       });
     }
 
@@ -535,6 +608,13 @@
           actions
         ]));
       });
+      if (selectedUser) {
+        const freshSelectedUser = users.find((item) => item.id === selectedUser.id);
+        if (freshSelectedUser) {
+          renderPermissionEditor(freshSelectedUser);
+        }
+      }
+      return users;
     }
 
     await load();
@@ -543,6 +623,7 @@
   async function initEmployees() {
     const list = document.querySelector("[data-employee-list]");
     const form = document.querySelector("[data-employee-form]");
+    const message = document.querySelector("[data-employee-message]");
     if (!list || !form || !token()) return;
 
     async function uploadDocument(employeeId, file) {
@@ -553,7 +634,25 @@
         headers: { "Authorization": "Bearer " + token() },
         body: formData
       });
-      if (!response.ok) throw new Error("Upload failed");
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error((errorData && errorData.error) || "Upload fehlgeschlagen");
+      }
+      return response.json();
+    }
+
+    async function downloadEmployeeDocument(documentItem) {
+      const response = await fetch(documentItem.download_url, {
+        headers: { "Authorization": "Bearer " + token() }
+      });
+      if (!response.ok) throw new Error("Download fehlgeschlagen");
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = documentItem.original_filename;
+      link.click();
+      window.URL.revokeObjectURL(url);
     }
 
     async function load() {
@@ -566,20 +665,46 @@
         const links = document.createElement("div");
         links.className = "document-links";
         (employee.documents || []).forEach((document) => {
-          const link = document.createElement("a");
-          link.href = document.download_url;
-          link.textContent = document.original_filename;
-          link.target = "_blank";
-          links.appendChild(link);
+          const download = actionButton(document.original_filename, async () => {
+            try {
+              await downloadEmployeeDocument(document);
+            } catch (error) {
+              if (message) message.textContent = error.message;
+            }
+          });
+          download.className = "btn btn-link btn-sm justify-start px-0";
+          links.appendChild(download);
         });
+        if (!(employee.documents || []).length) {
+          const empty = document.createElement("span");
+          empty.className = "panel-meta";
+          empty.textContent = "Keine Dokumente";
+          links.appendChild(empty);
+        }
 
         if (canWrite("employees") && employeeAccessLevel() === "confidential") {
           const input = document.createElement("input");
           input.type = "file";
+          input.multiple = true;
           input.addEventListener("change", async () => {
             if (!input.files.length) return;
-            await uploadDocument(employee.id, input.files[0]);
-            await load();
+            input.disabled = true;
+            if (message) message.textContent = "Dokumente werden hochgeladen...";
+            try {
+              const files = Array.from(input.files);
+              for (const file of files) {
+                await uploadDocument(employee.id, file);
+              }
+              input.value = "";
+              await load();
+              if (message) message.textContent = files.length === 1
+                ? "Dokument hochgeladen."
+                : files.length + " Dokumente hochgeladen.";
+            } catch (error) {
+              if (message) message.textContent = error.message;
+            } finally {
+              input.disabled = false;
+            }
           });
           docs.append(links, input);
         } else {
@@ -606,7 +731,6 @@
       await api("/api/employees", { method: "POST", body: JSON.stringify(data) });
       form.reset();
       await load();
-      const message = document.querySelector("[data-employee-message]");
       if (message) message.textContent = "Mitarbeiter gespeichert.";
     });
 
@@ -1088,6 +1212,94 @@
       return item;
     }
 
+    function taskEditField(label, field) {
+      const wrapper = document.createElement("label");
+      wrapper.className = "field";
+      const labelElement = document.createElement("span");
+      labelElement.textContent = label;
+      wrapper.append(labelElement, field);
+      return wrapper;
+    }
+
+    function taskEditForm(task) {
+      const editForm = document.createElement("form");
+      editForm.className = "task-detail-row md:col-span-2";
+      editForm.dataset.taskEditForm = "true";
+
+      const title = document.createElement("input");
+      title.className = "input input-bordered";
+      title.name = "title";
+      title.required = true;
+      title.value = task.title || "";
+
+      const department = document.createElement("input");
+      department.className = "input input-bordered";
+      department.name = "department";
+      department.required = true;
+      department.value = (task.department && task.department.name) || "";
+
+      const priority = document.createElement("select");
+      priority.className = "select select-bordered";
+      priority.name = "priority";
+      setSelectOptions(priority, TASK_PRIORITIES, task.priority || "normal");
+
+      const status = document.createElement("select");
+      status.className = "select select-bordered";
+      status.name = "status";
+      setSelectOptions(status, TASK_STATUSES, task.status || "open");
+
+      const dueDate = document.createElement("input");
+      dueDate.className = "input input-bordered";
+      dueDate.name = "due_date";
+      dueDate.type = "date";
+      dueDate.value = task.due_date || "";
+
+      const description = document.createElement("textarea");
+      description.className = "textarea textarea-bordered";
+      description.name = "description";
+      description.value = task.description || "";
+
+      const fields = document.createElement("div");
+      fields.className = "form-grid";
+      fields.append(
+        taskEditField("Titel", title),
+        taskEditField("Bereich", department),
+        taskEditField("Prioritaet", priority),
+        taskEditField("Status", status),
+        taskEditField("Faellig am", dueDate),
+        taskEditField("Beschreibung", description)
+      );
+
+      const actions = document.createElement("div");
+      actions.className = "toolbar form-actions";
+      const submit = document.createElement("button");
+      submit.className = "btn btn-primary";
+      submit.type = "submit";
+      submit.textContent = "Aenderungen speichern";
+      actions.appendChild(submit);
+
+      editForm.append(fields, actions);
+      editForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        try {
+          submit.disabled = true;
+          await api("/api/tasks/" + task.id, {
+            method: "PUT",
+            body: JSON.stringify(taskFormPayload(editForm))
+          });
+          const updatedTask = await api("/api/tasks/" + task.id);
+          renderTaskDetail(updatedTask);
+          await loadDashboardTasks();
+          showTaskMessage("Task aktualisiert.");
+        } catch (error) {
+          showTaskMessage(error.message, true);
+        } finally {
+          submit.disabled = false;
+        }
+      });
+      return editForm;
+    }
+
     function showTaskMessage(message, isError) {
       if (!taskDetailMessage) return;
       taskDetailMessage.textContent = message;
@@ -1139,6 +1351,9 @@
         detailRow("Erledigt von", formatUser(task.completed_by_user)),
         detailRow("Erledigt am", formatDateTime(task.completed_at))
       );
+      if (canWrite("tasks")) {
+        taskDetailBody.appendChild(taskEditForm(task));
+      }
       updateTaskActionButtons(task);
       showTaskMessage("");
     }
@@ -1224,6 +1439,9 @@
       const actions = document.createElement("div");
       actions.className = "cockpit-task-actions";
       actions.appendChild(actionButton("Details", () => openTaskDetail(task.id)));
+      if (canWrite("tasks")) {
+        actions.appendChild(actionButton("Bearbeiten", () => openTaskDetail(task.id)));
+      }
       if (canWrite("tasks") && task.status === "open") {
         const start = actionButton("Start Task", () => runTaskAction(task.id, "start"));
         start.className = "btn btn-primary btn-sm";
