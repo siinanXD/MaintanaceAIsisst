@@ -3,60 +3,68 @@
 {% block title %}Login - Maintenance Assistant{% endblock %}
 
 {% block content %}
-<section class="topbar">
-  <div>
-    <p class="page-kicker">Zugang</p>
-    <h1 class="page-title">Einloggen</h1>
-    <p class="page-description">
-      Diese Seite ist eine visuelle Login-Maske. Die echte Anmeldung laeuft ueber <code>/api/auth/login</code>.
-    </p>
+<section class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
+  <div class="page-hero mb-0">
+    <div>
+      <p class="page-kicker">Zugang</p>
+      <h1 class="page-title">Einloggen</h1>
+      <p class="page-description">
+        Melde dich an, um Wartungsaufgaben, Fehlerwissen und KI-Funktionen rollenbasiert zu nutzen.
+      </p>
+    </div>
   </div>
+
+  <form class="card app-card" method="post" action="/api/auth/login" data-login-form>
+    <div class="card-body">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Benutzerzugang</h2>
+          <p class="panel-meta">E-Mail oder Benutzername plus Passwort</p>
+        </div>
+      </div>
+      <div class="field">
+        <label for="login">Login</label>
+        <input class="input input-bordered" id="login" name="login" placeholder="admin@example.com">
+      </div>
+      <div class="field">
+        <label for="password">Passwort</label>
+        <input class="input input-bordered" id="password" name="password" type="password" placeholder="Passwort">
+      </div>
+      <div class="toolbar">
+        <button class="btn btn-primary" type="submit">Anmelden</button>
+        <a class="btn btn-ghost" href="/api-docs">API-Protokoll</a>
+      </div>
+      <p class="panel-meta" data-login-message></p>
+    </div>
+  </form>
 </section>
 
-<section class="dashboard-grid">
-  <form class="panel is-wide" method="post" action="/api/auth/login" data-login-form>
-    <div class="panel-header">
-      <div>
-        <h2 class="panel-title">Benutzerzugang</h2>
-        <p class="panel-meta">E-Mail oder Benutzername plus Passwort</p>
+<section class="dashboard-grid mt-6">
+  <aside class="card app-card lg:col-span-4">
+    <div class="card-body">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Rollen</h2>
+          <p class="panel-meta">Zugriff nach Bereich</p>
+        </div>
       </div>
+      <p class="stat-label">master_admin, it, verwaltung, instandhaltung, produktion</p>
     </div>
-    <div class="field">
-      <label for="login">Login</label>
-      <input class="input" id="login" name="login" placeholder="admin@example.com">
-    </div>
-    <div class="field" style="margin-top: 14px;">
-      <label for="password">Passwort</label>
-      <input class="input" id="password" name="password" type="password" placeholder="Passwort">
-    </div>
-    <div class="toolbar" style="margin-top: 18px;">
-      <button class="button is-primary" type="submit">Anmelden</button>
-      <a class="button" href="/api-docs">API-Protokoll</a>
-    </div>
-    <p class="panel-meta" data-login-message style="margin-top: 14px;"></p>
-  </form>
-
-  <aside class="panel">
-    <div class="panel-header">
-      <div>
-        <h2 class="panel-title">Rollen</h2>
-        <p class="panel-meta">Zugriff nach Bereich</p>
-      </div>
-    </div>
-    <p class="stat-label">master_admin, it, verwaltung, instandhaltung, produktion</p>
   </aside>
 
-  <article class="panel is-wide login-state-panel" data-logged-in-panel hidden>
-    <div class="panel-header">
-      <div>
-        <h2 class="panel-title">Du bist eingeloggt</h2>
-        <p class="panel-meta">Die Sitzung ist aktiv. Oben rechts kannst du dich wieder abmelden.</p>
+  <article class="card app-card lg:col-span-8" data-logged-in-panel hidden>
+    <div class="card-body">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Du bist eingeloggt</h2>
+          <p class="panel-meta">Die Sitzung ist aktiv. Oben rechts kannst du dich wieder abmelden.</p>
+        </div>
+        <span class="badge badge-success badge-outline">aktiv</span>
       </div>
-      <span class="badge is-normal">aktiv</span>
-    </div>
-    <div class="toolbar">
-      <a class="button is-primary" href="/">Zum Dashboard</a>
-      <button class="button" type="button" data-logout-button>Logout</button>
+      <div class="toolbar">
+        <a class="btn btn-primary" href="/">Zum Dashboard</a>
+        <button class="btn btn-ghost" type="button" data-logout-button>Logout</button>
+      </div>
     </div>
   </article>
 </section>

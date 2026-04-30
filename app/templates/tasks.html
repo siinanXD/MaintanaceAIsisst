@@ -3,7 +3,7 @@
 {% block title %}Tasks - Maintenance Assistant{% endblock %}
 
 {% block content %}
-<section class="topbar">
+<section class="page-hero">
   <div>
     <p class="page-kicker">Aufgaben</p>
     <h1 class="page-title">Tasks</h1>
@@ -12,128 +12,122 @@
 </section>
 
 <section class="dashboard-grid">
-  <article class="panel is-wide" data-permission-write="tasks">
-    <div class="panel-header">
-      <div>
-        <h2 class="panel-title">KI-Task vorschlagen</h2>
-        <p class="panel-meta">Freitext analysieren und als bearbeitbaren Task uebernehmen</p>
+  <article class="card app-card lg:col-span-6" data-permission-write="tasks">
+    <div class="card-body">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">KI-Task vorschlagen</h2>
+          <p class="panel-meta">Freitext analysieren und als bearbeitbaren Task uebernehmen</p>
+        </div>
+        <span class="badge badge-info badge-outline">KI</span>
       </div>
-    </div>
-    <form data-task-suggest-form>
-      <div class="field">
-        <label for="task-suggest-text">Beschreibung</label>
-        <textarea class="textarea" id="task-suggest-text" name="text" placeholder="z. B. Maschine 3 macht laute Geraeusche am Lager."></textarea>
-      </div>
-      <div class="toolbar form-actions">
-        <button class="button" type="submit">KI-Vorschlag erstellen</button>
-        <span class="panel-meta" data-task-suggest-message></span>
-      </div>
-    </form>
-    <div class="suggestion-box" data-task-suggestion hidden>
-      <div class="form-grid">
+      <form data-task-suggest-form>
         <div class="field">
-          <label for="suggest-title">Titel</label>
-          <input class="input" id="suggest-title" data-suggest-field="title">
+          <label for="task-suggest-text">Beschreibung</label>
+          <textarea class="textarea textarea-bordered" id="task-suggest-text" name="text" placeholder="z. B. Maschine 3 macht laute Geraeusche am Lager."></textarea>
         </div>
-        <div class="field">
-          <label for="suggest-department">Bereich</label>
-          <input class="input" id="suggest-department" data-suggest-field="department">
+        <div class="toolbar form-actions">
+          <button class="btn btn-outline btn-primary" type="submit">KI-Vorschlag erstellen</button>
+          <span class="panel-meta" data-task-suggest-message></span>
         </div>
-        <div class="field">
-          <label for="suggest-priority">Prioritaet</label>
-          <select class="select" id="suggest-priority" data-suggest-field="priority">
-            <option value="urgent">urgent</option>
-            <option value="soon">soon</option>
-            <option value="normal">normal</option>
-          </select>
+      </form>
+      <div class="suggestion-box" data-task-suggestion hidden>
+        <div class="form-grid">
+          <div class="field">
+            <label for="suggest-title">Titel</label>
+            <input class="input input-bordered" id="suggest-title" data-suggest-field="title">
+          </div>
+          <div class="field">
+            <label for="suggest-department">Bereich</label>
+            <input class="input input-bordered" id="suggest-department" data-suggest-field="department">
+          </div>
+          <div class="field">
+            <label for="suggest-priority">Prioritaet</label>
+            <select class="select select-bordered" id="suggest-priority" data-suggest-field="priority">
+              <option value="urgent">urgent</option>
+              <option value="soon">soon</option>
+              <option value="normal">normal</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="suggest-status">Status</label>
+            <select class="select select-bordered" id="suggest-status" data-suggest-field="status">
+              <option value="open">open</option>
+              <option value="in_progress">in_progress</option>
+              <option value="done">done</option>
+              <option value="cancelled">cancelled</option>
+            </select>
+          </div>
+          <div class="field is-full">
+            <label for="suggest-description">Beschreibung</label>
+            <textarea class="textarea textarea-bordered" id="suggest-description" data-suggest-field="description"></textarea>
+          </div>
+          <div class="field">
+            <label for="suggest-cause">Moegliche Ursache</label>
+            <textarea class="textarea textarea-bordered" id="suggest-cause" data-suggest-field="possible_cause"></textarea>
+          </div>
+          <div class="field">
+            <label for="suggest-action">Naechste Aktion</label>
+            <textarea class="textarea textarea-bordered" id="suggest-action" data-suggest-field="recommended_action"></textarea>
+          </div>
         </div>
-        <div class="field">
-          <label for="suggest-status">Status</label>
-          <select class="select" id="suggest-status" data-suggest-field="status">
-            <option value="open">open</option>
-            <option value="in_progress">in_progress</option>
-            <option value="done">done</option>
-            <option value="cancelled">cancelled</option>
-          </select>
+        <div class="toolbar form-actions">
+          <button class="btn btn-primary" type="button" data-apply-task-suggestion>In Taskformular uebernehmen</button>
         </div>
-        <div class="field is-full">
-          <label for="suggest-description">Beschreibung</label>
-          <textarea class="textarea" id="suggest-description" data-suggest-field="description"></textarea>
-        </div>
-        <div class="field">
-          <label for="suggest-cause">Moegliche Ursache</label>
-          <textarea class="textarea" id="suggest-cause" data-suggest-field="possible_cause"></textarea>
-        </div>
-        <div class="field">
-          <label for="suggest-action">Naechste Aktion</label>
-          <textarea class="textarea" id="suggest-action" data-suggest-field="recommended_action"></textarea>
-        </div>
-      </div>
-      <div class="toolbar form-actions">
-        <button class="button is-primary" type="button" data-apply-task-suggestion>In Taskformular uebernehmen</button>
       </div>
     </div>
   </article>
 
-  <form class="panel is-wide" data-task-form data-permission-write="tasks">
-    <div class="panel-header">
-      <div>
-        <h2 class="panel-title">Task anlegen</h2>
-        <p class="panel-meta">Bereich, Ueberschrift, Beschreibung und Faelligkeit</p>
+  <form class="card app-card lg:col-span-6" data-task-form data-permission-write="tasks">
+    <div class="card-body">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Task anlegen</h2>
+          <p class="panel-meta">Bereich, Ueberschrift, Beschreibung und Faelligkeit</p>
+        </div>
       </div>
-    </div>
-    <div class="form-grid">
-      <div class="field">
-        <label for="task-department">Bereich</label>
-        <select class="select" id="task-department" name="department"></select>
+      <div class="form-grid">
+        <div class="field">
+          <label for="task-department">Bereich</label>
+          <select class="select select-bordered" id="task-department" name="department"></select>
+        </div>
+        <div class="field">
+          <label for="task-title">Ueberschrift</label>
+          <input class="input input-bordered" id="task-title" name="title" required>
+        </div>
+        <div class="field">
+          <label for="task-priority">Prioritaet</label>
+          <select class="select select-bordered" id="task-priority" name="priority">
+            <option value="urgent">urgent</option>
+            <option value="soon">soon</option>
+            <option value="normal" selected>normal</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="task-due-date">Faellig am</label>
+          <input class="input input-bordered" id="task-due-date" name="due_date" type="date">
+        </div>
+        <div class="field is-full">
+          <label for="task-description">Beschreibung</label>
+          <textarea class="textarea textarea-bordered" id="task-description" name="description"></textarea>
+        </div>
       </div>
-      <div class="field">
-        <label for="task-title">Ueberschrift</label>
-        <input class="input" id="task-title" name="title" required>
+      <div class="toolbar form-actions">
+        <button class="btn btn-primary" type="submit">Task speichern</button>
+        <span class="panel-meta" data-task-message></span>
       </div>
-      <div class="field">
-        <label for="task-priority">Prioritaet</label>
-        <select class="select" id="task-priority" name="priority">
-          <option value="urgent">urgent</option>
-          <option value="soon">soon</option>
-          <option value="normal" selected>normal</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="task-due-date">Faellig am</label>
-        <input class="input" id="task-due-date" name="due_date" type="date">
-      </div>
-      <div class="field is-full">
-        <label for="task-description">Beschreibung</label>
-        <textarea class="textarea" id="task-description" name="description"></textarea>
-      </div>
-    </div>
-    <div class="toolbar form-actions">
-      <button class="button is-primary" type="submit">Task speichern</button>
-      <span class="panel-meta" data-task-message></span>
     </div>
   </form>
 
-  <article class="panel is-full">
-    <div class="panel-header">
-      <div>
-        <h2 class="panel-title">Taskliste</h2>
-        <p class="panel-meta">Admin sieht alles, Bereiche sehen ihre eigenen Tasks</p>
+  <article class="card app-card lg:col-span-12">
+    <div class="card-body">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Taskliste</h2>
+          <p class="panel-meta">Admin sieht alles, Bereiche sehen ihre eigenen Tasks</p>
+        </div>
       </div>
-    </div>
-    <div class="table-wrap">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>Titel</th>
-            <th>Bereich</th>
-            <th>Prioritaet</th>
-            <th>Status</th>
-            <th>Faellig</th>
-          </tr>
-        </thead>
-        <tbody data-task-list></tbody>
-      </table>
+      <div class="task-card-grid" data-task-list></div>
     </div>
   </article>
 </section>

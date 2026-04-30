@@ -3,7 +3,7 @@
 {% block title %}Fehlerliste - Maintenance Assistant{% endblock %}
 
 {% block content %}
-<section class="topbar">
+<section class="page-hero">
   <div>
     <p class="page-kicker">Fehlerwissen</p>
     <h1 class="page-title">Fehlerliste</h1>
@@ -12,111 +12,118 @@
 </section>
 
 <section class="dashboard-grid">
-  <article class="panel is-wide" data-permission-write="errors">
-    <div class="panel-header">
-      <div>
-        <h2 class="panel-title">KI-Fehleranalyse</h2>
-        <p class="panel-meta">Beschreibung analysieren und Vorschlag uebernehmen</p>
+  <article class="card app-card lg:col-span-6" data-permission-write="errors">
+    <div class="card-body">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">KI-Fehleranalyse</h2>
+          <p class="panel-meta">Beschreibung analysieren und Vorschlag uebernehmen</p>
+        </div>
+        <span class="badge badge-info badge-outline">KI</span>
       </div>
-    </div>
-    <form data-error-analyze-form>
-      <div class="field">
-        <label for="error-analysis-description">Fehlerbeschreibung</label>
-        <textarea class="textarea" id="error-analysis-description" name="description" placeholder="z. B. Sensor meldet sporadisch kein Signal an Maschine 3."></textarea>
-      </div>
-      <div class="toolbar form-actions">
-        <button class="button" type="submit">KI-Analyse erstellen</button>
-        <span class="panel-meta" data-error-analyze-message></span>
-      </div>
-    </form>
-    <div class="suggestion-box" data-error-analysis hidden>
-      <div class="form-grid">
+      <form data-error-analyze-form>
         <div class="field">
-          <label for="analysis-machine">Maschine</label>
-          <input class="input" id="analysis-machine" data-error-analysis-field="machine">
+          <label for="error-analysis-description">Fehlerbeschreibung</label>
+          <textarea class="textarea textarea-bordered" id="error-analysis-description" name="description" placeholder="z. B. Sensor meldet sporadisch kein Signal an Maschine 3."></textarea>
         </div>
-        <div class="field">
-          <label for="analysis-department">Bereich</label>
-          <input class="input" id="analysis-department" data-error-analysis-field="department">
+        <div class="toolbar form-actions">
+          <button class="btn btn-outline btn-primary" type="submit">KI-Analyse erstellen</button>
+          <span class="panel-meta" data-error-analyze-message></span>
         </div>
-        <div class="field is-full">
-          <label for="analysis-title">Fehler</label>
-          <input class="input" id="analysis-title" data-error-analysis-field="title">
+      </form>
+      <div class="suggestion-box" data-error-analysis hidden>
+        <div class="form-grid">
+          <div class="field">
+            <label for="analysis-machine">Maschine</label>
+            <input class="input input-bordered" id="analysis-machine" data-error-analysis-field="machine">
+          </div>
+          <div class="field">
+            <label for="analysis-department">Bereich</label>
+            <input class="input input-bordered" id="analysis-department" data-error-analysis-field="department">
+          </div>
+          <div class="field is-full">
+            <label for="analysis-title">Fehler</label>
+            <input class="input input-bordered" id="analysis-title" data-error-analysis-field="title">
+          </div>
+          <div class="field">
+            <label for="analysis-causes">Moegliche Ursachen</label>
+            <textarea class="textarea textarea-bordered" id="analysis-causes" data-error-analysis-field="possible_causes"></textarea>
+          </div>
+          <div class="field">
+            <label for="analysis-solution">Loesung</label>
+            <textarea class="textarea textarea-bordered" id="analysis-solution" data-error-analysis-field="solution"></textarea>
+          </div>
         </div>
-        <div class="field">
-          <label for="analysis-causes">Moegliche Ursachen</label>
-          <textarea class="textarea" id="analysis-causes" data-error-analysis-field="possible_causes"></textarea>
+        <div class="toolbar form-actions">
+          <button class="btn btn-primary" type="button" data-apply-error-analysis>In Fehlerformular uebernehmen</button>
         </div>
-        <div class="field">
-          <label for="analysis-solution">Loesung</label>
-          <textarea class="textarea" id="analysis-solution" data-error-analysis-field="solution"></textarea>
-        </div>
-      </div>
-      <div class="toolbar form-actions">
-        <button class="button is-primary" type="button" data-apply-error-analysis>In Fehlerformular uebernehmen</button>
       </div>
     </div>
   </article>
 
-  <form class="panel is-wide" data-error-form data-permission-write="errors">
-    <div class="panel-header">
-      <div>
-        <h2 class="panel-title">Fehler anlegen</h2>
-        <p class="panel-meta">Bereich, Maschine, Fehler und Loesung</p>
+  <form class="card app-card lg:col-span-6" data-error-form data-permission-write="errors">
+    <div class="card-body">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Fehler anlegen</h2>
+          <p class="panel-meta">Bereich, Maschine, Fehler und Loesung</p>
+        </div>
       </div>
-    </div>
-    <div class="form-grid">
-      <div class="field">
-        <label for="error-department">Bereich</label>
-        <select class="select" id="error-department" name="department"></select>
+      <div class="form-grid">
+        <div class="field">
+          <label for="error-department">Bereich</label>
+          <select class="select select-bordered" id="error-department" name="department"></select>
+        </div>
+        <div class="field">
+          <label for="error-machine">Maschine</label>
+          <input class="input input-bordered" id="error-machine" name="machine" required>
+        </div>
+        <div class="field">
+          <label for="error-code">Fehlercode</label>
+          <input class="input input-bordered" id="error-code" name="error_code" placeholder="E104" required>
+        </div>
+        <div class="field">
+          <label for="error-title">Fehler</label>
+          <input class="input input-bordered" id="error-title" name="title" required>
+        </div>
+        <div class="field is-full">
+          <label for="error-causes">Moegliche Ursachen</label>
+          <textarea class="textarea textarea-bordered" id="error-causes" name="possible_causes"></textarea>
+        </div>
+        <div class="field is-full">
+          <label for="error-solution">Loesung</label>
+          <textarea class="textarea textarea-bordered" id="error-solution" name="solution"></textarea>
+        </div>
       </div>
-      <div class="field">
-        <label for="error-machine">Maschine</label>
-        <input class="input" id="error-machine" name="machine" required>
+      <div class="toolbar form-actions">
+        <button class="btn btn-primary" type="submit">Fehler speichern</button>
+        <span class="panel-meta" data-error-message></span>
       </div>
-      <div class="field">
-        <label for="error-code">Fehlercode</label>
-        <input class="input" id="error-code" name="error_code" placeholder="E104" required>
-      </div>
-      <div class="field">
-        <label for="error-title">Fehler</label>
-        <input class="input" id="error-title" name="title" required>
-      </div>
-      <div class="field is-full">
-        <label for="error-causes">Moegliche Ursachen</label>
-        <textarea class="textarea" id="error-causes" name="possible_causes"></textarea>
-      </div>
-      <div class="field is-full">
-        <label for="error-solution">Loesung</label>
-        <textarea class="textarea" id="error-solution" name="solution"></textarea>
-      </div>
-    </div>
-    <div class="toolbar form-actions">
-      <button class="button is-primary" type="submit">Fehler speichern</button>
-      <span class="panel-meta" data-error-message></span>
     </div>
   </form>
 
-  <article class="panel is-full">
-    <div class="panel-header">
-      <div>
-        <h2 class="panel-title">Fehlerkatalog</h2>
-        <p class="panel-meta">Suchbarer Wissensspeicher fuer den KI-Assistenten</p>
+  <article class="card app-card lg:col-span-12">
+    <div class="card-body">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Fehlerkatalog</h2>
+          <p class="panel-meta">Suchbarer Wissensspeicher fuer den KI-Assistenten</p>
+        </div>
       </div>
-    </div>
-    <div class="table-wrap">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>Code</th>
-            <th>Maschine</th>
-            <th>Fehler</th>
-            <th>Bereich</th>
-            <th>Loesung</th>
-          </tr>
-        </thead>
-        <tbody data-error-list></tbody>
-      </table>
+      <div class="table-wrap">
+        <table class="table data-table">
+          <thead>
+            <tr>
+              <th>Code</th>
+              <th>Maschine</th>
+              <th>Fehler</th>
+              <th>Bereich</th>
+              <th>Loesung</th>
+            </tr>
+          </thead>
+          <tbody data-error-list></tbody>
+        </table>
+      </div>
     </div>
   </article>
 </section>

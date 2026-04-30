@@ -3,7 +3,7 @@
 {% block title %}Dashboard - Maintenance Assistant{% endblock %}
 
 {% block content %}
-<section class="topbar">
+<section class="page-hero">
   <div>
     <p class="page-kicker">Live Betrieb</p>
     <h1 class="page-title">Maintenance Cockpit</h1>
@@ -11,166 +11,180 @@
       Eine zentrale Oberflaeche fuer Aufgaben, Bereiche, Fehlerkatalog und KI-gestuetzte Stoerungshilfe.
     </p>
   </div>
+  <div class="hidden rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200 sm:block">
+    <p class="text-xs font-semibold uppercase text-slate-500">Aktive Tasks</p>
+    <p class="mt-1 text-3xl font-black text-slate-950" data-dashboard-task-count>0</p>
+  </div>
 </section>
 
 <section class="dashboard-grid">
-  <article class="panel is-full cockpit-capture" data-permission-write="tasks">
-    <div class="panel-header">
-      <div>
-        <h2 class="panel-title">Stoerung erfassen</h2>
-        <p class="panel-meta">Kurz beschreiben, KI-Vorschlag pruefen und direkt als Task speichern</p>
-      </div>
-    </div>
-    <form data-cockpit-suggest-form>
-      <div class="form-grid">
-        <div class="field is-full">
-          <label for="cockpit-suggest-text">Was ist passiert?</label>
-          <textarea class="textarea" id="cockpit-suggest-text" name="text" placeholder="z. B. Maschine 3 macht laute Geraeusche am Lager."></textarea>
+  <article class="card app-card lg:col-span-12" data-permission-write="tasks">
+    <div class="card-body">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Stoerung erfassen</h2>
+          <p class="panel-meta">Kurz beschreiben, KI-Vorschlag pruefen und direkt als Task speichern</p>
         </div>
+        <span class="badge badge-info badge-outline">KI</span>
       </div>
-      <div class="toolbar form-actions">
-        <button class="button is-primary" type="submit">KI-Vorschlag erstellen</button>
-        <span class="panel-meta" data-cockpit-message role="status" aria-live="polite"></span>
-      </div>
-    </form>
-    <form class="suggestion-box" data-cockpit-draft hidden>
-      <div class="form-grid">
-        <div class="field">
-          <label for="cockpit-draft-title">Titel</label>
-          <input class="input" id="cockpit-draft-title" name="title" required>
+      <form data-cockpit-suggest-form>
+        <div class="form-grid">
+          <div class="field is-full">
+            <label for="cockpit-suggest-text">Was ist passiert?</label>
+            <textarea class="textarea textarea-bordered" id="cockpit-suggest-text" name="text" placeholder="z. B. Maschine 3 macht laute Geraeusche am Lager."></textarea>
+          </div>
         </div>
-        <div class="field">
-          <label for="cockpit-draft-department">Bereich</label>
-          <input class="input" id="cockpit-draft-department" name="department" required>
+        <div class="toolbar form-actions">
+          <button class="btn btn-primary" type="submit">KI-Vorschlag erstellen</button>
+          <span class="panel-meta" data-cockpit-message role="status" aria-live="polite"></span>
         </div>
-        <div class="field">
-          <label for="cockpit-draft-priority">Prioritaet</label>
-          <select class="select" id="cockpit-draft-priority" name="priority">
-            <option value="urgent">urgent</option>
-            <option value="soon">soon</option>
-            <option value="normal">normal</option>
-          </select>
+      </form>
+      <form class="suggestion-box" data-cockpit-draft hidden>
+        <div class="form-grid">
+          <div class="field">
+            <label for="cockpit-draft-title">Titel</label>
+            <input class="input input-bordered" id="cockpit-draft-title" name="title" required>
+          </div>
+          <div class="field">
+            <label for="cockpit-draft-department">Bereich</label>
+            <input class="input input-bordered" id="cockpit-draft-department" name="department" required>
+          </div>
+          <div class="field">
+            <label for="cockpit-draft-priority">Prioritaet</label>
+            <select class="select select-bordered" id="cockpit-draft-priority" name="priority">
+              <option value="urgent">urgent</option>
+              <option value="soon">soon</option>
+              <option value="normal">normal</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="cockpit-draft-status">Status</label>
+            <select class="select select-bordered" id="cockpit-draft-status" name="status">
+              <option value="open">open</option>
+              <option value="in_progress">in_progress</option>
+            </select>
+          </div>
+          <div class="field is-full">
+            <label for="cockpit-draft-description">Beschreibung</label>
+            <textarea class="textarea textarea-bordered" id="cockpit-draft-description" name="description"></textarea>
+          </div>
         </div>
-        <div class="field">
-          <label for="cockpit-draft-status">Status</label>
-          <select class="select" id="cockpit-draft-status" name="status">
-            <option value="open">open</option>
-            <option value="in_progress">in_progress</option>
-          </select>
+        <div class="toolbar form-actions">
+          <button class="btn btn-primary" type="submit">Task speichern</button>
+          <button class="btn btn-ghost" type="button" data-cockpit-draft-cancel>Verwerfen</button>
         </div>
-        <div class="field is-full">
-          <label for="cockpit-draft-description">Beschreibung</label>
-          <textarea class="textarea" id="cockpit-draft-description" name="description"></textarea>
-        </div>
-      </div>
-      <div class="toolbar form-actions">
-        <button class="button is-primary" type="submit">Task speichern</button>
-        <button class="button" type="button" data-cockpit-draft-cancel>Verwerfen</button>
-      </div>
-    </form>
-  </article>
-
-  <article class="panel is-full">
-    <div class="panel-header">
-      <div>
-        <h2 class="panel-title">Tagescockpit</h2>
-        <p class="panel-meta">Dringende, heutige und laufende Aufgaben auf einen Blick</p>
-      </div>
-      <span class="badge is-normal" data-dashboard-task-count>0</span>
-    </div>
-    <div class="cockpit-board" data-dashboard-task-board>
-      <section class="cockpit-column" aria-labelledby="cockpit-urgent-title">
-        <h3 id="cockpit-urgent-title" class="cockpit-column-title">Dringend</h3>
-        <div class="cockpit-task-list" data-cockpit-list="urgent"></div>
-      </section>
-      <section class="cockpit-column" aria-labelledby="cockpit-today-title">
-        <h3 id="cockpit-today-title" class="cockpit-column-title">Heute</h3>
-        <div class="cockpit-task-list" data-cockpit-list="today"></div>
-      </section>
-      <section class="cockpit-column" aria-labelledby="cockpit-progress-title">
-        <h3 id="cockpit-progress-title" class="cockpit-column-title">In Arbeit</h3>
-        <div class="cockpit-task-list" data-cockpit-list="progress"></div>
-      </section>
+      </form>
     </div>
   </article>
 
-  <div class="task-detail-modal" data-task-detail-modal hidden>
-    <div class="task-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="task-detail-title">
+  <article class="card app-card lg:col-span-12">
+    <div class="card-body">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Tagescockpit</h2>
+          <p class="panel-meta">Dringende, heutige und laufende Aufgaben auf einen Blick</p>
+        </div>
+        <span class="badge badge-success badge-outline sm:hidden">Tasks</span>
+      </div>
+      <div class="cockpit-board" data-dashboard-task-board>
+        <section class="cockpit-column" aria-labelledby="cockpit-urgent-title">
+          <h3 id="cockpit-urgent-title" class="cockpit-column-title">Dringend</h3>
+          <div class="cockpit-task-list" data-cockpit-list="urgent"></div>
+        </section>
+        <section class="cockpit-column" aria-labelledby="cockpit-today-title">
+          <h3 id="cockpit-today-title" class="cockpit-column-title">Heute</h3>
+          <div class="cockpit-task-list" data-cockpit-list="today"></div>
+        </section>
+        <section class="cockpit-column" aria-labelledby="cockpit-progress-title">
+          <h3 id="cockpit-progress-title" class="cockpit-column-title">In Arbeit</h3>
+          <div class="cockpit-task-list" data-cockpit-list="progress"></div>
+        </section>
+      </div>
+    </div>
+  </article>
+
+  <div class="modal task-detail-modal" data-task-detail-modal hidden>
+    <div class="modal-box max-w-4xl">
       <div class="panel-header">
         <div>
           <h2 class="panel-title" id="task-detail-title" data-task-detail-title>Task</h2>
           <p class="panel-meta" data-task-detail-subtitle>Details und Workflow</p>
         </div>
-        <button class="button" type="button" data-task-detail-close>Schliessen</button>
+        <button class="btn btn-ghost btn-sm" type="button" data-task-detail-close>Schliessen</button>
       </div>
       <div class="task-detail-body" data-task-detail-body></div>
-      <div class="form-grid" data-report-options>
-        <label class="field">
+      <div class="form-grid mt-6" data-report-options>
+        <label class="field cursor-pointer">
           <span>Wartungsbericht erzeugen</span>
-          <input type="checkbox" data-report-generate>
+          <input class="checkbox checkbox-primary" type="checkbox" data-report-generate>
         </label>
         <div class="field">
           <label for="report-machine">Maschine</label>
-          <input class="input" id="report-machine" data-report-field="machine">
+          <input class="input input-bordered" id="report-machine" data-report-field="machine">
         </div>
         <div class="field">
           <label for="report-result">Ergebnis</label>
-          <input class="input" id="report-result" data-report-field="result">
+          <input class="input input-bordered" id="report-result" data-report-field="result">
         </div>
         <div class="field">
           <label for="report-cause">Ursache</label>
-          <input class="input" id="report-cause" data-report-field="cause">
+          <input class="input input-bordered" id="report-cause" data-report-field="cause">
         </div>
         <div class="field is-full">
           <label for="report-action">Massnahme / Notizen</label>
-          <textarea class="textarea" id="report-action" data-report-field="action"></textarea>
+          <textarea class="textarea textarea-bordered" id="report-action" data-report-field="action"></textarea>
         </div>
       </div>
       <div class="toolbar form-actions">
-        <button class="button is-primary" type="button" data-task-start-button>Task starten</button>
-        <button class="button" type="button" data-task-complete-button>Task abschliessen</button>
+        <button class="btn btn-primary" type="button" data-task-start-button>Task starten</button>
+        <button class="btn btn-success text-white" type="button" data-task-complete-button>Task abschliessen</button>
         <span class="panel-meta" data-task-detail-message role="status" aria-live="polite"></span>
       </div>
     </div>
   </div>
 
-  <article class="panel is-full">
-    <div class="panel-header">
-      <div>
-        <h2 class="panel-title">Bereiche</h2>
-        <p class="panel-meta">Rollenbasiert gefiltert</p>
+  <article class="card app-card lg:col-span-4">
+    <div class="card-body">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Bereiche</h2>
+          <p class="panel-meta">Rollenbasiert gefiltert</p>
+        </div>
+        <span class="badge badge-success badge-outline">aktiv</span>
       </div>
-      <span class="badge is-normal">aktiv</span>
-    </div>
-    <p class="stat-value">4</p>
-    <p class="stat-label">IT, Verwaltung, Instandhaltung, Produktion</p>
-  </article>
-
-  <article class="panel">
-    <div class="panel-header">
-      <div>
-        <h2 class="panel-title">Fehlerstatistik</h2>
-        <p class="panel-meta">Gesammelte Fehler nach Bereich</p>
-      </div>
-      <span class="badge is-soon">wissen</span>
-    </div>
-    <div class="stats-list" data-dashboard-error-stats>
-      <div class="empty-state">Noch keine Fehler erfasst.</div>
+      <p class="stat-value">4</p>
+      <p class="stat-label">IT, Verwaltung, Instandhaltung, Produktion</p>
     </div>
   </article>
 
-  <article class="panel">
-    <div class="panel-header">
-      <div>
-        <h2 class="panel-title">Lager</h2>
-        <p class="panel-meta">Materialanzahl und Gesamtwert</p>
+  <article class="card app-card lg:col-span-4">
+    <div class="card-body">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Fehlerstatistik</h2>
+          <p class="panel-meta">Gesammelte Fehler nach Bereich</p>
+        </div>
+        <span class="badge badge-warning badge-outline">wissen</span>
       </div>
-      <span class="badge is-normal">bestand</span>
-    </div>
-    <div class="stats-list" data-dashboard-inventory-stats>
-      <div class="empty-state">Noch keine Lagerdaten erfasst.</div>
+      <div class="stats-list" data-dashboard-error-stats>
+        <div class="empty-state">Noch keine Fehler erfasst.</div>
+      </div>
     </div>
   </article>
 
+  <article class="card app-card lg:col-span-4">
+    <div class="card-body">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Lager</h2>
+          <p class="panel-meta">Materialanzahl und Gesamtwert</p>
+        </div>
+        <span class="badge badge-success badge-outline">bestand</span>
+      </div>
+      <div class="stats-list" data-dashboard-inventory-stats>
+        <div class="empty-state">Noch keine Lagerdaten erfasst.</div>
+      </div>
+    </div>
+  </article>
 </section>
 {% endblock %}

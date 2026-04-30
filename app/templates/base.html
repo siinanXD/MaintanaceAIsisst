@@ -1,24 +1,24 @@
 <!doctype html>
-<html lang="de">
+<html lang="de" data-theme="maintenance">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Maintenance Assistant{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=20260430-planning1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}">
   </head>
-  <body>
-    <div class="app-shell">
-      <aside class="sidebar">
-        <div class="sidebar-tab">Menue</div>
-        <div class="brand">
-          <div class="brand-mark">MA</div>
-          <div>
-            <p class="brand-title">Maintenance Assistant</p>
-            <p class="brand-subtitle">Tasks, Fehlerwissen, KI-Hilfe</p>
-          </div>
-        </div>
-        <nav aria-label="Hauptnavigation">
-          <ul class="nav-list">
+  <body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
+    <div class="min-h-screen lg:grid lg:grid-cols-[280px_1fr]">
+      <aside class="hidden border-r border-slate-200 bg-white/95 px-5 py-6 shadow-sm lg:flex lg:min-h-screen lg:flex-col lg:gap-8">
+        <a class="flex items-center gap-3" href="/">
+          <span class="grid h-11 w-11 place-items-center rounded-2xl bg-primary text-base font-black text-primary-content shadow-lg shadow-blue-600/20">MA</span>
+          <span>
+            <span class="block text-base font-bold text-slate-950">Maintenance Assistant</span>
+            <span class="block text-xs font-medium text-slate-500">Tasks, Wissen, KI-Hilfe</span>
+          </span>
+        </a>
+
+        <nav aria-label="Hauptnavigation" class="flex-1">
+          <ul class="menu gap-1 p-0 text-sm font-medium">
             <li data-dashboard-nav="dashboard" hidden><a class="nav-link {% if request.path == '/' %}is-active{% endif %}" href="/">Dashboard</a></li>
             <li data-dashboard-nav="tasks" hidden><a class="nav-link {% if request.path == '/tasks' %}is-active{% endif %}" href="/tasks">Tasks</a></li>
             <li data-dashboard-nav="errors" hidden><a class="nav-link {% if request.path == '/errors' %}is-active{% endif %}" href="/errors">Fehlerliste</a></li>
@@ -31,21 +31,61 @@
             <li data-auth-login-link><a class="nav-link {% if request.path == '/login' %}is-active{% endif %}" href="/login">Login</a></li>
           </ul>
         </nav>
-      </aside>
-      <main class="main">
-        <div class="session-actions" data-auth-session hidden>
-          <span class="session-pill" data-session-name>Eingeloggt</span>
-          <button class="button" type="button" data-contrast-toggle aria-pressed="false">Hoher Kontrast</button>
-          <button class="button is-danger" type="button" data-logout-button>Logout</button>
+
+        <div class="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-950">
+          <p class="font-semibold">Wartungscockpit</p>
+          <p class="mt-1 text-xs leading-5 text-blue-700">Priorisieren, starten und sauber dokumentieren.</p>
         </div>
-        <div class="sr-only" aria-live="polite" aria-atomic="true" data-global-live-region></div>
-        {% block content %}{% endblock %}
-      </main>
+      </aside>
+
+      <div class="min-w-0">
+        <header class="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
+          <div class="navbar min-h-16 px-4 sm:px-6 lg:px-8">
+            <div class="navbar-start gap-2">
+              <a class="flex items-center gap-2 font-bold text-slate-950 lg:hidden" href="/">
+                <span class="grid h-9 w-9 place-items-center rounded-xl bg-primary text-sm text-primary-content">MA</span>
+                <span>Maintenance</span>
+              </a>
+            </div>
+            <div class="navbar-center hidden max-w-3xl flex-1 px-4 md:block">
+              <div class="flex items-center gap-2 overflow-x-auto">
+                <a data-dashboard-nav="dashboard" hidden class="btn btn-ghost btn-sm {% if request.path == '/' %}btn-active{% endif %}" href="/">Dashboard</a>
+                <a data-dashboard-nav="tasks" hidden class="btn btn-ghost btn-sm {% if request.path == '/tasks' %}btn-active{% endif %}" href="/tasks">Tasks</a>
+                <a data-dashboard-nav="errors" hidden class="btn btn-ghost btn-sm {% if request.path == '/errors' %}btn-active{% endif %}" href="/errors">Fehler</a>
+                <a data-dashboard-nav="shiftplans" hidden class="btn btn-ghost btn-sm {% if request.path == '/shiftplans' %}btn-active{% endif %}" href="/shiftplans">Schichtplan</a>
+                <a data-dashboard-nav="documents" hidden class="btn btn-ghost btn-sm {% if request.path == '/documents' %}btn-active{% endif %}" href="/documents">Dokumente</a>
+              </div>
+            </div>
+            <div class="navbar-end gap-2">
+              <a data-auth-login-link class="btn btn-primary btn-sm {% if request.path == '/login' %}btn-active{% endif %}" href="/login">Login</a>
+              <div class="items-center gap-2 max-sm:hidden sm:flex" data-auth-session hidden>
+                <span class="badge badge-info badge-outline max-w-36 truncate" data-session-name>Eingeloggt</span>
+                <button class="btn btn-ghost btn-sm" type="button" data-contrast-toggle aria-pressed="false">Hoher Kontrast</button>
+                <button class="btn btn-error btn-sm text-white" type="button" data-logout-button>Logout</button>
+              </div>
+            </div>
+          </div>
+          <div class="border-t border-slate-100 px-4 py-2 md:hidden">
+            <div class="flex gap-2 overflow-x-auto">
+              <a data-dashboard-nav="dashboard" hidden class="btn btn-ghost btn-xs {% if request.path == '/' %}btn-active{% endif %}" href="/">Dashboard</a>
+              <a data-dashboard-nav="tasks" hidden class="btn btn-ghost btn-xs {% if request.path == '/tasks' %}btn-active{% endif %}" href="/tasks">Tasks</a>
+              <a data-dashboard-nav="errors" hidden class="btn btn-ghost btn-xs {% if request.path == '/errors' %}btn-active{% endif %}" href="/errors">Fehler</a>
+              <a data-dashboard-nav="employees" hidden class="btn btn-ghost btn-xs {% if request.path == '/employees' %}btn-active{% endif %}" href="/employees">Mitarbeiter</a>
+              <a data-dashboard-nav="machines" hidden class="btn btn-ghost btn-xs {% if request.path == '/machines' %}btn-active{% endif %}" href="/machines">Maschinen</a>
+              <a data-dashboard-nav="inventory" hidden class="btn btn-ghost btn-xs {% if request.path == '/inventory' %}btn-active{% endif %}" href="/inventory">Lager</a>
+            </div>
+          </div>
+        </header>
+
+        <main class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          <div class="sr-only" aria-live="polite" aria-atomic="true" data-global-live-region></div>
+          {% block content %}{% endblock %}
+        </main>
+      </div>
     </div>
+
     <section class="chat-widget" aria-label="KI-Chat">
-      <button class="chat-toggle" type="button" aria-expanded="false" aria-controls="chat-panel">
-        KI
-      </button>
+      <button class="chat-toggle" type="button" aria-expanded="false" aria-controls="chat-panel">KI</button>
       <div class="chat-panel" id="chat-panel" aria-hidden="true">
         <div class="chat-panel-header">
           <div>
@@ -60,13 +100,14 @@
           </div>
         </div>
         <form class="chat-panel-form" data-chat-form>
-          <input class="chat-input" name="message" autocomplete="off" placeholder="z. B. Maschine 3 zeigt E104">
-          <button class="button is-primary" type="submit">Senden</button>
+          <input class="input input-bordered w-full" name="message" autocomplete="off" placeholder="z. B. Maschine 3 zeigt E104">
+          <button class="btn btn-primary" type="submit">Senden</button>
         </form>
       </div>
     </section>
-    <script src="{{ url_for('static', filename='auth.js') }}?v=20260430-planning1"></script>
-    <script src="{{ url_for('static', filename='app.js') }}?v=20260430-planning1"></script>
-    <script src="{{ url_for('static', filename='chat.js') }}?v=20260430-planning1"></script>
+
+    <script src="{{ url_for('static', filename='auth.js') }}?v=20260430-redesign1"></script>
+    <script src="{{ url_for('static', filename='app.js') }}?v=20260430-redesign1"></script>
+    <script src="{{ url_for('static', filename='chat.js') }}?v=20260430-redesign1"></script>
   </body>
 </html>

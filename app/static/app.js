@@ -110,9 +110,29 @@
     return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(Number(value || 0));
   }
 
+  function priorityBadgeClass(priority) {
+    if (priority === "urgent") return "badge badge-error text-white";
+    if (priority === "soon") return "badge badge-warning text-slate-900";
+    return "badge badge-success text-white";
+  }
+
+  function statusBadgeClass(status) {
+    if (status === "in_progress") return "badge badge-primary text-white";
+    if (status === "done") return "badge badge-success text-white";
+    if (status === "cancelled") return "badge badge-error text-white";
+    return "badge badge-info text-white";
+  }
+
+  function badge(text, className) {
+    const element = document.createElement("span");
+    element.className = className;
+    element.textContent = text || "-";
+    return element;
+  }
+
   function actionButton(label, onClick, danger) {
     const button = document.createElement("button");
-    button.className = danger ? "button is-danger" : "button";
+    button.className = danger ? "btn btn-error btn-sm text-white" : "btn btn-outline btn-sm";
     button.type = "button";
     button.textContent = label;
     button.addEventListener("click", onClick);
@@ -148,18 +168,82 @@
     if (!list || !form || !token()) return;
     let currentSuggestion = null;
 
+    async function runTaskAction(task, action) {
+      const endpoint = "/api/tasks/" + task.id + "/" + action;
+      const message = document.querySelector("[data-task-message]");
+      try {
+        await api(endpoint, { method: "POST" });
+        await load();
+        if (message) {
+          message.textContent = action === "start" ? "Task gestartet." : "Task abgeschlossen.";
+        }
+      } catch (error) {
+        if (message) {
+          message.textContent = error.message;
+        }
+      }
+    }
+
+    function taskCard(task) {
+      const card = document.createElement("article");
+      card.className = "task-card";
+
+      const top = document.createElement("div");
+      top.className = "task-card-top";
+
+      const title = document.createElement("h3");
+      title.className = "task-card-title";
+      title.textContent = task.title;
+
+      const badges = document.createElement("div");
+      badges.className = "flex flex-wrap justify-end gap-2";
+      badges.append(
+        badge(task.priority, priorityBadgeClass(task.priority)),
+        badge(task.status, statusBadgeClass(task.status))
+      );
+
+      top.append(title, badges);
+
+      const description = document.createElement("p");
+      description.className = "task-card-description";
+      description.textContent = task.description || "Keine Beschreibung";
+
+      const meta = document.createElement("div");
+      meta.className = "task-card-meta";
+      [
+        task.department && task.department.name,
+        task.due_date ? "Faellig: " + task.due_date : "Keine Faelligkeit"
+      ].filter(Boolean).forEach((value) => {
+        const item = document.createElement("span");
+        item.textContent = value;
+        meta.appendChild(item);
+      });
+
+      const actions = document.createElement("div");
+      actions.className = "task-card-actions";
+      if (canWrite("tasks") && task.status === "open") {
+        const start = actionButton("Start Task", () => runTaskAction(task, "start"));
+        start.className = "btn btn-primary btn-sm";
+        actions.appendChild(start);
+      }
+      if (canWrite("tasks") && task.status !== "done" && task.status !== "cancelled") {
+        const complete = actionButton("Complete Task", () => runTaskAction(task, "complete"));
+        complete.className = "btn btn-success btn-sm text-white";
+        actions.appendChild(complete);
+      }
+
+      card.append(top, description, meta, actions);
+      return card;
+    }
+
     async function load() {
       const tasks = await api("/api/tasks");
       list.innerHTML = "";
-      tasks.forEach((task) => {
-        list.appendChild(row([
-          task.title,
-          task.department && task.department.name,
-          task.priority,
-          task.status,
-          task.due_date
-        ]));
-      });
+      if (!tasks.length) {
+        list.innerHTML = '<div class="empty-state md:col-span-2 xl:col-span-3">Noch keine Tasks vorhanden.</div>';
+        return;
+      }
+      tasks.forEach((task) => list.appendChild(taskCard(task)));
     }
 
     form.addEventListener("submit", async (event) => {
@@ -313,7 +397,7 @@
 
     function accessLevelSelect(dashboard, selected, disabled) {
       const select = document.createElement("select");
-      select.className = "select";
+      select.className = "select select-bordered";
       select.disabled = Boolean(disabled);
       select.dataset.dashboard = dashboard;
       select.dataset.permissionAction = "employee_access_level";
@@ -404,7 +488,7 @@
         actions.className = "table-actions";
 
         const reset = document.createElement("button");
-        reset.className = "button";
+        reset.className = "btn btn-outline btn-sm";
         reset.type = "button";
         reset.textContent = "Passwort";
         reset.addEventListener("click", async () => {
@@ -417,7 +501,7 @@
         });
 
         const lock = document.createElement("button");
-        lock.className = "button";
+        lock.className = "btn btn-outline btn-sm";
         lock.type = "button";
         lock.textContent = item.is_active ? "Sperren" : "Entsperren";
         lock.addEventListener("click", async () => {
@@ -426,7 +510,7 @@
         });
 
         const remove = document.createElement("button");
-        remove.className = "button";
+        remove.className = "btn btn-error btn-sm text-white";
         remove.type = "button";
         remove.textContent = "Loeschen";
         remove.addEventListener("click", async () => {
@@ -436,7 +520,7 @@
         });
 
         const permissions = document.createElement("button");
-        permissions.className = "button";
+        permissions.className = "btn btn-primary btn-sm";
         permissions.type = "button";
         permissions.textContent = "Rechte";
         permissions.addEventListener("click", () => renderPermissionEditor(item));
@@ -668,7 +752,7 @@
       const wrap = document.createElement("div");
       wrap.className = "table-wrap";
       const table = document.createElement("table");
-      table.className = "data-table";
+      table.className = "table data-table";
       table.innerHTML = "<thead><tr><th>Datum</th><th>Schicht</th><th>Zeit</th><th>Mitarbeiter</th><th>Maschine</th><th>Notiz</th></tr></thead>";
       const body = document.createElement("tbody");
       plan.entries.forEach((entry) => {
@@ -1104,11 +1188,13 @@
           : "Keine Tasks in Arbeit.";
       card.appendChild(text);
       if (cockpitSuggestForm && canWrite("tasks")) {
-        card.appendChild(actionButton("Stoerung erfassen", () => {
+        const captureButton = actionButton("Stoerung erfassen", () => {
           cockpitSuggestForm.scrollIntoView({ behavior: "smooth", block: "start" });
           const input = cockpitSuggestForm.querySelector("textarea");
           if (input) input.focus();
-        }));
+        });
+        captureButton.className = "btn btn-primary btn-sm";
+        card.appendChild(captureButton);
       }
       return card;
     }
@@ -1119,16 +1205,15 @@
       const title = document.createElement("h4");
       title.className = "cockpit-task-title";
       title.textContent = task.title;
-      const badge = document.createElement("span");
-      badge.className = "badge " + (
-        task.priority === "urgent" ? "is-urgent" : task.priority === "soon" ? "is-soon" : "is-normal"
-      );
-      badge.textContent = task.priority;
+      const priority = badge(task.priority, priorityBadgeClass(task.priority));
+      const status = badge(task.status, statusBadgeClass(task.status));
+      const badges = document.createElement("div");
+      badges.className = "flex flex-wrap gap-2";
+      badges.append(priority, status);
       const meta = document.createElement("div");
       meta.className = "cockpit-task-meta";
       [
         task.department && task.department.name,
-        task.status,
         task.due_date,
         task.current_worker ? formatUser(task.current_worker) : null
       ].filter(Boolean).forEach((value) => {
@@ -1140,17 +1225,21 @@
       actions.className = "cockpit-task-actions";
       actions.appendChild(actionButton("Details", () => openTaskDetail(task.id)));
       if (canWrite("tasks") && task.status === "open") {
-        actions.appendChild(actionButton("Starten", () => runTaskAction(task.id, "start")));
+        const start = actionButton("Start Task", () => runTaskAction(task.id, "start"));
+        start.className = "btn btn-primary btn-sm";
+        actions.appendChild(start);
       }
       if (canWrite("tasks") && task.status !== "done" && task.status !== "cancelled") {
-        actions.appendChild(actionButton("Abschliessen", () => runTaskAction(task.id, "complete")));
+        const complete = actionButton("Complete Task", () => runTaskAction(task.id, "complete"));
+        complete.className = "btn btn-success btn-sm text-white";
+        actions.appendChild(complete);
         actions.appendChild(actionButton("Bericht erzeugen", () => runTaskAction(
           task.id,
           "complete",
           { generate_report: true, result: "Abgeschlossen" }
         )));
       }
-      card.append(title, badge, meta, actions);
+      card.append(title, badges, meta, actions);
       return card;
     }
 

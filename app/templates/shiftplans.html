@@ -3,7 +3,7 @@
 {% block title %}Schichtplan - Maintenance Assistant{% endblock %}
 
 {% block content %}
-<section class="topbar">
+<section class="page-hero">
   <div>
     <p class="page-kicker">KI-Planung</p>
     <h1 class="page-title">Schichtplan</h1>
@@ -12,49 +12,54 @@
 </section>
 
 <section class="dashboard-grid">
-  <form class="panel is-full" data-shiftplan-form data-permission-write="shiftplans">
-    <div class="panel-header">
-      <div>
-        <h2 class="panel-title">KI-Schichtplan generieren</h2>
-        <p class="panel-meta">Plant nur Mitarbeitende mit Abteilung Produktion.</p>
+  <form class="card app-card lg:col-span-12" data-shiftplan-form data-permission-write="shiftplans">
+    <div class="card-body">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">KI-Schichtplan generieren</h2>
+          <p class="panel-meta">Plant nur Mitarbeitende mit Abteilung Produktion.</p>
+        </div>
+        <span class="badge badge-info badge-outline">KI</span>
       </div>
-    </div>
-    <div class="form-grid">
-      <div class="field">
-        <label for="shiftplan-title">Titel</label>
-        <input class="input" id="shiftplan-title" name="title" placeholder="Schichtplan KW">
+      <div class="form-grid">
+        <div class="field">
+          <label for="shiftplan-title">Titel</label>
+          <input class="input input-bordered" id="shiftplan-title" name="title" placeholder="Schichtplan KW">
+        </div>
+        <div class="field">
+          <label for="shiftplan-start">Startdatum</label>
+          <input class="input input-bordered" id="shiftplan-start" name="start_date" type="date" required>
+        </div>
+        <div class="field">
+          <label for="shiftplan-days">Tage</label>
+          <input class="input input-bordered" id="shiftplan-days" name="days" type="number" min="1" max="31" value="7">
+        </div>
+        <div class="field">
+          <label for="shiftplan-rhythm">Rhythmus</label>
+          <input class="input input-bordered" id="shiftplan-rhythm" name="rhythm" placeholder="z. B. 2-Schicht, 3-Schicht, 4 Tage Arbeit / 2 frei">
+        </div>
+        <div class="field is-full">
+          <label for="shiftplan-preferences">Praeferenzen</label>
+          <textarea class="textarea textarea-bordered" id="shiftplan-preferences" name="preferences" placeholder="Wuensche, Sperrtage, Teamregeln, bevorzugte Maschinen"></textarea>
+        </div>
       </div>
-      <div class="field">
-        <label for="shiftplan-start">Startdatum</label>
-        <input class="input" id="shiftplan-start" name="start_date" type="date" required>
+      <div class="toolbar form-actions">
+        <button class="btn btn-primary" type="submit">Plan generieren</button>
+        <span class="panel-meta" data-shiftplan-message></span>
       </div>
-      <div class="field">
-        <label for="shiftplan-days">Tage</label>
-        <input class="input" id="shiftplan-days" name="days" type="number" min="1" max="31" value="7">
-      </div>
-      <div class="field">
-        <label for="shiftplan-rhythm">Rhythmus</label>
-        <input class="input" id="shiftplan-rhythm" name="rhythm" placeholder="z. B. 2-Schicht, 3-Schicht, 4 Tage Arbeit / 2 frei">
-      </div>
-      <div class="field is-full">
-        <label for="shiftplan-preferences">Praeferenzen</label>
-        <textarea class="textarea" id="shiftplan-preferences" name="preferences" placeholder="Wuensche, Sperrtage, Teamregeln, bevorzugte Maschinen"></textarea>
-      </div>
-    </div>
-    <div class="toolbar form-actions">
-      <button class="button is-primary" type="submit">Plan generieren</button>
-      <span class="panel-meta" data-shiftplan-message></span>
     </div>
   </form>
 
-  <article class="panel is-full">
-    <div class="panel-header">
-      <div>
-        <h2 class="panel-title">Schichtplaene</h2>
-        <p class="panel-meta">Zuletzt generierte Plaene</p>
+  <article class="card app-card lg:col-span-12">
+    <div class="card-body">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Schichtplaene</h2>
+          <p class="panel-meta">Zuletzt generierte Plaene</p>
+        </div>
       </div>
+      <div class="shiftplan-list" data-shiftplan-list></div>
     </div>
-    <div class="shiftplan-list" data-shiftplan-list></div>
   </article>
 </section>
 {% endblock %}
