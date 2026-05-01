@@ -1,6 +1,6 @@
 from datetime import date, timedelta
 
-from app.models import Role, TaskStatus
+from app.models import Priority, Role, TaskStatus
 
 
 def test_task_create_list_filter_and_update(client, make_user, auth_headers):
@@ -198,3 +198,131 @@ def test_today_tasks_only_returns_current_date(client, make_user, make_task, aut
 
     assert response.status_code == 200
     assert [task["title"] for task in response.get_json()] == ["Heute"]
+
+
+def test_prioritize_tasks_only_returns_visible_department(
+    client,
+    make_user,
+    make_task,
+    auth_headers,
+):
+    """Verify task prioritization respects department visibility."""
+    requester = make_user(
+        username="priority_requester",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+    other_user = make_user(
+        username="priority_other",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    make_task(
+        "Eigener Task",
+        creator_username=requester["username"],
+        department_name="Produktion",
+    )
+    make_task(
+        "Fremder Task",
+        creator_username=other_user["username"],
+        department_name="Instandhaltung",
+    )
+
+    response = client.post(
+        "/api/tasks/prioritize",
+        headers=auth_headers(requester["username"]),
+        json={"status": "open"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert [item["task"]["title"] for item in payload] == ["Eigener Task"]
+
+
+def test_prioritize_tasks_rejects_invalid_filters(client, make_user, auth_headers):
+    """Verify task prioritization rejects invalid status and limit values."""
+    user = make_user(username="priority_validation")
+    headers = auth_headers(user["username"])
+
+    bad_status = client.post(
+        "/api/tasks/prioritize",
+        headers=headers,
+        json={"status": "unknown"},
+    )
+    bad_limit = client.post(
+        "/api/tasks/prioritize",
+        headers=headers,
+        json={"limit": 0},
+    )
+
+    assert bad_status.status_code == 400
+    assert bad_limit.status_code == 400
+
+
+def test_prioritize_tasks_sorts_urgent_overdue_before_normal(
+    client,
+    make_user,
+    make_task,
+    auth_headers,
+):
+    """Verify local prioritization ranks urgent overdue tasks first."""
+    user = make_user(username="priority_sort")
+    make_task(
+        "Normaler Rundgang",
+        creator_username=user["username"],
+        priority=Priority.NORMAL,
+        due_date_value=date.today() + timedelta(days=5),
+        description="Routinepruefung",
+    )
+    make_task(
+        "Stillstand an Anlage 4",
+        creator_username=user["username"],
+        priority=Priority.URGENT,
+        due_date_value=date.today() - timedelta(days=1),
+        description="Anlage steht seit gestern mit Sensorfehler",
+    )
+
+    response = client.post(
+        "/api/tasks/prioritize",
+        headers=auth_headers(user["username"]),
+        json={"status": "open"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload[0]["task"]["title"] == "Stillstand an Anlage 4"
+    assert payload[0]["score"] > payload[1]["score"]
+    assert payload[0]["risk_level"] in {"high", "critical"}
+
+
+def test_prioritize_tasks_uses_local_fallback_without_openai_key(
+    client,
+    make_user,
+    make_task,
+    auth_headers,
+):
+    """Verify task prioritization works with the configured local provider."""
+    user = make_user(username="priority_fallback")
+    make_task(
+        "Sensor pruefen",
+        creator_username=user["username"],
+        priority=Priority.SOON,
+        description="Sensor meldet sporadisch kein Signal",
+    )
+
+    response = client.post(
+        "/api/tasks/prioritize",
+        headers=auth_headers(user["username"]),
+        json={"limit": 1},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert len(payload) == 1
+    assert set(payload[0]) == {
+        "task",
+        "score",
+        "risk_level",
+        "reason",
+        "recommended_action",
+    }

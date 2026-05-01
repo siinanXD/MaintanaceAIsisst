@@ -55,6 +55,116 @@ def visible_tasks_query(user):
     return query
 
 
+def prioritize_visible_tasks(data, user):
+    """Return non-persisted AI priorities for tasks visible to the user."""
+    try:
+        status = parse_enum(TaskStatus, data.get("status"), None)
+        limit = parse_priority_limit(data.get("limit", 20))
+    except ValueError as exc:
+        return None, {"error": str(exc)}, 400
+
+    query = visible_tasks_query(user)
+    if status:
+        query = query.filter(Task.status == status)
+
+    tasks = query.order_by(Task.due_date.asc(), Task.id.desc()).limit(limit).all()
+    serialized_tasks = [task.to_dict() for task in tasks]
+    context = {
+        "role": user.role.value,
+        "department": user.department.name if user.department else "",
+    }
+
+    try:
+        provider_result = get_ai_provider().prioritize_tasks(serialized_tasks, context)
+    except AIServiceError:
+        provider_result = MockAIProvider().prioritize_tasks(serialized_tasks, context)
+
+    priorities = normalize_task_priorities(provider_result, tasks)
+    return priorities, None, 200
+
+
+def parse_priority_limit(value):
+    """Parse and validate a task prioritization limit."""
+    try:
+        limit = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("limit must be an integer between 1 and 100") from exc
+
+    if limit < 1 or limit > 100:
+        raise ValueError("limit must be an integer between 1 and 100")
+    return limit
+
+
+def normalize_task_priorities(provider_result, tasks):
+    """Normalize provider priorities and attach full task payloads."""
+    provider_items = _provider_priority_items(provider_result)
+    priority_by_task_id = {
+        int(item["task_id"]): item
+        for item in provider_items
+        if _has_valid_task_id(item)
+    }
+    fallback_items = MockAIProvider().prioritize_tasks(
+        [task.to_dict() for task in tasks],
+        {},
+    )["priorities"]
+    fallback_by_task_id = {item["task_id"]: item for item in fallback_items}
+
+    normalized = []
+    for task in tasks:
+        item = priority_by_task_id.get(task.id, fallback_by_task_id[task.id])
+        normalized.append(
+            {
+                "task": task.to_dict(),
+                "score": _clamped_score(item.get("score")),
+                "risk_level": _valid_risk_level(item.get("risk_level")),
+                "reason": str(item.get("reason") or "").strip()[:500],
+                "recommended_action": str(
+                    item.get("recommended_action") or ""
+                ).strip()[:500],
+            }
+        )
+
+    return sorted(normalized, key=lambda item: item["score"], reverse=True)
+
+
+def _provider_priority_items(provider_result):
+    """Return provider priority items from a dict or list payload."""
+    if isinstance(provider_result, list):
+        return provider_result
+    if isinstance(provider_result, dict):
+        priorities = provider_result.get("priorities", [])
+        if isinstance(priorities, list):
+            return priorities
+    return []
+
+
+def _has_valid_task_id(item):
+    """Return whether a provider priority item references a task id."""
+    if not isinstance(item, dict):
+        return False
+    try:
+        int(item.get("task_id"))
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+def _clamped_score(value):
+    """Return a score constrained to the public 0-100 range."""
+    try:
+        score = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, min(100, score))
+
+
+def _valid_risk_level(value):
+    """Return a supported risk level or derive low as the safe default."""
+    if value in {"low", "medium", "high", "critical"}:
+        return value
+    return "low"
+
+
 def create_task(data, user):
     """Create a task for the current user."""
     try:

@@ -11,6 +11,7 @@ from app.security import (
 )
 from app.tasks.services import (
     create_task,
+    prioritize_visible_tasks,
     start_task,
     suggest_task_from_text,
     update_task,
@@ -60,6 +61,19 @@ def suggest_task():
     if error:
         return jsonify(error), status
     return jsonify(suggestion)
+
+
+@tasks_bp.post("/prioritize")
+@dashboard_permission_required("tasks", "view")
+def prioritize_tasks():
+    """Return non-persisted priorities for visible tasks."""
+    priorities, error, status = prioritize_visible_tasks(
+        request.get_json(silent=True) or {},
+        current_user(),
+    )
+    if error:
+        return jsonify(error), status
+    return jsonify(priorities), status
 
 
 @tasks_bp.get("/today")

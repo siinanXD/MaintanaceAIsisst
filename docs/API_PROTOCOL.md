@@ -459,6 +459,42 @@ Authorization: Bearer <access_token>
 
 Response `200`: Liste der Tasks mit `due_date` gleich dem aktuellen Datum des Servers.
 
+### Tasks priorisieren
+
+```http
+POST /api/tasks/prioritize
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+Request optional:
+
+```json
+{
+  "status": "open",
+  "limit": 20
+}
+```
+
+Response `200` ist eine priorisierte, nicht gespeicherte Bewertung sichtbarer Tasks:
+
+```json
+[
+  {
+    "task": {
+      "id": 1,
+      "title": "Motor M12 pruefen"
+    },
+    "score": 88,
+    "risk_level": "critical",
+    "reason": "Prioritaet urgent; Faelligkeit ist heute; mechanische Symptome",
+    "recommended_action": "Sofort pruefen, Anlage sichern und Instandhaltung informieren."
+  }
+]
+```
+
+Ohne OpenAI-Key nutzt die API den lokalen Fallback. Die Priorisierung speichert keine Scores in der Datenbank.
+
 ## Fehlerkatalog
 
 ### Fehlerbeschreibung analysieren

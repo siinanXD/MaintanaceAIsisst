@@ -1,6 +1,7 @@
 import json
 import re
 from abc import ABC, abstractmethod
+from datetime import date
 
 from flask import current_app
 from openai import OpenAI, OpenAIError
@@ -30,6 +31,10 @@ class BaseAIProvider(ABC):
     @abstractmethod
     def answer_question(self, question, context):
         """Return a natural-language answer for a question and context."""
+
+    @abstractmethod
+    def prioritize_tasks(self, tasks, context=None):
+        """Return structured prioritization results for visible tasks."""
 
 
 class MockAIProvider(BaseAIProvider):
@@ -91,6 +96,11 @@ class MockAIProvider(BaseAIProvider):
             "- **Status:** Freigegebene Daten geprueft\n"
             "- **Hinweis:** Frage bitte konkreter nach Task, Fehler oder Mitarbeiterdaten"
         )
+
+    def prioritize_tasks(self, tasks, context=None):
+        """Return deterministic task priorities without external services."""
+        priorities = [_score_task_priority(task) for task in tasks]
+        return {"priorities": priorities}
 
 
 class OpenAIProvider(BaseAIProvider):
@@ -173,6 +183,29 @@ class OpenAIProvider(BaseAIProvider):
             },
         ]
         return self._text_completion(messages)
+
+    def prioritize_tasks(self, tasks, context=None):
+        """Return AI-generated task priorities as structured JSON."""
+        prompt = {
+            "task": (
+                "Priorisiere sichtbare Wartungsaufgaben auf Deutsch. Nutze nur "
+                "die bereitgestellten Tasks und keine Mitarbeiterdaten."
+            ),
+            "tasks": tasks,
+            "context": context or {},
+            "schema": {
+                "priorities": [
+                    {
+                        "task_id": "integer",
+                        "score": "integer 0-100",
+                        "risk_level": "low|medium|high|critical",
+                        "reason": "short German reason",
+                        "recommended_action": "short German next action",
+                    }
+                ]
+            },
+        }
+        return self._json_completion(prompt)
 
     def _json_completion(self, prompt):
         """Call OpenAI and parse a JSON object response."""
@@ -263,3 +296,116 @@ def _short_title(text, prefix):
     if not cleaned:
         return f"{prefix} erforderlich"
     return f"{prefix}: {cleaned[:80]}"
+
+
+def _score_task_priority(task):
+    """Return a local priority score for a serialized task."""
+    score = 0
+    reasons = []
+    text = f"{task.get('title', '')} {task.get('description', '')}".lower()
+
+    priority_score, priority_reason = _priority_score(task.get("priority"))
+    score += priority_score
+    reasons.append(priority_reason)
+
+    status_score, status_reason = _status_score(task.get("status"))
+    score += status_score
+    reasons.append(status_reason)
+
+    due_score, due_reason = _due_date_score(task.get("due_date"))
+    score += due_score
+    if due_reason:
+        reasons.append(due_reason)
+
+    keyword_score, keyword_reason = _keyword_score(text)
+    score += keyword_score
+    if keyword_reason:
+        reasons.append(keyword_reason)
+
+    normalized_score = max(0, min(100, score))
+    risk_level = _risk_level(normalized_score)
+    return {
+        "task_id": task.get("id"),
+        "score": normalized_score,
+        "risk_level": risk_level,
+        "reason": "; ".join(reasons[:3]),
+        "recommended_action": _recommended_priority_action(risk_level),
+    }
+
+
+def _priority_score(priority):
+    """Return score contribution and reason for a task priority."""
+    if priority == "urgent":
+        return 45, "Prioritaet urgent"
+    if priority == "soon":
+        return 30, "Prioritaet soon"
+    return 15, "Prioritaet normal"
+
+
+def _status_score(status):
+    """Return score contribution and reason for a task status."""
+    if status == "in_progress":
+        return 15, "Task ist bereits in Arbeit"
+    if status == "open":
+        return 10, "Task ist offen"
+    return 0, f"Status {status or 'unbekannt'}"
+
+
+def _due_date_score(due_date_value):
+    """Return score contribution and reason for the due date."""
+    if not due_date_value:
+        return 0, ""
+    try:
+        days_until_due = (date.fromisoformat(due_date_value) - date.today()).days
+    except ValueError:
+        return 0, ""
+
+    if days_until_due < 0:
+        return 25, "Faelligkeit ist ueberfaellig"
+    if days_until_due == 0:
+        return 18, "Faelligkeit ist heute"
+    if days_until_due <= 2:
+        return 10, "Faelligkeit innerhalb von zwei Tagen"
+    if days_until_due <= 7:
+        return 5, "Faelligkeit innerhalb einer Woche"
+    return 0, ""
+
+
+def _keyword_score(text):
+    """Return score contribution and reason for risk keywords."""
+    keyword_groups = [
+        (
+            ["not-halt", "stillstand", "ausfall", "steht"],
+            25,
+            "kritischer Anlagenzustand",
+        ),
+        (["leck", "druck", "hydraulik", "pneumatik"], 18, "Leckage oder Druckproblem"),
+        (["sensor", "lichttaster", "signal"], 12, "Sensorik betroffen"),
+        (["lager", "geraeusch", "motor", "unwucht"], 10, "mechanische Symptome"),
+    ]
+    for keywords, score, reason in keyword_groups:
+        if _contains_any(text, keywords):
+            return score, reason
+    return 0, ""
+
+
+def _risk_level(score):
+    """Return the risk level for a numeric task score."""
+    if score >= 85:
+        return "critical"
+    if score >= 65:
+        return "high"
+    if score >= 40:
+        return "medium"
+    return "low"
+
+
+def _recommended_priority_action(risk_level):
+    """Return a German next-action recommendation for a risk level."""
+    actions = {
+        "critical": "Sofort pruefen, Anlage sichern und Instandhaltung informieren.",
+        "high": "Zeitnah einplanen und Ursache vor Schichtende dokumentieren.",
+        "medium": "Im Tagesplan beruecksichtigen und Befund erfassen.",
+        "low": "Nach aktuellen dringenden Tasks bearbeiten.",
+    }
+    return actions[risk_level]

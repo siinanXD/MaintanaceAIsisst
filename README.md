@@ -10,6 +10,7 @@ Modulare Flask-Anwendung fuer Wartung, Produktion und Instandhaltung. Die App bi
 * Admin-konfigurierbare Dashboard-Rechte mit getrenntem Lesen und Schreiben
 * KI-Service-Layer mit OpenAI- und Mock-Provider
 * Smart Task Generator aus Freitext
+* KI-gestuetzte Task-Priorisierung mit lokalem Fallback
 * KI-gestuetzte Fehleranalyse fuer den Fehlerkatalog
 * Automatische HTML-Wartungsberichte fuer abgeschlossene Tasks
 * Dokumentenuebersicht mit Filtern und Download
@@ -70,6 +71,7 @@ Auth:
 Tasks und Fehler:
 
 * `GET/POST /api/tasks`
+* `POST /api/tasks/prioritize`
 * `GET/PUT/DELETE /api/tasks/<id>`
 * `POST /api/tasks/<id>/start`
 * `POST /api/tasks/<id>/complete`
@@ -127,6 +129,12 @@ Smart Task Generator:
 * `POST /api/tasks/suggest`
 * Erzeugt aus Freitext einen bearbeitbaren Vorschlag.
 * Speichert nichts, bis der Nutzer den Vorschlag ins Taskformular uebernimmt.
+
+Task-Priorisierung:
+
+* `POST /api/tasks/prioritize`
+* Bewertet sichtbare Tasks nach Dringlichkeit, Faelligkeit, Status und Risikobegriffen.
+* Speichert keine Scores und nutzt ohne OpenAI-Key einen lokalen Fallback.
 
 KI-Fehleranalyse:
 
