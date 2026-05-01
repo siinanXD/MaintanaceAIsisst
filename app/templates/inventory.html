@@ -59,6 +59,44 @@
     </form>
   </details>
 
+  <article class="card app-card lg:col-span-12">
+    <div class="card-body">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Ersatzteil-Prognose</h2>
+          <p class="panel-meta">Riskante Tasks mit Lagerbestand und Maschinenbezug abgleichen.</p>
+        </div>
+      </div>
+      <form class="toolbar form-actions" data-inventory-forecast-form>
+        <div class="field">
+          <label for="forecast-threshold">Mindestbestand</label>
+          <input class="input input-bordered" id="forecast-threshold" name="low_stock_threshold" type="number" min="0" value="5">
+        </div>
+        <button class="btn btn-primary" type="submit">Prognose berechnen</button>
+        <span class="panel-meta" data-inventory-forecast-message></span>
+      </form>
+      <div class="table-wrap">
+        <table class="table data-table">
+          <thead>
+            <tr>
+              <th>Material</th>
+              <th>Maschine</th>
+              <th>Anzahl</th>
+              <th>Risiko</th>
+              <th>Task</th>
+              <th>Empfehlung</th>
+            </tr>
+          </thead>
+          <tbody data-inventory-forecast-list>
+            <tr>
+              <td colspan="6">Noch keine Prognose berechnet.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </article>
+
   <article class="card app-card mobile-primary-card lg:col-span-12">
     <div class="card-body">
       <div class="panel-header">

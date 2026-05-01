@@ -850,6 +850,54 @@ Summary:
 }
 ```
 
+### Ersatzteil-Prognose
+
+```http
+POST /api/inventory/forecast
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+Benoetigt `inventory.view` und `tasks.view`.
+
+Request optional:
+
+```json
+{
+  "status": "open",
+  "limit": 20,
+  "low_stock_threshold": 5
+}
+```
+
+Response `200`:
+
+```json
+{
+  "items": [
+    {
+      "machine": {"id": 1, "name": "Anlage 4"},
+      "material": {"id": 2, "name": "Sensor S1"},
+      "quantity": 1,
+      "task": {"id": 7, "title": "Stillstand Anlage 4"},
+      "score": 92,
+      "risk_level": "high",
+      "reason": "Sensor S1 liegt bei 1 Stueck und damit unter oder auf dem Mindestbestand 5; Task-Risiko critical.",
+      "recommended_action": "Nachbestellung vorbereiten und Task vor Arbeitsbeginn pruefen."
+    }
+  ],
+  "unmatched_tasks": [],
+  "summary": {
+    "critical": 0,
+    "high": 1,
+    "medium": 0,
+    "total": 1
+  }
+}
+```
+
+Die Prognose speichert keine Ergebnisse. Maschinen werden in Version 1 ueber Namensvorkommen in Task-Titel oder Beschreibung erkannt.
+
 ## Schichtplanung
 
 Schichtplan-Endpunkte benoetigen `shiftplans.view` oder `shiftplans.write`. Die Generierung benoetigt zusaetzlich mindestens Mitarbeiterdatenstufe `shift`, weil dabei Produktionsmitarbeiter geplant werden.

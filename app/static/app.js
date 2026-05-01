@@ -772,7 +772,70 @@
   async function initMachines() {
     const list = document.querySelector("[data-machine-list]");
     const form = document.querySelector("[data-machine-form]");
+    const historyPanel = document.querySelector("[data-machine-history-panel]");
+    const historyTitle = document.querySelector("[data-machine-history-title]");
+    const historySummary = document.querySelector("[data-machine-history-summary]");
+    const historyCounts = document.querySelector("[data-machine-history-counts]");
+    const historyList = document.querySelector("[data-machine-history-list]");
     if (!list || !form || !token()) return;
+
+    function renderHistoryCounts(counts) {
+      if (!historyCounts) return;
+      historyCounts.innerHTML = "";
+      [
+        ["Tasks", counts.tasks || 0],
+        ["Fehler", counts.errors || 0],
+        ["Dokumente", counts.documents || 0],
+        ["Gesamt", counts.total || 0]
+      ].forEach(([label, value]) => {
+        const item = document.createElement("div");
+        item.className = "stat-row";
+        const labelElement = document.createElement("span");
+        labelElement.textContent = label;
+        const valueElement = document.createElement("strong");
+        valueElement.textContent = String(value);
+        item.append(labelElement, valueElement);
+        historyCounts.appendChild(item);
+      });
+    }
+
+    function historyLink(item) {
+      if (!item.url) return "-";
+      const link = document.createElement("a");
+      link.className = "btn btn-outline btn-sm";
+      link.href = item.url;
+      link.textContent = "Oeffnen";
+      return link;
+    }
+
+    function renderMachineHistory(history) {
+      if (!historyPanel || !historyList) return;
+      historyPanel.hidden = false;
+      if (historyTitle) historyTitle.textContent = "Anlagenakte: " + history.machine.name;
+      if (historySummary) historySummary.textContent = history.summary.text || "";
+      renderHistoryCounts(history.source_counts || {});
+      historyList.innerHTML = "";
+      if (!history.timeline || !history.timeline.length) {
+        historyList.innerHTML = '<tr><td colspan="6">Keine Historie gefunden.</td></tr>';
+      } else {
+        history.timeline.forEach((item) => {
+          historyList.appendChild(row([
+            item.type,
+            item.date ? new Date(item.date).toLocaleString("de-DE") : "-",
+            item.title,
+            item.status,
+            item.summary,
+            historyLink(item)
+          ]));
+        });
+      }
+      historyPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    async function loadMachineHistory(machine) {
+      const history = await api("/api/machines/" + machine.id + "/history");
+      renderMachineHistory(history);
+    }
 
     async function load() {
       const machines = await api("/api/machines");
@@ -780,6 +843,7 @@
       machines.forEach((machine) => {
         const actions = document.createElement("div");
         actions.className = "table-actions";
+        actions.appendChild(actionButton("Historie", () => loadMachineHistory(machine)));
         if (canWrite("machines")) {
           actions.appendChild(actionButton("Loeschen", async () => {
             if (!window.confirm(machine.name + " wirklich loeschen?")) return;
@@ -813,7 +877,58 @@
   async function initInventory() {
     const list = document.querySelector("[data-inventory-list]");
     const form = document.querySelector("[data-inventory-form]");
+    const forecastForm = document.querySelector("[data-inventory-forecast-form]");
+    const forecastList = document.querySelector("[data-inventory-forecast-list]");
+    const forecastMessage = document.querySelector("[data-inventory-forecast-message]");
     if (!list || !form || !token()) return;
+
+    function forecastRiskBadgeClass(riskLevel) {
+      if (riskLevel === "critical") return "badge badge-error text-white";
+      if (riskLevel === "high") return "badge badge-warning text-slate-900";
+      return "badge badge-info text-white";
+    }
+
+    function renderForecast(forecast) {
+      if (!forecastList) return;
+      forecastList.innerHTML = "";
+      const items = forecast.items || [];
+      if (!items.length) {
+        forecastList.innerHTML = '<tr><td colspan="6">Keine kritischen Lagerhinweise gefunden.</td></tr>';
+      } else {
+        items.forEach((item) => {
+          forecastList.appendChild(row([
+            item.material && item.material.name,
+            item.machine && item.machine.name,
+            String(item.quantity),
+            badge(item.risk_level, forecastRiskBadgeClass(item.risk_level)),
+            item.task && item.task.title,
+            item.recommended_action
+          ]));
+        });
+      }
+      if (forecastMessage) {
+        const summary = forecast.summary || {};
+        const unmatched = (forecast.unmatched_tasks || []).length;
+        forecastMessage.textContent = [
+          "Kritisch: " + (summary.critical || 0),
+          "Hoch: " + (summary.high || 0),
+          "Mittel: " + (summary.medium || 0),
+          unmatched ? "Ohne Maschine: " + unmatched : ""
+        ].filter(Boolean).join(" | ");
+      }
+    }
+
+    async function loadForecast() {
+      if (!forecastForm) return;
+      const data = Object.fromEntries(new FormData(forecastForm).entries());
+      data.status = "open";
+      data.limit = 20;
+      const forecast = await api("/api/inventory/forecast", {
+        method: "POST",
+        body: JSON.stringify(data)
+      });
+      renderForecast(forecast);
+    }
 
     async function load() {
       await fillMachineSelects();
@@ -850,6 +965,18 @@
       const message = document.querySelector("[data-inventory-message]");
       if (message) message.textContent = "Material gespeichert.";
     });
+
+    if (forecastForm) {
+      forecastForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (forecastMessage) forecastMessage.textContent = "Prognose wird berechnet...";
+        try {
+          await loadForecast();
+        } catch (error) {
+          if (forecastMessage) forecastMessage.textContent = error.message;
+        }
+      });
+    }
 
     await load();
   }

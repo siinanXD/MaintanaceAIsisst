@@ -1,8 +1,9 @@
 from flask import Blueprint, jsonify, request
 
 from app.extensions import db
+from app.machines.services import build_machine_history
 from app.models import InventoryMaterial, Machine, ShiftPlanEntry
-from app.security import dashboard_permission_required
+from app.security import current_user, dashboard_permission_required
 
 
 machines_bp = Blueprint("machines", __name__)
@@ -47,6 +48,14 @@ def create_machine():
     db.session.add(machine)
     db.session.commit()
     return jsonify(machine.to_dict()), 201
+
+
+@machines_bp.get("/<int:machine_id>/history")
+@dashboard_permission_required("machines", "view")
+def machine_history(machine_id):
+    """Return a read-only history for one machine."""
+    machine = Machine.query.get_or_404(machine_id)
+    return jsonify(build_machine_history(machine, current_user()))
 
 
 @machines_bp.put("/<int:machine_id>")

@@ -1,8 +1,9 @@
 from flask import Blueprint, jsonify, request
 
 from app.extensions import db
+from app.inventory.services import forecast_inventory_risks
 from app.models import InventoryMaterial, Machine
-from app.security import dashboard_permission_required
+from app.security import current_user, dashboard_permission_required
 
 
 inventory_bp = Blueprint("inventory", __name__)
@@ -58,6 +59,20 @@ def inventory_summary():
             "materials": [material.to_dict() for material in materials],
         }
     )
+
+
+@inventory_bp.post("/forecast")
+@dashboard_permission_required("inventory", "view")
+@dashboard_permission_required("tasks", "view")
+def inventory_forecast():
+    """Return spare-part forecasts for visible tasks and linked inventory."""
+    forecast, error, status = forecast_inventory_risks(
+        request.get_json(silent=True) or {},
+        current_user(),
+    )
+    if error:
+        return jsonify(error), status
+    return jsonify(forecast), status
 
 
 @inventory_bp.post("")

@@ -18,7 +18,9 @@ Modulare Flask-Anwendung fuer Wartung, Produktion und Instandhaltung. Die App bi
 * AI-Feedback fuer spaetere Qualitaetsverbesserung
 * Mitarbeiterverwaltung mit Qualifikationen und Favoritenmaschine
 * Maschinenverwaltung mit Produktionsinhalt und benoetigter Mitarbeiterzahl
+* Maschinen-Historie mit Tasks, Fehlern, Wartungsberichten und Zusammenfassung
 * Lagerverwaltung mit Materialname, Kosten, Anzahl, Maschine, Hersteller und Gesamtwert
+* Ersatzteil-Prognose auf Basis von Tasks, Maschinen und Lagerbestand
 * KI-Chat fuer Fehlerhilfe und heutige Tasks
 * KI-gestuetzte Schichtplanung fuer Produktionsmitarbeiter mit lokalem Fallback
 * Persistente Datenspeicherung via SQLite
@@ -85,9 +87,11 @@ Admin-only Erweiterungen:
 * `GET/POST /api/machines`
 * `GET/POST /api/inventory`
 * `GET /api/inventory/summary`
+* `POST /api/inventory/forecast`
 * `GET /api/shiftplans`
 * `POST /api/shiftplans/generate`
 * `DELETE /api/shiftplans/<id>`
+* `GET /api/machines/<id>/history`
 
 Admin-Rechteverwaltung:
 
@@ -154,7 +158,19 @@ Wissenssuche:
 * Durchsucht zunaechst sichtbare Tasks, Fehler und Dokument-Metadaten.
 * Die Struktur ist fuer spaetere Embeddings oder Vector Search vorbereitet.
 
+Ersatzteil-Prognose:
+
+* `POST /api/inventory/forecast`
+* Verknuepft sichtbare Tasks mit Maschinen und Lagerpositionen.
+* Liefert nicht gespeicherte Warnungen fuer knappe oder fehlende Ersatzteile.
+
 Die Schichtplanung nutzt Produktionsmitarbeiter, Rhythmus, Praeferenzen, Qualifikationen, Favoritenmaschine und Maschinenbedarf. Der lokale Fallback plant mit max. 8h Schichtdauer und 11h Ruhezeit als Regelhinweis.
+
+Maschinen-Historie:
+
+* `GET /api/machines/<id>/history`
+* Buendelt sichtbare Tasks, Fehler und Wartungsberichte pro Maschine.
+* Nutzt OpenAI fuer Zusammenfassungen, wenn konfiguriert; sonst lokalen Fallback.
 
 ## Konfiguration
 
