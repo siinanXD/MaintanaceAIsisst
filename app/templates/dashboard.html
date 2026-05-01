@@ -17,132 +17,172 @@
   </div>
 </section>
 
-<section class="dashboard-grid">
-  <article class="card app-card lg:col-span-12" data-permission-write="tasks">
-    <div class="card-body">
-      <div class="panel-header">
-        <div>
-          <h2 class="panel-title">Stoerung erfassen</h2>
-          <p class="panel-meta">Kurz beschreiben, KI-Vorschlag pruefen und direkt als Task speichern</p>
-        </div>
-        <span class="badge badge-info badge-outline">KI</span>
-      </div>
-      <form data-cockpit-suggest-form>
-        <div class="form-grid">
-          <div class="field is-full">
-            <label for="cockpit-suggest-text">Was ist passiert?</label>
-            <textarea class="textarea textarea-bordered" id="cockpit-suggest-text" name="text" placeholder="z. B. Maschine 3 macht laute Geraeusche am Lager."></textarea>
-          </div>
-        </div>
-        <div class="toolbar form-actions">
-          <button class="btn btn-primary" type="submit">KI-Vorschlag erstellen</button>
-          <span class="panel-meta" data-cockpit-message role="status" aria-live="polite"></span>
-        </div>
-      </form>
-      <form class="suggestion-box" data-cockpit-draft hidden>
-        <div class="form-grid">
-          <div class="field">
-            <label for="cockpit-draft-title">Titel</label>
-            <input class="input input-bordered" id="cockpit-draft-title" name="title" required>
-          </div>
-          <div class="field">
-            <label for="cockpit-draft-department">Bereich</label>
-            <input class="input input-bordered" id="cockpit-draft-department" name="department" required>
-          </div>
-          <div class="field">
-            <label for="cockpit-draft-priority">Prioritaet</label>
-            <select class="select select-bordered" id="cockpit-draft-priority" name="priority">
-              <option value="urgent">urgent</option>
-              <option value="soon">soon</option>
-              <option value="normal">normal</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="cockpit-draft-status">Status</label>
-            <select class="select select-bordered" id="cockpit-draft-status" name="status">
-              <option value="open">open</option>
-              <option value="in_progress">in_progress</option>
-            </select>
-          </div>
-          <div class="field is-full">
-            <label for="cockpit-draft-description">Beschreibung</label>
-            <textarea class="textarea textarea-bordered" id="cockpit-draft-description" name="description"></textarea>
-          </div>
-        </div>
-        <div class="toolbar form-actions">
-          <button class="btn btn-primary" type="submit">Task speichern</button>
-          <button class="btn btn-ghost" type="button" data-cockpit-draft-cancel>Verwerfen</button>
-        </div>
-      </form>
-    </div>
+<section class="dashboard-kpi-grid" aria-label="Cockpit Kennzahlen">
+  <article class="kpi-card">
+    <p class="kpi-label">Aktive Tasks</p>
+    <p class="kpi-value" data-dashboard-task-count>0</p>
+    <p class="kpi-meta">Offen, heute oder in Bearbeitung</p>
   </article>
+  <article class="kpi-card">
+    <p class="kpi-label">Betriebsbereiche</p>
+    <p class="kpi-value">4</p>
+    <p class="kpi-meta">IT, Verwaltung, Instandhaltung, Produktion</p>
+  </article>
+  <article class="kpi-card">
+    <p class="kpi-label">Fehlerwissen</p>
+    <p class="kpi-value">Live</p>
+    <p class="kpi-meta">Katalog nach Bereich und Stoerung</p>
+  </article>
+  <article class="kpi-card">
+    <p class="kpi-label">Lagerstatus</p>
+    <p class="kpi-value">Bestand</p>
+    <p class="kpi-meta">Material und Werte im Blick</p>
+  </article>
+</section>
 
-  <article class="card app-card lg:col-span-12">
-    <div class="card-body">
-      <div class="panel-header">
-        <div>
-          <h2 class="panel-title">Tagescockpit</h2>
-          <p class="panel-meta">Dringende, heutige und laufende Aufgaben auf einen Blick</p>
+<details class="dashboard-section" open>
+  <summary>
+    <span>
+      <span class="section-kicker">Arbeitsbereich</span>
+      <span class="section-title">Stoerungen erfassen und Tagesaufgaben steuern</span>
+    </span>
+  </summary>
+  <section class="dashboard-grid">
+    <article class="card app-card lg:col-span-5" data-permission-write="tasks">
+      <div class="card-body">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">Stoerung erfassen</h2>
+            <p class="panel-meta">Kurz beschreiben, KI-Vorschlag pruefen und direkt als Task speichern</p>
+          </div>
+          <span class="badge badge-info badge-outline">KI</span>
         </div>
-        <span class="badge badge-success badge-outline sm:hidden">Tasks</span>
+        <form data-cockpit-suggest-form>
+          <div class="form-grid">
+            <div class="field is-full">
+              <label for="cockpit-suggest-text">Was ist passiert?</label>
+              <textarea class="textarea textarea-bordered" id="cockpit-suggest-text" name="text" placeholder="z. B. Maschine 3 macht laute Geraeusche am Lager."></textarea>
+            </div>
+          </div>
+          <div class="toolbar form-actions">
+            <button class="btn btn-primary" type="submit">KI-Vorschlag erstellen</button>
+            <span class="panel-meta" data-cockpit-message role="status" aria-live="polite"></span>
+          </div>
+        </form>
+        <form class="suggestion-box" data-cockpit-draft hidden>
+          <div class="form-grid">
+            <div class="field">
+              <label for="cockpit-draft-title">Titel</label>
+              <input class="input input-bordered" id="cockpit-draft-title" name="title" required>
+            </div>
+            <div class="field">
+              <label for="cockpit-draft-department">Bereich</label>
+              <input class="input input-bordered" id="cockpit-draft-department" name="department" required>
+            </div>
+            <div class="field">
+              <label for="cockpit-draft-priority">Prioritaet</label>
+              <select class="select select-bordered" id="cockpit-draft-priority" name="priority">
+                <option value="urgent">urgent</option>
+                <option value="soon">soon</option>
+                <option value="normal">normal</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="cockpit-draft-status">Status</label>
+              <select class="select select-bordered" id="cockpit-draft-status" name="status">
+                <option value="open">open</option>
+                <option value="in_progress">in_progress</option>
+              </select>
+            </div>
+            <div class="field is-full">
+              <label for="cockpit-draft-description">Beschreibung</label>
+              <textarea class="textarea textarea-bordered" id="cockpit-draft-description" name="description"></textarea>
+            </div>
+          </div>
+          <div class="toolbar form-actions">
+            <button class="btn btn-primary" type="submit">Task speichern</button>
+            <button class="btn btn-ghost" type="button" data-cockpit-draft-cancel>Verwerfen</button>
+          </div>
+        </form>
       </div>
-      <div class="cockpit-board" data-dashboard-task-board>
-        <section class="cockpit-column" aria-labelledby="cockpit-urgent-title">
-          <h3 id="cockpit-urgent-title" class="cockpit-column-title">Dringend</h3>
-          <div class="cockpit-task-list" data-cockpit-list="urgent"></div>
-        </section>
-        <section class="cockpit-column" aria-labelledby="cockpit-today-title">
-          <h3 id="cockpit-today-title" class="cockpit-column-title">Heute</h3>
-          <div class="cockpit-task-list" data-cockpit-list="today"></div>
-        </section>
-        <section class="cockpit-column" aria-labelledby="cockpit-progress-title">
-          <h3 id="cockpit-progress-title" class="cockpit-column-title">In Arbeit</h3>
-          <div class="cockpit-task-list" data-cockpit-list="progress"></div>
-        </section>
+    </article>
+
+    <article class="card app-card lg:col-span-7">
+      <div class="card-body">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">Tagescockpit</h2>
+            <p class="panel-meta">Dringende, heutige und laufende Aufgaben auf einen Blick</p>
+          </div>
+          <span class="badge badge-success badge-outline">Tasks</span>
+        </div>
+        <div class="cockpit-board" data-dashboard-task-board>
+          <section class="cockpit-column" aria-labelledby="cockpit-urgent-title">
+            <h3 id="cockpit-urgent-title" class="cockpit-column-title">Dringend</h3>
+            <div class="cockpit-task-list" data-cockpit-list="urgent"></div>
+          </section>
+          <section class="cockpit-column" aria-labelledby="cockpit-today-title">
+            <h3 id="cockpit-today-title" class="cockpit-column-title">Heute</h3>
+            <div class="cockpit-task-list" data-cockpit-list="today"></div>
+          </section>
+          <section class="cockpit-column" aria-labelledby="cockpit-progress-title">
+            <h3 id="cockpit-progress-title" class="cockpit-column-title">In Arbeit</h3>
+            <div class="cockpit-task-list" data-cockpit-list="progress"></div>
+          </section>
+        </div>
+      </div>
+    </article>
+  </section>
+</details>
+
+<div class="modal task-detail-modal" data-task-detail-modal hidden>
+  <div class="modal-box max-w-4xl">
+    <div class="panel-header">
+      <div>
+        <h2 class="panel-title" id="task-detail-title" data-task-detail-title>Task</h2>
+        <p class="panel-meta" data-task-detail-subtitle>Details und Workflow</p>
+      </div>
+      <button class="btn btn-ghost btn-sm" type="button" data-task-detail-close>Schliessen</button>
+    </div>
+    <div class="task-detail-body" data-task-detail-body></div>
+    <div class="form-grid mt-6" data-report-options>
+      <label class="field cursor-pointer">
+        <span>Wartungsbericht erzeugen</span>
+        <input class="checkbox checkbox-primary" type="checkbox" data-report-generate>
+      </label>
+      <div class="field">
+        <label for="report-machine">Maschine</label>
+        <input class="input input-bordered" id="report-machine" data-report-field="machine">
+      </div>
+      <div class="field">
+        <label for="report-result">Ergebnis</label>
+        <input class="input input-bordered" id="report-result" data-report-field="result">
+      </div>
+      <div class="field">
+        <label for="report-cause">Ursache</label>
+        <input class="input input-bordered" id="report-cause" data-report-field="cause">
+      </div>
+      <div class="field is-full">
+        <label for="report-action">Massnahme / Notizen</label>
+        <textarea class="textarea textarea-bordered" id="report-action" data-report-field="action"></textarea>
       </div>
     </div>
-  </article>
-
-  <div class="modal task-detail-modal" data-task-detail-modal hidden>
-    <div class="modal-box max-w-4xl">
-      <div class="panel-header">
-        <div>
-          <h2 class="panel-title" id="task-detail-title" data-task-detail-title>Task</h2>
-          <p class="panel-meta" data-task-detail-subtitle>Details und Workflow</p>
-        </div>
-        <button class="btn btn-ghost btn-sm" type="button" data-task-detail-close>Schliessen</button>
-      </div>
-      <div class="task-detail-body" data-task-detail-body></div>
-      <div class="form-grid mt-6" data-report-options>
-        <label class="field cursor-pointer">
-          <span>Wartungsbericht erzeugen</span>
-          <input class="checkbox checkbox-primary" type="checkbox" data-report-generate>
-        </label>
-        <div class="field">
-          <label for="report-machine">Maschine</label>
-          <input class="input input-bordered" id="report-machine" data-report-field="machine">
-        </div>
-        <div class="field">
-          <label for="report-result">Ergebnis</label>
-          <input class="input input-bordered" id="report-result" data-report-field="result">
-        </div>
-        <div class="field">
-          <label for="report-cause">Ursache</label>
-          <input class="input input-bordered" id="report-cause" data-report-field="cause">
-        </div>
-        <div class="field is-full">
-          <label for="report-action">Massnahme / Notizen</label>
-          <textarea class="textarea textarea-bordered" id="report-action" data-report-field="action"></textarea>
-        </div>
-      </div>
-      <div class="toolbar form-actions">
-        <button class="btn btn-primary" type="button" data-task-start-button>Task starten</button>
-        <button class="btn btn-success text-white" type="button" data-task-complete-button>Task abschliessen</button>
-        <span class="panel-meta" data-task-detail-message role="status" aria-live="polite"></span>
-      </div>
+    <div class="toolbar form-actions">
+      <button class="btn btn-primary" type="button" data-task-start-button>Task starten</button>
+      <button class="btn btn-success text-white" type="button" data-task-complete-button>Task abschliessen</button>
+      <span class="panel-meta" data-task-detail-message role="status" aria-live="polite"></span>
     </div>
   </div>
+</div>
 
+<details class="dashboard-section" open>
+  <summary>
+    <span>
+      <span class="section-kicker">Auswertung</span>
+      <span class="section-title">Bereiche, Fehlerwissen und Lagerlage</span>
+    </span>
+  </summary>
+  <section class="dashboard-grid">
   <article class="card app-card lg:col-span-4">
     <div class="card-body">
       <div class="panel-header">
@@ -186,5 +226,6 @@
       </div>
     </div>
   </article>
-</section>
+  </section>
+</details>
 {% endblock %}

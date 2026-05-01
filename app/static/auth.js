@@ -214,6 +214,16 @@
       element.hidden = !loggedIn || !canView(user, element.dataset.dashboardNav);
     });
 
+    document.querySelectorAll("[data-nav-group]").forEach((group) => {
+      const visibleLinks = group.querySelectorAll("[data-dashboard-nav]:not([hidden])");
+      group.hidden = visibleLinks.length === 0;
+    });
+
+    document.querySelectorAll("[data-nav-root]").forEach((root) => {
+      const visibleGroups = root.querySelectorAll("[data-nav-group]:not([hidden])");
+      root.hidden = visibleGroups.length === 0;
+    });
+
     document.querySelectorAll("[data-permission-view]").forEach((element) => {
       element.hidden = !canView(user, element.dataset.permissionView);
     });

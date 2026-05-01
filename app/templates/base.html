@@ -18,18 +18,38 @@
         </a>
 
         <nav aria-label="Hauptnavigation" class="flex-1">
-          <ul class="menu gap-1 p-0 text-sm font-medium">
-            <li data-dashboard-nav="dashboard" hidden><a class="nav-link {% if request.path == '/' %}is-active{% endif %}" href="/">Dashboard</a></li>
-            <li data-dashboard-nav="tasks" hidden><a class="nav-link {% if request.path == '/tasks' %}is-active{% endif %}" href="/tasks">Tasks</a></li>
-            <li data-dashboard-nav="errors" hidden><a class="nav-link {% if request.path == '/errors' %}is-active{% endif %}" href="/errors">Fehlerliste</a></li>
-            <li data-dashboard-nav="employees" hidden><a class="nav-link {% if request.path == '/employees' %}is-active{% endif %}" href="/employees">Mitarbeiter</a></li>
-            <li data-dashboard-nav="shiftplans" hidden><a class="nav-link {% if request.path == '/shiftplans' %}is-active{% endif %}" href="/shiftplans">Schichtplan</a></li>
-            <li data-dashboard-nav="machines" hidden><a class="nav-link {% if request.path == '/machines' %}is-active{% endif %}" href="/machines">Maschinen</a></li>
-            <li data-dashboard-nav="inventory" hidden><a class="nav-link {% if request.path == '/inventory' %}is-active{% endif %}" href="/inventory">Lager</a></li>
-            <li data-dashboard-nav="documents" hidden><a class="nav-link {% if request.path == '/documents' %}is-active{% endif %}" href="/documents">Dokumente</a></li>
-            <li data-dashboard-nav="admin_users" hidden><a class="nav-link {% if request.path == '/admin/users' %}is-active{% endif %}" href="/admin/users">Users</a></li>
-            <li data-auth-login-link><a class="nav-link {% if request.path == '/login' %}is-active{% endif %}" href="/login">Login</a></li>
-          </ul>
+          <div class="nav-stack">
+            <details class="nav-group" data-nav-group open>
+              <summary>Arbeit</summary>
+              <ul class="menu gap-1 p-0 text-sm font-medium">
+                <li data-dashboard-nav="dashboard" hidden><a class="nav-link {% if request.path == '/' %}is-active{% endif %}" href="/">Dashboard</a></li>
+                <li data-dashboard-nav="tasks" hidden><a class="nav-link {% if request.path == '/tasks' %}is-active{% endif %}" href="/tasks">Tasks</a></li>
+                <li data-dashboard-nav="errors" hidden><a class="nav-link {% if request.path == '/errors' %}is-active{% endif %}" href="/errors">Fehlerliste</a></li>
+              </ul>
+            </details>
+            <details class="nav-group" data-nav-group {% if request.path in ['/employees', '/machines', '/inventory'] %}open{% endif %}>
+              <summary>Ressourcen</summary>
+              <ul class="menu gap-1 p-0 text-sm font-medium">
+                <li data-dashboard-nav="employees" hidden><a class="nav-link {% if request.path == '/employees' %}is-active{% endif %}" href="/employees">Mitarbeiter</a></li>
+                <li data-dashboard-nav="machines" hidden><a class="nav-link {% if request.path == '/machines' %}is-active{% endif %}" href="/machines">Maschinen</a></li>
+                <li data-dashboard-nav="inventory" hidden><a class="nav-link {% if request.path == '/inventory' %}is-active{% endif %}" href="/inventory">Lager</a></li>
+              </ul>
+            </details>
+            <details class="nav-group" data-nav-group {% if request.path in ['/shiftplans', '/documents'] %}open{% endif %}>
+              <summary>Planung & Dokumente</summary>
+              <ul class="menu gap-1 p-0 text-sm font-medium">
+                <li data-dashboard-nav="shiftplans" hidden><a class="nav-link {% if request.path == '/shiftplans' %}is-active{% endif %}" href="/shiftplans">Schichtplan</a></li>
+                <li data-dashboard-nav="documents" hidden><a class="nav-link {% if request.path == '/documents' %}is-active{% endif %}" href="/documents">Dokumente</a></li>
+              </ul>
+            </details>
+            <details class="nav-group" data-nav-group {% if request.path == '/admin/users' %}open{% endif %}>
+              <summary>Administration</summary>
+              <ul class="menu gap-1 p-0 text-sm font-medium">
+                <li data-dashboard-nav="admin_users" hidden><a class="nav-link {% if request.path == '/admin/users' %}is-active{% endif %}" href="/admin/users">Users</a></li>
+              </ul>
+            </details>
+            <div data-auth-login-link><a class="nav-link {% if request.path == '/login' %}is-active{% endif %}" href="/login">Login</a></div>
+          </div>
         </nav>
 
         <div class="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-950">
@@ -47,13 +67,37 @@
                 <span>Maintenance</span>
               </a>
             </div>
-            <div class="navbar-center hidden max-w-3xl flex-1 px-4 md:block">
-              <div class="flex items-center gap-2 overflow-x-auto">
-                <a data-dashboard-nav="dashboard" hidden class="btn btn-ghost btn-sm {% if request.path == '/' %}btn-active{% endif %}" href="/">Dashboard</a>
-                <a data-dashboard-nav="tasks" hidden class="btn btn-ghost btn-sm {% if request.path == '/tasks' %}btn-active{% endif %}" href="/tasks">Tasks</a>
-                <a data-dashboard-nav="errors" hidden class="btn btn-ghost btn-sm {% if request.path == '/errors' %}btn-active{% endif %}" href="/errors">Fehler</a>
-                <a data-dashboard-nav="shiftplans" hidden class="btn btn-ghost btn-sm {% if request.path == '/shiftplans' %}btn-active{% endif %}" href="/shiftplans">Schichtplan</a>
-                <a data-dashboard-nav="documents" hidden class="btn btn-ghost btn-sm {% if request.path == '/documents' %}btn-active{% endif %}" href="/documents">Dokumente</a>
+            <div class="navbar-center hidden max-w-3xl flex-1 px-4 md:flex">
+              <div class="top-nav">
+                <details class="top-nav-group" data-nav-group>
+                  <summary>Arbeit</summary>
+                  <div class="top-nav-panel">
+                    <a data-dashboard-nav="dashboard" hidden class="top-nav-link {% if request.path == '/' %}is-active{% endif %}" href="/">Dashboard</a>
+                    <a data-dashboard-nav="tasks" hidden class="top-nav-link {% if request.path == '/tasks' %}is-active{% endif %}" href="/tasks">Tasks</a>
+                    <a data-dashboard-nav="errors" hidden class="top-nav-link {% if request.path == '/errors' %}is-active{% endif %}" href="/errors">Fehler</a>
+                  </div>
+                </details>
+                <details class="top-nav-group" data-nav-group>
+                  <summary>Ressourcen</summary>
+                  <div class="top-nav-panel">
+                    <a data-dashboard-nav="employees" hidden class="top-nav-link {% if request.path == '/employees' %}is-active{% endif %}" href="/employees">Mitarbeiter</a>
+                    <a data-dashboard-nav="machines" hidden class="top-nav-link {% if request.path == '/machines' %}is-active{% endif %}" href="/machines">Maschinen</a>
+                    <a data-dashboard-nav="inventory" hidden class="top-nav-link {% if request.path == '/inventory' %}is-active{% endif %}" href="/inventory">Lager</a>
+                  </div>
+                </details>
+                <details class="top-nav-group" data-nav-group>
+                  <summary>Planung</summary>
+                  <div class="top-nav-panel">
+                    <a data-dashboard-nav="shiftplans" hidden class="top-nav-link {% if request.path == '/shiftplans' %}is-active{% endif %}" href="/shiftplans">Schichtplan</a>
+                    <a data-dashboard-nav="documents" hidden class="top-nav-link {% if request.path == '/documents' %}is-active{% endif %}" href="/documents">Dokumente</a>
+                  </div>
+                </details>
+                <details class="top-nav-group" data-nav-group>
+                  <summary>Admin</summary>
+                  <div class="top-nav-panel">
+                    <a data-dashboard-nav="admin_users" hidden class="top-nav-link {% if request.path == '/admin/users' %}is-active{% endif %}" href="/admin/users">Users</a>
+                  </div>
+                </details>
               </div>
             </div>
             <div class="navbar-end gap-2">
@@ -66,18 +110,36 @@
             </div>
           </div>
           <div class="border-t border-slate-100 px-4 py-2 md:hidden">
-            <div class="flex gap-2 overflow-x-auto">
-              <a data-dashboard-nav="dashboard" hidden class="btn btn-ghost btn-xs {% if request.path == '/' %}btn-active{% endif %}" href="/">Dashboard</a>
-              <a data-dashboard-nav="tasks" hidden class="btn btn-ghost btn-xs {% if request.path == '/tasks' %}btn-active{% endif %}" href="/tasks">Tasks</a>
-              <a data-dashboard-nav="errors" hidden class="btn btn-ghost btn-xs {% if request.path == '/errors' %}btn-active{% endif %}" href="/errors">Fehler</a>
-              <a data-dashboard-nav="employees" hidden class="btn btn-ghost btn-xs {% if request.path == '/employees' %}btn-active{% endif %}" href="/employees">Mitarbeiter</a>
-              <a data-dashboard-nav="machines" hidden class="btn btn-ghost btn-xs {% if request.path == '/machines' %}btn-active{% endif %}" href="/machines">Maschinen</a>
-              <a data-dashboard-nav="inventory" hidden class="btn btn-ghost btn-xs {% if request.path == '/inventory' %}btn-active{% endif %}" href="/inventory">Lager</a>
-            </div>
+            <details class="mobile-nav" data-nav-root>
+              <summary>Menue</summary>
+              <div class="mobile-nav-panel">
+                <details class="nav-group" data-nav-group open>
+                  <summary>Arbeit</summary>
+                  <a data-dashboard-nav="dashboard" hidden class="top-nav-link {% if request.path == '/' %}is-active{% endif %}" href="/">Dashboard</a>
+                  <a data-dashboard-nav="tasks" hidden class="top-nav-link {% if request.path == '/tasks' %}is-active{% endif %}" href="/tasks">Tasks</a>
+                  <a data-dashboard-nav="errors" hidden class="top-nav-link {% if request.path == '/errors' %}is-active{% endif %}" href="/errors">Fehler</a>
+                </details>
+                <details class="nav-group" data-nav-group>
+                  <summary>Ressourcen</summary>
+                  <a data-dashboard-nav="employees" hidden class="top-nav-link {% if request.path == '/employees' %}is-active{% endif %}" href="/employees">Mitarbeiter</a>
+                  <a data-dashboard-nav="machines" hidden class="top-nav-link {% if request.path == '/machines' %}is-active{% endif %}" href="/machines">Maschinen</a>
+                  <a data-dashboard-nav="inventory" hidden class="top-nav-link {% if request.path == '/inventory' %}is-active{% endif %}" href="/inventory">Lager</a>
+                </details>
+                <details class="nav-group" data-nav-group>
+                  <summary>Planung</summary>
+                  <a data-dashboard-nav="shiftplans" hidden class="top-nav-link {% if request.path == '/shiftplans' %}is-active{% endif %}" href="/shiftplans">Schichtplan</a>
+                  <a data-dashboard-nav="documents" hidden class="top-nav-link {% if request.path == '/documents' %}is-active{% endif %}" href="/documents">Dokumente</a>
+                </details>
+                <details class="nav-group" data-nav-group>
+                  <summary>Admin</summary>
+                  <a data-dashboard-nav="admin_users" hidden class="top-nav-link {% if request.path == '/admin/users' %}is-active{% endif %}" href="/admin/users">Users</a>
+                </details>
+              </div>
+            </details>
           </div>
         </header>
 
-        <main class="mx-auto w-full max-w-7xl px-4 pb-28 pt-6 sm:px-6 sm:pb-10 lg:px-8 lg:py-8">
+        <main class="mx-auto w-full max-w-7xl px-4 pb-28 pr-16 pt-6 sm:px-6 sm:pb-10 lg:px-8 lg:py-8">
           <div class="sr-only" aria-live="polite" aria-atomic="true" data-global-live-region></div>
           {% block content %}{% endblock %}
         </main>

@@ -929,7 +929,7 @@
 
   async function initDashboard() {
     const taskRail = document.querySelector("[data-dashboard-task-rail]");
-    const taskCount = document.querySelector("[data-dashboard-task-count]");
+    const taskCountElements = document.querySelectorAll("[data-dashboard-task-count]");
     const taskDetailModal = document.querySelector("[data-task-detail-modal]");
     const taskDetailTitle = document.querySelector("[data-task-detail-title]");
     const taskDetailSubtitle = document.querySelector("[data-task-detail-subtitle]");
@@ -1064,7 +1064,9 @@
     async function loadDashboardTasks() {
       const tasks = await api("/api/tasks");
       taskRail.innerHTML = "";
-      if (taskCount) taskCount.textContent = String(tasks.length);
+      taskCountElements.forEach((taskCount) => {
+        taskCount.textContent = String(tasks.length);
+      });
       if (!tasks.length) {
         taskRail.innerHTML = '<div class="empty-state">Noch keine Tasks vorhanden.</div>';
       } else {
@@ -1156,7 +1158,7 @@
 
   async function initDailyCockpit() {
     const taskBoard = document.querySelector("[data-dashboard-task-board]");
-    const taskCount = document.querySelector("[data-dashboard-task-count]");
+    const taskCountElements = document.querySelectorAll("[data-dashboard-task-count]");
     const taskDetailModal = document.querySelector("[data-task-detail-modal]");
     const taskDetailTitle = document.querySelector("[data-task-detail-title]");
     const taskDetailSubtitle = document.querySelector("[data-task-detail-subtitle]");
@@ -1471,7 +1473,9 @@
       Object.values(lists).forEach((list) => {
         if (list) list.innerHTML = "";
       });
-      if (taskCount) taskCount.textContent = String(tasks.length);
+      taskCountElements.forEach((taskCount) => {
+        taskCount.textContent = String(tasks.length);
+      });
       const groups = { urgent: [], today: [], progress: [] };
       tasks.forEach((task) => {
         if (task.status === "in_progress") groups.progress.push(task);
