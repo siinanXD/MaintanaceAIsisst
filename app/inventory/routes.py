@@ -3,7 +3,7 @@ from flask import Blueprint, jsonify, request
 from app.extensions import db
 from app.inventory.services import forecast_inventory_risks
 from app.models import InventoryMaterial, Machine
-from app.responses import error_response, service_error_response
+from app.responses import error_response, service_error_response, success_response
 from app.security import current_user, dashboard_permission_required
 
 
@@ -76,7 +76,7 @@ def inventory_forecast():
     )
     if error:
         return service_error_response(error, status)
-    return jsonify(forecast), status
+    return success_response(forecast, status, "Inventory forecast loaded")
 
 
 @inventory_bp.post("")

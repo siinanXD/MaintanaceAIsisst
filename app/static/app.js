@@ -56,7 +56,10 @@
     }
     if (response.status === 204) return null;
     const data = await response.json().catch(() => null);
-    if (!response.ok) throw new Error((data && (data.message || data.error)) || "API error");
+    if (!response.ok) throw new Error((data && (data.message || data.error)) || "Anfrage konnte nicht verarbeitet werden.");
+    if (data && data.success === true && Object.prototype.hasOwnProperty.call(data, "data")) {
+      return data.data;
+    }
     return data;
   }
 
@@ -2302,12 +2305,15 @@
       if (!reviewPanel || !reviewFindings) return;
       reviewPanel.hidden = false;
       if (reviewSummary) {
-        reviewSummary.textContent = "Pruefung fuer " + review.document.title;
+        const documentTitle = review.document && review.document.title
+          ? review.document.title
+          : "ausgewaehltes Dokument";
+        reviewSummary.textContent = "Pruefung fuer " + documentTitle;
       }
       if (reviewScore) reviewScore.textContent = String(review.quality_score);
       if (reviewStatus) reviewStatus.textContent = reviewStatusLabel(review.status);
       reviewFindings.innerHTML = "";
-      if (!review.findings.length) {
+      if (!review.findings || !review.findings.length) {
         reviewFindings.innerHTML = '<tr><td colspan="3">Keine Findings gefunden.</td></tr>';
       } else {
         review.findings.forEach((finding) => {
@@ -2319,8 +2325,9 @@
         });
       }
       if (reviewRecommendations) {
-        reviewRecommendations.textContent = review.recommendations.length
-          ? "Empfehlungen: " + review.recommendations.join(" | ")
+        const recommendations = review.recommendations || [];
+        reviewRecommendations.textContent = recommendations.length
+          ? "Empfehlungen: " + recommendations.join(" | ")
           : "Keine Empfehlungen erforderlich.";
       }
       reviewPanel.scrollIntoView({ behavior: "smooth", block: "start" });

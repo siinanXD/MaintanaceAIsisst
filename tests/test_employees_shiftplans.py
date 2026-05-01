@@ -192,7 +192,8 @@ def test_shiftplan_generate_rejects_when_no_production_employees(
     )
 
     assert response.status_code == 400
-    assert response.get_json()["error"] == "Keine Produktionsmitarbeiter gefunden"
+    assert response.get_json()["error"] == "keine_produktionsmitarbeiter_gefunden"
+    assert response.get_json()["message"] == "Keine Produktionsmitarbeiter gefunden"
 
 
 def test_shiftplan_generate_rejects_invalid_date_and_days(

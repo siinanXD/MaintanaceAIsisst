@@ -69,6 +69,8 @@ Demo-Login nach `python seed.py`:
 
 * User: `master.admin`
 * Passwort: `Demo1234!`
+* Weitere Demo-User: `instandhaltung.leitung`, `produktion.leitung`, `it.leitung`, `verwaltung.leitung`
+* Alle Demo-User nutzen lokal dasselbe Demo-Passwort. Keine echten Passwoerter oder produktiven Secrets im Repository ablegen.
 
 ## Docker Setup
 
@@ -155,7 +157,8 @@ gepusht.
 5. In `Fehlerkatalog` nach `Temperatur CNC` suchen und aehnliche Fehler pruefen.
 6. In `Maschinen` eine Anlage oeffnen und den Maschinen-Assistenten mit einer Wartungsfrage testen.
 7. In `Lager` die Ersatzteil-Prognose ausfuehren und knappe Materialien pruefen.
-8. In `Swagger` die API-Endpunkte und Beispielpayloads nachvollziehen.
+8. In `Dokumente` generierte Wartungsberichte pruefen und herunterladen.
+9. In `Swagger` die API-Endpunkte und Beispielpayloads nachvollziehen.
 
 ## Architektur
 

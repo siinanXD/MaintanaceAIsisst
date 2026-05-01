@@ -216,7 +216,7 @@ def test_task_create_start_complete_workflow(client, make_user, auth_headers):
 
 
 def test_task_workflow_errors_use_consistent_payload(client, make_user, auth_headers):
-    """Verify workflow errors expose success, message and legacy error fields."""
+    """Verify workflow errors expose success, short error code and message."""
     user = make_user(username="workflow_error_shape")
 
     response = client.post(
@@ -228,7 +228,7 @@ def test_task_workflow_errors_use_consistent_payload(client, make_user, auth_hea
     assert response.status_code == 404
     assert payload["success"] is False
     assert payload["message"] == "Task not found"
-    assert payload["error"] == "Task not found"
+    assert payload["error"] == "task_not_found"
 
 
 def test_today_tasks_only_returns_current_date(client, make_user, make_task, auth_headers):
@@ -285,7 +285,7 @@ def test_prioritize_tasks_only_returns_visible_department(
         json={"status": "open"},
     )
 
-    payload = response.get_json()
+    payload = response.get_json()["data"]
     assert response.status_code == 200
     assert [item["task"]["title"] for item in payload] == ["Eigener Task"]
 
@@ -339,7 +339,7 @@ def test_prioritize_tasks_sorts_urgent_overdue_before_normal(
         json={"status": "open"},
     )
 
-    payload = response.get_json()
+    payload = response.get_json()["data"]
     assert response.status_code == 200
     assert payload[0]["task"]["title"] == "Stillstand an Anlage 4"
     assert payload[0]["score"] > payload[1]["score"]
@@ -367,7 +367,7 @@ def test_prioritize_tasks_uses_local_fallback_without_openai_key(
         json={"limit": 1},
     )
 
-    payload = response.get_json()
+    payload = response.get_json()["data"]
     assert response.status_code == 200
     assert len(payload) == 1
     assert set(payload[0]) == {

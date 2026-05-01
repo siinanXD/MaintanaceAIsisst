@@ -50,7 +50,8 @@ def test_error_entry_validates_required_fields(client, make_user, auth_headers):
     )
 
     assert response.status_code == 400
-    assert "Missing fields" in response.get_json()["error"]
+    assert response.get_json()["error"] == "missing_fields_error_code_title"
+    assert "Missing fields" in response.get_json()["message"]
 
 
 def test_error_entry_rejects_other_department_writes(

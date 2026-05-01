@@ -59,7 +59,8 @@ def test_api_not_found_returns_consistent_json(client, make_user, auth_headers):
     assert response.status_code == 404
     assert payload["success"] is False
     assert payload["message"]
-    assert payload["error"] == payload["message"]
+    assert payload["error"]
+    assert payload["error"] != payload["message"]
 
 
 def test_core_ai_and_workflow_endpoints_smoke(

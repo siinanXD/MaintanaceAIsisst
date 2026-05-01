@@ -3,7 +3,7 @@ from flask import Blueprint, jsonify, request
 from app.extensions import db
 from app.machines.services import answer_machine_assistant, build_machine_history
 from app.models import InventoryMaterial, Machine, ShiftPlanEntry
-from app.responses import error_response, service_error_response
+from app.responses import error_response, service_error_response, success_response
 from app.security import current_user, dashboard_permission_required
 
 
@@ -56,7 +56,10 @@ def create_machine():
 def machine_history(machine_id):
     """Return a read-only history for one machine."""
     machine = Machine.query.get_or_404(machine_id)
-    return jsonify(build_machine_history(machine, current_user()))
+    return success_response(
+        build_machine_history(machine, current_user()),
+        message="Machine history loaded",
+    )
 
 
 @machines_bp.post("/<int:machine_id>/assistant")
@@ -71,7 +74,7 @@ def machine_assistant(machine_id):
     )
     if error:
         return service_error_response(error, status)
-    return jsonify(result), status
+    return success_response(result, status, "Machine assistant response generated")
 
 
 @machines_bp.put("/<int:machine_id>")

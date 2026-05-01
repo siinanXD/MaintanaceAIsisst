@@ -6,7 +6,8 @@ def test_register_validates_missing_fields_and_department(client):
     missing_response = client.post("/api/auth/register", json={})
 
     assert missing_response.status_code == 400
-    assert "Missing fields" in missing_response.get_json()["error"]
+    assert missing_response.get_json()["error"] == "missing_fields_username_email_password"
+    assert "Missing fields" in missing_response.get_json()["message"]
 
     no_department_response = client.post(
         "/api/auth/register",
@@ -19,7 +20,7 @@ def test_register_validates_missing_fields_and_department(client):
     )
 
     assert no_department_response.status_code == 400
-    assert no_department_response.get_json()["error"] == (
+    assert no_department_response.get_json()["message"] == (
         "department_id or department is required"
     )
 
@@ -82,5 +83,6 @@ def test_login_rejects_invalid_credentials_and_locked_users(client, make_user):
 
     assert bad_password_response.status_code == 401
     assert locked_response.status_code == 403
-    assert locked_response.get_json()["error"] == "User is locked"
+    assert locked_response.get_json()["error"] == "user_is_locked"
+    assert locked_response.get_json()["message"] == "User is locked"
     assert missing_response.status_code == 400
