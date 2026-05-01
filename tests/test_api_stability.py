@@ -1,3 +1,6 @@
+from app.models import Priority, Role
+
+
 def public_route_methods(app):
     """Return non-static Flask route rules and supported HTTP methods."""
     routes = set()
@@ -55,3 +58,58 @@ def test_api_not_found_returns_consistent_json(client, make_user, auth_headers):
     assert payload["success"] is False
     assert payload["message"]
     assert payload["error"] == payload["message"]
+
+
+def test_core_ai_and_workflow_endpoints_smoke(
+    client,
+    make_user,
+    make_task,
+    make_machine,
+    make_material,
+    auth_headers,
+):
+    """Verify core frontend API endpoints respond with authenticated requests."""
+    user = make_user(
+        username="api_smoke_user",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    machine_id = make_machine(name="Anlage Smoke")
+    make_material("Smoke Sensor", 120, 0, machine_id=machine_id)
+    task_id = make_task(
+        "Stillstand Anlage Smoke",
+        creator_username=user["username"],
+        department_name="Instandhaltung",
+        priority=Priority.URGENT,
+        description="Anlage Smoke meldet Sensorfehler",
+    )
+    headers = auth_headers(user["username"])
+
+    start_response = client.post(f"/api/tasks/{task_id}/start", headers=headers)
+    complete_response = client.post(
+        f"/api/tasks/{task_id}/complete",
+        headers=headers,
+        json={},
+    )
+    briefing_response = client.get("/api/ai/daily-briefing", headers=headers)
+    assistant_response = client.post(
+        f"/api/machines/{machine_id}/assistant",
+        headers=headers,
+        json={"question": "Was ist wichtig?"},
+    )
+    forecast_response = client.post(
+        "/api/inventory/forecast",
+        headers=headers,
+        json={"status": "open", "limit": 20, "low_stock_threshold": 5},
+    )
+
+    assert start_response.status_code == 200
+    assert start_response.get_json()["status"] == "in_progress"
+    assert complete_response.status_code == 200
+    assert complete_response.get_json()["status"] == "done"
+    assert briefing_response.status_code == 200
+    assert "sections" in briefing_response.get_json()
+    assert assistant_response.status_code == 200
+    assert assistant_response.get_json()["diagnostics"]["status"] == "local_answer"
+    assert forecast_response.status_code == 200
+    assert "items" in forecast_response.get_json()
