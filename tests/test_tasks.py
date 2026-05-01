@@ -331,8 +331,12 @@ def test_prioritize_tasks_uses_local_fallback_without_openai_key(
 def test_task_page_contains_priority_ui(client):
     """Verify task prioritization is exposed on the task page."""
     response = client.get("/tasks")
+    script_response = client.get("/static/app.js")
     html = response.get_data(as_text=True)
+    script = script_response.get_data(as_text=True)
 
     assert response.status_code == 200
+    assert script_response.status_code == 200
     assert 'data-task-priority-list' in html
     assert 'data-task-priority-refresh' in html
+    assert "Priorisierung konnte nicht geladen werden." in script

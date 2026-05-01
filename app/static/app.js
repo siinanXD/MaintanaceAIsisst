@@ -212,11 +212,17 @@
 
     async function loadPriorities() {
       if (!priorityList) return;
-      const priorities = await api("/api/tasks/prioritize", {
-        method: "POST",
-        body: JSON.stringify({ status: "open", limit: 10 })
-      });
       priorityList.innerHTML = "";
+      let priorities = [];
+      try {
+        priorities = await api("/api/tasks/prioritize", {
+          method: "POST",
+          body: JSON.stringify({ status: "open", limit: 10 })
+        });
+      } catch (error) {
+        priorityList.innerHTML = '<tr><td colspan="5">Priorisierung konnte nicht geladen werden.</td></tr>';
+        return;
+      }
       if (!priorities.length) {
         priorityList.innerHTML = '<tr><td colspan="5">Keine offenen Tasks zu priorisieren.</td></tr>';
         return;
@@ -1839,11 +1845,17 @@
 
     async function loadDashboardPriorities() {
       if (!priorityList || !canView("tasks")) return;
-      const priorities = await api("/api/tasks/prioritize", {
-        method: "POST",
-        body: JSON.stringify({ status: "open", limit: 3 })
-      });
       priorityList.innerHTML = "";
+      let priorities = [];
+      try {
+        priorities = await api("/api/tasks/prioritize", {
+          method: "POST",
+          body: JSON.stringify({ status: "open", limit: 3 })
+        });
+      } catch (error) {
+        priorityList.appendChild(rowLikeStat("KI-Priorisierung", "Nicht verfuegbar"));
+        return;
+      }
       if (!priorities.length) {
         priorityList.appendChild(rowLikeStat("KI-Priorisierung", "Keine offenen Tasks"));
         return;
@@ -1858,7 +1870,15 @@
 
     async function loadDailyBriefing() {
       if (!briefingList) return;
-      const briefing = await api("/api/ai/daily-briefing");
+      let briefing = null;
+      try {
+        briefing = await api("/api/ai/daily-briefing");
+      } catch (error) {
+        if (briefingSummary) briefingSummary.textContent = "Briefing konnte nicht geladen werden.";
+        briefingList.innerHTML = "";
+        briefingList.appendChild(rowLikeStat("Status", "Nicht verfuegbar"));
+        return;
+      }
       if (briefingSummary) briefingSummary.textContent = briefing.summary;
       briefingList.innerHTML = "";
       if (!briefing.sections.length) {

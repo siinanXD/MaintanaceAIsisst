@@ -574,3 +574,62 @@ def test_machine_assistant_uses_local_context_and_requires_question(
     assert valid_response.status_code == 200
     assert payload["diagnostics"]["status"] == "local_answer"
     assert payload["context"]["source_counts"]["tasks"] == 1
+
+
+def test_machine_assistant_excludes_unpermitted_sources(
+    client,
+    make_user,
+    make_machine,
+    make_task,
+    make_error_entry,
+    make_document,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify machine assistant context only includes permitted data sources."""
+    user = make_user(
+        username="machine_assistant_limited_user",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    machine_id = make_machine(name="Anlage Gesperrt")
+    task_id = make_task(
+        "Task Anlage Gesperrt",
+        creator_username=user["username"],
+        department_name="Instandhaltung",
+        priority=Priority.URGENT,
+        description="Anlage Gesperrt pruefen",
+    )
+    make_error_entry(
+        "Anlage Gesperrt",
+        "E790",
+        "Sensorfehler",
+        department_name="Instandhaltung",
+    )
+    make_document(
+        task_id,
+        user["id"],
+        relative_path="2026/05/task_limited/maintenance_report.html",
+        department="Instandhaltung",
+        machine="Anlage Gesperrt",
+    )
+    set_dashboard_permission(user["username"], "tasks", can_view=False)
+    set_dashboard_permission(user["username"], "errors", can_view=False)
+    set_dashboard_permission(user["username"], "documents", can_view=False)
+    set_dashboard_permission(user["username"], "inventory", can_view=False)
+
+    response = client.post(
+        f"/api/machines/{machine_id}/assistant",
+        headers=auth_headers(user["username"]),
+        json={"question": "Was ist sichtbar?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["context"]["source_counts"] == {
+        "tasks": 0,
+        "errors": 0,
+        "documents": 0,
+        "total": 0,
+    }
+    assert payload["context"]["forecast_items"] == 0

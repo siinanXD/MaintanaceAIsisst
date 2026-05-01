@@ -147,14 +147,60 @@ def test_daily_briefing_respects_permissions_and_uses_local_fallback(
     assert "documents" not in section_types
 
 
+def test_daily_briefing_returns_no_sections_without_permissions(
+    client,
+    make_user,
+    make_task,
+    make_error_entry,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify daily briefing does not expose sections without dashboard rights."""
+    user = make_user(
+        username="briefing_no_rights_user",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+    make_task(
+        "Verdeckter Briefing Task",
+        creator_username=user["username"],
+        department_name="Produktion",
+        priority=Priority.URGENT,
+        due_date_value=date.today() - timedelta(days=1),
+    )
+    make_error_entry(
+        "Anlage Briefing Sperre",
+        "E556",
+        "Verdeckter Fehler",
+        department_name="Produktion",
+    )
+    set_dashboard_permission(user["username"], "tasks", can_view=False)
+    set_dashboard_permission(user["username"], "errors", can_view=False)
+
+    response = client.get(
+        "/api/ai/daily-briefing",
+        headers=auth_headers(user["username"]),
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["sections"] == []
+    assert payload["summary"] == "Heute sind keine kritischen Hinweise sichtbar."
+
+
 def test_dashboard_contains_daily_briefing_and_priority_ui(client):
     """Verify dashboard exposes briefing and task priority UI hooks."""
     response = client.get("/")
+    script_response = client.get("/static/app.js")
     html = response.get_data(as_text=True)
+    script = script_response.get_data(as_text=True)
 
     assert response.status_code == 200
+    assert script_response.status_code == 200
     assert 'data-daily-briefing-list' in html
     assert 'data-dashboard-priority-list' in html
+    assert "Briefing konnte nicht geladen werden." in script
+    assert "KI-Priorisierung" in script
 
 
 def test_document_path_rejects_storage_escape(app):

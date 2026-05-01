@@ -217,3 +217,27 @@ OPENAI_MODEL=gpt-4o-mini
 ## Dokumentation
 
 Das ausfuehrliche API-Protokoll liegt in `docs/API_PROTOCOL.md`.
+
+## Release-Checks
+
+Vor einem Release sollten die Kernchecks lokal gruen sein:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest
+.\.venv\Scripts\python.exe -m compileall app seed_demo.py
+npm.cmd run build:css
+```
+
+`npm.cmd` vermeidet unter Windows die PowerShell-Execution-Policy fuer `npm.ps1`.
+Der CSS-Build darf keine funktionalen Dateien ausser `app/static/css/output.css`
+veraendern.
+
+Manueller Smoke-Test:
+
+* Demo-Daten seeden und App lokal starten.
+* Als Admin und eingeschraenkter User anmelden.
+* Dashboard-Briefing, Task-Priorisierung, aehnliche Fehler, Lager-Prognose,
+  Maschinen-Historie/Assistent, Dokumentpruefung und Schichtplan-Warnungen
+  pruefen.
+* Sicherstellen, dass eingeschraenkte User nur erlaubte Dashboards und eigene
+  Bereichsdaten sehen.
