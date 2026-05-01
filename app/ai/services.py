@@ -72,10 +72,19 @@ def can_read_employee_context(user):
     )
 
 
+def permission_denied_answer(scope):
+    """Return a short structured permission message for the assistant."""
+    return (
+        f"## {scope}\n"
+        "- **Status:** Keine Berechtigung\n"
+        "- **Naechster Schritt:** Rechte beim Admin pruefen"
+    )
+
+
 def format_tasks_today(user):
     """Return a formatted answer and structured data for today's visible tasks."""
     if not has_dashboard_permission(user, "tasks", "view"):
-        return "Dir fehlt die Berechtigung, Tasks ueber die KI abzufragen.", []
+        return permission_denied_answer("Tasks"), []
 
     tasks = (
         visible_tasks_query(user)
@@ -84,13 +93,17 @@ def format_tasks_today(user):
         .all()
     )
     if not tasks:
-        return "Für heute sind keine Tasks in deinem Bereich eingetragen.", []
+        return (
+            "## Heutige Tasks\n"
+            "- **Status:** Keine Tasks fuer heute\n"
+            "- **Bereich:** Keine offenen Eintraege sichtbar"
+        ), []
 
-    lines = ["Heute stehen diese Tasks an:"]
+    lines = ["## Heutige Tasks"]
     for task in tasks:
         lines.append(
-            f"- {task.title} ({task.priority.value}, {task.status.value}, "
-            f"Bereich: {task.department.name})"
+            f"- **{task.title}:** {task.priority.value}, {task.status.value}, "
+            f"{task.department.name}"
         )
     return "\n".join(lines), [task.to_dict() for task in tasks]
 
@@ -208,13 +221,14 @@ def build_employee_context(user):
 def format_employee_count(user):
     """Return a local answer for employee count questions."""
     if not can_read_employee_context(user):
-        return "Dir fehlt die Berechtigung, Mitarbeiterdaten ueber die KI abzufragen.", []
+        return permission_denied_answer("Mitarbeiter"), []
 
     count = Employee.query.count()
-    if count == 1:
-        answer = "Es ist 1 Mitarbeiter im System erfasst."
-    else:
-        answer = f"Es sind {count} Mitarbeiter im System erfasst."
+    answer = (
+        "## Mitarbeiter\n"
+        f"- **Gesamt:** {count}\n"
+        "- **Quelle:** Mitarbeiterdatenbank"
+    )
     return answer, {"count": count}
 
 
@@ -222,15 +236,18 @@ def fallback_error_answer(entries):
     """Return a local fallback answer when no OpenAI response is available."""
     if not entries:
         return (
-            "Ich habe dazu keinen passenden Eintrag im Fehlerkatalog gefunden. "
-            "Lege den Fehler im Katalog an, wenn ihr die Ursache geklärt habt."
+            "## Fehlerhilfe\n"
+            "- **Status:** Kein passender Eintrag gefunden\n"
+            "- **Naechster Schritt:** Fehler im Katalog dokumentieren"
         )
 
     entry = entries[0]
     return (
-        f"Der Fehler {entry.error_code} an {entry.machine} passt zu: {entry.title}.\n\n"
-        f"Mögliche Ursachen: {entry.possible_causes or 'keine Ursachen hinterlegt'}\n"
-        f"Empfohlene Prüfung: {entry.solution or 'keine Lösung hinterlegt'}"
+        "## Fehlerhilfe\n"
+        f"- **Code:** {entry.error_code} an {entry.machine}\n"
+        f"- **Titel:** {entry.title}\n"
+        f"- **Ursache:** {entry.possible_causes or 'keine Ursachen hinterlegt'}\n"
+        f"- **Pruefung:** {entry.solution or 'keine Loesung hinterlegt'}"
     )
 
 
@@ -329,7 +346,7 @@ def answer_chat(message, user):
         and not employee_data
         and not can_read_employee_context(user)
     ):
-        answer = "Dir fehlt die Berechtigung, Mitarbeiterdaten ueber die KI abzufragen."
+        answer = permission_denied_answer("Mitarbeiter")
         return {
             "type": "permission_denied",
             "answer": answer,

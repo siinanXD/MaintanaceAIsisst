@@ -81,10 +81,15 @@ class MockAIProvider(BaseAIProvider):
     def answer_question(self, question, context):
         """Return a cautious local answer for a question and context."""
         if not context.strip():
-            return "Ich habe in den freigegebenen Daten keine passende Grundlage gefunden."
+            return (
+                "## Ergebnis\n"
+                "- **Status:** Keine passende Grundlage gefunden\n"
+                "- **Naechster Schritt:** Daten oder Suchbegriff pruefen"
+            )
         return (
-            "Ich habe die freigegebenen Daten geprueft. "
-            "Nutze die sichtbaren Tasks, Fehler und Dokumente als Grundlage."
+            "## Ergebnis\n"
+            "- **Status:** Freigegebene Daten geprueft\n"
+            "- **Hinweis:** Frage bitte konkreter nach Task, Fehler oder Mitarbeiterdaten"
         )
 
 
@@ -153,8 +158,13 @@ class OpenAIProvider(BaseAIProvider):
             {
                 "role": "system",
                 "content": (
-                    "Du bist ein Wartungsassistent. Antworte nur anhand "
-                    "des bereitgestellten Kontextes."
+                    "Du bist ein Wartungsassistent. Antworte nur anhand des "
+                    "bereitgestellten Kontextes. Antworte auf Deutsch, kurz "
+                    "und uebersichtlich. Nutze maximal eine kurze Markdown-"
+                    "Ueberschrift und 3 bis 5 Bulletpoints. Markiere wichtige "
+                    "Labels fett, zum Beispiel **Status:**. Nenne nur relevante "
+                    "Daten und keine langen Erklaerungen. Keine Tabellen, keine "
+                    "Einleitung, keine Wiederholung der Frage."
                 ),
             },
             {

@@ -46,13 +46,77 @@
     return "";
   }
 
+  function appendInlineText(parent, text) {
+    const pattern = /\*\*(.+?)\*\*/g;
+    let lastIndex = 0;
+    let match = pattern.exec(text);
+    while (match) {
+      if (match.index > lastIndex) {
+        parent.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+      }
+      const strong = document.createElement("strong");
+      strong.textContent = match[1];
+      parent.appendChild(strong);
+      lastIndex = pattern.lastIndex;
+      match = pattern.exec(text);
+    }
+    if (lastIndex < text.length) {
+      parent.appendChild(document.createTextNode(text.slice(lastIndex)));
+    }
+  }
+
+  function renderFormattedText(container, text) {
+    container.innerHTML = "";
+    const lines = String(text || "").split(/\r?\n/);
+    let list = null;
+
+    lines.forEach((rawLine) => {
+      const line = rawLine.trim();
+      if (!line) {
+        list = null;
+        return;
+      }
+
+      if (line.startsWith("## ")) {
+        list = null;
+        const title = document.createElement("div");
+        title.className = "chat-message-title";
+        title.textContent = line.slice(3).trim();
+        container.appendChild(title);
+        return;
+      }
+
+      if (line.startsWith("- ")) {
+        if (!list) {
+          list = document.createElement("ul");
+          list.className = "chat-message-list";
+          container.appendChild(list);
+        }
+        const item = document.createElement("li");
+        appendInlineText(item, line.slice(2).trim());
+        list.appendChild(item);
+        return;
+      }
+
+      list = null;
+      const paragraph = document.createElement("p");
+      paragraph.className = "chat-message-paragraph";
+      appendInlineText(paragraph, line);
+      container.appendChild(paragraph);
+    });
+  }
+
   function appendMessage(text, type, diagnostics) {
     const bubble = document.createElement("div");
     bubble.className = "chat-message " + (type === "user" ? "is-user" : "is-assistant");
 
     const body = document.createElement("div");
     body.className = "chat-message-text";
-    body.textContent = text;
+    if (type === "user") {
+      body.textContent = text;
+    } else {
+      renderFormattedText(body, text);
+    }
     bubble.appendChild(body);
 
     if (type !== "user") {
@@ -73,7 +137,7 @@
   function updateAssistantMessage(bubble, text, diagnostics) {
     const body = bubble.querySelector(".chat-message-text");
     const meta = bubble.querySelector(".chat-message-meta");
-    if (body) body.textContent = text;
+    if (body) renderFormattedText(body, text);
     const label = statusText(diagnostics);
     if (label) {
       if (meta) {
@@ -133,13 +197,13 @@
     let answer = data.answer || "Ich habe keine Antwort erhalten.";
 
     if (diagnostics.status === "api_key_missing") {
-      answer += "\n\nHinweis: Es ist kein OpenAI API-Key in .env konfiguriert. Ich nutze den lokalen Fallback.";
+      answer += "\n- **Hinweis:** Lokaler Fallback, API-Key fehlt";
     }
     if (diagnostics.status === "openai_error") {
-      answer += "\n\nHinweis: OpenAI ist gerade nicht erreichbar oder der Key ist ungueltig. Ich nutze den lokalen Fallback.";
+      answer += "\n- **Hinweis:** Lokaler Fallback, OpenAI nicht erreichbar";
     }
     if (diagnostics.fallback_used) {
-      answer += "\n\nHinweis: Diese Antwort kommt aus dem lokalen Fallback.";
+      answer += "\n- **Quelle:** Lokaler Fallback";
     }
     return { answer, diagnostics, prompt: message };
   }

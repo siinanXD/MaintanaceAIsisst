@@ -567,6 +567,27 @@
     @apply max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm;
   }
 
+  .chat-message-title {
+    @apply mb-2 text-sm font-black text-slate-950;
+  }
+
+  .chat-message-list {
+    @apply m-0 space-y-1 pl-0;
+  }
+
+  .chat-message-list li {
+    @apply list-none rounded-lg bg-white/70 px-2 py-1.5 text-sm leading-5;
+  }
+
+  .chat-message-list strong,
+  .chat-message-paragraph strong {
+    @apply font-black text-slate-950;
+  }
+
+  .chat-message-paragraph {
+    @apply m-0 text-sm leading-5;
+  }
+
   .chat-message.is-assistant {
     @apply bg-slate-100 text-slate-800;
   }
