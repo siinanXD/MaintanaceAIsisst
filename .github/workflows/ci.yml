@@ -16,7 +16,7 @@ jobs:
       FLASK_DEBUG: "0"
       SECRET_KEY: ci-secret-key
       JWT_SECRET_KEY: ci-jwt-secret-key
-      DATABASE_URL: sqlite:///:memory:
+      DATABASE_URL: "sqlite:///:memory:"
       AI_PROVIDER: mock
       OPENAI_API_KEY: ""
       OPENAI_MODEL: test-model
