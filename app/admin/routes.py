@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify, request
 
 from app.auth.services import find_department, parse_role
 from app.extensions import db
-from app.models import Role, User
+from app.models import Employee, Role, User
 from app.permissions import (
     replace_user_permissions,
     serialize_permissions,
@@ -13,6 +13,20 @@ from app.security import roles_required
 
 
 admin_bp = Blueprint("admin", __name__)
+
+
+def find_employee(employee_id):
+    """Return an employee for an optional admin user payload value."""
+    if employee_id in (None, ""):
+        return None
+    try:
+        parsed_employee_id = int(employee_id)
+    except (TypeError, ValueError):
+        raise ValueError("employee_id must be a valid employee id")
+    employee = db.session.get(Employee, parsed_employee_id)
+    if not employee:
+        raise ValueError("employee_id does not reference an existing employee")
+    return employee
 
 
 @admin_bp.get("/users")
@@ -55,6 +69,10 @@ def create_user():
         department=department,
         is_active=bool(data.get("is_active", True)),
     )
+    try:
+        user.employee = find_employee(data.get("employee_id"))
+    except ValueError as exc:
+        return error_response(str(exc), 400)
     user.set_password(data["password"])
     db.session.add(user)
     db.session.flush()
@@ -81,6 +99,11 @@ def update_user(user_id):
             return error_response(str(exc), 400)
     if "department_id" in data or "department" in data:
         user.department = find_department(data.get("department_id"), data.get("department"))
+    if "employee_id" in data:
+        try:
+            user.employee = find_employee(data.get("employee_id"))
+        except ValueError as exc:
+            return error_response(str(exc), 400)
     if "is_active" in data:
         user.is_active = bool(data["is_active"])
 

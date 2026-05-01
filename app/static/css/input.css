@@ -17,11 +17,20 @@
   }
 
   body.high-contrast .app-card,
+  body.high-contrast .kpi-card,
+  body.high-contrast .dashboard-section,
+  body.high-contrast .dashboard-section > summary,
   body.high-contrast .cockpit-column,
   body.high-contrast .cockpit-task-card,
   body.high-contrast .task-card,
   body.high-contrast .stat-row,
   body.high-contrast .shiftplan-card,
+  body.high-contrast .shift-calendar-day,
+  body.high-contrast .table-wrap,
+  body.high-contrast .data-table,
+  body.high-contrast .modal-box,
+  body.high-contrast .suggestion-box,
+  body.high-contrast .forecast-unmatched-list,
   body.high-contrast .chat-panel,
   body.high-contrast .chat-message {
     @apply border-slate-600 bg-slate-900 text-white shadow-none;
@@ -29,7 +38,12 @@
 
   body.high-contrast .panel-meta,
   body.high-contrast .page-description,
-  body.high-contrast .stat-label {
+  body.high-contrast .stat-label,
+  body.high-contrast .kpi-meta,
+  body.high-contrast .task-card-description,
+  body.high-contrast .cockpit-task-meta,
+  body.high-contrast .shift-calendar-time,
+  body.high-contrast .shift-calendar-meta {
     @apply text-slate-200;
   }
 
@@ -37,6 +51,47 @@
   body.high-contrast .select,
   body.high-contrast .textarea {
     @apply border-slate-500 bg-slate-950 text-white;
+  }
+
+  body.high-contrast .btn,
+  body.high-contrast .nav-link,
+  body.high-contrast .top-nav-link,
+  body.high-contrast .mobile-nav,
+  body.high-contrast .top-nav-panel,
+  body.high-contrast .mobile-nav-panel {
+    @apply border-slate-500 bg-slate-900 text-white;
+  }
+
+  body.high-contrast .btn-primary,
+  body.high-contrast .chat-toggle {
+    @apply border-cyan-300 bg-cyan-300 text-slate-950;
+  }
+
+  body.high-contrast .badge,
+  body.high-contrast .data-table thead,
+  body.high-contrast .data-table td:first-child,
+  body.high-contrast .data-table th:first-child {
+    @apply border-slate-500 bg-slate-950 text-white;
+  }
+
+  body.high-contrast .shift-calendar-day.is-green {
+    @apply border-green-300 bg-green-950 text-green-100;
+  }
+
+  body.high-contrast .shift-calendar-day.is-blue {
+    @apply border-blue-300 bg-blue-950 text-blue-100;
+  }
+
+  body.high-contrast .shift-calendar-day.is-red {
+    @apply border-red-300 bg-red-950 text-red-100;
+  }
+
+  body.high-contrast .shift-calendar-day.is-violet {
+    @apply border-violet-300 bg-violet-950 text-violet-100;
+  }
+
+  body.high-contrast .shift-calendar-day.is-amber {
+    @apply border-amber-300 bg-amber-950 text-amber-100;
   }
 }
 
@@ -363,6 +418,10 @@
     @apply mb-4 grid grid-cols-2 gap-3 sm:mb-6 sm:gap-4 xl:grid-cols-4;
   }
 
+  .dashboard-kpi-grid.is-compact {
+    @apply xl:grid-cols-3;
+  }
+
   .kpi-card {
     @apply rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-lg hover:shadow-blue-950/5 sm:p-5;
   }
@@ -597,6 +656,55 @@
 
   .cockpit-task-card.is-empty {
     @apply border-dashed bg-white/70 text-sm text-slate-500;
+  }
+
+  .shift-calendar {
+    @apply grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-7;
+  }
+
+  .shift-calendar-day {
+    @apply min-h-32 rounded-2xl border p-3 shadow-sm;
+  }
+
+  .shift-calendar-day.is-green {
+    @apply border-green-200 bg-green-50 text-green-950;
+  }
+
+  .shift-calendar-day.is-blue {
+    @apply border-blue-200 bg-blue-50 text-blue-950;
+  }
+
+  .shift-calendar-day.is-red {
+    @apply border-red-200 bg-red-50 text-red-950;
+  }
+
+  .shift-calendar-day.is-violet {
+    @apply border-violet-200 bg-violet-50 text-violet-950;
+  }
+
+  .shift-calendar-day.is-amber {
+    @apply border-amber-200 bg-amber-50 text-amber-950;
+  }
+
+  .shift-calendar-day.is-slate {
+    @apply border-slate-200 bg-slate-50 text-slate-950;
+  }
+
+  .shift-calendar-date {
+    @apply block text-xs font-black uppercase;
+  }
+
+  .shift-calendar-shift {
+    @apply mt-2 block text-base font-black;
+  }
+
+  .shift-calendar-time,
+  .shift-calendar-meta {
+    @apply mt-1 block text-xs font-semibold opacity-80;
+  }
+
+  .forecast-unmatched-list {
+    @apply mt-4 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4;
   }
 
   .task-detail-modal:not([hidden]) {

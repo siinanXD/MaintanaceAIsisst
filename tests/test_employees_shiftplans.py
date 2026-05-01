@@ -1,4 +1,5 @@
-from app.models import Role
+from app.extensions import db
+from app.models import Role, User
 
 
 def test_employee_create_rejects_missing_duplicate_and_invalid_values(
@@ -266,6 +267,186 @@ def test_shiftplan_generate_returns_warnings_and_coverage(
     assert payload["coverage_summary"]["assigned_slots"] >= 1
 
 
+def test_admin_user_can_link_employee(
+    client,
+    app,
+    make_user,
+    make_employee,
+    auth_headers,
+):
+    """Verify user payloads expose the linked employee for cockpit calendars."""
+    admin = make_user(
+        username="link_employee_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    user = make_user(
+        username="link_employee_user",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+    employee_id = make_employee(
+        personnel_number="P-510",
+        name="Kalender Person",
+        department="Produktion",
+    )
+
+    response = client.put(
+        f"/api/admin/users/{user['id']}",
+        headers=auth_headers(admin["username"]),
+        json={"employee_id": employee_id},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["employee_id"] == employee_id
+    assert payload["employee"]["name"] == "Kalender Person"
+
+    with app.app_context():
+        stored_user = db.session.get(User, user["id"])
+        assert stored_user.employee_id == employee_id
+
+
+def test_shiftplan_generate_saves_vacation_and_skips_worker(
+    client,
+    make_user,
+    make_employee,
+    make_machine,
+    auth_headers,
+):
+    """Verify vacation payloads are saved and not planned as work shifts."""
+    admin = make_user(
+        username="shiftplan_vacation_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    employee_id = make_employee(
+        personnel_number="P-520",
+        name="Vacation Person",
+        department="Produktion",
+    )
+    make_machine(name="Vacation Anlage", required_employees=1)
+
+    response = client.post(
+        "/api/shiftplans/generate",
+        headers=auth_headers(admin["username"]),
+        json={
+            "title": "Urlaubsplan",
+            "start_date": "2026-05-01",
+            "days": 2,
+            "rhythm": "2-Schicht",
+            "vacations": [
+                {
+                    "employee_id": employee_id,
+                    "date": "2026-05-01",
+                    "notes": "Erholungsurlaub",
+                }
+            ],
+        },
+    )
+
+    payload = response.get_json()
+    vacation_entries = [
+        entry
+        for entry in payload["entries"]
+        if entry["work_date"] == "2026-05-01"
+    ]
+    assert response.status_code == 201
+    assert [entry["shift"] for entry in vacation_entries] == ["Urlaub"]
+    assert vacation_entries[0]["notes"] == "Erholungsurlaub"
+
+
+def test_shiftplan_calendar_returns_own_calendar_and_free_days(
+    client,
+    app,
+    make_user,
+    make_employee,
+    make_machine,
+    auth_headers,
+):
+    """Verify cockpit calendar returns linked employee entries and free days."""
+    admin = make_user(
+        username="calendar_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    user = make_user(
+        username="calendar_user",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    employee_id = make_employee(
+        personnel_number="P-530",
+        name="Calendar Person",
+        department="Produktion",
+    )
+    make_machine(name="Calendar Anlage", required_employees=1)
+    with app.app_context():
+        stored_user = db.session.get(User, user["id"])
+        stored_user.employee_id = employee_id
+        db.session.commit()
+
+    client.post(
+        "/api/shiftplans/generate",
+        headers=auth_headers(admin["username"]),
+        json={
+            "title": "Kalenderplan",
+            "start_date": "2026-05-01",
+            "days": 1,
+            "rhythm": "2-Schicht",
+            "vacations": [
+                {
+                    "employee_id": employee_id,
+                    "date": "2026-05-01",
+                    "notes": "Urlaub",
+                }
+            ],
+        },
+    )
+
+    response = client.get(
+        "/api/shiftplans/calendar?start_date=2026-05-01&days=2",
+        headers=auth_headers(user["username"]),
+    )
+
+    payload = response.get_json()
+    shifts = [entry["shift"] for entry in payload["entries"]]
+    assert response.status_code == 200
+    assert payload["employee"]["name"] == "Calendar Person"
+    assert shifts == ["Urlaub", "Frei"]
+    assert payload["entries"][0]["color"] == "amber"
+    assert payload["entries"][1]["color"] == "violet"
+
+
+def test_shiftplan_calendar_admin_can_filter_employee(
+    client,
+    make_user,
+    make_employee,
+    auth_headers,
+):
+    """Verify admins can request a selected employee calendar."""
+    admin = make_user(
+        username="calendar_filter_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    employee_id = make_employee(
+        personnel_number="P-540",
+        name="Filter Person",
+        department="Produktion",
+    )
+
+    response = client.get(
+        f"/api/shiftplans/calendar?employee_id={employee_id}&start_date=2026-05-01&days=1",
+        headers=auth_headers(admin["username"]),
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["employee"]["name"] == "Filter Person"
+    assert payload["entries"][0]["shift"] == "Frei"
+
+
 def test_shiftplan_page_script_renders_warnings(client):
     """Verify shift plan UI has warning rendering code."""
     response = client.get("/static/app.js")
@@ -274,3 +455,4 @@ def test_shiftplan_page_script_renders_warnings(client):
     assert response.status_code == 200
     assert "plan.warnings" in script
     assert "Warnungen" in script
+    assert "data-shiftplan-calendar" in client.get("/shiftplans").get_data(as_text=True)

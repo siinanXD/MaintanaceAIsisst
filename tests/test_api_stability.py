@@ -32,6 +32,7 @@ def test_new_ai_frontend_routes_exist(app, client):
         ("/api/tasks/prioritize", "POST"),
         ("/api/errors/similar", "POST"),
         ("/api/inventory/forecast", "POST"),
+        ("/api/shiftplans/calendar", "GET"),
         ("/api/machines/<int:machine_id>/history", "GET"),
         ("/api/machines/<int:machine_id>/assistant", "POST"),
         ("/api/ai/daily-briefing", "GET"),
@@ -41,6 +42,7 @@ def test_new_ai_frontend_routes_exist(app, client):
     assert "/api/tasks/prioritize" in script
     assert "/api/errors/similar" in script
     assert "/api/inventory/forecast" in script
+    assert "/api/shiftplans/calendar" in script
     assert "/api/ai/daily-briefing" in script
 
 

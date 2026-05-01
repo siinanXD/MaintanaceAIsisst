@@ -9,7 +9,7 @@ from app.security import (
     employee_access_level,
     employee_access_required,
 )
-from app.shiftplans.services import generate_shift_plan
+from app.shiftplans.services import calendar_entries_for_user, generate_shift_plan
 
 
 shiftplans_bp = Blueprint("shiftplans", __name__)
@@ -22,6 +22,22 @@ def list_shiftplans():
     plans = ShiftPlan.query.order_by(ShiftPlan.created_at.desc()).all()
     access_level = employee_access_level(current_user())
     return jsonify([plan.to_dict(access_level) for plan in plans])
+
+
+@shiftplans_bp.get("/calendar")
+@dashboard_permission_required("dashboard", "view")
+def shiftplan_calendar():
+    """Return the current user's or selected employee's shift calendar."""
+    payload, error, status = calendar_entries_for_user(
+        current_user(),
+        employee_id=request.args.get("employee_id"),
+        start_date=request.args.get("start_date"),
+        days=request.args.get("days", 14),
+        plan_id=request.args.get("plan_id"),
+    )
+    if error:
+        return service_error_response(error, status)
+    return jsonify(payload), status
 
 
 @shiftplans_bp.post("/generate")

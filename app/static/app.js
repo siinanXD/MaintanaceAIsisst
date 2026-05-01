@@ -141,6 +141,60 @@
     return button;
   }
 
+  function formatDate(value) {
+    if (!value) return "-";
+    return new Date(value + "T00:00:00").toLocaleDateString("de-DE", {
+      weekday: "short",
+      day: "2-digit",
+      month: "2-digit"
+    });
+  }
+
+  function shiftLabel(shift) {
+    const labels = {
+      Frueh: "Fruehschicht",
+      Spaet: "Spaetschicht",
+      Nacht: "Nachtschicht",
+      Frei: "Frei",
+      Urlaub: "Urlaub"
+    };
+    return labels[shift] || shift || "-";
+  }
+
+  function renderShiftCalendar(container, calendar) {
+    if (!container) return;
+    container.innerHTML = "";
+    if (calendar.message) {
+      const empty = document.createElement("div");
+      empty.className = "empty-state";
+      empty.textContent = calendar.message;
+      container.appendChild(empty);
+      return;
+    }
+    const entries = calendar.entries || [];
+    if (!entries.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty-state";
+      empty.textContent = "Keine Kalendereintraege gefunden.";
+      container.appendChild(empty);
+      return;
+    }
+    entries.forEach((entry) => {
+      const item = document.createElement("article");
+      item.className = "shift-calendar-day is-" + (entry.color || "slate");
+      const time = entry.start_time && entry.end_time
+        ? entry.start_time + " - " + entry.end_time
+        : entry.shift;
+      item.innerHTML = `
+        <span class="shift-calendar-date">${formatDate(entry.work_date)}</span>
+        <strong class="shift-calendar-shift">${shiftLabel(entry.shift)}</strong>
+        <span class="shift-calendar-time">${time || "-"}</span>
+        <span class="shift-calendar-meta">${(entry.machine && entry.machine.name) || entry.notes || ""}</span>
+      `;
+      container.appendChild(item);
+    });
+  }
+
   function revealSurface(element) {
     const collapsible = element.closest("[data-mobile-collapsible]");
     if (collapsible) {
@@ -551,6 +605,36 @@
     const permissionForm = document.querySelector("[data-permission-form]");
     const permissionMessage = document.querySelector("[data-permission-message]");
     let selectedUser = null;
+    let employees = [];
+
+    function employeeSelect(item) {
+      const select = document.createElement("select");
+      select.className = "select select-bordered";
+      select.dataset.userEmployeeSelect = String(item.id);
+      const empty = document.createElement("option");
+      empty.value = "";
+      empty.textContent = "Nicht verknuepft";
+      select.appendChild(empty);
+      employees.forEach((employee) => {
+        const option = document.createElement("option");
+        option.value = String(employee.id);
+        option.textContent = employee.name + " (" + employee.personnel_number + ")";
+        select.appendChild(option);
+      });
+      select.value = item.employee_id ? String(item.employee_id) : "";
+      select.addEventListener("change", async () => {
+        await api("/api/admin/users/" + item.id, {
+          method: "PUT",
+          body: JSON.stringify({ employee_id: select.value })
+        });
+        const currentSessionUser = user();
+        if (currentSessionUser && currentSessionUser.id === item.id && window.maintenanceAuth) {
+          await window.maintenanceAuth.refreshUser();
+        }
+        await load();
+      });
+      return select;
+    }
 
     function checkboxCell(dashboard, action, checked, disabled) {
       const input = document.createElement("input");
@@ -656,6 +740,11 @@
 
     async function load() {
       const users = await api("/api/admin/users");
+      try {
+        employees = await api("/api/employees");
+      } catch (error) {
+        employees = [];
+      }
       list.innerHTML = "";
       users.forEach((item) => {
         const actions = document.createElement("div");
@@ -705,6 +794,7 @@
           item.email,
           item.role,
           item.department && item.department.name,
+          employeeSelect(item),
           item.is_active ? "aktiv" : "gesperrt",
           actions
         ]));
@@ -990,6 +1080,7 @@
     const forecastForm = document.querySelector("[data-inventory-forecast-form]");
     const forecastList = document.querySelector("[data-inventory-forecast-list]");
     const forecastMessage = document.querySelector("[data-inventory-forecast-message]");
+    const forecastUnmatched = document.querySelector("[data-inventory-forecast-unmatched]");
     if (!list || !form || !token()) return;
 
     function forecastRiskBadgeClass(riskLevel) {
@@ -1001,6 +1092,7 @@
     function renderForecast(forecast) {
       if (!forecastList) return;
       forecastList.innerHTML = "";
+      if (forecastUnmatched) forecastUnmatched.innerHTML = "";
       const items = forecast.items || [];
       if (!items.length) {
         forecastList.innerHTML = '<tr><td colspan="6">Keine kritischen Lagerhinweise gefunden.</td></tr>';
@@ -1012,11 +1104,28 @@
             String(item.quantity),
             badge(item.risk_level, forecastRiskBadgeClass(item.risk_level)),
             item.task && item.task.title,
-            item.recommended_action
+            [item.recommended_action, item.match_reason].filter(Boolean).join(" | ")
           ]));
         });
       }
-      if (forecastMessage) {
+      if (forecastUnmatched) {
+        const unmatchedTasks = forecast.unmatched_tasks || [];
+        if (unmatchedTasks.length) {
+          const title = document.createElement("h3");
+          title.className = "panel-title";
+          title.textContent = "Tasks ohne Maschinenbezug";
+          forecastUnmatched.appendChild(title);
+          unmatchedTasks.forEach((item) => {
+            const rowItem = document.createElement("div");
+            rowItem.className = "stat-row";
+            rowItem.innerHTML = `<span>${item.task.title}</span><strong>${item.risk_level}</strong>`;
+            rowItem.title = item.recommended_action || item.reason || "";
+            forecastUnmatched.appendChild(rowItem);
+          });
+        }
+      }
+    if (forecastMessage) {
+        forecastMessage.classList.remove("is-error");
         const summary = forecast.summary || {};
         const unmatched = (forecast.unmatched_tasks || []).length;
         forecastMessage.textContent = [
@@ -1083,7 +1192,10 @@
         try {
           await loadForecast();
         } catch (error) {
-          if (forecastMessage) forecastMessage.textContent = error.message;
+          if (forecastMessage) {
+            forecastMessage.textContent = error.message;
+            forecastMessage.classList.add("is-error");
+          }
         }
       });
     }
@@ -1094,11 +1206,54 @@
   async function initShiftPlans() {
     const list = document.querySelector("[data-shiftplan-list]");
     const form = document.querySelector("[data-shiftplan-form]");
+    const calendar = document.querySelector("[data-shiftplan-calendar]");
     if (!list || !form || !token()) return;
 
     const startInput = form.querySelector("[name='start_date']");
     if (startInput && !startInput.value) {
       startInput.value = new Date().toISOString().slice(0, 10);
+    }
+
+    function parseVacationText(value) {
+      return String(value || "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+          const parts = line.split(",").map((part) => part.trim());
+          return {
+            employee_id: parts[0],
+            date: parts[1],
+            notes: parts.slice(2).join(", ") || "Urlaub"
+          };
+        });
+    }
+
+    function planCalendar(plan) {
+      return {
+        entries: (plan.entries || []).map((entry) => ({
+          work_date: entry.work_date,
+          shift: entry.shift,
+          start_time: entry.start_time,
+          end_time: entry.end_time,
+          machine: entry.machine,
+          notes: [
+            entry.employee && entry.employee.name,
+            entry.machine && entry.machine.name,
+            entry.notes
+          ].filter(Boolean).join(" | "),
+          color: shiftColor(entry.shift)
+        }))
+      };
+    }
+
+    function shiftColor(shift) {
+      if (shift === "Frueh") return "green";
+      if (shift === "Spaet") return "blue";
+      if (shift === "Nacht") return "red";
+      if (shift === "Frei") return "violet";
+      if (shift === "Urlaub") return "amber";
+      return "slate";
     }
 
     function renderPlan(plan) {
@@ -1154,10 +1309,13 @@
       });
       table.appendChild(body);
       wrap.appendChild(table);
+      const planCalendarElement = document.createElement("div");
+      planCalendarElement.className = "shift-calendar";
+      renderShiftCalendar(planCalendarElement, planCalendar(plan));
       if (warnings.length) {
-        article.append(header, notes, warningBox, wrap);
+        article.append(header, notes, warningBox, planCalendarElement, wrap);
       } else {
-        article.append(header, notes, wrap);
+        article.append(header, notes, planCalendarElement, wrap);
       }
       return article;
     }
@@ -1167,8 +1325,10 @@
       list.innerHTML = "";
       if (!plans.length) {
         list.innerHTML = '<div class="empty-state">Noch kein Schichtplan generiert.</div>';
+        if (calendar) renderShiftCalendar(calendar, { entries: [] });
         return;
       }
+      if (calendar) renderShiftCalendar(calendar, planCalendar(plans[0]));
       plans.forEach((plan) => list.appendChild(renderPlan(plan)));
     }
 
@@ -1177,6 +1337,8 @@
       const message = document.querySelector("[data-shiftplan-message]");
       if (message) message.textContent = "KI plant...";
       const data = Object.fromEntries(new FormData(form).entries());
+      data.vacations = parseVacationText(data.vacations_text);
+      delete data.vacations_text;
       try {
         const plan = await api("/api/shiftplans/generate", { method: "POST", body: JSON.stringify(data) });
         form.reset();
@@ -1450,6 +1612,9 @@
     const priorityList = document.querySelector("[data-dashboard-priority-list]");
     const briefingSummary = document.querySelector("[data-daily-briefing-summary]");
     const briefingList = document.querySelector("[data-daily-briefing-list]");
+    const shiftCalendar = document.querySelector("[data-dashboard-shift-calendar]");
+    const shiftCalendarMessage = document.querySelector("[data-dashboard-calendar-message]");
+    const shiftCalendarEmployee = document.querySelector("[data-dashboard-calendar-employee]");
     if ((!taskBoard && !errorStats && !inventoryStats && !briefingList) || !token()) return;
 
     let activeTask = null;
@@ -1716,23 +1881,15 @@
       const actions = document.createElement("div");
       actions.className = "cockpit-task-actions";
       actions.appendChild(actionButton("Details", () => openTaskDetail(task.id)));
-      if (canWrite("tasks")) {
-        actions.appendChild(actionButton("Bearbeiten", () => openTaskDetail(task.id)));
-      }
       if (canWrite("tasks") && task.status === "open") {
-        const start = actionButton("Start Task", () => runTaskAction(task.id, "start"));
+        const start = actionButton("Starten", () => runTaskAction(task.id, "start"));
         start.className = "btn btn-primary btn-sm";
         actions.appendChild(start);
       }
       if (canWrite("tasks") && task.status !== "done" && task.status !== "cancelled") {
-        const complete = actionButton("Complete Task", () => runTaskAction(task.id, "complete"));
+        const complete = actionButton("Erledigt", () => runTaskAction(task.id, "complete"));
         complete.className = "btn btn-success btn-sm text-white";
         actions.appendChild(complete);
-        actions.appendChild(actionButton("Bericht erzeugen", () => runTaskAction(
-          task.id,
-          "complete",
-          { generate_report: true, result: "Abgeschlossen" }
-        )));
       }
       card.append(title, badges, meta, actions);
       return card;
@@ -1893,12 +2050,59 @@
       });
     }
 
+    async function setupDashboardCalendarFilter() {
+      if (!shiftCalendarEmployee || !canView("employees")) return;
+      try {
+        const employees = await api("/api/employees");
+        shiftCalendarEmployee.hidden = false;
+        employees.forEach((employee) => {
+          const option = document.createElement("option");
+          option.value = String(employee.id);
+          option.textContent = employee.name;
+          shiftCalendarEmployee.appendChild(option);
+        });
+      } catch (error) {
+        shiftCalendarEmployee.hidden = true;
+      }
+    }
+
+    async function loadShiftCalendar() {
+      if (!shiftCalendar) return;
+      const params = new URLSearchParams();
+      params.set("days", "14");
+      if (shiftCalendarEmployee && shiftCalendarEmployee.value) {
+        params.set("employee_id", shiftCalendarEmployee.value);
+      }
+      try {
+        const calendar = await api("/api/shiftplans/calendar?" + params.toString());
+        renderShiftCalendar(shiftCalendar, calendar);
+        if (shiftCalendarMessage) {
+          shiftCalendarMessage.textContent = calendar.employee
+            ? "Kalender fuer " + calendar.employee.name
+            : (calendar.message || "Schichtkalender");
+          shiftCalendarMessage.classList.remove("is-error");
+        }
+      } catch (error) {
+        renderShiftCalendar(shiftCalendar, { message: error.message, entries: [] });
+        if (shiftCalendarMessage) {
+          shiftCalendarMessage.textContent = error.message;
+          shiftCalendarMessage.classList.add("is-error");
+        }
+      }
+    }
+
     if (taskBoard && canView("tasks")) {
       await loadDashboardTasks();
       await loadDashboardPriorities();
     }
 
     await loadDailyBriefing();
+    await setupDashboardCalendarFilter();
+    await loadShiftCalendar();
+
+    if (shiftCalendarEmployee) {
+      shiftCalendarEmployee.addEventListener("change", loadShiftCalendar);
+    }
 
     if (errorStats && canView("errors")) {
       const errors = await api("/api/errors");

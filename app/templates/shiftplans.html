@@ -49,6 +49,10 @@
           <label for="shiftplan-preferences">Praeferenzen</label>
           <textarea class="textarea textarea-bordered" id="shiftplan-preferences" name="preferences" placeholder="Wuensche, Sperrtage, Teamregeln, bevorzugte Maschinen"></textarea>
         </div>
+        <div class="field is-full">
+          <label for="shiftplan-vacations">Urlaub</label>
+          <textarea class="textarea textarea-bordered" id="shiftplan-vacations" name="vacations_text" placeholder="Eine Zeile je Urlaub: Mitarbeiter-ID, Datum, Notiz. Beispiel: 12, 2026-05-04, Urlaub"></textarea>
+        </div>
       </div>
       <div class="toolbar form-actions">
         <button class="btn btn-primary" type="submit">Plan generieren</button>
@@ -63,9 +67,10 @@
       <div class="panel-header">
         <div>
           <h2 class="panel-title">Schichtplaene</h2>
-          <p class="panel-meta">Zuletzt generierte Plaene</p>
+          <p class="panel-meta">Zuletzt generierte Plaene mit Kalender- und Tabellenansicht</p>
         </div>
       </div>
+      <div class="shift-calendar" data-shiftplan-calendar></div>
       <div class="shiftplan-list" data-shiftplan-list></div>
     </div>
   </article>

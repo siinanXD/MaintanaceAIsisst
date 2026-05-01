@@ -311,6 +311,77 @@ def test_inventory_forecast_flags_low_stock_for_critical_task(
     assert payload["items"][0]["score"] >= 65
 
 
+def test_inventory_forecast_matches_machine_partial_name(
+    client,
+    make_user,
+    make_machine,
+    make_material,
+    make_task,
+    auth_headers,
+):
+    """Verify inventory forecasts match tasks with partial machine names."""
+    user = make_user(
+        username="forecast_partial_match",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    machine_id = make_machine(name="CNC-Fraese 01", produced_item="Alu Gehaeuse")
+    make_material("Fraeser Reserve", 42.0, 1, machine_id=machine_id)
+    make_task(
+        "Stillstand CNC-Fraese",
+        creator_username=user["username"],
+        department_name="Instandhaltung",
+        priority=Priority.URGENT,
+        due_date_value=date.today() - timedelta(days=1),
+        description="CNC-Fraese meldet Lagergeraeusch",
+    )
+
+    response = client.post(
+        "/api/inventory/forecast",
+        headers=auth_headers(user["username"]),
+        json={"status": "open", "low_stock_threshold": 5},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["items"][0]["machine"]["name"] == "CNC-Fraese 01"
+    assert payload["items"][0]["material"]["name"] == "Fraeser Reserve"
+    assert payload["items"][0]["match_reason"]
+
+
+def test_inventory_forecast_reports_unmatched_high_risk_tasks(
+    client,
+    make_user,
+    make_task,
+    auth_headers,
+):
+    """Verify high-risk tasks without a machine match are returned visibly."""
+    user = make_user(
+        username="forecast_unmatched",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    make_task(
+        "Stillstand unbekannte Linie",
+        creator_username=user["username"],
+        department_name="Instandhaltung",
+        priority=Priority.URGENT,
+        due_date_value=date.today() - timedelta(days=1),
+        description="Anlage ohne Stammdatensatz steht",
+    )
+
+    response = client.post(
+        "/api/inventory/forecast",
+        headers=auth_headers(user["username"]),
+        json={"status": "open", "low_stock_threshold": 5},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["items"] == []
+    assert payload["unmatched_tasks"][0]["task"]["title"] == "Stillstand unbekannte Linie"
+
+
 def test_inventory_forecast_rejects_invalid_payloads(
     client,
     make_user,

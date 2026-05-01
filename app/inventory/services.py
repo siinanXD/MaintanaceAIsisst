@@ -1,3 +1,6 @@
+import re
+import unicodedata
+
 from app.models import InventoryMaterial, Machine
 from app.tasks.services import prioritize_visible_tasks
 
@@ -20,7 +23,7 @@ def forecast_inventory_risks(data, user):
 
     for priority in priorities:
         task = priority["task"]
-        machine = _match_machine(task, machines)
+        machine, match_reason = _match_machine_with_reason(task, machines)
         if not machine:
             if _is_high_priority(priority):
                 unmatched_tasks.append(_unmatched_task_payload(priority))
@@ -37,6 +40,7 @@ def forecast_inventory_risks(data, user):
                     priority,
                     risk_level,
                     threshold,
+                    match_reason,
                 )
             )
 
@@ -72,16 +76,68 @@ def _materials_by_machine():
 
 def _match_machine(task, machines):
     """Return the first machine whose name appears in the task text."""
+    machine, _reason = _match_machine_with_reason(task, machines)
+    return machine
+
+
+def _match_machine_with_reason(task, machines):
+    """Return the best matching machine and a short explanation."""
     task_text = " ".join(
         [
             str(task.get("title") or ""),
             str(task.get("description") or ""),
         ]
-    ).lower()
+    )
+    normalized_task_text = _normalize_match_text(task_text)
+    task_tokens = set(normalized_task_text.split())
+
     for machine in machines:
-        if machine.name.lower() in task_text:
-            return machine
-    return None
+        match_reason = _machine_match_reason(machine, normalized_task_text, task_tokens)
+        if match_reason:
+            return machine, match_reason
+    return None, ""
+
+
+def _normalize_match_text(value):
+    """Normalize text for tolerant machine matching."""
+    normalized = unicodedata.normalize("NFKD", str(value or ""))
+    ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]+", " ", ascii_text.lower()).strip()
+
+
+def _machine_aliases(machine):
+    """Return normalized name and produced-item aliases for a machine."""
+    aliases = []
+    for value in (machine.name, machine.produced_item):
+        normalized = _normalize_match_text(value)
+        if normalized:
+            aliases.append(normalized)
+            without_trailing_number = re.sub(r"\s+\d+$", "", normalized).strip()
+            if without_trailing_number and without_trailing_number != normalized:
+                aliases.append(without_trailing_number)
+    return aliases
+
+
+def _machine_match_reason(machine, normalized_task_text, task_tokens):
+    """Return why a task matched a machine or an empty string."""
+    for alias in _machine_aliases(machine):
+        if alias and alias in normalized_task_text:
+            return f"Treffer ueber Maschinen-/Produktname: {alias}"
+
+    machine_tokens = set(_normalize_match_text(machine.name).split())
+    meaningful_tokens = {
+        token
+        for token in machine_tokens
+        if len(token) >= 3 and not token.isdigit()
+    }
+    numeric_tokens = {token for token in machine_tokens if token.isdigit()}
+    shared_tokens = meaningful_tokens & task_tokens
+    shared_numbers = numeric_tokens & task_tokens
+    if len(shared_tokens) >= 2:
+        return "Treffer ueber Teilnamen: " + ", ".join(sorted(shared_tokens))
+    if shared_tokens and shared_numbers:
+        return "Treffer ueber Teilname und Nummer"
+    return ""
 
 
 def _is_high_priority(priority):
@@ -105,7 +161,7 @@ def _inventory_risk_level(material, priority, threshold):
     return None
 
 
-def _forecast_item_payload(material, machine, priority, risk_level, threshold):
+def _forecast_item_payload(material, machine, priority, risk_level, threshold, match_reason):
     """Return a serialized forecast warning item."""
     return {
         "machine": machine.to_dict(),
@@ -114,6 +170,7 @@ def _forecast_item_payload(material, machine, priority, risk_level, threshold):
         "task": priority["task"],
         "score": priority["score"],
         "risk_level": risk_level,
+        "match_reason": match_reason,
         "reason": _forecast_reason(material, priority, risk_level, threshold),
         "recommended_action": _forecast_action(risk_level),
     }

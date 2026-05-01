@@ -57,6 +57,11 @@ def _run_lightweight_migrations():
             connection.exec_driver_sql(
                 "ALTER TABLE user ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1"
             )
+    if "employee_id" not in columns:
+        with db.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "ALTER TABLE user ADD COLUMN employee_id INTEGER"
+            )
 
     with db.engine.begin() as connection:
         if "task" in table_names:

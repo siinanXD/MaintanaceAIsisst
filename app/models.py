@@ -82,10 +82,12 @@ class User(db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     role = db.Column(db.Enum(Role), nullable=False, default=Role.PRODUKTION)
     department_id = db.Column(db.Integer, db.ForeignKey("department.id"))
+    employee_id = db.Column(db.Integer, db.ForeignKey("employee.id"))
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     department = db.relationship("Department", back_populates="users")
+    employee = db.relationship("Employee", foreign_keys=[employee_id])
     created_tasks = db.relationship(
         "Task",
         foreign_keys="Task.created_by",
@@ -130,6 +132,8 @@ class User(db.Model):
             "email": self.email,
             "role": self.role.value,
             "department": self.department.to_dict() if self.department else None,
+            "employee": self.employee.to_dict("basic") if self.employee else None,
+            "employee_id": self.employee_id,
             "is_active": self.is_active,
             "created_at": self.created_at.isoformat(),
             "permissions": serialize_permissions(self),

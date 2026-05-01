@@ -17,16 +17,11 @@
   </div>
 </section>
 
-<section class="dashboard-kpi-grid" aria-label="Cockpit Kennzahlen">
+<section class="dashboard-kpi-grid is-compact" aria-label="Cockpit Kennzahlen">
   <article class="kpi-card">
     <p class="kpi-label">Aktive Tasks</p>
     <p class="kpi-value" data-dashboard-task-count>0</p>
     <p class="kpi-meta">Offen, heute oder in Bearbeitung</p>
-  </article>
-  <article class="kpi-card">
-    <p class="kpi-label">Betriebsbereiche</p>
-    <p class="kpi-value">4</p>
-    <p class="kpi-meta">IT, Verwaltung, Instandhaltung, Produktion</p>
   </article>
   <article class="kpi-card">
     <p class="kpi-label">Fehlerwissen</p>
@@ -60,8 +55,8 @@
       <span class="section-title">Stoerungen erfassen und Tagesaufgaben steuern</span>
     </span>
   </summary>
-  <section class="dashboard-grid">
-    <article class="card app-card lg:col-span-5" data-permission-write="tasks">
+<section class="dashboard-grid">
+    <article class="card app-card lg:col-span-4" data-permission-write="tasks">
       <div class="card-body">
         <div class="panel-header">
           <div>
@@ -120,7 +115,7 @@
       </div>
     </article>
 
-    <article class="card app-card lg:col-span-7">
+    <article class="card app-card lg:col-span-8">
       <div class="card-body">
         <div class="panel-header">
           <div>
@@ -144,6 +139,24 @@
             <div class="cockpit-task-list" data-cockpit-list="progress"></div>
           </section>
         </div>
+      </div>
+    </article>
+
+    <article class="card app-card lg:col-span-12">
+      <div class="card-body">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">Mein Schichtkalender</h2>
+            <p class="panel-meta" data-dashboard-calendar-message>Schichten und freie Tage fuer die naechsten Tage</p>
+          </div>
+          <div class="toolbar">
+            <select class="select select-bordered" data-dashboard-calendar-employee hidden>
+              <option value="">Mein Kalender</option>
+            </select>
+            <span class="badge badge-info badge-outline">Kalender</span>
+          </div>
+        </div>
+        <div class="shift-calendar" data-dashboard-shift-calendar></div>
       </div>
     </article>
   </section>
