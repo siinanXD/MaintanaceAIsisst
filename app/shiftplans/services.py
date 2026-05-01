@@ -75,6 +75,15 @@ def hours_between(start, end):
     return (end_dt - start_dt).total_seconds() / 3600
 
 
+def shift_datetimes(work_date, start, end):
+    """Return start and end datetimes for one shift entry."""
+    start_dt = datetime.combine(work_date, parse_time(start))
+    end_dt = datetime.combine(work_date, parse_time(end))
+    if end_dt <= start_dt:
+        end_dt += timedelta(days=1)
+    return start_dt, end_dt
+
+
 def local_shift_entries(start_date, days, rhythm, employees, machines):
     """Build a deterministic fallback plan without calling OpenAI."""
     entries = []
@@ -158,6 +167,168 @@ def validate_entries(entries, employees, machines, start_date, days):
         )
 
     return validated
+
+
+def analyze_shift_plan(entries, employees, machines):
+    """Return warnings and coverage information for generated shift entries."""
+    warnings = []
+    employee_by_id = {employee.id: employee for employee in employees}
+    machine_by_id = {machine.id: machine for machine in machines}
+    coverage_summary = {
+        "required_slots": 0,
+        "assigned_slots": 0,
+        "undercovered": 0,
+        "machines": {},
+    }
+
+    warnings.extend(detect_duplicate_assignments(entries, employee_by_id))
+    warnings.extend(detect_rest_time_conflicts(entries, employee_by_id))
+    warnings.extend(detect_qualification_warnings(entries, employee_by_id, machine_by_id))
+    warnings.extend(update_coverage_summary(entries, machines, coverage_summary))
+    return warnings[:50], coverage_summary
+
+
+def detect_duplicate_assignments(entries, employee_by_id):
+    """Return warnings for employees assigned more than once in a shift window."""
+    seen = {}
+    warnings = []
+    for entry in entries:
+        key = (
+            entry["employee_id"],
+            entry["work_date"],
+            entry["start_time"],
+            entry["end_time"],
+        )
+        seen.setdefault(key, 0)
+        seen[key] += 1
+    for key, count in seen.items():
+        if count <= 1:
+            continue
+        employee = employee_by_id.get(key[0])
+        warnings.append(
+            {
+                "type": "duplicate_assignment",
+                "severity": "critical",
+                "message": (
+                    f"{employee.name if employee else 'Mitarbeiter'} ist am "
+                    f"{key[1].isoformat()} {key[2]}-{key[3]} mehrfach geplant."
+                ),
+            }
+        )
+    return warnings
+
+
+def detect_rest_time_conflicts(entries, employee_by_id):
+    """Return warnings for entries with less than 11 hours rest time."""
+    warnings = []
+    by_employee = {}
+    for entry in entries:
+        by_employee.setdefault(entry["employee_id"], []).append(entry)
+    for employee_id, employee_entries in by_employee.items():
+        sorted_entries = sorted(
+            employee_entries,
+            key=lambda item: shift_datetimes(
+                item["work_date"],
+                item["start_time"],
+                item["end_time"],
+            )[0],
+        )
+        previous_end = None
+        for entry in sorted_entries:
+            start_dt, end_dt = shift_datetimes(
+                entry["work_date"],
+                entry["start_time"],
+                entry["end_time"],
+            )
+            if previous_end:
+                rest_hours = (start_dt - previous_end).total_seconds() / 3600
+                if rest_hours < 11:
+                    employee = employee_by_id.get(employee_id)
+                    warnings.append(
+                        {
+                            "type": "rest_time",
+                            "severity": "warning",
+                            "message": (
+                                f"{employee.name if employee else 'Mitarbeiter'} "
+                                f"hat nur {round(rest_hours, 1)}h Ruhezeit."
+                            ),
+                        }
+                    )
+            previous_end = end_dt
+    return warnings
+
+
+def detect_qualification_warnings(entries, employee_by_id, machine_by_id):
+    """Return warnings when machine preference or qualification is missing."""
+    warnings = []
+    for entry in entries:
+        machine_id = entry.get("machine_id")
+        if not machine_id:
+            continue
+        employee = employee_by_id.get(entry["employee_id"])
+        machine = machine_by_id.get(machine_id)
+        if not employee or not machine:
+            continue
+        skill_text = " ".join(
+            [
+                employee.qualifications or "",
+                employee.favorite_machine or "",
+            ]
+        ).lower()
+        if machine.name.lower() in skill_text:
+            continue
+        if machine.produced_item and machine.produced_item.lower() in skill_text:
+            continue
+        warnings.append(
+            {
+                "type": "qualification",
+                "severity": "info",
+                "message": (
+                    f"{employee.name} hat keine erkennbare Qualifikation "
+                    f"oder Favoritenangabe fuer {machine.name}."
+                ),
+            }
+        )
+    return warnings[:20]
+
+
+def update_coverage_summary(entries, machines, coverage_summary):
+    """Update coverage summary and return undercoverage warnings."""
+    warnings = []
+    assigned = {}
+    for entry in entries:
+        if not entry.get("machine_id"):
+            continue
+        key = (entry["machine_id"], entry["work_date"], entry["shift"])
+        assigned[key] = assigned.get(key, 0) + 1
+
+    for machine in machines:
+        machine_required = 0
+        machine_assigned = 0
+        for key, count in assigned.items():
+            if key[0] != machine.id:
+                continue
+            machine_required += machine.required_employees
+            machine_assigned += count
+            if count < machine.required_employees:
+                coverage_summary["undercovered"] += 1
+                warnings.append(
+                    {
+                        "type": "coverage",
+                        "severity": "critical",
+                        "message": (
+                            f"{machine.name} ist am {key[1].isoformat()} "
+                            f"in {key[2]} unterbesetzt."
+                        ),
+                    }
+                )
+        coverage_summary["machines"][machine.name] = {
+            "required_slots": machine_required,
+            "assigned_slots": machine_assigned,
+        }
+        coverage_summary["required_slots"] += machine_required
+        coverage_summary["assigned_slots"] += machine_assigned
+    return warnings
 
 
 def openai_shift_entries(start_date, days, rhythm, preferences, employees, machines):
@@ -259,6 +430,7 @@ def generate_shift_plan(data):
     entries = validate_entries(raw_entries, employees, machines, start_date, days)
     if not entries:
         return None, {"error": "Es konnte kein gueltiger Schichtplan erzeugt werden"}, 400
+    warnings, coverage_summary = analyze_shift_plan(entries, employees, machines)
 
     plan = ShiftPlan(
         title=title,
@@ -275,4 +447,6 @@ def generate_shift_plan(data):
         db.session.add(ShiftPlanEntry(plan=plan, **entry))
 
     db.session.commit()
+    plan.warnings = warnings
+    plan.coverage_summary = coverage_summary
     return plan, None, 201

@@ -1,6 +1,8 @@
+from datetime import date, timedelta
+
 import pytest
 
-from app.models import GeneratedDocument, Role
+from app.models import GeneratedDocument, Priority, Role
 from app.services.document_service import document_path
 
 
@@ -102,6 +104,57 @@ def test_ai_status_is_admin_only_and_redacted(client, make_user, auth_headers):
         "",
     )
     assert admin_response.get_json()["api_key_configured"] is False
+
+
+def test_daily_briefing_respects_permissions_and_uses_local_fallback(
+    client,
+    make_user,
+    make_task,
+    make_error_entry,
+    auth_headers,
+):
+    """Verify daily briefing returns only permitted local sections."""
+    user = make_user(
+        username="briefing_user",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+    make_task(
+        "Ueberfaelliger Task",
+        creator_username=user["username"],
+        department_name="Produktion",
+        priority=Priority.URGENT,
+        due_date_value=date.today() - timedelta(days=1),
+    )
+    make_error_entry(
+        "Anlage Briefing",
+        "E555",
+        "Neuer Fehler",
+        department_name="Produktion",
+    )
+
+    response = client.get(
+        "/api/ai/daily-briefing",
+        headers=auth_headers(user["username"]),
+    )
+
+    payload = response.get_json()
+    section_types = {section["type"] for section in payload["sections"]}
+    assert response.status_code == 200
+    assert payload["diagnostics"]["status"] == "local_answer"
+    assert "tasks" in section_types
+    assert "errors" in section_types
+    assert "documents" not in section_types
+
+
+def test_dashboard_contains_daily_briefing_and_priority_ui(client):
+    """Verify dashboard exposes briefing and task priority UI hooks."""
+    response = client.get("/")
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert 'data-daily-briefing-list' in html
+    assert 'data-dashboard-priority-list' in html
 
 
 def test_document_path_rejects_storage_escape(app):

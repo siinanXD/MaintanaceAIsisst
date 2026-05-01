@@ -192,6 +192,8 @@
   async function initTasks() {
     const list = document.querySelector("[data-task-list]");
     const form = document.querySelector("[data-task-form]");
+    const priorityList = document.querySelector("[data-task-priority-list]");
+    const priorityRefresh = document.querySelector("[data-task-priority-refresh]");
     const suggestForm = document.querySelector("[data-task-suggest-form]");
     const suggestionBox = document.querySelector("[data-task-suggestion]");
     const applySuggestion = document.querySelector("[data-apply-task-suggestion]");
@@ -200,6 +202,35 @@
     if (!list || !form || !token()) return;
     let currentSuggestion = null;
     let editingTaskId = null;
+
+    function riskBadgeClass(riskLevel) {
+      if (riskLevel === "critical") return "badge badge-error text-white";
+      if (riskLevel === "high") return "badge badge-warning text-slate-900";
+      if (riskLevel === "medium") return "badge badge-info text-white";
+      return "badge badge-success text-white";
+    }
+
+    async function loadPriorities() {
+      if (!priorityList) return;
+      const priorities = await api("/api/tasks/prioritize", {
+        method: "POST",
+        body: JSON.stringify({ status: "open", limit: 10 })
+      });
+      priorityList.innerHTML = "";
+      if (!priorities.length) {
+        priorityList.innerHTML = '<tr><td colspan="5">Keine offenen Tasks zu priorisieren.</td></tr>';
+        return;
+      }
+      priorities.forEach((item) => {
+        priorityList.appendChild(row([
+          String(item.score),
+          badge(item.risk_level, riskBadgeClass(item.risk_level)),
+          item.task.title,
+          item.reason,
+          item.recommended_action
+        ]));
+      });
+    }
 
     function resetTaskForm() {
       editingTaskId = null;
@@ -229,7 +260,11 @@
       const message = document.querySelector("[data-task-message]");
       try {
         await api(endpoint, { method: "POST" });
-        await load();
+        if (list) {
+          if (list.querySelector(".empty-state")) list.innerHTML = "";
+          list.prepend(renderPlan(plan));
+        }
+        await loadPriorities();
         if (message) {
           message.textContent = action === "start" ? "Task gestartet." : "Task abgeschlossen.";
         }
@@ -317,6 +352,7 @@
         resetTaskForm();
         await initDepartments();
         await load();
+        await loadPriorities();
         if (message) message.textContent = wasEditing ? "Task aktualisiert." : "Task gespeichert.";
       } catch (error) {
         if (message) message.textContent = error.message;
@@ -374,7 +410,14 @@
       });
     }
 
+    if (priorityRefresh) {
+      priorityRefresh.addEventListener("click", async () => {
+        await loadPriorities();
+      });
+    }
+
     await load();
+    await loadPriorities();
   }
 
   async function initErrors() {
@@ -383,8 +426,42 @@
     const analyzeForm = document.querySelector("[data-error-analyze-form]");
     const analysisBox = document.querySelector("[data-error-analysis]");
     const applyAnalysis = document.querySelector("[data-apply-error-analysis]");
+    const similarPanel = document.querySelector("[data-similar-errors-panel]");
+    const similarList = document.querySelector("[data-similar-errors-list]");
     if (!list || !form || !token()) return;
     let currentAnalysis = null;
+
+    function renderSimilarErrors(result) {
+      if (!similarPanel || !similarList) return;
+      const matches = result.results || [];
+      similarPanel.hidden = false;
+      similarList.innerHTML = "";
+      if (!matches.length) {
+        similarList.innerHTML = '<tr><td colspan="5">Keine aehnlichen Fehler gefunden.</td></tr>';
+        return;
+      }
+      matches.forEach((match) => {
+        similarList.appendChild(row([
+          String(match.score),
+          match.entry.error_code,
+          match.entry.machine,
+          match.entry.title,
+          match.reason
+        ]));
+      });
+    }
+
+    async function loadSimilarErrors(data) {
+      const result = await api("/api/errors/similar", {
+        method: "POST",
+        body: JSON.stringify({
+          text: data.description || data.title || "",
+          machine: data.machine || "",
+          limit: 5
+        })
+      });
+      renderSimilarErrors(result);
+    }
 
     async function load() {
       const errors = await api("/api/errors");
@@ -404,6 +481,7 @@
       event.preventDefault();
       const data = Object.fromEntries(new FormData(form).entries());
       data.description = data.title;
+      await loadSimilarErrors(data);
       await api("/api/errors", { method: "POST", body: JSON.stringify(data) });
       form.reset();
       await initDepartments();
@@ -428,6 +506,10 @@
             field.value = currentAnalysis[field.dataset.errorAnalysisField] || "";
           });
           if (message) message.textContent = "Analyse erstellt.";
+          await loadSimilarErrors({
+            description: data.description,
+            machine: currentAnalysis.machine
+          });
         } catch (error) {
           if (message) message.textContent = error.message;
         }
@@ -777,7 +859,10 @@
     const historySummary = document.querySelector("[data-machine-history-summary]");
     const historyCounts = document.querySelector("[data-machine-history-counts]");
     const historyList = document.querySelector("[data-machine-history-list]");
+    const assistantForm = document.querySelector("[data-machine-assistant-form]");
+    const assistantAnswer = document.querySelector("[data-machine-assistant-answer]");
     if (!list || !form || !token()) return;
+    let activeHistoryMachine = null;
 
     function renderHistoryCounts(counts) {
       if (!historyCounts) return;
@@ -810,6 +895,7 @@
 
     function renderMachineHistory(history) {
       if (!historyPanel || !historyList) return;
+      activeHistoryMachine = history.machine;
       historyPanel.hidden = false;
       if (historyTitle) historyTitle.textContent = "Anlagenakte: " + history.machine.name;
       if (historySummary) historySummary.textContent = history.summary.text || "";
@@ -835,6 +921,24 @@
     async function loadMachineHistory(machine) {
       const history = await api("/api/machines/" + machine.id + "/history");
       renderMachineHistory(history);
+    }
+
+    if (assistantForm) {
+      assistantForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!activeHistoryMachine) return;
+        const data = Object.fromEntries(new FormData(assistantForm).entries());
+        if (assistantAnswer) assistantAnswer.textContent = "Maschinen-Assistent denkt...";
+        try {
+          const result = await api("/api/machines/" + activeHistoryMachine.id + "/assistant", {
+            method: "POST",
+            body: JSON.stringify(data)
+          });
+          if (assistantAnswer) assistantAnswer.textContent = result.answer;
+        } catch (error) {
+          if (assistantAnswer) assistantAnswer.textContent = error.message;
+        }
+      });
     }
 
     async function load() {
@@ -1013,6 +1117,19 @@
       notes.className = "panel-meta";
       notes.textContent = plan.notes || "Plan wurde gespeichert.";
 
+      const warningBox = document.createElement("div");
+      warningBox.className = "stats-list";
+      const warnings = plan.warnings || [];
+      if (warnings.length) {
+        warnings.slice(0, 6).forEach((warning) => {
+          const item = document.createElement("div");
+          item.className = "stat-row";
+          item.innerHTML = `<span>${warning.type}</span><strong>${warning.severity}</strong>`;
+          item.title = warning.message;
+          warningBox.appendChild(item);
+        });
+      }
+
       const wrap = document.createElement("div");
       wrap.className = "table-wrap";
       const table = document.createElement("table");
@@ -1031,7 +1148,11 @@
       });
       table.appendChild(body);
       wrap.appendChild(table);
-      article.append(header, notes, wrap);
+      if (warnings.length) {
+        article.append(header, notes, warningBox, wrap);
+      } else {
+        article.append(header, notes, wrap);
+      }
       return article;
     }
 
@@ -1051,10 +1172,15 @@
       if (message) message.textContent = "KI plant...";
       const data = Object.fromEntries(new FormData(form).entries());
       try {
-        await api("/api/shiftplans/generate", { method: "POST", body: JSON.stringify(data) });
+        const plan = await api("/api/shiftplans/generate", { method: "POST", body: JSON.stringify(data) });
         form.reset();
         if (startInput) startInput.value = new Date().toISOString().slice(0, 10);
-        if (message) message.textContent = "Schichtplan generiert.";
+        if (message) {
+          const warningCount = (plan.warnings || []).length;
+          message.textContent = warningCount
+            ? "Schichtplan generiert mit " + warningCount + " Warnungen."
+            : "Schichtplan generiert.";
+        }
         await load();
       } catch (error) {
         if (message) {
@@ -1315,7 +1441,10 @@
     const globalLive = document.querySelector("[data-global-live-region]");
     const errorStats = document.querySelector("[data-dashboard-error-stats]");
     const inventoryStats = document.querySelector("[data-dashboard-inventory-stats]");
-    if ((!taskBoard && !errorStats && !inventoryStats) || !token()) return;
+    const priorityList = document.querySelector("[data-dashboard-priority-list]");
+    const briefingSummary = document.querySelector("[data-daily-briefing-summary]");
+    const briefingList = document.querySelector("[data-daily-briefing-list]");
+    if ((!taskBoard && !errorStats && !inventoryStats && !briefingList) || !token()) return;
 
     let activeTask = null;
     let activeTaskId = null;
@@ -1701,9 +1830,55 @@
       });
     }
 
+    function rowLikeStat(label, value) {
+      const item = document.createElement("div");
+      item.className = "stat-row";
+      item.innerHTML = `<span>${label}</span><strong>${value}</strong>`;
+      return item;
+    }
+
+    async function loadDashboardPriorities() {
+      if (!priorityList || !canView("tasks")) return;
+      const priorities = await api("/api/tasks/prioritize", {
+        method: "POST",
+        body: JSON.stringify({ status: "open", limit: 3 })
+      });
+      priorityList.innerHTML = "";
+      if (!priorities.length) {
+        priorityList.appendChild(rowLikeStat("KI-Priorisierung", "Keine offenen Tasks"));
+        return;
+      }
+      priorities.forEach((item) => {
+        priorityList.appendChild(rowLikeStat(
+          item.task.title,
+          item.score + " / " + item.risk_level
+        ));
+      });
+    }
+
+    async function loadDailyBriefing() {
+      if (!briefingList) return;
+      const briefing = await api("/api/ai/daily-briefing");
+      if (briefingSummary) briefingSummary.textContent = briefing.summary;
+      briefingList.innerHTML = "";
+      if (!briefing.sections.length) {
+        briefingList.appendChild(rowLikeStat("Status", "Keine Hinweise"));
+        return;
+      }
+      briefing.sections.forEach((section) => {
+        briefingList.appendChild(rowLikeStat(section.title, String(section.count)));
+        section.items.slice(0, 2).forEach((item) => {
+          briefingList.appendChild(rowLikeStat(item.title, item.severity));
+        });
+      });
+    }
+
     if (taskBoard && canView("tasks")) {
       await loadDashboardTasks();
+      await loadDashboardPriorities();
     }
+
+    await loadDailyBriefing();
 
     if (errorStats && canView("errors")) {
       const errors = await api("/api/errors");
@@ -1735,12 +1910,6 @@
       );
     }
 
-    function rowLikeStat(label, value) {
-      const item = document.createElement("div");
-      item.className = "stat-row";
-      item.innerHTML = `<span>${label}</span><strong>${value}</strong>`;
-      return item;
-    }
   }
 
   async function initDocuments() {

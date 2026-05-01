@@ -32,7 +32,10 @@ def generate():
     if error:
         return jsonify(error), status
     access_level = employee_access_level(current_user())
-    return jsonify(plan.to_dict(access_level)), status
+    payload = plan.to_dict(access_level)
+    payload["warnings"] = getattr(plan, "warnings", [])
+    payload["coverage_summary"] = getattr(plan, "coverage_summary", {})
+    return jsonify(payload), status
 
 
 @shiftplans_bp.delete("/<int:plan_id>")

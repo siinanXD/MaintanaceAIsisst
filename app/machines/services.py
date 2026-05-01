@@ -1,6 +1,7 @@
 from sqlalchemy import or_
 
 from app.errors.services import visible_errors_query
+from app.inventory.services import forecast_inventory_risks
 from app.models import ErrorEntry, GeneratedDocument, Machine, Task, TaskStatus
 from app.security import has_dashboard_permission
 from app.services.ai_service import AIServiceError, get_ai_provider
@@ -30,6 +31,51 @@ def build_machine_history(machine, user):
         "source_counts": source_counts,
         "timeline": timeline,
     }
+
+
+def answer_machine_assistant(machine, user, data):
+    """Answer a machine-specific question from visible maintenance context."""
+    question = str(data.get("question") or "").strip()
+    if not question:
+        return None, {"error": "question is required"}, 400
+    if len(question) > 1000:
+        return None, {"error": "question must not exceed 1000 characters"}, 400
+
+    history = build_machine_history(machine, user)
+    forecast = _machine_forecast_context(machine, user)
+    provider = get_ai_provider()
+    context = _assistant_context(machine, history, forecast)
+
+    if provider.name == "mock":
+        return {
+            "answer": _local_machine_answer(machine, history, forecast),
+            "diagnostics": {"status": "local_answer", "provider": provider.name},
+            "context": {
+                "source_counts": history["source_counts"],
+                "forecast_items": len(forecast),
+            },
+        }, None, 200
+
+    try:
+        answer = provider.answer_question(question, context)
+    except AIServiceError:
+        return {
+            "answer": _local_machine_answer(machine, history, forecast),
+            "diagnostics": {"status": "fallback_used", "provider": provider.name},
+            "context": {
+                "source_counts": history["source_counts"],
+                "forecast_items": len(forecast),
+            },
+        }, None, 200
+
+    return {
+        "answer": answer,
+        "diagnostics": {"status": "openai_used", "provider": provider.name},
+        "context": {
+            "source_counts": history["source_counts"],
+            "forecast_items": len(forecast),
+        },
+    }, None, 200
 
 
 def _task_timeline(machine, user):
@@ -183,3 +229,83 @@ def _summary_context(machine, timeline, source_counts):
             )
         )
     return "\n".join(rows)
+
+
+def _machine_forecast_context(machine, user):
+    """Return inventory forecast items related to a machine when permitted."""
+    if not (
+        has_dashboard_permission(user, "inventory", "view")
+        and has_dashboard_permission(user, "tasks", "view")
+    ):
+        return []
+    forecast, error, _status = forecast_inventory_risks(
+        {"status": "open", "limit": 20, "low_stock_threshold": 5},
+        user,
+    )
+    if error:
+        return []
+    return [
+        item
+        for item in forecast.get("items", [])
+        if item.get("machine", {}).get("id") == machine.id
+    ]
+
+
+def _assistant_context(machine, history, forecast):
+    """Return compact context text for machine assistant answers."""
+    rows = [
+        f"Maschine: {machine.name}",
+        f"Historie: {history['source_counts']}",
+        f"Zusammenfassung: {history['summary']['text']}",
+    ]
+    for item in history["timeline"][:15]:
+        rows.append(
+            " | ".join(
+                [
+                    f"Typ: {item['type']}",
+                    f"Datum: {item['date']}",
+                    f"Titel: {item['title']}",
+                    f"Status: {item['status']}",
+                    f"Details: {item['summary']}",
+                ]
+            )
+        )
+    for item in forecast[:10]:
+        rows.append(
+            " | ".join(
+                [
+                    "Typ: lager",
+                    f"Material: {item['material']['name']}",
+                    f"Risiko: {item['risk_level']}",
+                    f"Empfehlung: {item['recommended_action']}",
+                ]
+            )
+        )
+    return "\n".join(rows)
+
+
+def _local_machine_answer(machine, history, forecast):
+    """Return a deterministic machine assistant answer."""
+    counts = history["source_counts"]
+    lines = [
+        f"{machine.name}: {counts['tasks']} Tasks, {counts['errors']} Fehler, "
+        f"{counts['documents']} Dokumente sichtbar."
+    ]
+    open_task = next(
+        (
+            item
+            for item in history["timeline"]
+            if item["type"] == "task" and item["status"] != TaskStatus.DONE.value
+        ),
+        None,
+    )
+    if open_task:
+        lines.append(f"Naechster Task: {open_task['title']} ({open_task['status']}).")
+    if forecast:
+        lines.append(
+            f"Lagerhinweis: {forecast[0]['material']['name']} "
+            f"ist {forecast[0]['risk_level']}."
+        )
+    if counts["total"] == 0:
+        lines.append("Keine Historie gefunden; Maschine und Taskdaten pruefen.")
+    return " ".join(lines)

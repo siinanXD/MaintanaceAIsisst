@@ -40,6 +40,19 @@
   </article>
 </section>
 
+<article class="card app-card" data-daily-briefing-card>
+  <div class="card-body">
+    <div class="panel-header">
+      <div>
+        <h2 class="panel-title">Heute wichtig</h2>
+        <p class="panel-meta" data-daily-briefing-summary>KI-Briefing wird geladen.</p>
+      </div>
+      <span class="badge badge-info badge-outline">KI</span>
+    </div>
+    <div class="stats-list" data-daily-briefing-list></div>
+  </div>
+</article>
+
 <details class="dashboard-section" open>
   <summary>
     <span>
@@ -116,6 +129,7 @@
           </div>
           <span class="badge badge-success badge-outline">Tasks</span>
         </div>
+        <div class="stats-list" data-dashboard-priority-list></div>
         <div class="cockpit-board" data-dashboard-task-board>
           <section class="cockpit-column" aria-labelledby="cockpit-urgent-title">
             <h3 id="cockpit-urgent-title" class="cockpit-column-title">Dringend</h3>

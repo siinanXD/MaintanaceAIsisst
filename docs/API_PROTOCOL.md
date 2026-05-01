@@ -581,6 +581,50 @@ Authorization: Bearer <access_token>
 
 Response `200`: Liste passender Fehlerkatalogeintraege.
 
+### Aehnliche Fehler vorschlagen
+
+```http
+POST /api/errors/similar
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+Request:
+
+```json
+{
+  "text": "Sensor Signal an Anlage 4 fehlt",
+  "machine": "Anlage 4",
+  "limit": 5
+}
+```
+
+Response `200`:
+
+```json
+{
+  "query": {
+    "text": "Sensor Signal an Anlage 4 fehlt",
+    "machine": "Anlage 4"
+  },
+  "results": [
+    {
+      "entry": {
+        "id": 1,
+        "error_code": "E104",
+        "title": "Sensor erkennt Produkt nicht"
+      },
+      "score": 84,
+      "reason": "3 gemeinsame Begriffe; Maschine stimmt ueberein"
+    }
+  ],
+  "diagnostics": {
+    "status": "local_answer",
+    "provider": "local_similarity"
+  }
+}
+```
+
 ### Einzelnen Fehler lesen
 
 ```http
@@ -698,6 +742,41 @@ Moegliche Diagnosewerte:
 | `openai_used` | OpenAI-Antwort wurde verwendet |
 
 `diagnostics` enthaelt zusaetzlich `provider` und `model`, aber niemals den API-Key. Die Chat-Bubble zeigt diese Werte als kleine Statuszeile pro Antwort.
+
+### Taegliches Briefing
+
+```http
+GET /api/ai/daily-briefing
+Authorization: Bearer <access_token>
+```
+
+Response `200`:
+
+```json
+{
+  "date": "2026-05-01",
+  "summary": "Heute gibt es 3 wichtige Hinweise.",
+  "sections": [
+    {
+      "type": "tasks",
+      "title": "Tasks",
+      "count": 1,
+      "items": [
+        {
+          "title": "Motor pruefen",
+          "severity": "critical",
+          "summary": "urgent, open, faellig 2026-04-30",
+          "url": "/api/tasks/1"
+        }
+      ]
+    }
+  ],
+  "diagnostics": {
+    "status": "local_answer",
+    "provider": "local_briefing"
+  }
+}
+```
 
 ### KI-Konfiguration pruefen
 
@@ -898,6 +977,43 @@ Response `200`:
 
 Die Historie ist read-only und speichert keine KI-Zusammenfassungen.
 
+### Maschinen-KI-Assistent
+
+```http
+POST /api/machines/1/assistant
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+Request:
+
+```json
+{
+  "question": "Was sollte ich als naechstes pruefen?"
+}
+```
+
+Response `200`:
+
+```json
+{
+  "answer": "Anlage 4: 2 Tasks, 1 Fehler, 1 Dokument sichtbar.",
+  "diagnostics": {
+    "status": "local_answer",
+    "provider": "mock"
+  },
+  "context": {
+    "source_counts": {
+      "tasks": 2,
+      "errors": 1,
+      "documents": 1,
+      "total": 4
+    },
+    "forecast_items": 1
+  }
+}
+```
+
 ## Lager
 
 Lager-Endpunkte benoetigen `inventory.view` oder `inventory.write`.
@@ -1003,6 +1119,7 @@ Request:
 ```
 
 Die Generierung beruecksichtigt Produktionsmitarbeiter, Rhythmus, Praeferenzen, Qualifikationen, Favoritenmaschine und Maschinenbedarf. Ohne OpenAI-Key oder bei OpenAI-Fehlern wird ein lokaler Fallback genutzt.
+Die Antwort enthaelt zusaetzlich `warnings` und `coverage_summary`, damit Doppelbelegung, Qualifikationshinweise, Ruhezeit und Maschinenabdeckung sichtbar werden.
 
 ## cURL-Beispiele
 

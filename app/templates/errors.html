@@ -116,6 +116,31 @@
     </form>
   </details>
 
+  <article class="card app-card lg:col-span-12" data-similar-errors-panel hidden>
+    <div class="card-body">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Aehnliche Fehler</h2>
+          <p class="panel-meta">Bestehende Katalogeintraege vor dem Speichern pruefen.</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="table data-table">
+          <thead>
+            <tr>
+              <th>Score</th>
+              <th>Code</th>
+              <th>Maschine</th>
+              <th>Fehler</th>
+              <th>Grund</th>
+            </tr>
+          </thead>
+          <tbody data-similar-errors-list></tbody>
+        </table>
+      </div>
+    </div>
+  </article>
+
   <article class="card app-card mobile-primary-card lg:col-span-12">
     <div class="card-body">
       <div class="panel-header">

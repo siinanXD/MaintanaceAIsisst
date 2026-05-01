@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request
 
 from app.extensions import db
-from app.machines.services import build_machine_history
+from app.machines.services import answer_machine_assistant, build_machine_history
 from app.models import InventoryMaterial, Machine, ShiftPlanEntry
 from app.security import current_user, dashboard_permission_required
 
@@ -56,6 +56,21 @@ def machine_history(machine_id):
     """Return a read-only history for one machine."""
     machine = Machine.query.get_or_404(machine_id)
     return jsonify(build_machine_history(machine, current_user()))
+
+
+@machines_bp.post("/<int:machine_id>/assistant")
+@dashboard_permission_required("machines", "view")
+def machine_assistant(machine_id):
+    """Answer a machine-specific maintenance question."""
+    machine = Machine.query.get_or_404(machine_id)
+    result, error, status = answer_machine_assistant(
+        machine,
+        current_user(),
+        request.get_json(silent=True) or {},
+    )
+    if error:
+        return jsonify(error), status
+    return jsonify(result), status
 
 
 @machines_bp.put("/<int:machine_id>")

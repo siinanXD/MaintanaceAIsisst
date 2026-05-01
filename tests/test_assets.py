@@ -531,4 +531,46 @@ def test_machine_page_contains_history_ui(client):
     assert response.status_code == 200
     assert 'data-machine-history-panel' in html
     assert 'data-machine-history-list' in html
+    assert 'data-machine-assistant-form' in html
     assert "Anlagenakte" in html
+
+
+def test_machine_assistant_uses_local_context_and_requires_question(
+    client,
+    make_user,
+    make_machine,
+    make_task,
+    auth_headers,
+):
+    """Verify the machine assistant answers locally and validates questions."""
+    user = make_user(
+        username="machine_assistant_user",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    machine_id = make_machine(name="Anlage Assistent")
+    make_task(
+        "Task Anlage Assistent",
+        creator_username=user["username"],
+        department_name="Instandhaltung",
+        priority=Priority.URGENT,
+        description="Anlage Assistent pruefen",
+    )
+    headers = auth_headers(user["username"])
+
+    empty_response = client.post(
+        f"/api/machines/{machine_id}/assistant",
+        headers=headers,
+        json={},
+    )
+    valid_response = client.post(
+        f"/api/machines/{machine_id}/assistant",
+        headers=headers,
+        json={"question": "Was ist wichtig?"},
+    )
+
+    payload = valid_response.get_json()
+    assert empty_response.status_code == 400
+    assert valid_response.status_code == 200
+    assert payload["diagnostics"]["status"] == "local_answer"
+    assert payload["context"]["source_counts"]["tasks"] == 1

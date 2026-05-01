@@ -143,6 +143,32 @@
     </form>
   </details>
 
+  <article class="card app-card lg:col-span-12">
+    <div class="card-body">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">KI-Priorisierung</h2>
+          <p class="panel-meta">Offene Tasks nach Risiko, Faelligkeit und Kontext sortiert.</p>
+        </div>
+        <button class="btn btn-outline btn-sm" type="button" data-task-priority-refresh>Aktualisieren</button>
+      </div>
+      <div class="table-wrap">
+        <table class="table data-table">
+          <thead>
+            <tr>
+              <th>Score</th>
+              <th>Risiko</th>
+              <th>Task</th>
+              <th>Grund</th>
+              <th>Empfehlung</th>
+            </tr>
+          </thead>
+          <tbody data-task-priority-list></tbody>
+        </table>
+      </div>
+    </div>
+  </article>
+
   <article class="card app-card mobile-primary-card lg:col-span-12">
     <div class="card-body">
       <div class="panel-header">

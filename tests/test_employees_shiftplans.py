@@ -222,3 +222,55 @@ def test_shiftplan_generate_rejects_invalid_date_and_days(
 
     assert invalid_date_response.status_code == 400
     assert invalid_days_response.status_code == 400
+
+
+def test_shiftplan_generate_returns_warnings_and_coverage(
+    client,
+    make_user,
+    make_employee,
+    make_machine,
+    auth_headers,
+):
+    """Verify shift planning reports conflict warnings and coverage details."""
+    admin = make_user(
+        username="shiftplan_warning_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    make_employee(
+        personnel_number="P-470",
+        name="Prod Warn",
+        department="Produktion",
+        qualifications="",
+        favorite_machine="",
+    )
+    make_machine(name="Warn Anlage 1", required_employees=1)
+    make_machine(name="Warn Anlage 2", required_employees=1)
+
+    response = client.post(
+        "/api/shiftplans/generate",
+        headers=auth_headers(admin["username"]),
+        json={
+            "title": "Warnplan",
+            "start_date": "2026-05-01",
+            "days": 1,
+            "rhythm": "2-Schicht",
+        },
+    )
+
+    payload = response.get_json()
+    warning_types = {warning["type"] for warning in payload["warnings"]}
+    assert response.status_code == 201
+    assert "duplicate_assignment" in warning_types
+    assert "qualification" in warning_types
+    assert payload["coverage_summary"]["assigned_slots"] >= 1
+
+
+def test_shiftplan_page_script_renders_warnings(client):
+    """Verify shift plan UI has warning rendering code."""
+    response = client.get("/static/app.js")
+    script = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "plan.warnings" in script
+    assert "Warnungen" in script

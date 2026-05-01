@@ -130,3 +130,75 @@ def test_error_analysis_validates_input_and_uses_mock_fallback(
     assert valid_response.status_code == 200
     assert valid_response.get_json()["department"] == "Instandhaltung"
     assert "Sensor" in valid_response.get_json()["possible_causes"]
+
+
+def test_similar_errors_respects_department_and_sorts_matches(
+    client,
+    make_user,
+    make_error_entry,
+    auth_headers,
+):
+    """Verify similar error suggestions are visible and relevance-sorted."""
+    user = make_user(
+        username="similar_error_user",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    make_error_entry(
+        "Anlage 4",
+        "E104",
+        "Sensor erkennt Produkt nicht",
+        department_name="Instandhaltung",
+        description="Sensor Signal fehlt sporadisch",
+        solution="Sensor reinigen",
+    )
+    make_error_entry(
+        "Anlage 9",
+        "E900",
+        "Hydraulikdruck niedrig",
+        department_name="Instandhaltung",
+        description="Druck faellt ab",
+    )
+    make_error_entry(
+        "Anlage 4",
+        "E777",
+        "Fremder Sensorfehler",
+        department_name="Produktion",
+    )
+
+    response = client.post(
+        "/api/errors/similar",
+        headers=auth_headers(user["username"]),
+        json={"text": "Sensor Signal an Anlage 4 fehlt", "machine": "Anlage 4"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["results"][0]["entry"]["error_code"] == "E104"
+    assert all(result["entry"]["department"]["name"] == "Instandhaltung" for result in payload["results"])
+
+
+def test_similar_errors_rejects_empty_and_invalid_limit(client, make_user, auth_headers):
+    """Verify similar error suggestions validate request data."""
+    user = make_user(username="similar_error_validation")
+    headers = auth_headers(user["username"])
+
+    empty_response = client.post("/api/errors/similar", headers=headers, json={})
+    invalid_limit = client.post(
+        "/api/errors/similar",
+        headers=headers,
+        json={"text": "Sensor", "limit": 0},
+    )
+
+    assert empty_response.status_code == 400
+    assert invalid_limit.status_code == 400
+
+
+def test_errors_page_contains_similar_errors_ui(client):
+    """Verify the errors page contains similar-error UI hooks."""
+    response = client.get("/errors")
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert 'data-similar-errors-panel' in html
+    assert 'data-similar-errors-list' in html

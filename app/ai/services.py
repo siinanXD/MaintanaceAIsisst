@@ -1,13 +1,22 @@
 import re
-from datetime import date
+from datetime import date, timedelta
 from sqlalchemy.exc import SQLAlchemyError
 
 from flask import current_app
 
 from app.errors.services import search_errors
+from app.inventory.services import forecast_inventory_risks
 from app.extensions import db
-from app.models import ChatMessage, Employee, ErrorEntry, Task
+from app.models import (
+    ChatMessage,
+    Employee,
+    ErrorEntry,
+    GeneratedDocument,
+    Task,
+    TaskStatus,
+)
 from app.security import employee_access_level, has_dashboard_permission
+from app.services.document_service import visible_documents_query
 from app.services.ai_service import AIServiceError, get_ai_provider
 from app.tasks.services import visible_tasks_query
 
@@ -274,6 +283,151 @@ def ai_status():
         "provider": provider,
         "ready": api_key_configured and LAST_OPENAI_ERROR is None,
         "last_error": LAST_OPENAI_ERROR,
+    }
+
+
+def daily_briefing(user):
+    """Return a local daily maintenance briefing for the current user."""
+    sections = []
+    if has_dashboard_permission(user, "tasks", "view"):
+        sections.append(task_briefing_section(user))
+    if (
+        has_dashboard_permission(user, "inventory", "view")
+        and has_dashboard_permission(user, "tasks", "view")
+    ):
+        sections.append(inventory_briefing_section(user))
+    if has_dashboard_permission(user, "errors", "view"):
+        sections.append(error_briefing_section(user))
+    if has_dashboard_permission(user, "documents", "view"):
+        sections.append(document_briefing_section(user))
+
+    visible_sections = [section for section in sections if section]
+    important_count = sum(section["count"] for section in visible_sections)
+    if important_count:
+        summary = f"Heute gibt es {important_count} wichtige Hinweise."
+    else:
+        summary = "Heute sind keine kritischen Hinweise sichtbar."
+    return {
+        "date": date.today().isoformat(),
+        "summary": summary,
+        "sections": visible_sections,
+        "diagnostics": {"status": "local_answer", "provider": "local_briefing"},
+    }
+
+
+def task_briefing_section(user):
+    """Return today's and overdue task briefing items."""
+    today = date.today()
+    tasks = (
+        visible_tasks_query(user)
+        .filter(Task.status.in_([TaskStatus.OPEN, TaskStatus.IN_PROGRESS]))
+        .order_by(Task.due_date.asc(), Task.id.desc())
+        .limit(20)
+        .all()
+    )
+    items = []
+    for task in tasks:
+        if task.due_date > today and task.priority.value != "urgent":
+            continue
+        items.append(
+            {
+                "title": task.title,
+                "severity": "critical" if task.due_date < today else "high",
+                "summary": (
+                    f"{task.priority.value}, {task.status.value}, "
+                    f"faellig {task.due_date.isoformat()}"
+                ),
+                "url": f"/api/tasks/{task.id}",
+            }
+        )
+    return {
+        "type": "tasks",
+        "title": "Tasks",
+        "count": len(items),
+        "items": items[:5],
+    }
+
+
+def inventory_briefing_section(user):
+    """Return critical inventory forecast briefing items."""
+    forecast, error, _status = forecast_inventory_risks(
+        {"status": "open", "limit": 20, "low_stock_threshold": 5},
+        user,
+    )
+    if error:
+        return None
+    items = [
+        {
+            "title": item["material"]["name"],
+            "severity": item["risk_level"],
+            "summary": item["recommended_action"],
+            "url": "/inventory",
+        }
+        for item in forecast.get("items", [])
+        if item["risk_level"] in {"critical", "high"}
+    ]
+    return {
+        "type": "inventory",
+        "title": "Lager",
+        "count": len(items),
+        "items": items[:5],
+    }
+
+
+def error_briefing_section(user):
+    """Return recently created error catalog briefing items."""
+    since = date.today() - timedelta(days=1)
+    entries = (
+        ErrorEntry.query
+        if user.is_admin
+        else ErrorEntry.query.filter(ErrorEntry.department_id == user.department_id)
+    )
+    entries = (
+        entries.filter(ErrorEntry.created_at >= since)
+        .order_by(ErrorEntry.created_at.desc())
+        .limit(5)
+        .all()
+    )
+    items = [
+        {
+            "title": f"{entry.error_code} - {entry.title}",
+            "severity": "medium",
+            "summary": entry.machine,
+            "url": f"/api/errors/{entry.id}",
+        }
+        for entry in entries
+    ]
+    return {
+        "type": "errors",
+        "title": "Neue Fehler",
+        "count": len(items),
+        "items": items,
+    }
+
+
+def document_briefing_section(user):
+    """Return recent document briefing items as review candidates."""
+    documents = (
+        visible_documents_query(user)
+        .filter(GeneratedDocument.created_at >= date.today() - timedelta(days=7))
+        .order_by(GeneratedDocument.created_at.desc())
+        .limit(5)
+        .all()
+    )
+    items = [
+        {
+            "title": document.title,
+            "severity": "info",
+            "summary": "Dokumentpruefung bei Bedarf ausfuehren",
+            "url": document.to_dict()["detail_url"],
+        }
+        for document in documents
+    ]
+    return {
+        "type": "documents",
+        "title": "Dokumente",
+        "count": len(items),
+        "items": items,
     }
 
 

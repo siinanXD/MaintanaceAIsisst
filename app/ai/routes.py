@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required
 
-from app.ai.services import ai_status, answer_chat, save_chat_message
+from app.ai.services import ai_status, answer_chat, daily_briefing, save_chat_message
 from app.extensions import db
 from app.models import AIFeedback, Role
 from app.security import current_user, roles_required
@@ -32,6 +32,13 @@ def chat():
 def status():
     """Return redacted AI configuration and last-error status."""
     return jsonify(ai_status())
+
+
+@ai_bp.get("/daily-briefing")
+@jwt_required()
+def briefing():
+    """Return a daily maintenance briefing for the current user."""
+    return jsonify(daily_briefing(current_user()))
 
 
 @ai_bp.post("/feedback")

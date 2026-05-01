@@ -12,6 +12,7 @@ Modulare Flask-Anwendung fuer Wartung, Produktion und Instandhaltung. Die App bi
 * Smart Task Generator aus Freitext
 * KI-gestuetzte Task-Priorisierung mit lokalem Fallback
 * KI-gestuetzte Fehleranalyse fuer den Fehlerkatalog
+* Vorschlag aehnlicher Fehler zur Duplikatvermeidung
 * Automatische HTML-Wartungsberichte fuer abgeschlossene Tasks
 * Dokumentenuebersicht mit Filtern und Download
 * KI-Dokumentpruefung fuer Wartungsberichte mit lokalem Fallback
@@ -23,6 +24,8 @@ Modulare Flask-Anwendung fuer Wartung, Produktion und Instandhaltung. Die App bi
 * Lagerverwaltung mit Materialname, Kosten, Anzahl, Maschine, Hersteller und Gesamtwert
 * Ersatzteil-Prognose auf Basis von Tasks, Maschinen und Lagerbestand
 * KI-Chat fuer Fehlerhilfe und heutige Tasks
+* Taegliches KI-Briefing fuer Tasks, Lager, Fehler und Dokumente
+* Maschinen-KI-Assistent auf Basis der Anlagenakte
 * KI-gestuetzte Schichtplanung fuer Produktionsmitarbeiter mit lokalem Fallback
 * Persistente Datenspeicherung via SQLite
 
@@ -81,6 +84,9 @@ Tasks und Fehler:
 * `GET/POST /api/errors`
 * `GET/PUT/DELETE /api/errors/<id>`
 * `GET /api/errors/search?query=...`
+* `POST /api/errors/similar`
+* `GET /api/ai/daily-briefing`
+* `POST /api/machines/<id>/assistant`
 
 Admin-only Erweiterungen:
 
@@ -147,6 +153,12 @@ KI-Fehleranalyse:
 * Erzeugt Maschine, Fehler, moegliche Ursachen und Loesung als Vorschlag.
 * Speichert nichts, bis der Nutzer den Vorschlag uebernimmt und den Fehler speichert.
 
+Aehnliche Fehler:
+
+* `POST /api/errors/similar`
+* Findet sichtbare Katalogeintraege mit aehnlicher Maschine, Beschreibung oder Fehlernummer.
+* Hilft, doppelte Fehlerkatalogeintraege vor dem Speichern zu vermeiden.
+
 Wartungsberichte:
 
 * Beim Abschluss eines Tasks kann `generate_report: true` gesendet werden.
@@ -172,12 +184,23 @@ Ersatzteil-Prognose:
 * Liefert nicht gespeicherte Warnungen fuer knappe oder fehlende Ersatzteile.
 
 Die Schichtplanung nutzt Produktionsmitarbeiter, Rhythmus, Praeferenzen, Qualifikationen, Favoritenmaschine und Maschinenbedarf. Der lokale Fallback plant mit max. 8h Schichtdauer und 11h Ruhezeit als Regelhinweis.
+Generierte Plaene enthalten Warnungen zu Doppelbelegung, Qualifikationshinweisen, Ruhezeit und Maschinenabdeckung.
 
 Maschinen-Historie:
 
 * `GET /api/machines/<id>/history`
 * Buendelt sichtbare Tasks, Fehler und Wartungsberichte pro Maschine.
 * Nutzt OpenAI fuer Zusammenfassungen, wenn konfiguriert; sonst lokalen Fallback.
+
+Maschinen-KI-Assistent:
+
+* `POST /api/machines/<id>/assistant`
+* Antwortet anhand der sichtbaren Anlagenakte und optionaler Lager-Prognose.
+
+Taegliches Briefing:
+
+* `GET /api/ai/daily-briefing`
+* Buendelt wichtige sichtbare Hinweise fuer den aktuellen Tag.
 
 ## Konfiguration
 

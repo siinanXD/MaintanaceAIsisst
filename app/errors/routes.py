@@ -4,6 +4,7 @@ from app.errors.services import (
     analyze_error_description,
     create_error_entry,
     search_errors,
+    suggest_similar_errors,
     update_error_entry,
     visible_errors_query,
 )
@@ -49,6 +50,19 @@ def analyze_error():
     if error:
         return jsonify(error), status
     return jsonify(analysis)
+
+
+@errors_bp.post("/similar")
+@dashboard_permission_required("errors", "view")
+def similar_errors():
+    """Return visible error catalog entries similar to a description."""
+    result, error, status = suggest_similar_errors(
+        request.get_json(silent=True) or {},
+        current_user(),
+    )
+    if error:
+        return jsonify(error), status
+    return jsonify(result), status
 
 
 @errors_bp.get("/search")

@@ -98,6 +98,125 @@ def search_errors(query_text, user):
     )
 
 
+def suggest_similar_errors(data, user):
+    """Return visible error entries similar to a free-text fault description."""
+    text = str(data.get("text") or "").strip()
+    machine = str(data.get("machine") or "").strip()
+    if not text and not machine:
+        return None, {"error": "text or machine is required"}, 400
+    try:
+        limit = parse_similarity_limit(data.get("limit", 5))
+    except ValueError as exc:
+        return None, {"error": str(exc)}, 400
+
+    query_text = " ".join([machine, text]).strip()
+    candidates = visible_errors_query(user).order_by(ErrorEntry.created_at.desc()).all()
+    scored = []
+    for entry in candidates:
+        score, reasons = similarity_score(query_text, machine, entry)
+        if score <= 0:
+            continue
+        scored.append(
+            {
+                "entry": entry.to_dict(),
+                "score": score,
+                "reason": "; ".join(reasons),
+            }
+        )
+
+    scored.sort(key=lambda item: item["score"], reverse=True)
+    return {
+        "query": {"text": text, "machine": machine},
+        "results": scored[:limit],
+        "diagnostics": {"status": "local_answer", "provider": "local_similarity"},
+    }, None, 200
+
+
+def parse_similarity_limit(value):
+    """Parse and validate a similar-error result limit."""
+    try:
+        limit = int(value if value not in (None, "") else 5)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("limit must be an integer between 1 and 20") from exc
+    if limit < 1 or limit > 20:
+        raise ValueError("limit must be an integer between 1 and 20")
+    return limit
+
+
+def similarity_score(query_text, machine, entry):
+    """Return a simple text similarity score and German reasons."""
+    score = 0
+    reasons = []
+    query_tokens = tokenize_similarity_text(query_text)
+    entry_tokens = tokenize_similarity_text(
+        " ".join(
+            [
+                entry.machine,
+                entry.error_code,
+                entry.title,
+                entry.description,
+                entry.possible_causes,
+                entry.solution,
+            ]
+        )
+    )
+    shared_tokens = query_tokens & entry_tokens
+    if shared_tokens:
+        token_score = min(60, len(shared_tokens) * 12)
+        score += token_score
+        reasons.append(f"{len(shared_tokens)} gemeinsame Begriffe")
+
+    if machine and machine.lower() in entry.machine.lower():
+        score += 30
+        reasons.append("Maschine stimmt ueberein")
+    elif machine and entry.machine.lower() in machine.lower():
+        score += 20
+        reasons.append("Maschine ist aehnlich")
+
+    code_tokens = {
+        token
+        for token in query_tokens
+        if any(character.isdigit() for character in token)
+    }
+    if code_tokens & entry_tokens:
+        score += 25
+        reasons.append("Fehlercode oder Nummer passt")
+
+    return min(score, 100), reasons
+
+
+def tokenize_similarity_text(value):
+    """Return normalized content tokens for local similarity matching."""
+    stopwords = {
+        "der",
+        "die",
+        "das",
+        "und",
+        "oder",
+        "mit",
+        "ein",
+        "eine",
+        "ist",
+        "an",
+        "am",
+        "im",
+        "in",
+        "zu",
+        "auf",
+        "von",
+        "fehler",
+        "maschine",
+        "anlage",
+    }
+    tokens = set()
+    for raw_token in str(value or "").lower().replace("-", " ").split():
+        token = "".join(character for character in raw_token if character.isalnum())
+        if len(token) < 3 or token in stopwords:
+            continue
+        tokens.add(token)
+    return tokens
+
+
 def analyze_error_description(data, user):
     """Build a non-persisted AI error analysis from free text."""
     description = str(data.get("description") or "").strip()
