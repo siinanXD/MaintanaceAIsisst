@@ -8,9 +8,15 @@
     <p class="page-kicker">HTTPS Protokoll</p>
     <h1 class="page-title">API-Endpunkte</h1>
     <p class="page-description">
-      Schnelluebersicht fuer Auth, Departments, Tasks, Fehlerkatalog und KI-Assistent.
-      Die vollstaendige Datei liegt unter <code>docs/API_PROTOCOL.md</code>.
+      Schnelluebersicht fuer Auth, Tasks, Fehlerkatalog, KI-Assistenten und
+      Lager-Prognosen. Die interaktive Swagger UI liegt unter
+      <code>/swagger/</code>.
     </p>
+  </div>
+  <div class="hero-command-panel">
+    <span class="hero-command-label">OpenAPI</span>
+    <a class="btn btn-primary btn-sm" href="/swagger/">Swagger UI</a>
+    <a class="btn btn-secondary btn-sm" href="/api/swagger.json">JSON</a>
   </div>
 </section>
 
@@ -24,7 +30,7 @@
         </div>
         <span class="badge badge-success badge-outline">HTTPS</span>
       </div>
-      <pre class="code-block">Base URL: https://127.0.0.1:5000
+      <pre class="code-block">Base URL: http://127.0.0.1:5050
 Authorization: Bearer &lt;access_token&gt;
 Content-Type: application/json</pre>
     </div>
@@ -45,13 +51,16 @@ Content-Type: application/json</pre>
             <tr><td>POST</td><td><code>/api/auth/register</code></td><td>Benutzer erstellen</td></tr>
             <tr><td>POST</td><td><code>/api/auth/login</code></td><td>JWT-Token erhalten</td></tr>
             <tr><td>GET</td><td><code>/api/auth/me</code></td><td>Aktuellen Benutzer lesen</td></tr>
-            <tr><td>GET</td><td><code>/api/departments</code></td><td>Bereiche auflisten</td></tr>
-            <tr><td>POST</td><td><code>/api/departments</code></td><td>Bereich erstellen</td></tr>
             <tr><td>GET</td><td><code>/api/tasks</code></td><td>Tasks auflisten</td></tr>
             <tr><td>POST</td><td><code>/api/tasks</code></td><td>Task erstellen</td></tr>
             <tr><td>GET</td><td><code>/api/tasks/today</code></td><td>Heutige Tasks</td></tr>
+            <tr><td>POST</td><td><code>/api/tasks/&lt;id&gt;/start</code></td><td>Task starten</td></tr>
+            <tr><td>POST</td><td><code>/api/tasks/&lt;id&gt;/complete</code></td><td>Task abschliessen</td></tr>
             <tr><td>GET</td><td><code>/api/errors/search?query=E104</code></td><td>Fehler suchen</td></tr>
-            <tr><td>POST</td><td><code>/api/ai/chat</code></td><td>KI-Chat verwenden</td></tr>
+            <tr><td>POST</td><td><code>/api/errors/similar</code></td><td>Aehnliche Fehler finden</td></tr>
+            <tr><td>GET</td><td><code>/api/ai/daily-briefing</code></td><td>Taegliches Briefing laden</td></tr>
+            <tr><td>POST</td><td><code>/api/machines/&lt;id&gt;/assistant</code></td><td>Maschinen-Assistent verwenden</td></tr>
+            <tr><td>POST</td><td><code>/api/inventory/forecast</code></td><td>Ersatzteil-Prognose erstellen</td></tr>
           </tbody>
         </table>
       </div>

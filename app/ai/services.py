@@ -1,3 +1,4 @@
+import logging
 import re
 from datetime import date, timedelta
 from sqlalchemy.exc import SQLAlchemyError
@@ -23,6 +24,7 @@ from app.tasks.services import visible_tasks_query
 
 LAST_OPENAI_ERROR = None
 OPENAI_PROVIDER = "OpenAI"
+logger = logging.getLogger(__name__)
 
 
 def looks_like_today_tasks_question(message):
@@ -445,6 +447,7 @@ def openai_error_answer(message, error_context, task_context, employee_context):
     configured_provider = current_app.config.get("AI_PROVIDER", "openai").lower()
     if provider.name == "mock" and configured_provider != "mock":
         LAST_OPENAI_ERROR = "api_key_missing"
+        logger.warning("ai_fallback workflow=chat reason=api_key_missing")
         return None, ai_diagnostics(
             "api_key_missing",
             fallback_used=True,
@@ -460,7 +463,7 @@ def openai_error_answer(message, error_context, task_context, employee_context):
         answer = provider.answer_question(message, context)
     except AIServiceError as exc:
         LAST_OPENAI_ERROR = redacted_openai_error(exc)
-        current_app.logger.exception("AI provider request failed")
+        logger.exception("ai_call_failed workflow=chat provider=%s", provider.name)
         return None, ai_diagnostics(
             "openai_error",
             fallback_used=True,
@@ -520,6 +523,7 @@ def answer_chat(message, user):
         employee_context,
     )
     if not answer:
+        logger.warning("ai_fallback workflow=chat type=error_help")
         answer = fallback_error_answer(entries)
         diagnostics = diagnostics or ai_diagnostics("fallback_used", fallback_used=True)
     return {
@@ -540,4 +544,4 @@ def save_chat_message(user, message, response):
         db.session.commit()
     except SQLAlchemyError:
         db.session.rollback()
-        current_app.logger.exception("Failed to save AI chat message")
+        logger.exception("ai_chat_save_failed user_id=%s", user.id)

@@ -1,10 +1,14 @@
 import json
+import logging
 import re
 from abc import ABC, abstractmethod
 from datetime import date
 
 from flask import current_app
 from openai import OpenAI, OpenAIError
+
+
+logger = logging.getLogger(__name__)
 
 
 class AIServiceError(Exception):
@@ -247,6 +251,12 @@ class OpenAIProvider(BaseAIProvider):
 
     def _json_completion(self, prompt):
         """Call OpenAI and parse a JSON object response."""
+        logger.info(
+            "ai_call provider=%s model=%s mode=json task=%s",
+            self.name,
+            self.model,
+            prompt.get("task", "unknown"),
+        )
         try:
             completion = self.client.chat.completions.create(
                 model=self.model,
@@ -265,10 +275,17 @@ class OpenAIProvider(BaseAIProvider):
             )
             return json.loads(completion.choices[0].message.content)
         except (OpenAIError, TypeError, json.JSONDecodeError) as exc:
+            logger.exception("ai_call_failed provider=%s model=%s mode=json", self.name, self.model)
             raise AIServiceError("AI provider failed to return valid JSON") from exc
 
     def _text_completion(self, messages):
         """Call OpenAI and return text content."""
+        logger.info(
+            "ai_call provider=%s model=%s mode=text message_count=%s",
+            self.name,
+            self.model,
+            len(messages),
+        )
         try:
             completion = self.client.chat.completions.create(
                 model=self.model,
@@ -277,6 +294,7 @@ class OpenAIProvider(BaseAIProvider):
             )
             return completion.choices[0].message.content
         except OpenAIError as exc:
+            logger.exception("ai_call_failed provider=%s model=%s mode=text", self.name, self.model)
             raise AIServiceError("AI provider failed to return text") from exc
 
 
@@ -285,7 +303,10 @@ def get_ai_provider():
     provider_name = current_app.config.get("AI_PROVIDER", "openai").lower()
     api_key = current_app.config.get("OPENAI_API_KEY", "")
     model = current_app.config.get("OPENAI_MODEL", "gpt-4o-mini")
-    if provider_name == "mock" or not api_key:
+    if provider_name == "mock":
+        return MockAIProvider()
+    if not api_key:
+        logger.warning("ai_fallback provider=openai reason=api_key_missing")
         return MockAIProvider()
     if provider_name == "openai":
         return OpenAIProvider(api_key=api_key, model=model)

@@ -1,9 +1,18 @@
 import argparse
+import os
 
 from app import create_app
 
 
 app = create_app()
+
+
+def debug_enabled():
+    """Return whether the local development server should run in debug mode."""
+    explicit_debug = os.getenv("FLASK_DEBUG")
+    if explicit_debug is not None:
+        return explicit_debug.lower() in {"1", "true", "yes", "on"}
+    return os.getenv("FLASK_ENV", "development").lower() == "development"
 
 
 if __name__ == "__main__":
@@ -21,7 +30,7 @@ if __name__ == "__main__":
     app.run(
         host=args.host,
         port=args.port,
-        debug=True,
+        debug=debug_enabled(),
         ssl_context=ssl_context,
         use_reloader=False,
     )

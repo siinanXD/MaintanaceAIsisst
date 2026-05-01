@@ -7,13 +7,15 @@ from werkzeug.exceptions import HTTPException
 
 from app.auth.routes import auth_bp
 from app.config import Config
+from app.core.logging import configure_logging
+from app.docs.openapi import configure_api_documentation
 from app.departments.services import ensure_default_departments
 from app.departments.routes import departments_bp
 from app.documents.routes import documents_bp
 from app.errors.routes import errors_bp
 from app.employees.routes import employees_bp
 from app.extensions import db, jwt, migrate
-from app.health.routes import health_bp
+from app.health.routes import health_bp, public_health_bp
 from app.inventory.routes import inventory_bp
 from app.machines.routes import machines_bp
 from app.tasks.routes import tasks_bp
@@ -97,6 +99,14 @@ def register_error_handlers(app):
     @app.errorhandler(HTTPException)
     def handle_http_exception(error):
         """Return a consistent JSON response for HTTP errors."""
+        if error.code and error.code >= 500:
+            app.logger.exception("HTTP server error", exc_info=error)
+        else:
+            app.logger.warning(
+                "HTTP error status=%s description=%s",
+                error.code,
+                error.description or error.name,
+            )
         return error_response(error.description or error.name, error.code)
 
     @app.errorhandler(SQLAlchemyError)
@@ -117,6 +127,7 @@ def create_app(config_class=Config):
     """Create and configure the Flask application."""
     app = Flask(__name__)
     app.config.from_object(config_class)
+    configure_logging(app)
 
     Path(app.instance_path).mkdir(parents=True, exist_ok=True)
     Path("data").mkdir(parents=True, exist_ok=True)
@@ -138,9 +149,11 @@ def create_app(config_class=Config):
     app.register_blueprint(documents_bp, url_prefix="/api/documents")
     app.register_blueprint(search_bp, url_prefix="/api/search")
     app.register_blueprint(health_bp, url_prefix="/api/health")
+    app.register_blueprint(public_health_bp)
     app.register_blueprint(ai_bp, url_prefix="/api/ai")
     app.register_blueprint(admin_bp, url_prefix="/api/admin")
     app.register_blueprint(web_bp)
+    configure_api_documentation(app)
     register_error_handlers(app)
 
     with app.app_context():

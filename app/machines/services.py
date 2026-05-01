@@ -1,3 +1,5 @@
+import logging
+
 from sqlalchemy import or_
 
 from app.errors.services import visible_errors_query
@@ -7,6 +9,9 @@ from app.security import has_dashboard_permission
 from app.services.ai_service import AIServiceError, get_ai_provider
 from app.services.document_service import visible_documents_query
 from app.tasks.services import visible_tasks_query
+
+
+logger = logging.getLogger(__name__)
 
 
 def build_machine_history(machine, user):
@@ -59,6 +64,11 @@ def answer_machine_assistant(machine, user, data):
     try:
         answer = provider.answer_question(question, context)
     except AIServiceError:
+        logger.warning(
+            "ai_fallback workflow=machine_assistant user_id=%s machine_id=%s",
+            user.id,
+            machine.id,
+        )
         return {
             "answer": _local_machine_answer(machine, history, forecast),
             "diagnostics": {"status": "fallback_used", "provider": provider.name},
@@ -170,6 +180,10 @@ def _machine_summary(machine, timeline, source_counts):
             context,
         )
     except AIServiceError:
+        logger.warning(
+            "ai_fallback workflow=machine_summary machine_id=%s",
+            machine.id,
+        )
         return {
             "text": _local_machine_summary(machine, timeline, source_counts),
             "diagnostics": {"status": "fallback_used", "provider": provider.name},

@@ -113,16 +113,35 @@
   }
 
   function priorityBadgeClass(priority) {
-    if (priority === "urgent") return "badge badge-error text-white";
-    if (priority === "soon") return "badge badge-warning text-slate-900";
-    return "badge badge-success text-white";
+    if (priority === "urgent") return "badge badge-priority is-urgent";
+    if (priority === "soon") return "badge badge-priority is-soon";
+    return "badge badge-priority is-normal";
   }
 
   function statusBadgeClass(status) {
-    if (status === "in_progress") return "badge badge-primary text-white";
-    if (status === "done") return "badge badge-success text-white";
-    if (status === "cancelled") return "badge badge-error text-white";
-    return "badge badge-info text-white";
+    if (status === "in_progress") return "badge badge-status is-progress";
+    if (status === "done") return "badge badge-status is-done";
+    if (status === "cancelled") return "badge badge-status is-cancelled";
+    return "badge badge-status is-open";
+  }
+
+  function priorityLabel(priority) {
+    const labels = {
+      urgent: "Urgent",
+      soon: "Soon",
+      normal: "Normal"
+    };
+    return labels[priority] || priority || "-";
+  }
+
+  function statusLabel(status) {
+    const labels = {
+      open: "Offen",
+      in_progress: "In Arbeit",
+      done: "Erledigt",
+      cancelled: "Abgebrochen"
+    };
+    return labels[status] || status || "-";
   }
 
   function badge(text, className) {
@@ -130,6 +149,23 @@
     element.className = className;
     element.textContent = text || "-";
     return element;
+  }
+
+  function labeledBadge(value, className, labelFormatter) {
+    return badge(labelFormatter ? labelFormatter(value) : value, className);
+  }
+
+  function setText(selector, value) {
+    document.querySelectorAll(selector).forEach((element) => {
+      element.textContent = String(value);
+    });
+  }
+
+  function setStatusMessage(element, message, isError) {
+    if (!element) return;
+    element.textContent = message || "";
+    element.classList.toggle("is-error", Boolean(isError));
+    element.classList.toggle("is-success", Boolean(message && !isError));
   }
 
   function actionButton(label, onClick, danger) {
@@ -247,7 +283,7 @@
     const list = document.querySelector("[data-task-list]");
     const form = document.querySelector("[data-task-form]");
     const priorityList = document.querySelector("[data-task-priority-list]");
-    const priorityRefresh = document.querySelector("[data-task-priority-refresh]");
+    const priorityRefreshButtons = document.querySelectorAll("[data-task-priority-refresh]");
     const suggestForm = document.querySelector("[data-task-suggest-form]");
     const suggestionBox = document.querySelector("[data-task-suggestion]");
     const applySuggestion = document.querySelector("[data-apply-task-suggestion]");
@@ -319,19 +355,13 @@
       const endpoint = "/api/tasks/" + task.id + "/" + action;
       const message = document.querySelector("[data-task-message]");
       try {
+        setStatusMessage(message, action === "start" ? "Task wird gestartet..." : "Task wird abgeschlossen...");
         await api(endpoint, { method: "POST" });
-        if (list) {
-          if (list.querySelector(".empty-state")) list.innerHTML = "";
-          list.prepend(renderPlan(plan));
-        }
+        await load();
         await loadPriorities();
-        if (message) {
-          message.textContent = action === "start" ? "Task gestartet." : "Task abgeschlossen.";
-        }
+        setStatusMessage(message, action === "start" ? "Task gestartet." : "Task abgeschlossen.");
       } catch (error) {
-        if (message) {
-          message.textContent = error.message;
-        }
+        setStatusMessage(message, error.message, true);
       }
     }
 
@@ -349,8 +379,8 @@
       const badges = document.createElement("div");
       badges.className = "flex flex-wrap justify-end gap-2";
       badges.append(
-        badge(task.priority, priorityBadgeClass(task.priority)),
-        badge(task.status, statusBadgeClass(task.status))
+        labeledBadge(task.priority, priorityBadgeClass(task.priority), priorityLabel),
+        labeledBadge(task.status, statusBadgeClass(task.status), statusLabel)
       );
 
       top.append(title, badges);
@@ -373,12 +403,12 @@
       const actions = document.createElement("div");
       actions.className = "task-card-actions";
       if (canWrite("tasks") && task.status === "open") {
-        const start = actionButton("Start Task", () => runTaskAction(task, "start"));
+        const start = actionButton("Starten", () => runTaskAction(task, "start"));
         start.className = "btn btn-primary btn-sm";
         actions.appendChild(start);
       }
       if (canWrite("tasks") && task.status !== "done" && task.status !== "cancelled") {
-        const complete = actionButton("Complete Task", () => runTaskAction(task, "complete"));
+        const complete = actionButton("Erledigt", () => runTaskAction(task, "complete"));
         complete.className = "btn btn-success btn-sm text-white";
         actions.appendChild(complete);
       }
@@ -408,14 +438,15 @@
       const method = editingTaskId ? "PUT" : "POST";
       const message = document.querySelector("[data-task-message]");
       try {
+        setStatusMessage(message, wasEditing ? "Task wird aktualisiert..." : "Task wird gespeichert...");
         await api(path, { method, body: JSON.stringify(data) });
         resetTaskForm();
         await initDepartments();
         await load();
         await loadPriorities();
-        if (message) message.textContent = wasEditing ? "Task aktualisiert." : "Task gespeichert.";
+        setStatusMessage(message, wasEditing ? "Task aktualisiert." : "Task gespeichert.");
       } catch (error) {
-        if (message) message.textContent = error.message;
+        setStatusMessage(message, error.message, true);
       }
     });
 
@@ -423,7 +454,7 @@
       cancelEditButton.addEventListener("click", () => {
         resetTaskForm();
         const message = document.querySelector("[data-task-message]");
-        if (message) message.textContent = "Bearbeitung abgebrochen.";
+        setStatusMessage(message, "Bearbeitung abgebrochen.");
       });
     }
 
@@ -432,7 +463,7 @@
         event.preventDefault();
         const message = document.querySelector("[data-task-suggest-message]");
         const data = Object.fromEntries(new FormData(suggestForm).entries());
-        if (message) message.textContent = "KI erstellt Vorschlag...";
+        setStatusMessage(message, "AI erstellt Vorschlag...");
         try {
           currentSuggestion = await api("/api/tasks/suggest", {
             method: "POST",
@@ -442,9 +473,9 @@
           suggestionBox.querySelectorAll("[data-suggest-field]").forEach((field) => {
             field.value = currentSuggestion[field.dataset.suggestField] || "";
           });
-          if (message) message.textContent = "Vorschlag erstellt.";
+          setStatusMessage(message, "Vorschlag erstellt.");
         } catch (error) {
-          if (message) message.textContent = error.message;
+          setStatusMessage(message, error.message, true);
         }
       });
     }
@@ -470,11 +501,11 @@
       });
     }
 
-    if (priorityRefresh) {
+    priorityRefreshButtons.forEach((priorityRefresh) => {
       priorityRefresh.addEventListener("click", async () => {
         await loadPriorities();
       });
-    }
+    });
 
     await load();
     await loadPriorities();
@@ -488,8 +519,24 @@
     const applyAnalysis = document.querySelector("[data-apply-error-analysis]");
     const similarPanel = document.querySelector("[data-similar-errors-panel]");
     const similarList = document.querySelector("[data-similar-errors-list]");
+    const searchInput = document.querySelector("[data-error-search]");
+    const errorCount = document.querySelector("[data-error-count]");
+    const searchFocus = document.querySelector("[data-error-search-focus]");
+    const analysisFocus = document.querySelector("[data-error-analysis-focus]");
     if (!list || !form || !token()) return;
     let currentAnalysis = null;
+    let currentErrors = [];
+
+    function highlightedBlock(label, value, variant) {
+      const block = document.createElement("div");
+      block.className = "knowledge-block" + (variant ? " " + variant : "");
+      const title = document.createElement("span");
+      title.textContent = label;
+      const text = document.createElement("strong");
+      text.textContent = value || "-";
+      block.append(title, text);
+      return block;
+    }
 
     function renderSimilarErrors(result) {
       if (!similarPanel || !similarList) return;
@@ -503,7 +550,7 @@
       matches.forEach((match) => {
         similarList.appendChild(row([
           String(match.score),
-          match.entry.error_code,
+          badge(match.entry.error_code, "badge badge-status is-open"),
           match.entry.machine,
           match.entry.title,
           match.reason
@@ -523,31 +570,58 @@
       renderSimilarErrors(result);
     }
 
-    async function load() {
-      const errors = await api("/api/errors");
-      list.innerHTML = "";
-      errors.forEach((entry) => {
-        list.appendChild(row([
+    function renderErrors() {
+      const query = searchInput ? searchInput.value.trim().toLowerCase() : "";
+      const filteredErrors = currentErrors.filter((entry) => {
+        if (!query) return true;
+        return [
           entry.error_code,
           entry.machine,
           entry.title,
+          entry.possible_causes,
+          entry.solution,
+          entry.department && entry.department.name
+        ].filter(Boolean).join(" ").toLowerCase().includes(query);
+      });
+      list.innerHTML = "";
+      if (errorCount) errorCount.textContent = filteredErrors.length + " Eintraege";
+      if (!filteredErrors.length) {
+        list.innerHTML = '<tr><td colspan="6">Keine passenden Fehler gefunden.</td></tr>';
+        return;
+      }
+      filteredErrors.forEach((entry) => {
+        list.appendChild(row([
+          badge(entry.error_code, "badge badge-status is-open"),
+          entry.machine,
+          entry.title,
           entry.department && entry.department.name,
-          entry.solution
+          highlightedBlock("Ursache", entry.possible_causes, "is-cause"),
+          highlightedBlock("Loesung", entry.solution, "is-solution")
         ]));
       });
+    }
+
+    async function load() {
+      currentErrors = await api("/api/errors");
+      renderErrors();
     }
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       const data = Object.fromEntries(new FormData(form).entries());
       data.description = data.title;
-      await loadSimilarErrors(data);
-      await api("/api/errors", { method: "POST", body: JSON.stringify(data) });
-      form.reset();
-      await initDepartments();
-      await load();
       const message = document.querySelector("[data-error-message]");
-      if (message) message.textContent = "Fehler gespeichert.";
+      try {
+        setStatusMessage(message, "Fehler wird geprueft...");
+        await loadSimilarErrors(data);
+        await api("/api/errors", { method: "POST", body: JSON.stringify(data) });
+        form.reset();
+        await initDepartments();
+        await load();
+        setStatusMessage(message, "Fehler gespeichert.");
+      } catch (error) {
+        setStatusMessage(message, error.message, true);
+      }
     });
 
     if (analyzeForm && analysisBox) {
@@ -555,7 +629,7 @@
         event.preventDefault();
         const message = document.querySelector("[data-error-analyze-message]");
         const data = Object.fromEntries(new FormData(analyzeForm).entries());
-        if (message) message.textContent = "KI analysiert...";
+        setStatusMessage(message, "AI analysiert...");
         try {
           currentAnalysis = await api("/api/errors/analyze", {
             method: "POST",
@@ -565,13 +639,13 @@
           analysisBox.querySelectorAll("[data-error-analysis-field]").forEach((field) => {
             field.value = currentAnalysis[field.dataset.errorAnalysisField] || "";
           });
-          if (message) message.textContent = "Analyse erstellt.";
+          setStatusMessage(message, "Analyse erstellt.");
           await loadSimilarErrors({
             description: data.description,
             machine: currentAnalysis.machine
           });
         } catch (error) {
-          if (message) message.textContent = error.message;
+          setStatusMessage(message, error.message, true);
         }
       });
     }
@@ -590,6 +664,24 @@
         form.elements.solution.value = values.solution || "";
         revealSurface(form);
         form.elements.title.focus();
+      });
+    }
+
+    if (searchInput) {
+      searchInput.addEventListener("input", renderErrors);
+    }
+
+    if (searchFocus && searchInput) {
+      searchFocus.addEventListener("click", () => {
+        searchInput.focus();
+      });
+    }
+
+    if (analysisFocus && analyzeForm) {
+      analysisFocus.addEventListener("click", () => {
+        revealSurface(analyzeForm);
+        const input = analyzeForm.querySelector("textarea");
+        if (input) input.focus();
       });
     }
 
@@ -957,6 +1049,7 @@
     const historyList = document.querySelector("[data-machine-history-list]");
     const assistantForm = document.querySelector("[data-machine-assistant-form]");
     const assistantAnswer = document.querySelector("[data-machine-assistant-answer]");
+    const assistantFocus = document.querySelector("[data-machine-assistant-focus]");
     if (!list || !form || !token()) return;
     let activeHistoryMachine = null;
 
@@ -1024,15 +1117,35 @@
         event.preventDefault();
         if (!activeHistoryMachine) return;
         const data = Object.fromEntries(new FormData(assistantForm).entries());
-        if (assistantAnswer) assistantAnswer.textContent = "Maschinen-Assistent denkt...";
+        setStatusMessage(assistantAnswer, "Maschinen-Assistent denkt...");
         try {
           const result = await api("/api/machines/" + activeHistoryMachine.id + "/assistant", {
             method: "POST",
             body: JSON.stringify(data)
           });
-          if (assistantAnswer) assistantAnswer.textContent = result.answer;
+          const fallback = result.diagnostics && (
+            result.diagnostics.fallback_used || result.diagnostics.status === "fallback_used"
+          )
+            ? "Fallback-Antwort: "
+            : "";
+          setStatusMessage(assistantAnswer, fallback + result.answer);
         } catch (error) {
-          if (assistantAnswer) assistantAnswer.textContent = error.message;
+          setStatusMessage(assistantAnswer, error.message, true);
+        }
+      });
+    }
+
+    if (assistantFocus) {
+      assistantFocus.addEventListener("click", () => {
+        if (historyPanel && historyPanel.hidden) {
+          const firstHistoryButton = list.querySelector("button");
+          if (firstHistoryButton) firstHistoryButton.focus();
+          return;
+        }
+        if (assistantForm) {
+          assistantForm.scrollIntoView({ behavior: "smooth", block: "center" });
+          const input = assistantForm.querySelector("input");
+          if (input) input.focus();
         }
       });
     }
@@ -1633,6 +1746,24 @@
       return new Date().toISOString().slice(0, 10);
     }
 
+    function isOverdue(task) {
+      return task.due_date && task.due_date < todayIso() && task.status !== "done";
+    }
+
+    function updateDashboardTaskMetrics(tasks) {
+      const openTasks = tasks.filter((task) => task.status === "open");
+      const progressTasks = tasks.filter((task) => task.status === "in_progress");
+      const doneTasks = tasks.filter((task) => task.status === "done");
+      const criticalTasks = tasks.filter((task) => task.priority === "urgent" || isOverdue(task));
+      taskCountElements.forEach((taskCount) => {
+        taskCount.textContent = String(tasks.length);
+      });
+      setText("[data-dashboard-open-count]", openTasks.length);
+      setText("[data-dashboard-progress-count]", progressTasks.length);
+      setText("[data-dashboard-done-count]", doneTasks.length);
+      setText("[data-dashboard-critical-count]", criticalTasks.length);
+    }
+
     function formatDateTime(value) {
       if (!value) return "-";
       return new Date(value).toLocaleString("de-DE");
@@ -1862,8 +1993,8 @@
       const title = document.createElement("h4");
       title.className = "cockpit-task-title";
       title.textContent = task.title;
-      const priority = badge(task.priority, priorityBadgeClass(task.priority));
-      const status = badge(task.status, statusBadgeClass(task.status));
+      const priority = labeledBadge(task.priority, priorityBadgeClass(task.priority), priorityLabel);
+      const status = labeledBadge(task.status, statusBadgeClass(task.status), statusLabel);
       const badges = document.createElement("div");
       badges.className = "flex flex-wrap gap-2";
       badges.append(priority, status);
@@ -1905,9 +2036,7 @@
       Object.values(lists).forEach((list) => {
         if (list) list.innerHTML = "";
       });
-      taskCountElements.forEach((taskCount) => {
-        taskCount.textContent = String(tasks.length);
-      });
+      updateDashboardTaskMetrics(tasks);
       const groups = { urgent: [], today: [], progress: [] };
       tasks.forEach((task) => {
         if (task.status === "in_progress") groups.progress.push(task);
@@ -2000,6 +2129,17 @@
       return item;
     }
 
+    function priorityInsightCard(label, value, variant) {
+      const item = document.createElement("article");
+      item.className = "priority-insight" + (variant ? " " + variant : "");
+      const title = document.createElement("span");
+      title.textContent = label;
+      const score = document.createElement("strong");
+      score.textContent = value;
+      item.append(title, score);
+      return item;
+    }
+
     async function loadDashboardPriorities() {
       if (!priorityList || !canView("tasks")) return;
       priorityList.innerHTML = "";
@@ -2010,17 +2150,18 @@
           body: JSON.stringify({ status: "open", limit: 3 })
         });
       } catch (error) {
-        priorityList.appendChild(rowLikeStat("KI-Priorisierung", "Nicht verfuegbar"));
+        priorityList.appendChild(priorityInsightCard("KI-Priorisierung", "Nicht verfuegbar", "is-muted"));
         return;
       }
       if (!priorities.length) {
-        priorityList.appendChild(rowLikeStat("KI-Priorisierung", "Keine offenen Tasks"));
+        priorityList.appendChild(priorityInsightCard("KI-Priorisierung", "Keine offenen Tasks", "is-muted"));
         return;
       }
       priorities.forEach((item) => {
-        priorityList.appendChild(rowLikeStat(
+        priorityList.appendChild(priorityInsightCard(
           item.task.title,
-          item.score + " / " + item.risk_level
+          item.score + " / " + item.risk_level,
+          item.risk_level === "critical" || item.risk_level === "high" ? "is-critical" : ""
         ));
       });
     }
@@ -2038,6 +2179,8 @@
       }
       if (briefingSummary) briefingSummary.textContent = briefing.summary;
       briefingList.innerHTML = "";
+      const briefingCount = briefing.sections.reduce((sum, section) => sum + (section.count || 0), 0);
+      setText("[data-dashboard-briefing-count]", briefingCount);
       if (!briefing.sections.length) {
         briefingList.appendChild(rowLikeStat("Status", "Keine Hinweise"));
         return;
@@ -2106,6 +2249,7 @@
 
     if (errorStats && canView("errors")) {
       const errors = await api("/api/errors");
+      setText("[data-dashboard-machine-issue-count]", errors.length);
       const counts = new Map();
       errors.forEach((entry) => {
         const name = entry.department ? entry.department.name : "Ohne Bereich";

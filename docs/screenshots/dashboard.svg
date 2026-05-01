@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760" role="img" aria-labelledby="title desc">
+  <title id="title">Maintenance Assistant Dashboard</title>
+  <desc id="desc">Dashboard preview with navigation, KPI cards, daily briefing and task priorities.</desc>
+  <rect width="1280" height="760" fill="#f5f7fb"/>
+  <rect x="28" y="28" width="220" height="704" rx="10" fill="#0f172a"/>
+  <text x="58" y="78" fill="#ffffff" font-family="Arial" font-size="24" font-weight="700">Maintenance</text>
+  <text x="58" y="106" fill="#93c5fd" font-family="Arial" font-size="14">Assistant</text>
+  <g fill="#cbd5e1" font-family="Arial" font-size="15">
+    <text x="58" y="166">Dashboard</text>
+    <text x="58" y="210">Tasks</text>
+    <text x="58" y="254">Fehlerkatalog</text>
+    <text x="58" y="298">Maschinen</text>
+    <text x="58" y="342">Lager</text>
+  </g>
+  <rect x="286" y="28" width="966" height="104" rx="10" fill="#ffffff" stroke="#dbe3ef"/>
+  <text x="318" y="72" fill="#0f172a" font-family="Arial" font-size="30" font-weight="700">Cockpit</text>
+  <text x="318" y="102" fill="#64748b" font-family="Arial" font-size="15">Tageslage fuer Wartung, Maschinen und offene Aufgaben</text>
+  <g font-family="Arial">
+    <rect x="286" y="164" width="148" height="110" rx="8" fill="#ffffff" stroke="#dbe3ef"/>
+    <rect x="286" y="164" width="148" height="5" rx="3" fill="#2563eb"/>
+    <text x="306" y="210" fill="#64748b" font-size="13">Offen</text>
+    <text x="306" y="248" fill="#0f172a" font-size="34" font-weight="700">12</text>
+    <rect x="454" y="164" width="148" height="110" rx="8" fill="#ffffff" stroke="#dbe3ef"/>
+    <rect x="454" y="164" width="148" height="5" rx="3" fill="#0891b2"/>
+    <text x="474" y="210" fill="#64748b" font-size="13">In Arbeit</text>
+    <text x="474" y="248" fill="#0f172a" font-size="34" font-weight="700">5</text>
+    <rect x="622" y="164" width="148" height="110" rx="8" fill="#ffffff" stroke="#dbe3ef"/>
+    <rect x="622" y="164" width="148" height="5" rx="3" fill="#16a34a"/>
+    <text x="642" y="210" fill="#64748b" font-size="13">Erledigt</text>
+    <text x="642" y="248" fill="#0f172a" font-size="34" font-weight="700">31</text>
+    <rect x="790" y="164" width="148" height="110" rx="8" fill="#ffffff" stroke="#dbe3ef"/>
+    <rect x="790" y="164" width="148" height="5" rx="3" fill="#dc2626"/>
+    <text x="810" y="210" fill="#64748b" font-size="13">Kritisch</text>
+    <text x="810" y="248" fill="#0f172a" font-size="34" font-weight="700">3</text>
+    <rect x="958" y="164" width="148" height="110" rx="8" fill="#ffffff" stroke="#dbe3ef"/>
+    <rect x="958" y="164" width="148" height="5" rx="3" fill="#f59e0b"/>
+    <text x="978" y="210" fill="#64748b" font-size="13">Stoerungen</text>
+    <text x="978" y="248" fill="#0f172a" font-size="34" font-weight="700">8</text>
+    <rect x="286" y="306" width="460" height="354" rx="10" fill="#ffffff" stroke="#dbe3ef"/>
+    <text x="318" y="354" fill="#0f172a" font-size="21" font-weight="700">AI Daily Briefing</text>
+    <rect x="318" y="388" width="388" height="58" rx="7" fill="#eff6ff"/>
+    <text x="340" y="424" fill="#1e3a8a" font-size="15">3 Tasks heute, 1 Lagerwarnung</text>
+    <rect x="318" y="466" width="388" height="58" rx="7" fill="#fef3c7"/>
+    <text x="340" y="502" fill="#92400e" font-size="15">CNC-Fraese vor Fruehschicht pruefen</text>
+    <rect x="780" y="306" width="472" height="354" rx="10" fill="#ffffff" stroke="#dbe3ef"/>
+    <text x="812" y="354" fill="#0f172a" font-size="21" font-weight="700">Task-Prioritaeten</text>
+    <rect x="812" y="388" width="388" height="70" rx="7" fill="#fff7ed"/>
+    <text x="834" y="420" fill="#9a3412" font-size="14" font-weight="700">Urgent</text>
+    <text x="834" y="444" fill="#0f172a" font-size="15">Spindellager CNC-Fraese pruefen</text>
+    <rect x="812" y="478" width="388" height="70" rx="7" fill="#ecfeff"/>
+    <text x="834" y="510" fill="#155e75" font-size="14" font-weight="700">Soon</text>
+    <text x="834" y="534" fill="#0f172a" font-size="15">Foerderband Linie A nachspannen</text>
+  </g>
+</svg>

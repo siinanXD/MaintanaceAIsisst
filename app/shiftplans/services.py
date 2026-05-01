@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import date, datetime, timedelta
 
 from flask import current_app
@@ -24,6 +25,7 @@ SHIFT_LABELS = {
     "frei": "Frei",
     "urlaub": "Urlaub",
 }
+logger = logging.getLogger(__name__)
 
 
 def parse_date(value):
@@ -532,7 +534,7 @@ def openai_shift_entries(start_date, days, rhythm, preferences, employees, machi
             temperature=0.2,
         )
     except OpenAIError:
-        current_app.logger.exception("OpenAI shift planning failed")
+        logger.exception("ai_call_failed workflow=shift_planning")
         return None
 
     try:
@@ -579,6 +581,7 @@ def generate_shift_plan(data):
         notes = ai_result.get("notes", "")
         planning_warnings = []
     else:
+        logger.warning("ai_fallback workflow=shift_planning reason=no_valid_ai_result")
         raw_entries, planning_warnings = local_shift_entries(
             start_date,
             days,

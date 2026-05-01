@@ -1,8 +1,13 @@
+import logging
+
 from sqlalchemy import or_
 
 from app.extensions import db
 from app.models import Department, ErrorEntry, Role
 from app.services.ai_service import AIServiceError, MockAIProvider, get_ai_provider
+
+
+logger = logging.getLogger(__name__)
 
 
 def visible_errors_query(user):
@@ -232,6 +237,11 @@ def analyze_error_description(data, user):
     try:
         analysis = get_ai_provider().analyze_error(description, user_context)
     except AIServiceError:
+        logger.warning(
+            "ai_fallback workflow=error_analysis user_id=%s text_length=%s",
+            user.id,
+            len(description),
+        )
         analysis = MockAIProvider().analyze_error(description, user_context)
 
     return normalize_error_analysis(analysis, description, user), None, 200

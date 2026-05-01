@@ -7,11 +7,19 @@ from app.models import Employee, EmployeeDocument, ErrorEntry, Task
 
 
 health_bp = Blueprint("health", __name__)
+public_health_bp = Blueprint("public_health", __name__)
+
+
+@public_health_bp.get("/health")
+def health_check():
+    """Return a minimal unauthenticated health response for probes."""
+    return jsonify({"status": "ok"})
 
 
 @health_bp.get("/database")
 @jwt_required()
 def database_health():
+    """Return authenticated database diagnostics for administrators and tests."""
     inspector = inspect(db.engine)
     table_names = inspector.get_table_names()
     with db.engine.connect() as connection:

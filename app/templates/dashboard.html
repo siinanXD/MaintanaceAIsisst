@@ -5,37 +5,51 @@
 {% block content %}
 <section class="page-hero">
   <div>
-    <p class="page-kicker">Live Betrieb</p>
     <h1 class="page-title">Maintenance Cockpit</h1>
     <p class="page-description">
-      Eine zentrale Oberflaeche fuer Aufgaben, Bereiche, Fehlerkatalog und KI-gestuetzte Stoerungshilfe.
+      Tageslage, kritische Tasks, Maschinenhinweise und KI-Briefing in einer ruhigen Arbeitsansicht.
     </p>
   </div>
-  <div class="hidden rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200 sm:block">
-    <p class="text-xs font-semibold uppercase text-slate-500">Aktive Tasks</p>
-    <p class="mt-1 text-3xl font-black text-slate-950" data-dashboard-task-count>0</p>
+  <div class="hero-command-panel">
+    <p class="hero-command-label">Aktive Tasks</p>
+    <p class="hero-command-value" data-dashboard-task-count>0</p>
   </div>
 </section>
 
-<section class="dashboard-kpi-grid is-compact" aria-label="Cockpit Kennzahlen">
-  <article class="kpi-card">
-    <p class="kpi-label">Aktive Tasks</p>
-    <p class="kpi-value" data-dashboard-task-count>0</p>
-    <p class="kpi-meta">Offen, heute oder in Bearbeitung</p>
+<section class="dashboard-kpi-grid" aria-label="Cockpit Kennzahlen">
+  <article class="kpi-card kpi-card-open">
+    <p class="kpi-label">Offene Tasks</p>
+    <p class="kpi-value" data-dashboard-open-count>0</p>
+    <p class="kpi-meta">Noch nicht gestartet</p>
   </article>
-  <article class="kpi-card">
-    <p class="kpi-label">Fehlerwissen</p>
-    <p class="kpi-value">Live</p>
-    <p class="kpi-meta">Katalog nach Bereich und Stoerung</p>
+  <article class="kpi-card kpi-card-progress">
+    <p class="kpi-label">In Arbeit</p>
+    <p class="kpi-value" data-dashboard-progress-count>0</p>
+    <p class="kpi-meta">Aktuell bearbeitet</p>
   </article>
-  <article class="kpi-card">
-    <p class="kpi-label">Lagerstatus</p>
-    <p class="kpi-value">Bestand</p>
-    <p class="kpi-meta">Material und Werte im Blick</p>
+  <article class="kpi-card kpi-card-done">
+    <p class="kpi-label">Erledigt</p>
+    <p class="kpi-value" data-dashboard-done-count>0</p>
+    <p class="kpi-meta">Abgeschlossen</p>
+  </article>
+  <article class="kpi-card kpi-card-critical">
+    <p class="kpi-label">Kritisch</p>
+    <p class="kpi-value" data-dashboard-critical-count>0</p>
+    <p class="kpi-meta">Urgent oder ueberfaellig</p>
+  </article>
+  <article class="kpi-card kpi-card-machine">
+    <p class="kpi-label">Maschinenhinweise</p>
+    <p class="kpi-value" data-dashboard-machine-issue-count>0</p>
+    <p class="kpi-meta">Fehlerkatalog sichtbar</p>
+  </article>
+  <article class="kpi-card kpi-card-ai">
+    <p class="kpi-label">AI Briefing</p>
+    <p class="kpi-value" data-dashboard-briefing-count>0</p>
+    <p class="kpi-meta">Wichtige Hinweise</p>
   </article>
 </section>
 
-<article class="card app-card" data-daily-briefing-card>
+<article class="card app-card ai-feature-card" data-daily-briefing-card>
   <div class="card-body">
     <div class="panel-header">
       <div>
@@ -47,6 +61,21 @@
     <div class="stats-list" data-daily-briefing-list></div>
   </div>
 </article>
+
+<section class="ai-action-grid" aria-label="KI Aktionen">
+  <a class="ai-action-card" href="/tasks" data-dashboard-nav="tasks" hidden>
+    <strong>AI Task-Priorisierung</strong>
+    <span>Risiko und Faelligkeit bewerten</span>
+  </a>
+  <a class="ai-action-card" href="/errors" data-dashboard-nav="errors" hidden>
+    <strong>Aehnliche Fehler</strong>
+    <span>Bestehende Loesungen vergleichen</span>
+  </a>
+  <a class="ai-action-card" href="/machines" data-dashboard-nav="machines" hidden>
+    <strong>Maschinen-Assistent</strong>
+    <span>Anlagenakte gezielt befragen</span>
+  </a>
+</section>
 
 <details class="dashboard-section" open>
   <summary>
@@ -61,9 +90,9 @@
         <div class="panel-header">
           <div>
             <h2 class="panel-title">Stoerung erfassen</h2>
-            <p class="panel-meta">Kurz beschreiben, KI-Vorschlag pruefen und direkt als Task speichern</p>
+            <p class="panel-meta">Kurz beschreiben, Vorschlag pruefen und als Task speichern</p>
           </div>
-          <span class="badge badge-info badge-outline">KI</span>
+          <span class="badge badge-ai">AI</span>
         </div>
         <form data-cockpit-suggest-form>
           <div class="form-grid">
@@ -122,9 +151,9 @@
             <h2 class="panel-title">Tagescockpit</h2>
             <p class="panel-meta">Dringende, heutige und laufende Aufgaben auf einen Blick</p>
           </div>
-          <span class="badge badge-success badge-outline">Tasks</span>
+          <span class="badge badge-status is-open">Tasks</span>
         </div>
-        <div class="stats-list" data-dashboard-priority-list></div>
+        <div class="priority-strip" data-dashboard-priority-list></div>
         <div class="cockpit-board" data-dashboard-task-board>
           <section class="cockpit-column" aria-labelledby="cockpit-urgent-title">
             <h3 id="cockpit-urgent-title" class="cockpit-column-title">Dringend</h3>
@@ -153,7 +182,7 @@
             <select class="select select-bordered" data-dashboard-calendar-employee hidden>
               <option value="">Mein Kalender</option>
             </select>
-            <span class="badge badge-info badge-outline">Kalender</span>
+          <span class="badge badge-ai">Kalender</span>
           </div>
         </div>
         <div class="shift-calendar" data-dashboard-shift-calendar></div>
@@ -202,7 +231,7 @@
   </div>
 </div>
 
-<details class="dashboard-section" open>
+<details class="dashboard-section dashboard-section-secondary" open>
   <summary>
     <span>
       <span class="section-kicker">Auswertung</span>
@@ -214,10 +243,10 @@
     <div class="card-body">
       <div class="panel-header">
         <div>
-          <h2 class="panel-title">Bereiche</h2>
+          <h2 class="panel-title">Berechtigungen</h2>
           <p class="panel-meta">Rollenbasiert gefiltert</p>
         </div>
-        <span class="badge badge-success badge-outline">aktiv</span>
+        <span class="badge badge-status is-done">aktiv</span>
       </div>
       <p class="stat-value">4</p>
       <p class="stat-label">IT, Verwaltung, Instandhaltung, Produktion</p>
@@ -231,7 +260,7 @@
           <h2 class="panel-title">Fehlerstatistik</h2>
           <p class="panel-meta">Gesammelte Fehler nach Bereich</p>
         </div>
-        <span class="badge badge-warning badge-outline">wissen</span>
+        <span class="badge badge-priority is-soon">wissen</span>
       </div>
       <div class="stats-list" data-dashboard-error-stats>
         <div class="empty-state">Noch keine Fehler erfasst.</div>
@@ -246,7 +275,7 @@
           <h2 class="panel-title">Lager</h2>
           <p class="panel-meta">Materialanzahl und Gesamtwert</p>
         </div>
-        <span class="badge badge-success badge-outline">bestand</span>
+        <span class="badge badge-status is-done">bestand</span>
       </div>
       <div class="stats-list" data-dashboard-inventory-stats>
         <div class="empty-state">Noch keine Lagerdaten erfasst.</div>

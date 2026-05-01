@@ -14,8 +14,11 @@ Authorization: Bearer <access_token>
 Lokale Entwicklung:
 
 ```http
-Base URL: http://127.0.0.1:5000
+Base URL: http://127.0.0.1:5050
 ```
+
+Die interaktive Swagger UI ist lokal unter `/swagger/` verfuegbar. Die
+OpenAPI-Spezifikation kann direkt unter `/api/swagger.json` gelesen werden.
 
 ## Sicherheit
 
@@ -71,6 +74,8 @@ Fehler:
 
 ```json
 {
+  "success": false,
+  "message": "Forbidden",
   "error": "Forbidden"
 }
 ```
@@ -1094,7 +1099,9 @@ Response `200`:
 }
 ```
 
-Die Prognose speichert keine Ergebnisse. Maschinen werden in Version 1 ueber Namensvorkommen in Task-Titel oder Beschreibung erkannt.
+Die Prognose speichert keine Ergebnisse. Maschinen werden ueber normalisierte
+Maschinen- und Produktnamen, Teilnamen und Nummern-/Alias-Treffer in Task-Titel
+oder Beschreibung erkannt.
 
 ## Schichtplanung
 

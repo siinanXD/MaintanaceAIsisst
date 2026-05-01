@@ -14,6 +14,7 @@ data/*.db
 data/*.sqlite
 data/uploads/
 documents/
+logs/
 .env
 .idea/
 .vscode/

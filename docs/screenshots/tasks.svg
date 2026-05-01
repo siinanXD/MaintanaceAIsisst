@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760" role="img" aria-labelledby="title desc">
+  <title id="title">Task Management</title>
+  <desc id="desc">Task page preview with AI actions, form and task cards.</desc>
+  <rect width="1280" height="760" fill="#f6f8fb"/>
+  <rect x="48" y="40" width="1184" height="110" rx="10" fill="#ffffff" stroke="#dbe3ef"/>
+  <text x="82" y="94" fill="#0f172a" font-family="Arial" font-size="30" font-weight="700">Tasks</text>
+  <text x="82" y="122" fill="#64748b" font-family="Arial" font-size="15">Aufgaben erstellen, starten und abschliessen</text>
+  <rect x="48" y="178" width="360" height="430" rx="10" fill="#ffffff" stroke="#dbe3ef"/>
+  <text x="78" y="226" fill="#0f172a" font-family="Arial" font-size="21" font-weight="700">Neuer Task</text>
+  <rect x="78" y="258" width="300" height="42" rx="6" fill="#f8fafc" stroke="#cbd5e1"/>
+  <rect x="78" y="322" width="300" height="92" rx="6" fill="#f8fafc" stroke="#cbd5e1"/>
+  <rect x="78" y="436" width="136" height="40" rx="6" fill="#2563eb"/>
+  <text x="112" y="462" fill="#ffffff" font-family="Arial" font-size="14" font-weight="700">Speichern</text>
+  <rect x="440" y="178" width="792" height="430" rx="10" fill="#ffffff" stroke="#dbe3ef"/>
+  <text x="472" y="226" fill="#0f172a" font-family="Arial" font-size="21" font-weight="700">Task Board</text>
+  <g font-family="Arial">
+    <rect x="472" y="258" width="690" height="84" rx="8" fill="#ffffff" stroke="#dbe3ef"/>
+    <rect x="492" y="284" width="66" height="24" rx="12" fill="#fee2e2"/>
+    <text x="506" y="301" fill="#991b1b" font-size="12" font-weight="700">Urgent</text>
+    <text x="584" y="301" fill="#0f172a" font-size="16" font-weight="700">Hydraulikpresse auf Leckagen pruefen</text>
+    <rect x="988" y="280" width="72" height="34" rx="6" fill="#0891b2"/>
+    <text x="1003" y="302" fill="#ffffff" font-size="13" font-weight="700">Starten</text>
+    <rect x="1072" y="280" width="72" height="34" rx="6" fill="#16a34a"/>
+    <text x="1086" y="302" fill="#ffffff" font-size="13" font-weight="700">Erledigt</text>
+    <rect x="472" y="364" width="690" height="84" rx="8" fill="#ffffff" stroke="#dbe3ef"/>
+    <rect x="492" y="390" width="56" height="24" rx="12" fill="#dbeafe"/>
+    <text x="507" y="407" fill="#1d4ed8" font-size="12" font-weight="700">Soon</text>
+    <text x="584" y="407" fill="#0f172a" font-size="16" font-weight="700">Foerderband Linie A nachspannen</text>
+  </g>
+</svg>

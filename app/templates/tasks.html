@@ -5,10 +5,20 @@
 {% block content %}
 <section class="page-hero">
   <div>
-    <p class="page-kicker">Aufgaben</p>
     <h1 class="page-title">Tasks</h1>
     <p class="page-description">Tasks nach Bereich planen, priorisieren und abarbeiten.</p>
   </div>
+</section>
+
+<section class="ai-action-grid" aria-label="Task Aktionen">
+  <button class="ai-action-card is-button" type="button" data-task-priority-refresh>
+    <strong>AI-Priorisierung</strong>
+    <span>Offene Tasks nach Risiko sortieren</span>
+  </button>
+  <a class="ai-action-card" href="/">
+    <strong>Daily Briefing</strong>
+    <span>Heute wichtige Punkte im Cockpit sehen</span>
+  </a>
 </section>
 
 <section class="dashboard-grid">
@@ -25,7 +35,7 @@
           <h2 class="panel-title">KI-Task vorschlagen</h2>
           <p class="panel-meta">Freitext analysieren und als bearbeitbaren Task uebernehmen</p>
         </div>
-        <span class="badge badge-info badge-outline">KI</span>
+        <span class="badge badge-ai">AI</span>
       </div>
       <form data-task-suggest-form>
         <div class="field">
@@ -33,7 +43,7 @@
           <textarea class="textarea textarea-bordered" id="task-suggest-text" name="text" placeholder="z. B. Maschine 3 macht laute Geraeusche am Lager."></textarea>
         </div>
         <div class="toolbar form-actions">
-          <button class="btn btn-outline btn-primary" type="submit">KI-Vorschlag erstellen</button>
+          <button class="btn btn-primary" type="submit">Vorschlag erstellen</button>
           <span class="panel-meta" data-task-suggest-message></span>
         </div>
       </form>
@@ -175,6 +185,14 @@
         <div>
           <h2 class="panel-title">Taskliste</h2>
           <p class="panel-meta">Admin sieht alles, Bereiche sehen ihre eigenen Tasks</p>
+        </div>
+        <div class="task-legend" aria-label="Task Legende">
+          <span class="badge badge-priority is-urgent">Urgent</span>
+          <span class="badge badge-priority is-soon">Soon</span>
+          <span class="badge badge-priority is-normal">Normal</span>
+          <span class="badge badge-status is-open">Offen</span>
+          <span class="badge badge-status is-progress">In Arbeit</span>
+          <span class="badge badge-status is-done">Erledigt</span>
         </div>
       </div>
       <div class="task-card-grid" data-task-list></div>

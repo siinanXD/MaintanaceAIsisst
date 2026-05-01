@@ -1,9 +1,13 @@
+import logging
 from datetime import date, datetime
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
 from app.models import Department, Priority, Role, Task, TaskStatus
 from app.services.ai_service import AIServiceError, MockAIProvider, get_ai_provider
+
+
+logger = logging.getLogger(__name__)
 
 
 def parse_date(value):
@@ -77,6 +81,11 @@ def prioritize_visible_tasks(data, user):
     try:
         provider_result = get_ai_provider().prioritize_tasks(serialized_tasks, context)
     except AIServiceError:
+        logger.warning(
+            "ai_fallback workflow=task_prioritization user_id=%s task_count=%s",
+            user.id,
+            len(serialized_tasks),
+        )
         provider_result = MockAIProvider().prioritize_tasks(serialized_tasks, context)
 
     priorities = normalize_task_priorities(provider_result, tasks)
@@ -193,8 +202,17 @@ def create_task(data, user):
         db.session.commit()
     except SQLAlchemyError:
         db.session.rollback()
+        logger.exception("task_create_failed user_id=%s", user.id)
         return None, {"error": "Database error while creating task"}, 500
 
+    logger.info(
+        "task_created task_id=%s user_id=%s department_id=%s priority=%s status=%s",
+        task.id,
+        user.id,
+        task.department_id,
+        task.priority.value,
+        task.status.value,
+    )
     return task, None, 201
 
 
@@ -224,6 +242,7 @@ def update_task(task, data, user):
         db.session.commit()
     except SQLAlchemyError:
         db.session.rollback()
+        logger.exception("task_update_failed task_id=%s user_id=%s", task.id, user.id)
         return None, {"error": "Database error while updating task"}, 500
 
     return task, None, 200
@@ -274,8 +293,10 @@ def start_task(task, user):
         db.session.commit()
     except SQLAlchemyError:
         db.session.rollback()
+        logger.exception("task_start_failed task_id=%s user_id=%s", task.id, user.id)
         return None, {"error": "Database error while starting task"}, 500
 
+    logger.info("task_started task_id=%s user_id=%s", task.id, user.id)
     return task, None, 200
 
 
@@ -294,8 +315,10 @@ def complete_task(task, user):
         db.session.commit()
     except SQLAlchemyError:
         db.session.rollback()
+        logger.exception("task_complete_failed task_id=%s user_id=%s", task.id, user.id)
         return None, {"error": "Database error while completing task"}, 500
 
+    logger.info("task_completed task_id=%s user_id=%s", task.id, user.id)
     return task, None, 200
 
 
@@ -323,6 +346,11 @@ def suggest_task_from_text(data, user):
     try:
         suggestion = get_ai_provider().suggest_task(text, user_context)
     except AIServiceError:
+        logger.warning(
+            "ai_fallback workflow=task_suggestion user_id=%s text_length=%s",
+            user.id,
+            len(text),
+        )
         suggestion = MockAIProvider().suggest_task(text, user_context)
 
     normalized = normalize_task_suggestion(suggestion, text, user)

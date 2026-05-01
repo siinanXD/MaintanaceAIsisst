@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from html import escape
 from html.parser import HTMLParser
@@ -17,6 +18,9 @@ REVIEW_REQUIRED_FIELDS = (
     "Ergebnis",
     "Notizen",
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 def visible_documents_query(user):
@@ -54,6 +58,10 @@ def review_document_quality(document):
     try:
         provider_review = provider.review_document(html_text, document.to_dict())
     except AIServiceError:
+        logger.warning(
+            "ai_fallback workflow=document_review document_id=%s",
+            document.id,
+        )
         review = local_document_review(document, html_text)
         review["diagnostics"] = {"status": "fallback_used", "provider": provider.name}
         return review, None, 200

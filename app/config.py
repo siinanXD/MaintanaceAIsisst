@@ -11,6 +11,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 class Config:
+    """Application configuration loaded from environment variables."""
+
+    SECRET_KEY = os.getenv(
+        "SECRET_KEY",
+        os.getenv("JWT_SECRET_KEY", "dev-secret-change-me"),
+    )
+    FLASK_ENV = os.getenv("FLASK_ENV", "development")
     SQLALCHEMY_DATABASE_URI = os.getenv(
         "DATABASE_URL",
         f"sqlite:///{BASE_DIR / 'data' / 'maintenance.db'}",
@@ -22,3 +29,6 @@ class Config:
     OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     UPLOAD_FOLDER = os.getenv("UPLOAD_FOLDER", str(BASE_DIR / "data" / "uploads"))
     DOCUMENTS_FOLDER = os.getenv("DOCUMENTS_FOLDER", str(BASE_DIR / "documents"))
+    LOG_DIR = os.getenv("LOG_DIR", str(BASE_DIR / "logs"))
+    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+    SLOW_REQUEST_THRESHOLD_MS = int(os.getenv("SLOW_REQUEST_THRESHOLD_MS", "500"))

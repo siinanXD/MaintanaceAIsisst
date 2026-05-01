@@ -1,12 +1,16 @@
+import logging
+
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required
 
 from app.auth.services import authenticate, register_user
+from app.core.logging import safe_identifier
 from app.responses import error_response, service_error_response
 from app.security import current_user
 
 
 auth_bp = Blueprint("auth", __name__)
+logger = logging.getLogger(__name__)
 
 
 @auth_bp.post("/register")
@@ -25,13 +29,23 @@ def login():
     login_value = data.get("login") or data.get("email") or data.get("username")
     password = data.get("password")
     if not login_value or not password:
+        logger.warning("login_failed reason=missing_credentials")
         return error_response("login/email/username and password are required", 400)
 
     result = authenticate(login_value, password)
     if not result:
+        logger.warning(
+            "login_failed reason=invalid_credentials identifier_hash=%s",
+            safe_identifier(login_value),
+        )
         return error_response("Invalid credentials", 401)
     if result.get("error"):
+        logger.warning(
+            "login_failed reason=locked_user identifier_hash=%s",
+            safe_identifier(login_value),
+        )
         return service_error_response(result, 403)
+    logger.info("login_success user_id=%s", result["user"]["id"])
     return jsonify(result)
 
 

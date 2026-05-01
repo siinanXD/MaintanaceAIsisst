@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Swagger API Docs - Maintenance Assistant{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+  <div>
+    <h1 class="page-title">Swagger API Docs</h1>
+    <p class="page-description">
+      Interaktive OpenAPI-Dokumentation fuer Auth, Tasks, Fehlerkatalog,
+      KI-Assistenten und Lager-Prognosen.
+    </p>
+  </div>
+  <div class="hero-command-panel">
+    <span class="hero-command-label">Spec</span>
+    <a class="btn btn-secondary btn-sm" href="/api/swagger.json">OpenAPI JSON</a>
+  </div>
+</section>
+
+<section class="card app-card">
+  <div class="card-body">
+    <div id="swagger-ui"></div>
+    <noscript>
+      JavaScript ist erforderlich, um Swagger UI zu laden. Die Spezifikation ist
+      direkt unter <code>/api/swagger.json</code> verfuegbar.
+    </noscript>
+  </div>
+</section>
+
+<link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+<script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+<script>
+  window.addEventListener("load", () => {
+    SwaggerUIBundle({
+      url: "/api/swagger.json",
+      dom_id: "#swagger-ui",
+      deepLinking: true,
+      presets: [SwaggerUIBundle.presets.apis],
+      layout: "BaseLayout"
+    });
+  });
+</script>
+{% endblock %}

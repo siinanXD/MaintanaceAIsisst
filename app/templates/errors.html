@@ -5,10 +5,20 @@
 {% block content %}
 <section class="page-hero">
   <div>
-    <p class="page-kicker">Fehlerwissen</p>
     <h1 class="page-title">Fehlerliste</h1>
     <p class="page-description">Fehler nach Bereich, Maschine, Code und Loesung dokumentieren.</p>
   </div>
+</section>
+
+<section class="ai-action-grid" aria-label="Fehler Aktionen">
+  <button class="ai-action-card is-button" type="button" data-error-search-focus>
+    <strong>Katalog durchsuchen</strong>
+    <span>Code, Maschine oder Ursache filtern</span>
+  </button>
+  <button class="ai-action-card is-button" type="button" data-error-analysis-focus>
+    <strong>AI-Fehleranalyse</strong>
+    <span>Beschreibung in Ursachen und Loesung umwandeln</span>
+  </button>
 </section>
 
 <section class="dashboard-grid">
@@ -25,7 +35,7 @@
           <h2 class="panel-title">KI-Fehleranalyse</h2>
           <p class="panel-meta">Beschreibung analysieren und Vorschlag uebernehmen</p>
         </div>
-        <span class="badge badge-info badge-outline">KI</span>
+        <span class="badge badge-ai">AI</span>
       </div>
       <form data-error-analyze-form>
         <div class="field">
@@ -33,7 +43,7 @@
           <textarea class="textarea textarea-bordered" id="error-analysis-description" name="description" placeholder="z. B. Sensor meldet sporadisch kein Signal an Maschine 3."></textarea>
         </div>
         <div class="toolbar form-actions">
-          <button class="btn btn-outline btn-primary" type="submit">KI-Analyse erstellen</button>
+          <button class="btn btn-primary" type="submit">Analyse erstellen</button>
           <span class="panel-meta" data-error-analyze-message></span>
         </div>
       </form>
@@ -149,6 +159,13 @@
           <p class="panel-meta">Suchbarer Wissensspeicher fuer den KI-Assistenten</p>
         </div>
       </div>
+      <div class="toolbar filter-toolbar">
+        <label class="field filter-field" for="error-search">
+          <span>Fehler suchen</span>
+          <input class="input input-bordered" id="error-search" data-error-search placeholder="Code, Maschine, Fehler, Ursache oder Loesung">
+        </label>
+        <span class="panel-meta" data-error-count>0 Eintraege</span>
+      </div>
       <div class="table-wrap">
         <table class="table data-table">
           <thead>
@@ -157,6 +174,7 @@
               <th>Maschine</th>
               <th>Fehler</th>
               <th>Bereich</th>
+              <th>Moegliche Ursache</th>
               <th>Loesung</th>
             </tr>
           </thead>

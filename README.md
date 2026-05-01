@@ -1,6 +1,18 @@
 # Maintenance Assistant
 
+[![CI](https://github.com/siinanXD/MaintanaceAIsisst/actions/workflows/ci.yml/badge.svg)](https://github.com/siinanXD/MaintanaceAIsisst/actions/workflows/ci.yml)
+
 Modulare Flask-Anwendung fuer Wartung, Produktion und Instandhaltung. Die App bietet JWT-Login, rollenbasierte Navigation, Aufgaben, Fehlerkataloge, Mitarbeiterdaten, Maschinen, Lager und optionale KI-Funktionen.
+
+## Screenshots
+
+| Dashboard | Tasks |
+| --- | --- |
+| ![Dashboard](docs/screenshots/dashboard.svg) | ![Tasks](docs/screenshots/tasks.svg) |
+
+| Fehlerkatalog | KI-Funktionen |
+| --- | --- |
+| ![Fehlerkatalog](docs/screenshots/error-catalog.svg) | ![KI-Funktionen](docs/screenshots/ai-features.svg) |
 
 ## Features
 
@@ -31,10 +43,17 @@ Modulare Flask-Anwendung fuer Wartung, Produktion und Instandhaltung. Die App bi
 
 ## Setup
 
+Voraussetzungen:
+
+* Python 3.11 oder neuer
+* Node.js nur, wenn CSS neu gebaut werden soll
+
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+copy .env.example .env
+python seed.py
 python run.py --host 127.0.0.1 --port 5050
 ```
 
@@ -45,6 +64,116 @@ python run.py --https
 ```
 
 Die Standarddatenbank liegt unter `data/maintenance.db`. Beim Start werden die Standardbereiche IT, Verwaltung, Instandhaltung und Produktion angelegt.
+
+Demo-Login nach `python seed.py`:
+
+* User: `master.admin`
+* Passwort: `Demo1234!`
+
+## Docker Setup
+
+Die App kann lokal production-like mit Docker Compose gestartet werden. Docker
+nutzt `gunicorn`, bindet im Container auf `0.0.0.0:5050` und speichert SQLite,
+Dokumente und Logs in Docker-Volumes.
+
+Vorbereitung:
+
+```powershell
+copy .env.example .env
+```
+
+Setze in `.env` mindestens produktionsnahe Secrets:
+
+```env
+SECRET_KEY=replace-with-a-long-random-secret
+JWT_SECRET_KEY=replace-with-a-different-long-random-secret
+OPENAI_API_KEY=
+```
+
+Build und Start:
+
+```powershell
+docker compose build
+docker compose up
+```
+
+Alternativ in einem Schritt:
+
+```powershell
+docker compose up --build
+```
+
+Die App ist danach unter `http://127.0.0.1:5050` erreichbar. Der Healthcheck
+fuer Container, Reverse Proxy oder Monitoring liegt unter:
+
+```http
+GET http://127.0.0.1:5050/health
+```
+
+Erwartete Antwort:
+
+```json
+{
+  "status": "ok"
+}
+```
+
+Container stoppen:
+
+```powershell
+docker compose down
+```
+
+Persistente Demo-Daten liegen im Docker-Volume `maintenance_data`. Um auch
+Volumes zu loeschen:
+
+```powershell
+docker compose down -v
+```
+
+## Quality Checks
+
+Lokal dieselben Basischecks wie in GitHub Actions ausfuehren:
+
+```powershell
+.\.venv\Scripts\python.exe -m ruff check .
+.\.venv\Scripts\python.exe -m compileall app seed_demo.py seed.py run.py
+.\.venv\Scripts\python.exe -m pytest
+```
+
+Die CI laeuft auf Pushes und Pull Requests mit Python 3.11, nutzt eine
+isolierte SQLite-Testdatenbank, setzt `AI_PROVIDER=mock` und benoetigt keinen
+echten OpenAI-Key. Zusaetzlich wird das Docker-Image gebaut, aber nicht
+gepusht.
+
+## Demo Walkthrough
+
+1. App starten und unter `http://127.0.0.1:5050` oeffnen.
+2. Mit `master.admin` und `Demo1234!` anmelden.
+3. Dashboard pruefen: KPI-Karten, Daily Briefing und priorisierte Tasks zeigen den Betriebszustand.
+4. In `Tasks` einen offenen Task starten und danach abschliessen. Optional einen Wartungsbericht erzeugen.
+5. In `Fehlerkatalog` nach `Temperatur CNC` suchen und aehnliche Fehler pruefen.
+6. In `Maschinen` eine Anlage oeffnen und den Maschinen-Assistenten mit einer Wartungsfrage testen.
+7. In `Lager` die Ersatzteil-Prognose ausfuehren und knappe Materialien pruefen.
+8. In `Swagger` die API-Endpunkte und Beispielpayloads nachvollziehen.
+
+## Architektur
+
+```mermaid
+flowchart LR
+    Browser["Browser UI<br>Jinja + CSS + JavaScript"] --> Flask["Flask App Factory"]
+    Flask --> Routes["Blueprint Routes<br>auth, tasks, errors, ai, inventory"]
+    Routes --> Services["Service Layer<br>validation, workflows, AI fallback"]
+    Services --> Models["SQLAlchemy Models"]
+    Models --> SQLite["SQLite database"]
+    Services --> AI["OpenAI provider<br>or local fallback"]
+    Flask --> Logs["Structured logs<br>logs/app.log + logs/error.log"]
+```
+
+Die Anwendung folgt einer einfachen Trennung: Routes nehmen HTTP-Daten an,
+Services validieren und fuehren Workflows aus, Models kapseln Persistenz.
+KI-Integrationen sind optional und fallen bei fehlendem API-Key auf lokale
+Regeln zurueck.
 
 ## Rollen, Rechte und Navigation
 
@@ -104,6 +233,19 @@ Admin-Rechteverwaltung:
 
 * `GET /api/admin/users/<id>/permissions`
 * `PUT /api/admin/users/<id>/permissions`
+
+## Swagger API Documentation
+
+Die strukturierte API-Dokumentation ist nach dem Start unter folgenden Routen
+verfuegbar:
+
+* Swagger UI: `http://127.0.0.1:5050/swagger/`
+* OpenAPI JSON: `http://127.0.0.1:5050/api/swagger.json`
+* HTML-Uebersicht: `http://127.0.0.1:5050/api-docs`
+
+Dokumentiert sind Auth, Task-Lifecycle, Fehlerkatalog, KI-Endpunkte,
+Maschinen-Assistent und Ersatzteil-Prognose inklusive Request- und
+Response-Beispielen.
 
 ## KI-Integration
 
@@ -206,8 +348,9 @@ Taegliches Briefing:
 
 ```env
 FLASK_ENV=development
-DATABASE_URL=sqlite:///../data/maintenance.db
+SECRET_KEY=change-this-secret-in-production
 JWT_SECRET_KEY=change-this-secret-in-production
+DATABASE_URL=sqlite:///data/maintenance.db
 OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_MODEL=gpt-4o-mini
 ```
@@ -216,7 +359,9 @@ OPENAI_MODEL=gpt-4o-mini
 
 ## Dokumentation
 
-Das ausfuehrliche API-Protokoll liegt in `docs/API_PROTOCOL.md`.
+Das ausfuehrliche API-Protokoll liegt in `docs/API_PROTOCOL.md`. Die
+maschinenlesbare OpenAPI-Spezifikation wird aus `app/docs/openapi.py`
+bereitgestellt.
 
 ## Release-Checks
 

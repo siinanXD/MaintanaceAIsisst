@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760" role="img" aria-labelledby="title desc">
+  <title id="title">AI Features</title>
+  <desc id="desc">AI feature preview showing briefing, prioritization, machine assistant and fallback state.</desc>
+  <rect width="1280" height="760" fill="#f6f8fb"/>
+  <rect x="48" y="40" width="1184" height="110" rx="10" fill="#ffffff" stroke="#dbe3ef"/>
+  <text x="82" y="94" fill="#0f172a" font-family="Arial" font-size="30" font-weight="700">KI-Funktionen</text>
+  <text x="82" y="122" fill="#64748b" font-family="Arial" font-size="15">Assistenz mit klaren Fallback-Antworten</text>
+  <g font-family="Arial">
+    <rect x="48" y="182" width="268" height="150" rx="10" fill="#ffffff" stroke="#dbe3ef"/>
+    <text x="78" y="230" fill="#0f172a" font-size="18" font-weight="700">Daily Briefing</text>
+    <text x="78" y="262" fill="#64748b" font-size="14">Tageslage und Risiken</text>
+    <rect x="78" y="286" width="104" height="30" rx="6" fill="#2563eb"/>
+    <text x="101" y="306" fill="#ffffff" font-size="13" font-weight="700">Oeffnen</text>
+    <rect x="346" y="182" width="268" height="150" rx="10" fill="#ffffff" stroke="#dbe3ef"/>
+    <text x="376" y="230" fill="#0f172a" font-size="18" font-weight="700">Task-Priorisierung</text>
+    <text x="376" y="262" fill="#64748b" font-size="14">Risiko und Empfehlung</text>
+    <rect x="644" y="182" width="268" height="150" rx="10" fill="#ffffff" stroke="#dbe3ef"/>
+    <text x="674" y="230" fill="#0f172a" font-size="18" font-weight="700">Maschinen-Assistent</text>
+    <text x="674" y="262" fill="#64748b" font-size="14">Antworten zur Anlagenakte</text>
+    <rect x="942" y="182" width="268" height="150" rx="10" fill="#ffffff" stroke="#dbe3ef"/>
+    <text x="972" y="230" fill="#0f172a" font-size="18" font-weight="700">Aehnliche Fehler</text>
+    <text x="972" y="262" fill="#64748b" font-size="14">Duplikate vermeiden</text>
+    <rect x="48" y="376" width="1162" height="220" rx="10" fill="#ffffff" stroke="#dbe3ef"/>
+    <text x="82" y="426" fill="#0f172a" font-size="21" font-weight="700">Fallback-Antwort</text>
+    <rect x="82" y="458" width="1060" height="82" rx="8" fill="#fffbeb" stroke="#fde68a"/>
+    <text x="112" y="492" fill="#92400e" font-size="14" font-weight="700">fallback_used</text>
+    <text x="112" y="520" fill="#0f172a" font-size="15">OpenAI ist optional. Ohne API-Key nutzt die App lokale Regeln und zeigt den Status transparent an.</text>
+  </g>
+</svg>
