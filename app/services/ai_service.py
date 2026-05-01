@@ -36,6 +36,10 @@ class BaseAIProvider(ABC):
     def prioritize_tasks(self, tasks, context=None):
         """Return structured prioritization results for visible tasks."""
 
+    @abstractmethod
+    def review_document(self, html_text, metadata=None):
+        """Return a structured quality review for a maintenance document."""
+
 
 class MockAIProvider(BaseAIProvider):
     """Provide deterministic local AI-like results without external services."""
@@ -101,6 +105,15 @@ class MockAIProvider(BaseAIProvider):
         """Return deterministic task priorities without external services."""
         priorities = [_score_task_priority(task) for task in tasks]
         return {"priorities": priorities}
+
+    def review_document(self, html_text, metadata=None):
+        """Return a simple placeholder document review for local mode."""
+        return {
+            "quality_score": 0,
+            "status": "incomplete",
+            "findings": [],
+            "recommendations": [],
+        }
 
 
 class OpenAIProvider(BaseAIProvider):
@@ -203,6 +216,31 @@ class OpenAIProvider(BaseAIProvider):
                         "recommended_action": "short German next action",
                     }
                 ]
+            },
+        }
+        return self._json_completion(prompt)
+
+    def review_document(self, html_text, metadata=None):
+        """Return an AI-generated maintenance document quality review."""
+        prompt = {
+            "task": (
+                "Pruefe einen deutschen Wartungsbericht als JSON. Bewerte, "
+                "ob Maschine, Ursache, durchgefuehrte Massnahme, Ergebnis "
+                "und Notizen vollstaendig und konkret sind."
+            ),
+            "metadata": metadata or {},
+            "html_text": html_text[:12000],
+            "schema": {
+                "quality_score": "integer 0-100",
+                "status": "good|needs_review|incomplete",
+                "findings": [
+                    {
+                        "field": "string",
+                        "severity": "info|warning|critical",
+                        "message": "short German message",
+                    }
+                ],
+                "recommendations": ["short German recommendation"],
             },
         }
         return self._json_completion(prompt)

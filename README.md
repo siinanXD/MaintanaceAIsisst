@@ -14,6 +14,7 @@ Modulare Flask-Anwendung fuer Wartung, Produktion und Instandhaltung. Die App bi
 * KI-gestuetzte Fehleranalyse fuer den Fehlerkatalog
 * Automatische HTML-Wartungsberichte fuer abgeschlossene Tasks
 * Dokumentenuebersicht mit Filtern und Download
+* KI-Dokumentpruefung fuer Wartungsberichte mit lokalem Fallback
 * Wissenssuche ueber Tasks, Fehler und Dokument-Metadaten
 * AI-Feedback fuer spaetere Qualitaetsverbesserung
 * Mitarbeiterverwaltung mit Qualifikationen und Favoritenmaschine
@@ -151,6 +152,12 @@ Wartungsberichte:
 * Beim Abschluss eines Tasks kann `generate_report: true` gesendet werden.
 * Die App erzeugt einen HTML-Bericht unter `documents/YYYY/MM/task_<id>/`.
 * Dokument-Metadaten werden in der Datenbank gespeichert und ueber `/api/documents` gelistet.
+
+Dokumentpruefung:
+
+* `POST /api/documents/<id>/review`
+* Prueft Wartungsberichte auf Maschine, Ursache, Massnahme, Ergebnis und Notizen.
+* Speichert keine Ergebnisse und nutzt ohne OpenAI-Key einen lokalen Fallback.
 
 Wissenssuche:
 

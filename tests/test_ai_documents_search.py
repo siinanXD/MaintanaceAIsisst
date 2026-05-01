@@ -158,6 +158,240 @@ def test_generated_document_download_uses_temp_storage(
     assert b"report" in download_response.data
 
 
+def test_document_review_only_allows_visible_documents(
+    app,
+    client,
+    make_user,
+    make_task,
+    make_document,
+    auth_headers,
+):
+    """Verify users can only review documents visible to their department."""
+    user = make_user(
+        username="document_review_visible",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    task_id = make_task(
+        "Review sichtbar",
+        creator_username=user["username"],
+        department_name="Instandhaltung",
+    )
+    visible_document_id = make_document(
+        task_id=task_id,
+        created_by=user["id"],
+        department="Instandhaltung",
+        machine="Anlage Review",
+    )
+    hidden_document_id = make_document(
+        task_id=task_id,
+        created_by=user["id"],
+        relative_path="2026/05/task_hidden/maintenance_report.html",
+        department="Produktion",
+        machine="Anlage Review",
+    )
+    _write_report(
+        app,
+        visible_document_id,
+        {
+            "Maschine": "Anlage Review",
+            "Ursache": "Sensor verschmutzt",
+            "Durchgefuehrte Massnahme": "Sensor gereinigt",
+            "Ergebnis": "Anlage laeuft stabil",
+            "Notizen": "Nachkontrolle eingeplant",
+        },
+    )
+    headers = auth_headers(user["username"])
+
+    visible_response = client.post(
+        f"/api/documents/{visible_document_id}/review",
+        headers=headers,
+    )
+    hidden_response = client.post(
+        f"/api/documents/{hidden_document_id}/review",
+        headers=headers,
+    )
+
+    assert visible_response.status_code == 200
+    assert hidden_response.status_code == 404
+
+
+def test_document_review_missing_file_returns_404(
+    app,
+    client,
+    make_user,
+    make_task,
+    make_document,
+    auth_headers,
+):
+    """Verify document review reports missing files explicitly."""
+    user = make_user(
+        username="document_review_missing",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    task_id = make_task(
+        "Review Datei fehlt",
+        creator_username=user["username"],
+        department_name="Instandhaltung",
+    )
+    document_id = make_document(
+        task_id=task_id,
+        created_by=user["id"],
+        department="Instandhaltung",
+    )
+    _delete_document_file(app, document_id)
+
+    response = client.post(
+        f"/api/documents/{document_id}/review",
+        headers=auth_headers(user["username"]),
+    )
+
+    assert response.status_code == 404
+    assert response.get_json()["error"] == "Document file not found"
+
+
+def test_document_review_local_fallback_finds_missing_required_fields(
+    app,
+    client,
+    make_user,
+    make_task,
+    make_document,
+    auth_headers,
+):
+    """Verify local review detects incomplete maintenance report fields."""
+    user = make_user(
+        username="document_review_incomplete",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    task_id = make_task(
+        "Review unvollstaendig",
+        creator_username=user["username"],
+        department_name="Instandhaltung",
+    )
+    document_id = make_document(
+        task_id=task_id,
+        created_by=user["id"],
+        department="Instandhaltung",
+    )
+    _write_report(
+        app,
+        document_id,
+        {
+            "Maschine": "-",
+            "Ursache": "",
+            "Durchgefuehrte Massnahme": "-",
+            "Ergebnis": "",
+            "Notizen": "-",
+        },
+    )
+
+    response = client.post(
+        f"/api/documents/{document_id}/review",
+        headers=auth_headers(user["username"]),
+    )
+
+    payload = response.get_json()
+    fields = {finding["field"] for finding in payload["findings"]}
+    assert response.status_code == 200
+    assert payload["diagnostics"]["status"] == "local_answer"
+    assert payload["status"] == "incomplete"
+    assert fields == {
+        "Maschine",
+        "Ursache",
+        "Durchgefuehrte Massnahme",
+        "Ergebnis",
+        "Notizen",
+    }
+
+
+def test_document_review_scores_complete_report_higher(
+    app,
+    client,
+    make_user,
+    make_task,
+    make_document,
+    auth_headers,
+):
+    """Verify complete reports receive better local review scores."""
+    user = make_user(
+        username="document_review_score",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    task_id = make_task(
+        "Review Score",
+        creator_username=user["username"],
+        department_name="Instandhaltung",
+    )
+    incomplete_id = make_document(
+        task_id=task_id,
+        created_by=user["id"],
+        relative_path="2026/05/task_score_incomplete/maintenance_report.html",
+        department="Instandhaltung",
+    )
+    complete_id = make_document(
+        task_id=task_id,
+        created_by=user["id"],
+        relative_path="2026/05/task_score_complete/maintenance_report.html",
+        department="Instandhaltung",
+    )
+    _write_report(
+        app,
+        incomplete_id,
+        {
+            "Maschine": "-",
+            "Ursache": "-",
+            "Durchgefuehrte Massnahme": "-",
+            "Ergebnis": "-",
+            "Notizen": "-",
+        },
+    )
+    _write_report(
+        app,
+        complete_id,
+        {
+            "Maschine": "Anlage 12",
+            "Ursache": "Druckschwankung in der Versorgung",
+            "Durchgefuehrte Massnahme": "Dichtung ersetzt und Druck geprueft",
+            "Ergebnis": "Anlage arbeitet wieder im Sollbereich",
+            "Notizen": "Ersatzdichtung nachbestellen",
+        },
+    )
+    headers = auth_headers(user["username"])
+
+    incomplete_response = client.post(
+        f"/api/documents/{incomplete_id}/review",
+        headers=headers,
+    )
+    complete_response = client.post(
+        f"/api/documents/{complete_id}/review",
+        headers=headers,
+    )
+
+    assert incomplete_response.status_code == 200
+    assert complete_response.status_code == 200
+    assert (
+        complete_response.get_json()["quality_score"]
+        > incomplete_response.get_json()["quality_score"]
+    )
+    assert complete_response.get_json()["status"] == "good"
+
+
+def test_documents_page_contains_review_ui(client):
+    """Verify the documents page and static script expose review UI hooks."""
+    page_response = client.get("/documents")
+    script_response = client.get("/static/app.js")
+    html = page_response.get_data(as_text=True)
+    script = script_response.get_data(as_text=True)
+
+    assert page_response.status_code == 200
+    assert 'data-document-review-panel' in html
+    assert 'data-document-review-findings' in html
+    assert 'actionButton("Pruefen"' in script
+
+
 def test_complete_task_can_generate_maintenance_report(
     client,
     make_user,
@@ -226,3 +460,26 @@ def test_search_requires_query(client, make_user, auth_headers):
     response = client.get("/api/search?q=   ", headers=auth_headers(user["username"]))
 
     assert response.status_code == 400
+
+
+def _write_report(app, document_id, rows):
+    """Write a generated report table for a test document."""
+    with app.app_context():
+        document = GeneratedDocument.query.get(document_id)
+        table_rows = "\n".join(
+            f"<tr><th>{label}</th><td>{value}</td></tr>"
+            for label, value in rows.items()
+        )
+        document_path(document).write_text(
+            f"<html><body><table>{table_rows}</table></body></html>",
+            encoding="utf-8",
+        )
+
+
+def _delete_document_file(app, document_id):
+    """Delete the stored file for a test document."""
+    with app.app_context():
+        document = GeneratedDocument.query.get(document_id)
+        path = document_path(document)
+        if path.exists():
+            path.unlink()

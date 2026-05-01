@@ -747,10 +747,47 @@ Content-Type: application/json
 GET /api/documents
 GET /api/documents?task_id=1&department=Instandhaltung&machine=Maschine
 GET /api/documents/1
+POST /api/documents/1/review
 GET /api/documents/1/download
 ```
 
 Dokumente benoetigen `documents.view`. Berichte werden lokal als HTML unter `documents/YYYY/MM/task_<id>/maintenance_report.html` gespeichert.
+
+### Dokument pruefen
+
+```http
+POST /api/documents/1/review
+Authorization: Bearer <access_token>
+```
+
+Response `200`:
+
+```json
+{
+  "document": {
+    "id": 1,
+    "title": "Wartungsbericht Task 1"
+  },
+  "quality_score": 80,
+  "status": "needs_review",
+  "findings": [
+    {
+      "field": "Ursache",
+      "severity": "critical",
+      "message": "Ursache fehlt im Wartungsbericht."
+    }
+  ],
+  "recommendations": [
+    "Ursache oder wahrscheinliche Fehlerquelle dokumentieren."
+  ],
+  "diagnostics": {
+    "status": "local_answer",
+    "provider": "mock"
+  }
+}
+```
+
+Die Pruefung speichert keine Ergebnisse. Ohne OpenAI-Key nutzt die API einen lokalen Fallback.
 
 ## Wissenssuche
 
@@ -802,6 +839,7 @@ Maschinen-Endpunkte benoetigen `machines.view` oder `machines.write`.
 ```http
 GET /api/machines
 POST /api/machines
+GET /api/machines/1/history
 PUT /api/machines/1
 DELETE /api/machines/1
 ```
@@ -815,6 +853,50 @@ Request:
   "required_employees": 2
 }
 ```
+
+### Maschinen-Historie
+
+```http
+GET /api/machines/1/history
+Authorization: Bearer <access_token>
+```
+
+Benoetigt `machines.view`. Tasks, Fehler und Dokumente werden nur einbezogen, wenn der Benutzer fuer das jeweilige Dashboard Leserechte hat.
+
+Response `200`:
+
+```json
+{
+  "machine": {
+    "id": 1,
+    "name": "Anlage 4"
+  },
+  "summary": {
+    "text": "Anlage 4 hat 2 Tasks, 1 Fehler und 3 Dokumente in der Historie.",
+    "diagnostics": {
+      "status": "local_answer"
+    }
+  },
+  "source_counts": {
+    "tasks": 2,
+    "errors": 1,
+    "documents": 3,
+    "total": 6
+  },
+  "timeline": [
+    {
+      "type": "task",
+      "date": "2026-05-01T12:00:00",
+      "title": "Stillstand Anlage 4",
+      "status": "open",
+      "summary": "Sensorfehler pruefen",
+      "url": "/api/tasks/1"
+    }
+  ]
+}
+```
+
+Die Historie ist read-only und speichert keine KI-Zusammenfassungen.
 
 ## Lager
 

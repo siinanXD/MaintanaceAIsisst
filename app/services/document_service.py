@@ -1,11 +1,22 @@
 from datetime import datetime
 from html import escape
+from html.parser import HTMLParser
 from pathlib import Path
 
 from flask import current_app
 
 from app.extensions import db
 from app.models import GeneratedDocument, Role
+from app.services.ai_service import AIServiceError, get_ai_provider
+
+
+REVIEW_REQUIRED_FIELDS = (
+    "Maschine",
+    "Ursache",
+    "Durchgefuehrte Massnahme",
+    "Ergebnis",
+    "Notizen",
+)
 
 
 def visible_documents_query(user):
@@ -25,6 +36,209 @@ def document_path(document):
     if base_path not in full_path.parents and full_path != base_path:
         raise ValueError("Document path escapes document storage")
     return full_path
+
+
+def review_document_quality(document):
+    """Return a non-persisted quality review for a generated document."""
+    path = document_path(document)
+    if not path.exists():
+        return None, {"error": "Document file not found"}, 404
+
+    html_text = path.read_text(encoding="utf-8")
+    provider = get_ai_provider()
+    if provider.name == "mock":
+        review = local_document_review(document, html_text)
+        review["diagnostics"] = {"status": "local_answer", "provider": provider.name}
+        return review, None, 200
+
+    try:
+        provider_review = provider.review_document(html_text, document.to_dict())
+    except AIServiceError:
+        review = local_document_review(document, html_text)
+        review["diagnostics"] = {"status": "fallback_used", "provider": provider.name}
+        return review, None, 200
+
+    review = normalize_document_review(provider_review, document)
+    review["diagnostics"] = {"status": "openai_used", "provider": provider.name}
+    return review, None, 200
+
+
+def local_document_review(document, html_text):
+    """Return a deterministic quality review for a maintenance report."""
+    fields = parse_report_fields(html_text)
+    findings = []
+    recommendations = []
+
+    for field_name in REVIEW_REQUIRED_FIELDS:
+        value = fields.get(field_name, "")
+        finding = review_field(field_name, value)
+        if not finding:
+            continue
+        findings.append(finding)
+        recommendations.append(recommendation_for_field(field_name))
+
+    quality_score = score_from_findings(findings)
+    return {
+        "document": document.to_dict(),
+        "quality_score": quality_score,
+        "status": status_from_score(quality_score),
+        "findings": findings,
+        "recommendations": recommendations,
+    }
+
+
+def normalize_document_review(provider_review, document):
+    """Normalize a provider review to the public response shape."""
+    provider_review = provider_review or {}
+    score = clamp_score(provider_review.get("quality_score"))
+    return {
+        "document": document.to_dict(),
+        "quality_score": score,
+        "status": valid_review_status(provider_review.get("status"), score),
+        "findings": normalize_findings(provider_review.get("findings")),
+        "recommendations": normalize_recommendations(
+            provider_review.get("recommendations"),
+        ),
+    }
+
+
+def parse_report_fields(html_text):
+    """Extract report table fields from generated HTML."""
+    parser = ReportTableParser()
+    parser.feed(html_text)
+    return parser.rows
+
+
+def review_field(field_name, value):
+    """Return a finding when a required report field is weak or missing."""
+    cleaned = " ".join(str(value or "").strip().split())
+    if not cleaned or cleaned == "-":
+        return {
+            "field": field_name,
+            "severity": "critical",
+            "message": f"{field_name} fehlt im Wartungsbericht.",
+        }
+    if len(cleaned) < 4:
+        return {
+            "field": field_name,
+            "severity": "warning",
+            "message": f"{field_name} ist sehr knapp dokumentiert.",
+        }
+    return None
+
+
+def recommendation_for_field(field_name):
+    """Return a practical recommendation for one weak report field."""
+    recommendations = {
+        "Maschine": "Maschine oder Anlage eindeutig im Bericht erfassen.",
+        "Ursache": "Ursache oder wahrscheinliche Fehlerquelle dokumentieren.",
+        "Durchgefuehrte Massnahme": "Ausgefuehrte Arbeiten konkret beschreiben.",
+        "Ergebnis": "Pruefergebnis oder Restproblem festhalten.",
+        "Notizen": "Relevante Zusatzhinweise oder Folgeaufgaben ergaenzen.",
+    }
+    return recommendations[field_name]
+
+
+def score_from_findings(findings):
+    """Return a quality score from review findings."""
+    score = 100
+    for finding in findings:
+        if finding["severity"] == "critical":
+            score -= 20
+        elif finding["severity"] == "warning":
+            score -= 10
+    return max(0, min(100, score))
+
+
+def status_from_score(score):
+    """Return a public review status for a quality score."""
+    if score >= 85:
+        return "good"
+    if score >= 60:
+        return "needs_review"
+    return "incomplete"
+
+
+def clamp_score(value):
+    """Return a provider score clamped to the public 0-100 range."""
+    try:
+        score = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, min(100, score))
+
+
+def valid_review_status(value, score):
+    """Return a supported review status or derive one from score."""
+    if value in {"good", "needs_review", "incomplete"}:
+        return value
+    return status_from_score(score)
+
+
+def normalize_findings(findings):
+    """Return sanitized provider findings."""
+    if not isinstance(findings, list):
+        return []
+    normalized = []
+    for finding in findings:
+        if not isinstance(finding, dict):
+            continue
+        severity = finding.get("severity")
+        if severity not in {"info", "warning", "critical"}:
+            severity = "warning"
+        normalized.append(
+            {
+                "field": str(finding.get("field") or "Allgemein").strip()[:80],
+                "severity": severity,
+                "message": str(finding.get("message") or "").strip()[:500],
+            }
+        )
+    return normalized
+
+
+def normalize_recommendations(recommendations):
+    """Return sanitized provider recommendations."""
+    if not isinstance(recommendations, list):
+        return []
+    return [
+        str(recommendation or "").strip()[:500]
+        for recommendation in recommendations
+        if str(recommendation or "").strip()
+    ][:10]
+
+
+class ReportTableParser(HTMLParser):
+    """Parse simple generated maintenance report tables."""
+
+    def __init__(self):
+        """Initialize the parser state."""
+        super().__init__()
+        self.rows = {}
+        self._current_row = []
+        self._active_cell = None
+        self._cell_parts = []
+
+    def handle_starttag(self, tag, attrs):
+        """Track table row and cell starts."""
+        if tag == "tr":
+            self._current_row = []
+        if tag in {"th", "td"}:
+            self._active_cell = tag
+            self._cell_parts = []
+
+    def handle_data(self, data):
+        """Collect text for the active table cell."""
+        if self._active_cell:
+            self._cell_parts.append(data)
+
+    def handle_endtag(self, tag):
+        """Store completed cells and rows."""
+        if tag in {"th", "td"} and self._active_cell == tag:
+            self._current_row.append(" ".join("".join(self._cell_parts).split()))
+            self._active_cell = None
+            self._cell_parts = []
+        if tag == "tr" and len(self._current_row) >= 2:
+            self.rows[self._current_row[0]] = self._current_row[1]
 
 
 def generate_maintenance_report(task, user, payload=None):

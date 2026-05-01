@@ -1747,7 +1747,54 @@
     const list = document.querySelector("[data-document-list]");
     const form = document.querySelector("[data-document-filter-form]");
     const reset = document.querySelector("[data-document-filter-reset]");
+    const reviewPanel = document.querySelector("[data-document-review-panel]");
+    const reviewSummary = document.querySelector("[data-document-review-summary]");
+    const reviewScore = document.querySelector("[data-document-review-score]");
+    const reviewStatus = document.querySelector("[data-document-review-status]");
+    const reviewFindings = document.querySelector("[data-document-review-findings]");
+    const reviewRecommendations = document.querySelector("[data-document-review-recommendations]");
     if (!list || !form || !token()) return;
+
+    function reviewStatusLabel(status) {
+      if (status === "good") return "Gut";
+      if (status === "needs_review") return "Pruefen";
+      return "Unvollstaendig";
+    }
+
+    function renderDocumentReview(review) {
+      if (!reviewPanel || !reviewFindings) return;
+      reviewPanel.hidden = false;
+      if (reviewSummary) {
+        reviewSummary.textContent = "Pruefung fuer " + review.document.title;
+      }
+      if (reviewScore) reviewScore.textContent = String(review.quality_score);
+      if (reviewStatus) reviewStatus.textContent = reviewStatusLabel(review.status);
+      reviewFindings.innerHTML = "";
+      if (!review.findings.length) {
+        reviewFindings.innerHTML = '<tr><td colspan="3">Keine Findings gefunden.</td></tr>';
+      } else {
+        review.findings.forEach((finding) => {
+          reviewFindings.appendChild(row([
+            finding.field,
+            finding.severity,
+            finding.message
+          ]));
+        });
+      }
+      if (reviewRecommendations) {
+        reviewRecommendations.textContent = review.recommendations.length
+          ? "Empfehlungen: " + review.recommendations.join(" | ")
+          : "Keine Empfehlungen erforderlich.";
+      }
+      reviewPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    async function reviewDocument(documentItem) {
+      const review = await api("/api/documents/" + documentItem.id + "/review", {
+        method: "POST"
+      });
+      renderDocumentReview(review);
+    }
 
     async function downloadDocument(documentItem) {
       const response = await fetch(documentItem.download_url, {
@@ -1776,16 +1823,21 @@
         return;
       }
       documents.forEach((documentItem) => {
-        const link = actionButton("Download", async () => {
+        const actions = document.createElement("div");
+        actions.className = "table-actions";
+        actions.appendChild(actionButton("Pruefen", async () => {
+          await reviewDocument(documentItem);
+        }));
+        actions.appendChild(actionButton("Download", async () => {
           await downloadDocument(documentItem);
-        });
+        }));
         list.appendChild(row([
           documentItem.title,
           String(documentItem.task_id),
           documentItem.department,
           documentItem.machine,
           new Date(documentItem.created_at).toLocaleString("de-DE"),
-          link
+          actions
         ]));
       });
     }
