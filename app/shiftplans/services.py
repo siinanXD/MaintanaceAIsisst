@@ -19,7 +19,19 @@ def parse_date(value):
     """Parse an ISO date string or default to today."""
     if not value:
         return date.today()
-    return date.fromisoformat(value)
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError("start_date must use YYYY-MM-DD") from exc
+
+
+def parse_days(value):
+    """Parse and clamp the shift plan duration in days."""
+    try:
+        days = int(value or 7)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("days must be a number") from exc
+    return min(max(days, 1), 31)
 
 
 def production_employees():
@@ -212,9 +224,11 @@ def openai_shift_entries(start_date, days, rhythm, preferences, employees, machi
 
 def generate_shift_plan(data):
     """Generate, validate and save a shift plan from request data."""
-    start_date = parse_date(data.get("start_date"))
-    days = int(data.get("days") or 7)
-    days = min(max(days, 1), 31)
+    try:
+        start_date = parse_date(data.get("start_date"))
+        days = parse_days(data.get("days"))
+    except ValueError as exc:
+        return None, {"error": str(exc)}, 400
     rhythm = data.get("rhythm", "2-Schicht Rhythmus")
     preferences = data.get("preferences", "")
     title = data.get("title") or f"Schichtplan ab {start_date.isoformat()}"

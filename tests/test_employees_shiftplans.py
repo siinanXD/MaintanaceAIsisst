@@ -107,6 +107,36 @@ def test_employee_write_requires_confidential_access(
     assert response.status_code == 403
 
 
+def test_employee_update_rejects_invalid_birth_date_or_team(
+    client,
+    make_user,
+    make_employee,
+    auth_headers,
+):
+    """Verify employee updates return 400 for invalid date or team values."""
+    admin = make_user(
+        username="employee_update_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    employee_id = make_employee(personnel_number="P-350", name="Update Person")
+    headers = auth_headers(admin["username"])
+
+    invalid_date_response = client.put(
+        f"/api/employees/{employee_id}",
+        headers=headers,
+        json={"birth_date": "01-01-1990"},
+    )
+    invalid_team_response = client.put(
+        f"/api/employees/{employee_id}",
+        headers=headers,
+        json={"team": "team-a"},
+    )
+
+    assert invalid_date_response.status_code == 400
+    assert invalid_team_response.status_code == 400
+
+
 def test_shiftplan_generate_uses_local_fallback(
     client,
     make_user,
@@ -162,3 +192,33 @@ def test_shiftplan_generate_rejects_when_no_production_employees(
 
     assert response.status_code == 400
     assert response.get_json()["error"] == "Keine Produktionsmitarbeiter gefunden"
+
+
+def test_shiftplan_generate_rejects_invalid_date_and_days(
+    client,
+    make_user,
+    make_employee,
+    auth_headers,
+):
+    """Verify shift plan generation validates date and duration inputs."""
+    admin = make_user(
+        username="shiftplan_validation_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    make_employee(personnel_number="P-450", name="Prod Valid", department="Produktion")
+    headers = auth_headers(admin["username"])
+
+    invalid_date_response = client.post(
+        "/api/shiftplans/generate",
+        headers=headers,
+        json={"start_date": "01.05.2026"},
+    )
+    invalid_days_response = client.post(
+        "/api/shiftplans/generate",
+        headers=headers,
+        json={"start_date": "2026-05-01", "days": "seven"},
+    )
+
+    assert invalid_date_response.status_code == 400
+    assert invalid_days_response.status_code == 400

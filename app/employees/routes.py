@@ -101,13 +101,16 @@ def update_employee(employee_id):
         "qualifications",
         "favorite_machine",
     ]
-    for field in fields:
-        if field in data:
-            setattr(employee, field, data[field])
-    if "birth_date" in data:
-        employee.birth_date = parse_birth_date(data["birth_date"])
-    if "team" in data:
-        employee.team = int(data["team"]) if data["team"] else None
+    try:
+        for field in fields:
+            if field in data:
+                setattr(employee, field, data[field])
+        if "birth_date" in data:
+            employee.birth_date = parse_birth_date(data["birth_date"])
+        if "team" in data:
+            employee.team = int(data["team"]) if data["team"] else None
+    except ValueError:
+        return jsonify({"error": "Invalid birth_date or team"}), 400
 
     db.session.commit()
     return jsonify(employee.to_dict())

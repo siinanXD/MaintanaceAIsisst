@@ -88,16 +88,19 @@ def update_material(material_id):
     """Update an inventory material including cost, quantity and machine."""
     material = InventoryMaterial.query.get_or_404(material_id)
     data = request.get_json(silent=True) or {}
-    if "name" in data:
-        material.name = data["name"].strip()
-    if "unit_cost" in data:
-        material.unit_cost = parse_float(data["unit_cost"], "unit_cost")
-    if "quantity" in data:
-        material.quantity = parse_int(data["quantity"], "quantity")
-    if "manufacturer" in data:
-        material.manufacturer = data["manufacturer"].strip()
-    if "machine_id" in data:
-        material.machine = machine_for_payload(data)
+    try:
+        if "name" in data:
+            material.name = data["name"].strip()
+        if "unit_cost" in data:
+            material.unit_cost = parse_float(data["unit_cost"], "unit_cost")
+        if "quantity" in data:
+            material.quantity = parse_int(data["quantity"], "quantity")
+        if "manufacturer" in data:
+            material.manufacturer = data["manufacturer"].strip()
+        if "machine_id" in data:
+            material.machine = machine_for_payload(data)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     db.session.commit()
     return jsonify(material.to_dict())
 

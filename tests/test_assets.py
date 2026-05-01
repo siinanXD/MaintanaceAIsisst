@@ -125,6 +125,36 @@ def test_inventory_rejects_negative_or_non_numeric_values(
     assert invalid_float_response.status_code == 400
 
 
+def test_inventory_update_rejects_invalid_numbers(
+    client,
+    make_user,
+    make_material,
+    auth_headers,
+):
+    """Verify inventory updates return 400 for invalid numeric fields."""
+    admin = make_user(
+        username="inventory_update_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    material_id = make_material("Lager Update", 1.5, 3)
+    headers = auth_headers(admin["username"])
+
+    negative_response = client.put(
+        f"/api/inventory/{material_id}",
+        headers=headers,
+        json={"quantity": -5},
+    )
+    invalid_response = client.put(
+        f"/api/inventory/{material_id}",
+        headers=headers,
+        json={"unit_cost": "teuer"},
+    )
+
+    assert negative_response.status_code == 400
+    assert invalid_response.status_code == 400
+
+
 def test_delete_machine_detaches_inventory_material(
     client,
     make_user,
