@@ -12,8 +12,15 @@
 </section>
 
 <section class="dashboard-grid">
-  <form class="card app-card lg:col-span-12" data-document-filter-form>
-    <div class="card-body">
+  <details class="card app-card mobile-action-section lg:col-span-12" data-mobile-collapsible open>
+    <summary class="mobile-action-summary">
+      <span>
+        <span class="mobile-action-title">Filter</span>
+        <span class="mobile-action-meta">Dokumente gezielt eingrenzen</span>
+      </span>
+    </summary>
+    <form data-document-filter-form>
+      <div class="card-body">
       <div class="panel-header">
         <div>
           <h2 class="panel-title">Filter</h2>
@@ -47,10 +54,11 @@
         <button class="btn btn-ghost" type="button" data-document-filter-reset>Zuruecksetzen</button>
         <span class="panel-meta" data-document-message></span>
       </div>
-    </div>
-  </form>
+      </div>
+    </form>
+  </details>
 
-  <article class="card app-card lg:col-span-12">
+  <article class="card app-card mobile-primary-card lg:col-span-12">
     <div class="card-body">
       <div class="panel-header">
         <div>

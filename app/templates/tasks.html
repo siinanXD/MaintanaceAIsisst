@@ -12,7 +12,13 @@
 </section>
 
 <section class="dashboard-grid">
-  <article class="card app-card lg:col-span-6" data-permission-write="tasks">
+  <details class="card app-card mobile-action-section lg:col-span-6" data-mobile-collapsible data-permission-write="tasks" open>
+    <summary class="mobile-action-summary">
+      <span>
+        <span class="mobile-action-title">KI-Task vorschlagen</span>
+        <span class="mobile-action-meta">Freitext analysieren lassen</span>
+      </span>
+    </summary>
     <div class="card-body">
       <div class="panel-header">
         <div>
@@ -76,10 +82,17 @@
         </div>
       </div>
     </div>
-  </article>
+  </details>
 
-  <form class="card app-card lg:col-span-6" data-task-form data-permission-write="tasks">
-    <div class="card-body">
+  <details class="card app-card mobile-action-section lg:col-span-6" data-mobile-collapsible data-permission-write="tasks" open>
+    <summary class="mobile-action-summary">
+      <span>
+        <span class="mobile-action-title">Task anlegen</span>
+        <span class="mobile-action-meta">Bereich, Prioritaet und Faelligkeit setzen</span>
+      </span>
+    </summary>
+    <form data-task-form>
+      <div class="card-body">
       <div class="panel-header">
         <div>
           <h2 class="panel-title">Task anlegen</h2>
@@ -126,10 +139,11 @@
         <button class="btn btn-ghost" type="button" data-task-edit-cancel hidden>Bearbeiten abbrechen</button>
         <span class="panel-meta" data-task-message></span>
       </div>
-    </div>
-  </form>
+      </div>
+    </form>
+  </details>
 
-  <article class="card app-card lg:col-span-12">
+  <article class="card app-card mobile-primary-card lg:col-span-12">
     <div class="card-body">
       <div class="panel-header">
         <div>

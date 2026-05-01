@@ -12,8 +12,15 @@
 </section>
 
 <section class="dashboard-grid">
-  <form class="card app-card lg:col-span-12" data-inventory-form data-permission-write="inventory">
-    <div class="card-body">
+  <details class="card app-card mobile-action-section lg:col-span-12" data-mobile-collapsible data-permission-write="inventory" open>
+    <summary class="mobile-action-summary">
+      <span>
+        <span class="mobile-action-title">Material anlegen</span>
+        <span class="mobile-action-meta">Bestand und Wert erfassen</span>
+      </span>
+    </summary>
+    <form data-inventory-form>
+      <div class="card-body">
       <div class="panel-header">
         <div>
           <h2 class="panel-title">Material anlegen</h2>
@@ -48,10 +55,11 @@
         <button class="btn btn-primary" type="submit">Material speichern</button>
         <span class="panel-meta" data-inventory-message></span>
       </div>
-    </div>
-  </form>
+      </div>
+    </form>
+  </details>
 
-  <article class="card app-card lg:col-span-12">
+  <article class="card app-card mobile-primary-card lg:col-span-12">
     <div class="card-body">
       <div class="panel-header">
         <div>

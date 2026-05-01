@@ -80,7 +80,7 @@
   }
 
   .card-body {
-    @apply flex flex-col p-5 sm:p-6;
+    @apply flex flex-col p-4 sm:p-6;
   }
 
   .btn {
@@ -143,7 +143,7 @@
   .input,
   .select,
   .textarea {
-    @apply w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-100;
+    @apply w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-100 max-sm:min-h-10 max-sm:px-3 max-sm:py-2;
   }
 
   .select {
@@ -151,7 +151,7 @@
   }
 
   .textarea {
-    @apply min-h-28 resize-y leading-6;
+    @apply min-h-28 resize-y leading-6 max-sm:min-h-24;
   }
 
   .input-bordered,
@@ -266,14 +266,16 @@
   .nav-group > summary:focus,
   .top-nav-group > summary:focus,
   .mobile-nav > summary:focus,
-  .dashboard-section > summary:focus {
+  .dashboard-section > summary:focus,
+  .mobile-action-summary:focus {
     outline: none;
   }
 
   .nav-group > summary:focus-visible,
   .top-nav-group > summary:focus-visible,
   .mobile-nav > summary:focus-visible,
-  .dashboard-section > summary:focus-visible {
+  .dashboard-section > summary:focus-visible,
+  .mobile-action-summary:focus-visible {
     @apply ring-2 ring-blue-500 ring-offset-2;
   }
 
@@ -320,7 +322,7 @@
   }
 
   .mobile-nav > summary {
-    @apply flex cursor-pointer list-none items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-700;
+    @apply flex cursor-pointer list-none items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-700;
   }
 
   .mobile-nav > summary::after {
@@ -334,35 +336,35 @@
   }
 
   .mobile-nav-panel {
-    @apply mt-2 grid gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm;
+    @apply mt-2 grid gap-2 rounded-2xl border border-slate-200 bg-white p-2.5 shadow-sm;
   }
 
   .page-hero {
-    @apply mb-6 flex flex-col gap-4 rounded-3xl border border-blue-100 bg-gradient-to-br from-white via-blue-50 to-cyan-50 p-5 shadow-sm sm:flex-row sm:items-end sm:justify-between sm:p-6 lg:p-8;
+    @apply mb-4 flex flex-col gap-3 rounded-2xl border border-blue-100 bg-gradient-to-br from-white via-blue-50 to-cyan-50 p-4 shadow-sm sm:mb-6 sm:flex-row sm:items-end sm:justify-between sm:rounded-3xl sm:p-6 lg:p-8;
   }
 
   .page-kicker {
-    @apply text-sm font-bold uppercase text-blue-600;
+    @apply text-xs font-bold uppercase tracking-wide text-blue-600 sm:text-sm;
   }
 
   .page-title {
-    @apply mt-2 text-3xl font-black leading-tight text-slate-950 sm:text-4xl;
+    @apply mt-1 text-2xl font-black leading-tight text-slate-950 sm:mt-2 sm:text-4xl;
   }
 
   .page-description {
-    @apply mt-3 max-w-3xl text-sm leading-6 text-slate-600 sm:text-base;
+    @apply mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base;
   }
 
   .dashboard-grid {
-    @apply grid grid-cols-1 gap-5 lg:grid-cols-12;
+    @apply grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-12;
   }
 
   .dashboard-kpi-grid {
-    @apply mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4;
+    @apply mb-4 grid grid-cols-2 gap-3 sm:mb-6 sm:gap-4 xl:grid-cols-4;
   }
 
   .kpi-card {
-    @apply rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-lg hover:shadow-blue-950/5;
+    @apply rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-lg hover:shadow-blue-950/5 sm:p-5;
   }
 
   .kpi-label {
@@ -370,19 +372,19 @@
   }
 
   .kpi-value {
-    @apply mt-2 text-3xl font-black leading-none text-slate-950;
+    @apply mt-2 text-2xl font-black leading-none text-slate-950 sm:text-3xl;
   }
 
   .kpi-meta {
-    @apply mt-2 text-sm leading-5 text-slate-500;
+    @apply mt-2 text-xs leading-5 text-slate-500 sm:text-sm;
   }
 
   .dashboard-section {
-    @apply mb-6 rounded-3xl border border-slate-200 bg-slate-50/60 p-3 shadow-sm sm:p-4;
+    @apply mb-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-2.5 shadow-sm sm:mb-6 sm:rounded-3xl sm:p-4;
   }
 
   .dashboard-section > summary {
-    @apply mb-4 flex cursor-pointer list-none items-center justify-between rounded-2xl bg-white px-4 py-3 text-slate-950 shadow-sm ring-1 ring-slate-200 transition hover:ring-blue-200 sm:px-5;
+    @apply mb-3 flex cursor-pointer list-none items-center justify-between rounded-2xl bg-white px-4 py-3 text-slate-950 shadow-sm ring-1 ring-slate-200 transition hover:ring-blue-200 sm:mb-4 sm:px-5;
   }
 
   .dashboard-section:not([open]) > summary {
@@ -416,11 +418,11 @@
   }
 
   .panel-header {
-    @apply mb-5 flex flex-col items-start gap-3 sm:flex-row sm:justify-between;
+    @apply mb-4 flex flex-col items-start gap-2 sm:mb-5 sm:flex-row sm:justify-between sm:gap-3;
   }
 
   .panel-title {
-    @apply text-lg font-bold text-slate-950;
+    @apply text-base font-bold text-slate-950 sm:text-lg;
   }
 
   .panel-meta {
@@ -438,11 +440,11 @@
   }
 
   .form-grid {
-    @apply grid grid-cols-1 gap-4 md:grid-cols-2;
+    @apply grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2;
   }
 
   .field {
-    @apply flex flex-col gap-2;
+    @apply flex flex-col gap-1.5 sm:gap-2;
   }
 
   .field.is-full {
@@ -472,23 +474,23 @@
   }
 
   .toolbar {
-    @apply flex flex-wrap items-center gap-3;
+    @apply flex flex-wrap items-center gap-2 sm:gap-3;
   }
 
   .form-actions {
-    @apply mt-5;
+    @apply mt-4 sm:mt-5;
   }
 
   .suggestion-box {
-    @apply mt-5 rounded-2xl border border-cyan-100 bg-cyan-50/70 p-4;
+    @apply mt-4 rounded-2xl border border-cyan-100 bg-cyan-50/70 p-3 sm:mt-5 sm:p-4;
   }
 
   .table-wrap {
-    @apply w-full overflow-x-auto rounded-2xl border border-slate-200 bg-white;
+    @apply w-full overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm;
   }
 
   .data-table {
-    @apply min-w-[48rem] bg-white text-sm;
+    @apply min-w-[44rem] bg-white text-sm sm:min-w-[48rem];
   }
 
   .data-table thead {
@@ -505,16 +507,16 @@
   }
 
   .empty-state {
-    @apply rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm font-medium text-slate-500;
+    @apply rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center text-sm font-medium text-slate-500 sm:p-6;
   }
 
   .task-card-grid {
-    @apply grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3;
+    @apply grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4 xl:grid-cols-3;
   }
 
   .task-card,
   .cockpit-task-card {
-    @apply flex min-h-44 flex-col rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-lg hover:shadow-blue-950/5;
+    @apply flex min-h-36 flex-col rounded-2xl border border-slate-200 bg-white p-3.5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-lg hover:shadow-blue-950/5 sm:min-h-44 sm:p-4;
   }
 
   button.task-card {
@@ -531,12 +533,12 @@
   }
 
   .task-card-description {
-    @apply min-h-12 text-sm leading-6 text-slate-600;
+    @apply text-sm leading-6 text-slate-600 sm:min-h-12;
   }
 
   .task-card-meta,
   .cockpit-task-meta {
-    @apply mt-4 flex flex-wrap gap-2 text-xs font-medium text-slate-500;
+    @apply mt-3 flex flex-wrap gap-2 text-xs font-medium text-slate-500 sm:mt-4;
   }
 
   .task-card-meta span,
@@ -546,7 +548,7 @@
 
   .task-card-actions,
   .cockpit-task-actions {
-    @apply mt-auto flex flex-wrap gap-2 pt-4;
+    @apply mt-auto flex flex-wrap gap-2 pt-3 sm:pt-4;
   }
 
   .badge.is-urgent {
@@ -578,15 +580,15 @@
   }
 
   .cockpit-board {
-    @apply grid grid-cols-1 gap-4 lg:grid-cols-3;
+    @apply grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-3;
   }
 
   .cockpit-column {
-    @apply min-h-32 rounded-2xl border border-slate-200 bg-slate-50 p-4;
+    @apply min-h-24 rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:min-h-32 sm:p-4;
   }
 
   .cockpit-column-title {
-    @apply mb-4 text-sm font-black uppercase text-slate-600;
+    @apply mb-3 text-xs font-black uppercase tracking-wide text-slate-600 sm:mb-4 sm:text-sm;
   }
 
   .cockpit-task-list {
@@ -622,7 +624,7 @@
   }
 
   .stat-row {
-    @apply flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm;
+    @apply flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm sm:p-4;
   }
 
   .stat-row strong {
@@ -630,7 +632,7 @@
   }
 
   .stat-value {
-    @apply text-4xl font-black text-slate-950;
+    @apply text-3xl font-black text-slate-950 sm:text-4xl;
   }
 
   .stat-label {
@@ -642,7 +644,7 @@
   }
 
   .shiftplan-card {
-    @apply rounded-2xl border border-slate-200 bg-white p-4 shadow-sm;
+    @apply rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm sm:p-4;
   }
 
   .document-cell {
@@ -674,7 +676,7 @@
   }
 
   .chat-widget {
-    @apply fixed bottom-4 right-2 z-40 sm:bottom-6 sm:right-6;
+    @apply fixed bottom-3 right-3 z-40 sm:bottom-6 sm:right-6;
   }
 
   .chat-toggle {
@@ -682,7 +684,7 @@
   }
 
   .chat-panel {
-    @apply pointer-events-none absolute bottom-14 right-0 flex h-[min(32rem,calc(100vh-8rem))] w-[min(24rem,calc(100vw-2rem))] translate-y-2 flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white opacity-0 shadow-2xl shadow-blue-950/15 transition sm:bottom-16;
+    @apply pointer-events-none absolute bottom-14 right-0 flex h-[min(30rem,calc(100vh-7rem))] w-[min(23rem,calc(100vw-1.5rem))] translate-y-2 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white opacity-0 shadow-2xl shadow-blue-950/15 transition sm:bottom-16 sm:h-[min(32rem,calc(100vh-8rem))] sm:w-[min(24rem,calc(100vw-2rem))] sm:rounded-3xl;
   }
 
   .chat-widget.is-open .chat-panel {
@@ -690,7 +692,7 @@
   }
 
   .chat-panel-header {
-    @apply flex items-start justify-between border-b border-slate-200 bg-slate-50 p-4;
+    @apply flex items-start justify-between border-b border-slate-200 bg-slate-50 p-3 sm:p-4;
   }
 
   .chat-panel-kicker {
@@ -706,7 +708,7 @@
   }
 
   .chat-panel-body {
-    @apply flex-1 space-y-3 overflow-y-auto p-4;
+    @apply flex-1 space-y-3 overflow-y-auto p-3 sm:p-4;
   }
 
   .chat-message {
@@ -755,7 +757,88 @@
   }
 
   .chat-panel-form {
-    @apply flex gap-2 border-t border-slate-200 p-4;
+    @apply flex gap-2 border-t border-slate-200 p-3 sm:p-4;
+  }
+
+  .mobile-primary-card {
+    @apply max-lg:order-1;
+  }
+
+  .mobile-action-section,
+  .mobile-secondary-card {
+    @apply max-lg:order-2;
+  }
+
+  .mobile-action-summary {
+    @apply hidden;
+  }
+
+  @media (max-width: 639px) {
+    .mobile-action-section {
+      @apply rounded-2xl;
+    }
+
+    .mobile-action-summary {
+      @apply flex cursor-pointer list-none items-center justify-between gap-3 border-b border-slate-100 px-4 py-3;
+    }
+
+    .mobile-action-summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .mobile-action-summary::after {
+      content: "+";
+      @apply text-base font-black text-slate-400;
+    }
+
+    .mobile-action-section[open] > .mobile-action-summary::after {
+      content: "-";
+      @apply text-blue-600;
+    }
+
+    .mobile-action-title {
+      @apply block text-sm font-black text-slate-950;
+    }
+
+    .mobile-action-meta {
+      @apply mt-1 block text-xs font-medium leading-5 text-slate-500;
+    }
+
+    .mobile-action-section > .card-body > .panel-header,
+    .mobile-action-section > form > .card-body > .panel-header {
+      @apply hidden;
+    }
+
+    .mobile-action-section:not([open]) > .card-body,
+    .mobile-action-section:not([open]) > form {
+      @apply hidden;
+    }
+
+    .table th,
+    .table td {
+      @apply px-3 py-2.5;
+    }
+
+    .data-table thead th {
+      @apply sticky top-0 z-10 bg-slate-50;
+    }
+
+    .data-table th:first-child,
+    .data-table td:first-child {
+      @apply sticky left-0 z-10 bg-white shadow-[8px_0_12px_-14px_rgba(15,23,42,0.5)];
+    }
+
+    .data-table thead th:first-child {
+      @apply z-20 bg-slate-50;
+    }
+
+    .btn {
+      @apply min-h-10 px-3;
+    }
+
+    .btn-sm {
+      @apply min-h-9 px-2.5;
+    }
   }
 
   [hidden] {

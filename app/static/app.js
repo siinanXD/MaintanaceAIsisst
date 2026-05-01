@@ -141,6 +141,15 @@
     return button;
   }
 
+  function revealSurface(element) {
+    const collapsible = element.closest("[data-mobile-collapsible]");
+    if (collapsible) {
+      collapsible.open = true;
+      collapsible.dataset.mobileTouched = "true";
+    }
+    element.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   function setSelectOptions(select, options, selectedValue) {
     select.innerHTML = "";
     options.forEach((value) => {
@@ -211,7 +220,7 @@
       form.elements.description.value = task.description || "";
       if (submitButton) submitButton.textContent = "Task aktualisieren";
       if (cancelEditButton) cancelEditButton.hidden = false;
-      form.scrollIntoView({ behavior: "smooth", block: "start" });
+      revealSurface(form);
       form.elements.title.focus();
     }
 
@@ -360,6 +369,8 @@
           values.possible_cause ? "Moegliche Ursache: " + values.possible_cause : "",
           values.recommended_action ? "Naechste Aktion: " + values.recommended_action : ""
         ].filter(Boolean).join("\n\n");
+        revealSurface(form);
+        form.elements.title.focus();
       });
     }
 
@@ -435,6 +446,8 @@
         form.elements.title.value = values.title || "";
         form.elements.possible_causes.value = values.possible_causes || "";
         form.elements.solution.value = values.solution || "";
+        revealSurface(form);
+        form.elements.title.focus();
       });
     }
 
@@ -1665,7 +1678,42 @@
     await load();
   }
 
+  function initMobileCollapsibleSections() {
+    const sections = Array.from(document.querySelectorAll("[data-mobile-collapsible]"));
+    if (!sections.length || !window.matchMedia) return;
+
+    const mobileQuery = window.matchMedia("(max-width: 639px)");
+    let syncing = false;
+
+    function syncSections() {
+      syncing = true;
+      sections.forEach((section) => {
+        if (mobileQuery.matches) {
+          if (!section.dataset.mobileTouched) section.open = false;
+          return;
+        }
+        section.open = true;
+      });
+      syncing = false;
+    }
+
+    sections.forEach((section) => {
+      section.addEventListener("toggle", () => {
+        if (syncing) return;
+        if (mobileQuery.matches) section.dataset.mobileTouched = "true";
+      });
+    });
+
+    syncSections();
+    if (mobileQuery.addEventListener) {
+      mobileQuery.addEventListener("change", syncSections);
+    } else if (mobileQuery.addListener) {
+      mobileQuery.addListener(syncSections);
+    }
+  }
+
   document.addEventListener("DOMContentLoaded", async () => {
+    initMobileCollapsibleSections();
     if (!token()) return;
     try {
       if (window.maintenanceAuth && window.maintenanceAuth.refreshUser) {

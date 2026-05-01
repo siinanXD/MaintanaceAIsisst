@@ -12,7 +12,13 @@
 </section>
 
 <section class="dashboard-grid">
-  <article class="card app-card lg:col-span-6" data-permission-write="errors">
+  <details class="card app-card mobile-action-section lg:col-span-6" data-mobile-collapsible data-permission-write="errors" open>
+    <summary class="mobile-action-summary">
+      <span>
+        <span class="mobile-action-title">KI-Fehleranalyse</span>
+        <span class="mobile-action-meta">Beschreibung analysieren lassen</span>
+      </span>
+    </summary>
     <div class="card-body">
       <div class="panel-header">
         <div>
@@ -59,10 +65,17 @@
         </div>
       </div>
     </div>
-  </article>
+  </details>
 
-  <form class="card app-card lg:col-span-6" data-error-form data-permission-write="errors">
-    <div class="card-body">
+  <details class="card app-card mobile-action-section lg:col-span-6" data-mobile-collapsible data-permission-write="errors" open>
+    <summary class="mobile-action-summary">
+      <span>
+        <span class="mobile-action-title">Fehler anlegen</span>
+        <span class="mobile-action-meta">Code, Maschine und Loesung speichern</span>
+      </span>
+    </summary>
+    <form data-error-form>
+      <div class="card-body">
       <div class="panel-header">
         <div>
           <h2 class="panel-title">Fehler anlegen</h2>
@@ -99,10 +112,11 @@
         <button class="btn btn-primary" type="submit">Fehler speichern</button>
         <span class="panel-meta" data-error-message></span>
       </div>
-    </div>
-  </form>
+      </div>
+    </form>
+  </details>
 
-  <article class="card app-card lg:col-span-12">
+  <article class="card app-card mobile-primary-card lg:col-span-12">
     <div class="card-body">
       <div class="panel-header">
         <div>

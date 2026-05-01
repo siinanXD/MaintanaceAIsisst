@@ -12,8 +12,15 @@
 </section>
 
 <section class="dashboard-grid">
-  <form class="card app-card lg:col-span-12" data-shiftplan-form data-permission-write="shiftplans">
-    <div class="card-body">
+  <details class="card app-card mobile-action-section lg:col-span-12" data-mobile-collapsible data-permission-write="shiftplans" open>
+    <summary class="mobile-action-summary">
+      <span>
+        <span class="mobile-action-title">KI-Schichtplan generieren</span>
+        <span class="mobile-action-meta">Zeitraum und Praeferenzen festlegen</span>
+      </span>
+    </summary>
+    <form data-shiftplan-form>
+      <div class="card-body">
       <div class="panel-header">
         <div>
           <h2 class="panel-title">KI-Schichtplan generieren</h2>
@@ -47,10 +54,11 @@
         <button class="btn btn-primary" type="submit">Plan generieren</button>
         <span class="panel-meta" data-shiftplan-message></span>
       </div>
-    </div>
-  </form>
+      </div>
+    </form>
+  </details>
 
-  <article class="card app-card lg:col-span-12">
+  <article class="card app-card mobile-primary-card lg:col-span-12">
     <div class="card-body">
       <div class="panel-header">
         <div>
