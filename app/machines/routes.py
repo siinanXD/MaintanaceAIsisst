@@ -11,7 +11,7 @@ machines_bp = Blueprint("machines", __name__)
 def parse_required_employees(value):
     """Parse and validate the required employee count for a machine."""
     try:
-        amount = int(value or 1)
+        amount = int(1 if value in (None, "") else value)
     except (TypeError, ValueError) as exc:
         raise ValueError("required_employees must be a number") from exc
     if amount < 1:
