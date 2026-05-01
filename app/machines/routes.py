@@ -3,6 +3,7 @@ from flask import Blueprint, jsonify, request
 from app.extensions import db
 from app.machines.services import answer_machine_assistant, build_machine_history
 from app.models import InventoryMaterial, Machine, ShiftPlanEntry
+from app.responses import error_response, service_error_response
 from app.security import current_user, dashboard_permission_required
 
 
@@ -34,9 +35,9 @@ def create_machine():
     """Create a machine with production output and staffing requirement."""
     data = request.get_json(silent=True) or {}
     if not data.get("name"):
-        return jsonify({"error": "name is required"}), 400
+        return error_response("name is required", 400)
     if Machine.query.filter_by(name=data["name"]).first():
-        return jsonify({"error": "machine already exists"}), 409
+        return error_response("machine already exists", 409)
     try:
         machine = Machine(
             name=data["name"].strip(),
@@ -44,7 +45,7 @@ def create_machine():
             required_employees=parse_required_employees(data.get("required_employees")),
         )
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return error_response(str(exc), 400)
     db.session.add(machine)
     db.session.commit()
     return jsonify(machine.to_dict()), 201
@@ -69,7 +70,7 @@ def machine_assistant(machine_id):
         request.get_json(silent=True) or {},
     )
     if error:
-        return jsonify(error), status
+        return service_error_response(error, status)
     return jsonify(result), status
 
 
@@ -87,7 +88,7 @@ def update_machine(machine_id):
         try:
             machine.required_employees = parse_required_employees(data["required_employees"])
         except ValueError as exc:
-            return jsonify({"error": str(exc)}), 400
+            return error_response(str(exc), 400)
     db.session.commit()
     return jsonify(machine.to_dict())
 

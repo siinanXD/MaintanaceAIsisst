@@ -4,6 +4,7 @@ from flask_jwt_extended import jwt_required
 from app.ai.services import ai_status, answer_chat, daily_briefing, save_chat_message
 from app.extensions import db
 from app.models import AIFeedback, Role
+from app.responses import error_response
 from app.security import current_user, roles_required
 
 
@@ -18,7 +19,7 @@ def chat():
     message = data.get("message", "").strip()
 
     if not message:
-        return jsonify({"error": "message is required"}), 400
+        return error_response("message is required", 400)
 
     user = current_user()
     result = answer_chat(message, user)
@@ -48,11 +49,11 @@ def feedback():
     data = request.get_json(silent=True) or {}
     rating = data.get("rating")
     if rating not in ("helpful", "not_helpful"):
-        return jsonify({"error": "rating must be helpful or not_helpful"}), 400
+        return error_response("rating must be helpful or not_helpful", 400)
     prompt = str(data.get("prompt") or "").strip()
     response = str(data.get("response") or "").strip()
     if not prompt or not response:
-        return jsonify({"error": "prompt and response are required"}), 400
+        return error_response("prompt and response are required", 400)
 
     feedback_entry = AIFeedback(
         user_id=current_user().id,

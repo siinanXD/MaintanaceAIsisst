@@ -10,6 +10,7 @@ from app.errors.services import (
 )
 from app.extensions import db
 from app.models import ErrorEntry
+from app.responses import error_response, service_error_response
 from app.security import (
     current_user,
     dashboard_permission_required,
@@ -35,7 +36,7 @@ def add_error():
     """Create an error catalog entry in an allowed department."""
     entry, error, status = create_error_entry(request.get_json(silent=True) or {}, current_user())
     if error:
-        return jsonify(error), status
+        return service_error_response(error, status)
     return jsonify(entry.to_dict()), status
 
 
@@ -48,7 +49,7 @@ def analyze_error():
         current_user(),
     )
     if error:
-        return jsonify(error), status
+        return service_error_response(error, status)
     return jsonify(analysis)
 
 
@@ -61,7 +62,7 @@ def similar_errors():
         current_user(),
     )
     if error:
-        return jsonify(error), status
+        return service_error_response(error, status)
     return jsonify(result), status
 
 
@@ -79,7 +80,7 @@ def get_error(error_id):
     """Return a visible error catalog entry by id."""
     entry = ErrorEntry.query.get_or_404(error_id)
     if not same_department_or_admin(entry):
-        return jsonify({"error": "Forbidden"}), 403
+        return error_response("Forbidden", 403)
     return jsonify(entry.to_dict())
 
 
@@ -89,14 +90,14 @@ def edit_error(error_id):
     """Update a visible error catalog entry."""
     entry = ErrorEntry.query.get_or_404(error_id)
     if not same_department_or_admin(entry):
-        return jsonify({"error": "Forbidden"}), 403
+        return error_response("Forbidden", 403)
     updated, error, status = update_error_entry(
         entry,
         request.get_json(silent=True) or {},
         current_user(),
     )
     if error:
-        return jsonify(error), status
+        return service_error_response(error, status)
     return jsonify(updated.to_dict())
 
 
@@ -106,7 +107,7 @@ def delete_error(error_id):
     """Delete a visible error catalog entry."""
     entry = ErrorEntry.query.get_or_404(error_id)
     if not same_department_or_admin(entry):
-        return jsonify({"error": "Forbidden"}), 403
+        return error_response("Forbidden", 403)
     db.session.delete(entry)
     db.session.commit()
     return "", 204

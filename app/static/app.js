@@ -56,7 +56,7 @@
     }
     if (response.status === 204) return null;
     const data = await response.json().catch(() => null);
-    if (!response.ok) throw new Error((data && data.error) || "API error");
+    if (!response.ok) throw new Error((data && (data.message || data.error)) || "API error");
     return data;
   }
 

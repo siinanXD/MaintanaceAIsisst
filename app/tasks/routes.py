@@ -4,6 +4,7 @@ from flask import Blueprint, jsonify, request
 
 from app.extensions import db
 from app.models import Priority, Task, TaskStatus
+from app.responses import error_response, service_error_response
 from app.security import (
     current_user,
     dashboard_permission_required,
@@ -37,7 +38,7 @@ def list_tasks():
         if priority:
             query = query.filter(Task.priority == Priority(priority))
     except ValueError:
-        return jsonify({"error": "Invalid status or priority filter"}), 400
+        return error_response("Invalid status or priority filter", 400)
     tasks = query.order_by(Task.due_date.asc(), Task.id.desc()).all()
     return jsonify([task.to_dict() for task in tasks])
 
@@ -48,7 +49,7 @@ def add_task():
     """Create a task in an allowed department."""
     task, error, status = create_task(request.get_json(silent=True) or {}, current_user())
     if error:
-        return jsonify(error), status
+        return service_error_response(error, status)
     return jsonify(task.to_dict()), status
 
 
@@ -59,7 +60,7 @@ def suggest_task():
     data = request.get_json(silent=True) or {}
     suggestion, error, status = suggest_task_from_text(data, current_user())
     if error:
-        return jsonify(error), status
+        return service_error_response(error, status)
     return jsonify(suggestion)
 
 
@@ -72,7 +73,7 @@ def prioritize_tasks():
         current_user(),
     )
     if error:
-        return jsonify(error), status
+        return service_error_response(error, status)
     return jsonify(priorities), status
 
 
@@ -96,7 +97,7 @@ def get_task(task_id):
     """Return a visible task by id."""
     task = Task.query.get_or_404(task_id)
     if not same_department_or_admin(task):
-        return jsonify({"error": "Forbidden"}), 403
+        return error_response("Forbidden", 403)
     return jsonify(task.to_dict())
 
 
@@ -106,10 +107,10 @@ def edit_task(task_id):
     """Update a visible task."""
     task = Task.query.get_or_404(task_id)
     if not same_department_or_admin(task):
-        return jsonify({"error": "Forbidden"}), 403
+        return error_response("Forbidden", 403)
     updated, error, status = update_task(task, request.get_json(silent=True) or {}, current_user())
     if error:
-        return jsonify(error), status
+        return service_error_response(error, status)
     return jsonify(updated.to_dict())
 
 
@@ -117,15 +118,15 @@ def edit_task(task_id):
 @dashboard_permission_required("tasks", "write")
 def start_task_endpoint(task_id):
     """Start a visible task for the current user."""
-    task = Task.query.get(task_id)
+    task = db.session.get(Task, task_id)
     if not task:
-        return jsonify({"error": "Task not found"}), 404
+        return error_response("Task not found", 404)
     if not same_department_or_admin(task):
-        return jsonify({"error": "Forbidden"}), 403
+        return error_response("Forbidden", 403)
 
     updated, error, status = start_task(task, current_user())
     if error:
-        return jsonify(error), status
+        return service_error_response(error, status)
     return jsonify(updated.to_dict()), status
 
 
@@ -133,11 +134,11 @@ def start_task_endpoint(task_id):
 @dashboard_permission_required("tasks", "write")
 def complete_task_endpoint(task_id):
     """Complete a visible task for the current user."""
-    task = Task.query.get(task_id)
+    task = db.session.get(Task, task_id)
     if not task:
-        return jsonify({"error": "Task not found"}), 404
+        return error_response("Task not found", 404)
     if not same_department_or_admin(task):
-        return jsonify({"error": "Forbidden"}), 403
+        return error_response("Forbidden", 403)
 
     updated, document, error, status = complete_task_workflow(
         task,
@@ -145,7 +146,7 @@ def complete_task_endpoint(task_id):
         request.get_json(silent=True) or {},
     )
     if error:
-        return jsonify(error), status
+        return service_error_response(error, status)
     payload = updated.to_dict()
     if document:
         payload["generated_document"] = document.to_dict()
@@ -158,7 +159,7 @@ def delete_task(task_id):
     """Delete a visible task."""
     task = Task.query.get_or_404(task_id)
     if not same_department_or_admin(task):
-        return jsonify({"error": "Forbidden"}), 403
+        return error_response("Forbidden", 403)
     db.session.delete(task)
     db.session.commit()
     return "", 204

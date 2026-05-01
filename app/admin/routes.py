@@ -8,6 +8,7 @@ from app.permissions import (
     serialize_permissions,
     upsert_default_permissions,
 )
+from app.responses import error_response
 from app.security import roles_required
 
 
@@ -30,22 +31,22 @@ def create_user():
     required = ["username", "email", "password", "role"]
     missing = [field for field in required if not data.get(field)]
     if missing:
-        return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
+        return error_response(f"Missing fields: {', '.join(missing)}", 400)
 
     existing_user = User.query.filter(
         (User.username == data["username"]) | (User.email == data["email"])
     ).first()
     if existing_user:
-        return jsonify({"error": "Username or email already exists"}), 409
+        return error_response("Username or email already exists", 409)
 
     try:
         role = parse_role(data.get("role"))
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return error_response(str(exc), 400)
 
     department = find_department(data.get("department_id"), data.get("department"))
     if role != Role.MASTER_ADMIN and not department:
-        return jsonify({"error": "department_id or department is required"}), 400
+        return error_response("department_id or department is required", 400)
 
     user = User(
         username=data["username"],
@@ -77,7 +78,7 @@ def update_user(user_id):
         try:
             user.role = parse_role(data["role"])
         except ValueError as exc:
-            return jsonify({"error": str(exc)}), 400
+            return error_response(str(exc), 400)
     if "department_id" in data or "department" in data:
         user.department = find_department(data.get("department_id"), data.get("department"))
     if "is_active" in data:
@@ -105,7 +106,7 @@ def update_user_permissions(user_id):
     try:
         replace_user_permissions(user, data)
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return error_response(str(exc), 400)
     db.session.commit()
     return jsonify(user.to_dict())
 
@@ -117,7 +118,7 @@ def reset_password(user_id):
     user = User.query.get_or_404(user_id)
     password = (request.get_json(silent=True) or {}).get("password")
     if not password:
-        return jsonify({"error": "password is required"}), 400
+        return error_response("password is required", 400)
     user.set_password(password)
     db.session.commit()
     return jsonify({"message": "Password reset successful"})

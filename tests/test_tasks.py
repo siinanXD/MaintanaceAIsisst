@@ -180,6 +180,57 @@ def test_task_start_and_complete_edgecases(
     assert complete_cancelled_response.status_code == 400
 
 
+def test_task_create_start_complete_workflow(client, make_user, auth_headers):
+    """Verify the public task workflow endpoints match the frontend contract."""
+    user = make_user(
+        username="workflow_create_user",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    headers = auth_headers(user["username"])
+
+    create_response = client.post(
+        "/api/tasks",
+        headers=headers,
+        json={
+            "title": "Workflow Ende zu Ende",
+            "department": "Instandhaltung",
+            "priority": "normal",
+            "status": "open",
+        },
+    )
+    task_id = create_response.get_json()["id"]
+    start_response = client.post(f"/api/tasks/{task_id}/start", headers=headers)
+    complete_response = client.post(
+        f"/api/tasks/{task_id}/complete",
+        headers=headers,
+        json={},
+    )
+
+    assert create_response.status_code == 201
+    assert start_response.status_code == 200
+    assert start_response.get_json()["status"] == "in_progress"
+    assert complete_response.status_code == 200
+    assert complete_response.get_json()["status"] == "done"
+    assert complete_response.get_json()["completed_by"] == user["id"]
+
+
+def test_task_workflow_errors_use_consistent_payload(client, make_user, auth_headers):
+    """Verify workflow errors expose success, message and legacy error fields."""
+    user = make_user(username="workflow_error_shape")
+
+    response = client.post(
+        "/api/tasks/999/start",
+        headers=auth_headers(user["username"]),
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 404
+    assert payload["success"] is False
+    assert payload["message"] == "Task not found"
+    assert payload["error"] == "Task not found"
+
+
 def test_today_tasks_only_returns_current_date(client, make_user, make_task, auth_headers):
     """Verify the today endpoint filters visible tasks by server date."""
     user = make_user(username="today_user")

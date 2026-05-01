@@ -1,14 +1,15 @@
 from functools import wraps
 
-from flask import jsonify
 from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
 
+from app.extensions import db
 from app.models import Role, User
 from app.permissions import (
     get_employee_access_level,
     has_employee_access,
     has_permission,
 )
+from app.responses import error_response
 
 
 def current_user():
@@ -16,7 +17,7 @@ def current_user():
     user_id = get_jwt_identity()
     if not user_id:
         return None
-    return User.query.get(int(user_id))
+    return db.session.get(User, int(user_id))
 
 
 def roles_required(*roles):
@@ -29,7 +30,7 @@ def roles_required(*roles):
             verify_jwt_in_request()
             user = current_user()
             if not user or (not user.is_admin and user.role not in allowed):
-                return jsonify({"error": "Forbidden"}), 403
+                return error_response("Forbidden", 403)
             return fn(*args, **kwargs)
 
         return wrapper
@@ -50,7 +51,7 @@ def dashboard_permission_required(dashboard, action="view"):
             verify_jwt_in_request()
             user = current_user()
             if not has_dashboard_permission(user, dashboard, action):
-                return jsonify({"error": "Forbidden"}), 403
+                return error_response("Forbidden", 403)
             return fn(*args, **kwargs)
 
         return wrapper
@@ -71,7 +72,7 @@ def employee_access_required(required_level):
             verify_jwt_in_request()
             user = current_user()
             if not has_employee_access(user, required_level):
-                return jsonify({"error": "Forbidden"}), 403
+                return error_response("Forbidden", 403)
             return fn(*args, **kwargs)
 
         return wrapper

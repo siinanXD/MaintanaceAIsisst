@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request
 
 from app.extensions import db
 from app.models import ShiftPlan
+from app.responses import service_error_response
 from app.security import (
     current_user,
     dashboard_permission_required,
@@ -30,7 +31,7 @@ def generate():
     """Generate and persist a production shift plan."""
     plan, error, status = generate_shift_plan(request.get_json(silent=True) or {})
     if error:
-        return jsonify(error), status
+        return service_error_response(error, status)
     access_level = employee_access_level(current_user())
     payload = plan.to_dict(access_level)
     payload["warnings"] = getattr(plan, "warnings", [])

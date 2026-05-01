@@ -7,6 +7,7 @@ from werkzeug.utils import secure_filename
 
 from app.extensions import db
 from app.models import Employee, EmployeeDocument
+from app.responses import error_response
 from app.security import (
     current_user,
     dashboard_permission_required,
@@ -51,10 +52,10 @@ def create_employee():
     required = ["personnel_number", "name"]
     missing = [field for field in required if not data.get(field)]
     if missing:
-        return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
+        return error_response(f"Missing fields: {', '.join(missing)}", 400)
 
     if Employee.query.filter_by(personnel_number=data["personnel_number"]).first():
-        return jsonify({"error": "personnel_number already exists"}), 409
+        return error_response("personnel_number already exists", 409)
 
     try:
         employee = Employee(
@@ -73,7 +74,7 @@ def create_employee():
             favorite_machine=data.get("favorite_machine", ""),
         )
     except ValueError:
-        return jsonify({"error": "Invalid birth_date or team"}), 400
+        return error_response("Invalid birth_date or team", 400)
 
     db.session.add(employee)
     db.session.commit()
@@ -110,7 +111,7 @@ def update_employee(employee_id):
         if "team" in data:
             employee.team = int(data["team"]) if data["team"] else None
     except ValueError:
-        return jsonify({"error": "Invalid birth_date or team"}), 400
+        return error_response("Invalid birth_date or team", 400)
 
     db.session.commit()
     return jsonify(employee.to_dict())
@@ -135,7 +136,7 @@ def upload_document(employee_id):
     employee = Employee.query.get_or_404(employee_id)
     file = request.files.get("document")
     if not file or not file.filename:
-        return jsonify({"error": "document file is required"}), 400
+        return error_response("document file is required", 400)
 
     original = secure_filename(file.filename)
     stored = f"{uuid4().hex}_{original}"

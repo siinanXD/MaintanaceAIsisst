@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 
 from app.models import Priority, Role
+from app.services.ai_service import AIServiceError
 
 
 def test_machine_create_rejects_duplicates_and_invalid_staffing(
@@ -633,3 +634,44 @@ def test_machine_assistant_excludes_unpermitted_sources(
         "total": 0,
     }
     assert payload["context"]["forecast_items"] == 0
+
+
+def test_machine_assistant_falls_back_when_ai_provider_fails(
+    client,
+    make_user,
+    make_machine,
+    auth_headers,
+    monkeypatch,
+):
+    """Verify machine assistant returns a local answer when AI provider fails."""
+
+    class FailingProvider:
+        """AI provider stub that always fails."""
+
+        name = "openai"
+
+        def answer_question(self, question, context):
+            """Raise an AI service error for fallback testing."""
+            raise AIServiceError("provider unavailable")
+
+    user = make_user(
+        username="machine_assistant_fallback_user",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    machine_id = make_machine(name="Anlage Fallback")
+    monkeypatch.setattr(
+        "app.machines.services.get_ai_provider",
+        lambda: FailingProvider(),
+    )
+
+    response = client.post(
+        f"/api/machines/{machine_id}/assistant",
+        headers=auth_headers(user["username"]),
+        json={"question": "Was ist zu tun?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["diagnostics"]["status"] == "fallback_used"
+    assert "Anlage Fallback" in payload["answer"]

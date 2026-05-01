@@ -3,6 +3,7 @@ from flask import Blueprint, jsonify, request
 from app.extensions import db
 from app.inventory.services import forecast_inventory_risks
 from app.models import InventoryMaterial, Machine
+from app.responses import error_response, service_error_response
 from app.security import current_user, dashboard_permission_required
 
 
@@ -35,7 +36,7 @@ def machine_for_payload(data):
     """Resolve the optional machine reference from request data."""
     if not data.get("machine_id"):
         return None
-    return Machine.query.get(data["machine_id"])
+    return db.session.get(Machine, int(data["machine_id"]))
 
 
 @inventory_bp.get("")
@@ -55,7 +56,10 @@ def inventory_summary():
         {
             "material_count": len(materials),
             "total_quantity": sum(material.quantity for material in materials),
-            "total_value": round(sum(material.total_value for material in materials), 2),
+            "total_value": round(
+                sum(material.total_value for material in materials),
+                2,
+            ),
             "materials": [material.to_dict() for material in materials],
         }
     )
@@ -71,7 +75,7 @@ def inventory_forecast():
         current_user(),
     )
     if error:
-        return jsonify(error), status
+        return service_error_response(error, status)
     return jsonify(forecast), status
 
 
@@ -81,7 +85,7 @@ def create_material():
     """Create an inventory material and link it to a machine if provided."""
     data = request.get_json(silent=True) or {}
     if not data.get("name"):
-        return jsonify({"error": "name is required"}), 400
+        return error_response("name is required", 400)
     try:
         material = InventoryMaterial(
             name=data["name"].strip(),
@@ -91,7 +95,7 @@ def create_material():
             machine=machine_for_payload(data),
         )
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return error_response(str(exc), 400)
     db.session.add(material)
     db.session.commit()
     return jsonify(material.to_dict()), 201
@@ -115,7 +119,7 @@ def update_material(material_id):
         if "machine_id" in data:
             material.machine = machine_for_payload(data)
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return error_response(str(exc), 400)
     db.session.commit()
     return jsonify(material.to_dict())
 

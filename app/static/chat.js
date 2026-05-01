@@ -187,7 +187,9 @@
       }
       const errorData = await response.json().catch(() => null);
       return {
-        answer: (errorData && errorData.error) || "Die KI-Anfrage konnte gerade nicht verarbeitet werden.",
+        answer: (
+          errorData && (errorData.message || errorData.error)
+        ) || "Die KI-Anfrage konnte gerade nicht verarbeitet werden.",
         diagnostics: { status: "openai_error", fallback_used: true }
       };
     }
