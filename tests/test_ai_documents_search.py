@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+from io import BytesIO
 
 import pytest
 
@@ -40,7 +41,8 @@ def test_ai_chat_rejects_empty_messages(client, make_user, auth_headers):
     )
 
     assert response.status_code == 400
-    assert response.get_json()["error"] == "message is required"
+    assert response.get_json()["error"] == "message_is_required"
+    assert response.get_json()["message"] == "message is required"
 
 
 def test_ai_feedback_validates_rating_and_required_text(
@@ -252,7 +254,7 @@ def test_generated_document_download_uses_temp_storage(
     )
 
     assert list_response.status_code == 200
-    assert list_response.get_json()[0]["id"] == document_id
+    assert list_response.get_json()["data"][0]["id"] == document_id
     assert download_response.status_code == 200
     assert b"report" in download_response.data
 
@@ -347,7 +349,8 @@ def test_document_review_missing_file_returns_404(
     )
 
     assert response.status_code == 404
-    assert response.get_json()["error"] == "Document file not found"
+    assert response.get_json()["error"] == "document_file_not_found"
+    assert response.get_json()["message"] == "Document file not found"
 
 
 def test_document_review_local_fallback_finds_missing_required_fields(
@@ -476,6 +479,53 @@ def test_document_review_scores_complete_report_higher(
         > incomplete_response.get_json()["quality_score"]
     )
     assert complete_response.get_json()["status"] == "good"
+
+
+def test_uploaded_document_check_validates_and_reviews_file(
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify uploaded document checking handles missing, invalid and valid files."""
+    user = make_user(
+        username="document_upload_check",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    headers = auth_headers(user["username"])
+
+    missing_response = client.post("/api/documents/check", headers=headers)
+    invalid_response = client.post(
+        "/api/documents/check",
+        headers=headers,
+        data={"file": (BytesIO(b"binary"), "report.pdf")},
+        content_type="multipart/form-data",
+    )
+    valid_response = client.post(
+        "/api/documents/check",
+        headers=headers,
+        data={
+            "file": (
+                BytesIO(
+                    b"Maschine: Anlage 7\n"
+                    b"Ursache: Sensor verschmutzt\n"
+                    b"Durchgefuehrte Massnahme: Sensor gereinigt\n"
+                    b"Ergebnis: Anlage laeuft\n"
+                    b"Notizen: Nachkontrolle geplant\n"
+                ),
+                "report.txt",
+            ),
+        },
+        content_type="multipart/form-data",
+    )
+
+    payload = valid_response.get_json()
+    assert missing_response.status_code == 400
+    assert invalid_response.status_code == 400
+    assert valid_response.status_code == 200
+    assert payload["success"] is True
+    assert payload["data"]["diagnostics"]["status"] == "local_answer"
+    assert payload["data"]["status"] == "good"
 
 
 def test_documents_page_contains_review_ui(client):

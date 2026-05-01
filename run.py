@@ -7,6 +7,12 @@ from app import create_app
 app = create_app()
 
 
+@app.get("/health")
+def runtime_health_check():
+    """Return a minimal health response for direct run.py and gunicorn probes."""
+    return {"status": "ok"}
+
+
 def debug_enabled():
     """Return whether the local development server should run in debug mode."""
     explicit_debug = os.getenv("FLASK_DEBUG")

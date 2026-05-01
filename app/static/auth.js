@@ -127,7 +127,10 @@
         if (response.status === 401 || response.status === 422) clearSession({ redirect: true });
         return null;
       }
-      const freshUser = await response.json();
+      const responseData = await response.json();
+      const freshUser = responseData && responseData.success === true && Object.prototype.hasOwnProperty.call(responseData, "data")
+        ? responseData.data
+        : responseData;
       window.localStorage.setItem(USER_KEY, JSON.stringify(freshUser));
       updateAuthUi();
       return freshUser;

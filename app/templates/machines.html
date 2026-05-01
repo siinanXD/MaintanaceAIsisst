@@ -72,21 +72,7 @@
         <button class="btn btn-primary" type="submit">Fragen</button>
       </form>
       <div class="ai-response" data-machine-assistant-answer></div>
-      <div class="table-wrap">
-        <table class="table data-table">
-          <thead>
-            <tr>
-              <th>Typ</th>
-              <th>Datum</th>
-              <th>Titel</th>
-              <th>Status</th>
-              <th>Zusammenfassung</th>
-              <th>Link</th>
-            </tr>
-          </thead>
-          <tbody data-machine-history-list></tbody>
-        </table>
-      </div>
+      <div class="timeline-list" data-machine-history-list></div>
     </div>
   </article>
 
@@ -94,23 +80,12 @@
     <div class="card-body">
       <div class="panel-header">
         <div>
-          <h2 class="panel-title">Maschinenliste</h2>
-          <p class="panel-meta">Aktuelle Produktionsanlagen</p>
+          <h2 class="panel-title">Maschinenuebersicht</h2>
+          <p class="panel-meta">Anlagen, Personalbedarf und aktuelle Wartungshinweise</p>
         </div>
+        <span class="badge badge-status is-open" data-machine-count>0 Maschinen</span>
       </div>
-      <div class="table-wrap">
-        <table class="table data-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Produktion</th>
-              <th>Mitarbeiter</th>
-              <th>Aktion</th>
-            </tr>
-          </thead>
-          <tbody data-machine-list></tbody>
-        </table>
-      </div>
+      <div class="resource-card-grid" data-machine-list></div>
     </div>
   </article>
 </section>

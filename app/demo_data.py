@@ -8,6 +8,7 @@ from app.models import (
     Department,
     Employee,
     ErrorEntry,
+    GeneratedDocument,
     InventoryMaterial,
     Machine,
     Priority,
@@ -17,6 +18,7 @@ from app.models import (
     User,
 )
 from app.permissions import upsert_default_permissions
+from app.services.document_service import generate_maintenance_report
 
 
 DEMO_PASSWORD = "Demo1234!"
@@ -217,6 +219,8 @@ def seed_demo_data():
     _seed_inventory(machines)
     _seed_tasks(departments, users)
     _seed_errors(departments)
+    db.session.flush()
+    _seed_documents(users)
     db.session.commit()
     return {
         "users": len(users),
@@ -225,6 +229,7 @@ def seed_demo_data():
         "inventory_materials": InventoryMaterial.query.count(),
         "tasks": Task.query.count(),
         "errors": ErrorEntry.query.count(),
+        "documents": GeneratedDocument.query.count(),
         "password": DEMO_PASSWORD,
     }
 
@@ -349,17 +354,26 @@ def _seed_machines():
 
 def _seed_inventory(machines):
     """Create a realistic inventory with quantities, values, vendors and machine links."""
+    demo_low_stock = {
+        "Dichtungssatz Presse": 0,
+        "Foerdergurt PU": 2,
+        "M8 Sensor induktiv": 3,
+        "Druckluftfilter": 1,
+    }
     for name, unit_cost, quantity, manufacturer, machine_name in INVENTORY_DEFINITIONS:
         material = InventoryMaterial.query.filter_by(name=name, manufacturer=manufacturer).first()
         if not material:
             material = InventoryMaterial(
                 name=name,
                 unit_cost=unit_cost,
-                quantity=quantity,
+                quantity=demo_low_stock.get(name, quantity),
                 manufacturer=manufacturer,
                 machine=machines.get(machine_name),
             )
             db.session.add(material)
+        else:
+            material.quantity = demo_low_stock.get(name, material.quantity)
+            material.machine = machines.get(machine_name)
 
 
 def _seed_tasks(departments, users):
@@ -419,3 +433,43 @@ def _seed_errors(departments):
                 department=department,
             )
             db.session.add(entry)
+
+
+def _seed_documents(users):
+    """Create generated maintenance reports for completed demo tasks."""
+    creator = next(user for user in users if user.role == Role.MASTER_ADMIN)
+    completed_tasks = (
+        Task.query.filter(Task.status == TaskStatus.DONE)
+        .order_by(Task.id.asc())
+        .limit(12)
+        .all()
+    )
+    for task in completed_tasks:
+        existing_document = GeneratedDocument.query.filter_by(task_id=task.id).first()
+        if existing_document:
+            continue
+        machine_name = _machine_name_for_task(task)
+        generate_maintenance_report(
+            task,
+            creator,
+            {
+                "machine": machine_name,
+                "cause": "Regelmaessige Demo-Wartung oder dokumentierte Stoerung.",
+                "action": "Pruefung durchgefuehrt, Befund dokumentiert und Anlage freigegeben.",
+                "result": "Anlage laeuft im Sollbereich.",
+                "notes": "Naechste Kontrolle im Tagesplan vormerken.",
+            },
+        )
+
+
+def _machine_name_for_task(task):
+    """Return a machine name suitable for a demo task report."""
+    task_text = f"{task.title} {task.description}".lower()
+    for machine_name, _produced_item, _required_employees in MACHINE_DEFINITIONS:
+        normalized_machine = machine_name.lower()
+        if normalized_machine in task_text:
+            return machine_name
+        first_token = normalized_machine.split()[0]
+        if len(first_token) > 4 and first_token in task_text:
+            return machine_name
+    return MACHINE_DEFINITIONS[task.id % len(MACHINE_DEFINITIONS)][0]

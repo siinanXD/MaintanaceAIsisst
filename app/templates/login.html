@@ -91,7 +91,10 @@
       return;
     }
 
-    const data = await response.json();
+    const responseData = await response.json();
+    const data = responseData && responseData.success === true && Object.prototype.hasOwnProperty.call(responseData, "data")
+      ? responseData.data
+      : responseData;
     window.localStorage.setItem("maintenance_access_token", data.access_token);
     window.localStorage.setItem("maintenance_user", JSON.stringify(data.user));
     loginMessage.textContent = "Login erfolgreich. Du wirst weitergeleitet...";

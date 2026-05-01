@@ -56,7 +56,10 @@
     }
     if (response.status === 204) return null;
     const data = await response.json().catch(() => null);
-    if (!response.ok) throw new Error((data && (data.message || data.error)) || "API error");
+    if (!response.ok) throw new Error((data && (data.message || data.error)) || "Anfrage konnte nicht verarbeitet werden.");
+    if (data && data.success === true && Object.prototype.hasOwnProperty.call(data, "data")) {
+      return data.data;
+    }
     return data;
   }
 
@@ -175,6 +178,52 @@
     button.textContent = label;
     button.addEventListener("click", onClick);
     return button;
+  }
+
+  function setCountBadge(selector, count, singular, plural) {
+    document.querySelectorAll(selector).forEach((element) => {
+      element.textContent = count + " " + (count === 1 ? singular : plural);
+    });
+  }
+
+  function splitTagText(value) {
+    return String(value || "")
+      .split(/[,;\n]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  function metaTile(label, value) {
+    const item = document.createElement("div");
+    item.className = "resource-metric";
+    const labelElement = document.createElement("span");
+    labelElement.className = "resource-label";
+    labelElement.textContent = label;
+    const valueElement = document.createElement("strong");
+    valueElement.className = "resource-value";
+    valueElement.textContent = value || "-";
+    item.append(labelElement, valueElement);
+    return item;
+  }
+
+  function resourceCard(title, subtitle) {
+    const card = document.createElement("article");
+    card.className = "resource-card";
+    const header = document.createElement("div");
+    header.className = "resource-card-header";
+    const text = document.createElement("div");
+    const titleElement = document.createElement("h3");
+    titleElement.className = "resource-card-title";
+    titleElement.textContent = title || "-";
+    const subtitleElement = document.createElement("p");
+    subtitleElement.className = "resource-card-subtitle";
+    subtitleElement.textContent = subtitle || "";
+    text.append(titleElement, subtitleElement);
+    const badges = document.createElement("div");
+    badges.className = "resource-card-badges";
+    header.append(text, badges);
+    card.append(header);
+    return { card, badges };
   }
 
   function formatDate(value) {
@@ -941,9 +990,44 @@
     async function load() {
       const employees = await api("/api/employees");
       list.innerHTML = "";
+      setCountBadge("[data-employee-count]", employees.length, "Mitarbeitender", "Mitarbeitende");
+      if (!employees.length) {
+        list.innerHTML = '<div class="empty-state">Noch keine Mitarbeitenden erfasst.</div>';
+        return;
+      }
       employees.forEach((employee) => {
-        const docs = document.createElement("div");
-        docs.className = "document-cell";
+        const shiftText = employee.current_shift || employee.shift_model || "Schicht offen";
+        const departmentText = employee.department || "Bereich offen";
+        const { card, badges } = resourceCard(employee.name, employee.personnel_number);
+        badges.appendChild(badge(departmentText, "badge badge-status is-open"));
+        badges.appendChild(badge(shiftText, "badge badge-shift"));
+
+        const meta = document.createElement("div");
+        meta.className = "resource-meta-grid";
+        meta.append(
+          metaTile("Abteilung", departmentText),
+          metaTile("Team", employee.team ? "Team " + employee.team : "Nicht zugeordnet"),
+          metaTile("Schicht", shiftText),
+          metaTile("Maschine", employee.favorite_machine || "Keine bevorzugt")
+        );
+
+        const tags = document.createElement("div");
+        tags.className = "badge-list";
+        const qualifications = splitTagText(employee.qualifications);
+        if (qualifications.length) {
+          qualifications.slice(0, 6).forEach((qualification) => {
+            tags.appendChild(badge(qualification, "badge badge-skill"));
+          });
+        } else {
+          tags.appendChild(badge("Keine Qualifikation hinterlegt", "badge badge-review is-unchecked"));
+        }
+
+        const documentNote = document.createElement("div");
+        documentNote.className = "resource-note";
+        const documentCount = (employee.documents || []).length;
+        documentNote.textContent = documentCount
+          ? documentCount + " Dokument" + (documentCount === 1 ? "" : "e") + " hinterlegt"
+          : "Keine Dokumente hinterlegt";
 
         const links = document.createElement("div");
         links.className = "document-links";
@@ -958,14 +1042,11 @@
           download.className = "btn btn-link btn-sm justify-start px-0";
           links.appendChild(download);
         });
-        if (!(employee.documents || []).length) {
-          const empty = document.createElement("span");
-          empty.className = "panel-meta";
-          empty.textContent = "Keine Dokumente";
-          links.appendChild(empty);
-        }
 
         if (canWrite("employees") && employeeAccessLevel() === "confidential") {
+          const upload = document.createElement("label");
+          upload.className = "resource-upload";
+          upload.textContent = "Dokumente hochladen";
           const input = document.createElement("input");
           input.type = "file";
           input.multiple = true;
@@ -989,22 +1070,13 @@
               input.disabled = false;
             }
           });
-          docs.append(links, input);
-        } else {
-          docs.append(links);
+          upload.appendChild(input);
+          documentNote.appendChild(upload);
         }
+        if ((employee.documents || []).length) documentNote.appendChild(links);
 
-        list.appendChild(row([
-          employee.personnel_number,
-          employee.name,
-          employee.department,
-          employee.current_shift || employee.shift_model,
-          employee.team ? "Team " + employee.team : "-",
-          employee.salary_group || "-",
-          employee.qualifications || "-",
-          employee.favorite_machine || "-",
-          docs
-        ]));
+        card.append(meta, tags, documentNote);
+        list.appendChild(card);
       });
     }
 
@@ -1091,17 +1163,31 @@
       renderHistoryCounts(history.source_counts || {});
       historyList.innerHTML = "";
       if (!history.timeline || !history.timeline.length) {
-        historyList.innerHTML = '<tr><td colspan="6">Keine Historie gefunden.</td></tr>';
+        historyList.innerHTML = '<div class="empty-state">Keine Historie gefunden.</div>';
       } else {
-        history.timeline.forEach((item) => {
-          historyList.appendChild(row([
-            item.type,
-            item.date ? new Date(item.date).toLocaleString("de-DE") : "-",
-            item.title,
-            item.status,
-            item.summary,
-            historyLink(item)
-          ]));
+        history.timeline.slice(0, 12).forEach((item) => {
+          const timelineItem = document.createElement("article");
+          timelineItem.className = "timeline-item";
+          const header = document.createElement("div");
+          header.className = "timeline-item-header";
+          const text = document.createElement("div");
+          const title = document.createElement("h3");
+          title.className = "timeline-title";
+          title.textContent = item.title || "-";
+          const date = document.createElement("p");
+          date.className = "panel-meta";
+          date.textContent = item.date ? new Date(item.date).toLocaleString("de-DE") : "-";
+          text.append(title, date);
+          header.append(text, badge(item.type, "badge badge-status is-open"));
+          const summary = document.createElement("p");
+          summary.className = "timeline-summary";
+          summary.textContent = item.summary || "Kein Detailtext hinterlegt.";
+          const actions = document.createElement("div");
+          actions.className = "resource-actions";
+          const link = historyLink(item);
+          if (link instanceof Node) actions.appendChild(link);
+          timelineItem.append(header, summary, actions);
+          historyList.appendChild(timelineItem);
         });
       }
       historyPanel.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1150,26 +1236,100 @@
       });
     }
 
+    function updateMachineCardHistory(card, history) {
+      const counts = history.source_counts || {};
+      const timeline = history.timeline || [];
+      const openTasks = timeline.filter((item) => (
+        item.type === "task" && !["done", "cancelled"].includes(item.status)
+      ));
+      const statusBadge = card.querySelector("[data-machine-status]");
+      if (statusBadge) {
+        const hasWarnings = openTasks.length || counts.errors;
+        statusBadge.className = hasWarnings
+          ? "badge badge-review is-warning"
+          : "badge badge-review is-checked";
+        statusBadge.textContent = hasWarnings ? "Hinweise" : "Stabil";
+      }
+
+      const lastMaintenance = card.querySelector("[data-machine-last-maintenance]");
+      if (lastMaintenance) {
+        const latest = timeline.find((item) => item.type === "document" || item.type === "task");
+        lastMaintenance.textContent = latest && latest.date
+          ? new Date(latest.date).toLocaleDateString("de-DE")
+          : "Keine Historie";
+      }
+
+      const openTaskElement = card.querySelector("[data-machine-open-tasks]");
+      if (openTaskElement) {
+        openTaskElement.textContent = openTasks.length
+          ? openTasks.length + " offen"
+          : "Keine offenen Tasks";
+      }
+
+      const note = card.querySelector("[data-machine-note]");
+      if (note) {
+        note.textContent = history.summary && history.summary.text
+          ? history.summary.text
+          : "Keine Wartungshinweise verfuegbar.";
+      }
+    }
+
+    function renderMachineCard(machine) {
+      const { card, badges } = resourceCard(machine.name, machine.produced_item || "Produktion nicht hinterlegt");
+      const status = badge("Historie offen", "badge badge-review is-unchecked");
+      status.dataset.machineStatus = "true";
+      badges.append(status, badge(machine.required_employees + " MA", "badge badge-machine"));
+
+      const meta = document.createElement("div");
+      meta.className = "resource-meta-grid";
+      const lastMaintenance = metaTile("Letzte Wartung", "Wird geladen");
+      lastMaintenance.querySelector("strong").dataset.machineLastMaintenance = "true";
+      const openTasks = metaTile("Offene Tasks", "Wird geladen");
+      openTasks.querySelector("strong").dataset.machineOpenTasks = "true";
+      meta.append(
+        metaTile("Bereich", machine.produced_item || "Nicht angegeben"),
+        metaTile("Personalbedarf", machine.required_employees + " Mitarbeitende"),
+        lastMaintenance,
+        openTasks
+      );
+
+      const note = document.createElement("p");
+      note.className = "resource-note";
+      note.dataset.machineNote = "true";
+      note.textContent = "Historie wird geladen.";
+
+      const actions = document.createElement("div");
+      actions.className = "resource-actions";
+      actions.appendChild(actionButton("Historie", () => loadMachineHistory(machine)));
+      if (canWrite("machines")) {
+        actions.appendChild(actionButton("Loeschen", async () => {
+          if (!window.confirm(machine.name + " wirklich loeschen?")) return;
+          await api("/api/machines/" + machine.id, { method: "DELETE" });
+          await load();
+        }, true));
+      }
+
+      card.append(meta, note, actions);
+      return card;
+    }
+
     async function load() {
       const machines = await api("/api/machines");
       list.innerHTML = "";
+      setCountBadge("[data-machine-count]", machines.length, "Maschine", "Maschinen");
+      if (!machines.length) {
+        list.innerHTML = '<div class="empty-state">Noch keine Maschinen erfasst.</div>';
+        return;
+      }
       machines.forEach((machine) => {
-        const actions = document.createElement("div");
-        actions.className = "table-actions";
-        actions.appendChild(actionButton("Historie", () => loadMachineHistory(machine)));
-        if (canWrite("machines")) {
-          actions.appendChild(actionButton("Loeschen", async () => {
-            if (!window.confirm(machine.name + " wirklich loeschen?")) return;
-            await api("/api/machines/" + machine.id, { method: "DELETE" });
-            await load();
-          }, true));
-        }
-        list.appendChild(row([
-          machine.name,
-          machine.produced_item,
-          String(machine.required_employees),
-          actions
-        ]));
+        const card = renderMachineCard(machine);
+        list.appendChild(card);
+        api("/api/machines/" + machine.id + "/history")
+          .then((history) => updateMachineCardHistory(card, history))
+          .catch(() => {
+            const note = card.querySelector("[data-machine-note]");
+            if (note) note.textContent = "Historie konnte nicht geladen werden.";
+          });
       });
     }
 
@@ -2284,13 +2444,18 @@
     const list = document.querySelector("[data-document-list]");
     const form = document.querySelector("[data-document-filter-form]");
     const reset = document.querySelector("[data-document-filter-reset]");
+    const uploadCheckForm = document.querySelector("[data-document-upload-check-form]");
+    const uploadCheckMessage = document.querySelector("[data-document-upload-check-message]");
     const reviewPanel = document.querySelector("[data-document-review-panel]");
     const reviewSummary = document.querySelector("[data-document-review-summary]");
     const reviewScore = document.querySelector("[data-document-review-score]");
     const reviewStatus = document.querySelector("[data-document-review-status]");
+    const reviewSource = document.querySelector("[data-document-review-source]");
+    const reviewStatusBadge = document.querySelector("[data-document-review-status-badge]");
     const reviewFindings = document.querySelector("[data-document-review-findings]");
     const reviewRecommendations = document.querySelector("[data-document-review-recommendations]");
     if (!list || !form || !token()) return;
+    const reviewStateByDocument = new Map();
 
     function reviewStatusLabel(status) {
       if (status === "good") return "Gut";
@@ -2298,39 +2463,173 @@
       return "Unvollstaendig";
     }
 
-    function renderDocumentReview(review) {
+    function reviewBadgeInfo(review) {
+      if (!review) {
+        return { label: "ungeprueft", className: "badge badge-review is-unchecked" };
+      }
+      const critical = (review.findings || []).some((finding) => finding.severity === "critical");
+      if (critical || review.status === "incomplete") {
+        return { label: "Warnungen gefunden", className: "badge badge-review is-critical" };
+      }
+      if ((review.findings || []).length || review.status === "needs_review") {
+        return { label: "geprueft mit Hinweisen", className: "badge badge-review is-warning" };
+      }
+      return { label: "geprueft", className: "badge badge-review is-checked" };
+    }
+
+    function scoreBadgeInfo(review) {
+      if (!review) {
+        return { label: "ungeprueft", className: "badge badge-review is-unchecked" };
+      }
+      const critical = (review.findings || []).some((finding) => finding.severity === "critical");
+      if (critical || review.status === "incomplete") {
+        return { label: "Fehler", className: "badge badge-review is-critical" };
+      }
+      if ((review.findings || []).length || review.status === "needs_review") {
+        return { label: "Warnungen", className: "badge badge-review is-warning" };
+      }
+      return { label: "bestanden", className: "badge badge-review is-checked" };
+    }
+
+    function documentTypeLabel(type) {
+      if (type === "maintenance_report") return "Bericht";
+      if (type === "uploaded_document") return "Upload";
+      return type || "Dokument";
+    }
+
+    function allowedUploadExtension(filename) {
+      return [".html", ".htm", ".txt"].some((extension) => (
+        String(filename || "").toLowerCase().endsWith(extension)
+      ));
+    }
+
+    function documentReviewSource(review, fallback) {
+      if (fallback) return fallback;
+      if (review && review.document && review.document.source === "upload") return "Upload";
+      if (review && review.document && review.document.document_type) {
+        return documentTypeLabel(review.document.document_type);
+      }
+      return "Dokument";
+    }
+
+    function fieldValue(fields, names) {
+      const source = fields || {};
+      for (const name of names) {
+        const value = source[name];
+        if (value && value !== "-") return value;
+      }
+      return "";
+    }
+
+    function fieldChecklistItem(title, value) {
+      if (!value) {
+        return reviewChecklistItem(title, "Keine Angabe erkannt.", "warning");
+      }
+      return reviewChecklistItem(title, value, "good");
+    }
+
+    function missingSummary(review) {
+      const findings = review.findings || [];
+      if (!findings.length) return "Keine fehlenden Pflichtangaben gefunden.";
+      return findings
+        .map((finding) => finding.field + ": " + finding.message)
+        .join(" | ");
+    }
+
+    function reviewChecklistItem(title, message, severity) {
+      const item = document.createElement("article");
+      item.className = "review-check-item is-" + (severity || "good");
+      const marker = document.createElement("span");
+      marker.className = "review-check-marker";
+      marker.textContent = severity === "critical" ? "!" : severity === "warning" ? "?" : "OK";
+      const content = document.createElement("div");
+      content.className = "review-check-content";
+      const titleElement = document.createElement("strong");
+      titleElement.textContent = title || "Allgemein";
+      const messageElement = document.createElement("span");
+      messageElement.textContent = message || "Keine Hinweise gefunden.";
+      content.append(titleElement, messageElement);
+      item.append(marker, content);
+      return item;
+    }
+
+    function renderReviewChecklist(review) {
+      const fields = review.extracted_fields || {};
+      reviewFindings.innerHTML = "";
+      reviewFindings.append(
+        fieldChecklistItem("Erkannte Maschine", fieldValue(fields, ["Maschine", "Anlage"])),
+        fieldChecklistItem(
+          "Erkannter Fehler",
+          fieldValue(fields, ["Fehler", "Fehlercode", "Task-Titel", "Beschreibung"]),
+        ),
+        fieldChecklistItem("Moegliche Ursache", fieldValue(fields, ["Ursache", "Moegliche Ursache", "Moegliche Ursachen"])),
+        fieldChecklistItem(
+          "Vorgeschlagene Massnahme",
+          fieldValue(fields, ["Durchgefuehrte Massnahme", "Massnahme", "Massnahmen", "Loesung", "Solution"]),
+        ),
+        reviewChecklistItem(
+          "Fehlende Angaben",
+          missingSummary(review),
+          (review.findings || []).length ? "critical" : "good",
+        ),
+      );
+    }
+
+    function renderDocumentReview(review, sourceLabel) {
       if (!reviewPanel || !reviewFindings) return;
       reviewPanel.hidden = false;
       if (reviewSummary) {
-        reviewSummary.textContent = "Pruefung fuer " + review.document.title;
+        const documentTitle = review.document && review.document.title
+          ? review.document.title
+          : "ausgewaehltes Dokument";
+        reviewSummary.textContent = "Pruefung fuer " + documentTitle;
       }
       if (reviewScore) reviewScore.textContent = String(review.quality_score);
       if (reviewStatus) reviewStatus.textContent = reviewStatusLabel(review.status);
-      reviewFindings.innerHTML = "";
-      if (!review.findings.length) {
-        reviewFindings.innerHTML = '<tr><td colspan="3">Keine Findings gefunden.</td></tr>';
-      } else {
-        review.findings.forEach((finding) => {
-          reviewFindings.appendChild(row([
-            finding.field,
-            finding.severity,
-            finding.message
-          ]));
-        });
+      if (reviewSource) reviewSource.textContent = documentReviewSource(review, sourceLabel);
+      if (reviewStatusBadge) {
+        const info = scoreBadgeInfo(review);
+        reviewStatusBadge.className = info.className;
+        reviewStatusBadge.textContent = info.label;
       }
+      renderReviewChecklist(review);
       if (reviewRecommendations) {
-        reviewRecommendations.textContent = review.recommendations.length
-          ? "Empfehlungen: " + review.recommendations.join(" | ")
+        const recommendations = review.recommendations || [];
+        reviewRecommendations.textContent = recommendations.length
+          ? "Empfehlungen: " + recommendations.join(" | ")
           : "Keine Empfehlungen erforderlich.";
       }
       reviewPanel.scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
     async function reviewDocument(documentItem) {
-      const review = await api("/api/documents/" + documentItem.id + "/review", {
-        method: "POST"
+      try {
+        const review = await api("/api/documents/" + documentItem.id + "/review", {
+          method: "POST"
+        });
+        reviewStateByDocument.set(documentItem.id, review);
+        renderDocumentReview(review, "Gespeicherter Bericht");
+        await load();
+      } catch (error) {
+        setStatusMessage(uploadCheckMessage, error.message || "Dokumentpruefung fehlgeschlagen.", true);
+      }
+    }
+
+    async function checkUploadedDocument(file) {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch("/api/documents/check", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + token() },
+        body: formData
       });
-      renderDocumentReview(review);
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error((payload && (payload.message || payload.error)) || "Dokument konnte nicht geprueft werden.");
+      }
+      return payload && payload.success === true && Object.prototype.hasOwnProperty.call(payload, "data")
+        ? payload.data
+        : payload;
     }
 
     async function downloadDocument(documentItem) {
@@ -2347,6 +2646,44 @@
       window.URL.revokeObjectURL(url);
     }
 
+    function renderDocumentCard(documentItem) {
+      const review = reviewStateByDocument.get(documentItem.id);
+      const { card, badges } = resourceCard(documentItem.title, "Task " + documentItem.task_id);
+      const reviewInfo = reviewBadgeInfo(review);
+      badges.appendChild(badge(reviewInfo.label, reviewInfo.className));
+      badges.appendChild(badge(documentTypeLabel(documentItem.document_type), "badge badge-status is-open"));
+
+      const meta = document.createElement("div");
+      meta.className = "resource-meta-grid";
+      meta.append(
+        metaTile("Bereich", documentItem.department || "Nicht angegeben"),
+        metaTile("Maschine", documentItem.machine || "Nicht angegeben"),
+        metaTile("Erstellt", new Date(documentItem.created_at).toLocaleString("de-DE")),
+        metaTile("Pruefscore", review ? String(review.quality_score) : "Noch offen")
+      );
+
+      const note = document.createElement("p");
+      note.className = "resource-note";
+      if (!review) {
+        note.textContent = "Dieses Dokument wurde in dieser Sitzung noch nicht geprueft.";
+      } else if (review.findings && review.findings.length) {
+        note.textContent = review.findings.length + " Hinweis" + (review.findings.length === 1 ? "" : "e") + " gefunden.";
+      } else {
+        note.textContent = "Die letzte Pruefung hat keine Findings gefunden.";
+      }
+
+      const actions = document.createElement("div");
+      actions.className = "resource-actions";
+      actions.appendChild(actionButton("Pruefen", async () => {
+        await reviewDocument(documentItem);
+      }));
+      actions.appendChild(actionButton("Download", async () => {
+        await downloadDocument(documentItem);
+      }));
+      card.append(meta, note, actions);
+      return card;
+    }
+
     async function load() {
       const params = new URLSearchParams();
       new FormData(form).forEach((value, key) => {
@@ -2355,27 +2692,13 @@
       const suffix = params.toString() ? "?" + params.toString() : "";
       const documents = await api("/api/documents" + suffix);
       list.innerHTML = "";
+      setCountBadge("[data-document-count]", documents.length, "Dokument", "Dokumente");
       if (!documents.length) {
-        list.innerHTML = '<tr><td colspan="6">Keine Dokumente gefunden.</td></tr>';
+        list.innerHTML = '<div class="empty-state">Keine Dokumente gefunden.</div>';
         return;
       }
       documents.forEach((documentItem) => {
-        const actions = document.createElement("div");
-        actions.className = "table-actions";
-        actions.appendChild(actionButton("Pruefen", async () => {
-          await reviewDocument(documentItem);
-        }));
-        actions.appendChild(actionButton("Download", async () => {
-          await downloadDocument(documentItem);
-        }));
-        list.appendChild(row([
-          documentItem.title,
-          String(documentItem.task_id),
-          documentItem.department,
-          documentItem.machine,
-          new Date(documentItem.created_at).toLocaleString("de-DE"),
-          actions
-        ]));
+        list.appendChild(renderDocumentCard(documentItem));
       });
     }
 
@@ -2388,6 +2711,34 @@
       reset.addEventListener("click", async () => {
         form.reset();
         await load();
+      });
+    }
+
+    if (uploadCheckForm) {
+      uploadCheckForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const fileInput = uploadCheckForm.querySelector("input[type='file']");
+        const file = fileInput && fileInput.files ? fileInput.files[0] : null;
+        if (!file) {
+          setStatusMessage(uploadCheckMessage, "Bitte zuerst eine Datei auswaehlen.", true);
+          return;
+        }
+        if (!allowedUploadExtension(file.name)) {
+          setStatusMessage(uploadCheckMessage, "Dateityp nicht unterstuetzt. Bitte HTML, HTM oder TXT verwenden.", true);
+          return;
+        }
+        setStatusMessage(uploadCheckMessage, "Dokument wird geprueft...");
+        try {
+          const review = await checkUploadedDocument(file);
+          renderDocumentReview(review, "Upload");
+          setStatusMessage(uploadCheckMessage, "Dokumentpruefung abgeschlossen.");
+        } catch (error) {
+          setStatusMessage(
+            uploadCheckMessage,
+            error.message || "Serverfehler bei der Dokumentpruefung.",
+            true,
+          );
+        }
       });
     }
 

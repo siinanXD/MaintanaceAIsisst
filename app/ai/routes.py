@@ -1,10 +1,10 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
 
 from app.ai.services import ai_status, answer_chat, daily_briefing, save_chat_message
 from app.extensions import db
 from app.models import AIFeedback, Role
-from app.responses import error_response
+from app.responses import error_response, success_response
 from app.security import current_user, roles_required
 
 
@@ -25,21 +25,21 @@ def chat():
     result = answer_chat(message, user)
     save_chat_message(user, message, result["answer"])
 
-    return jsonify(result)
+    return success_response(result, message="AI response generated")
 
 
 @ai_bp.get("/status")
 @roles_required(Role.MASTER_ADMIN)
 def status():
     """Return redacted AI configuration and last-error status."""
-    return jsonify(ai_status())
+    return success_response(ai_status(), message="AI status loaded")
 
 
 @ai_bp.get("/daily-briefing")
 @jwt_required()
 def briefing():
     """Return a daily maintenance briefing for the current user."""
-    return jsonify(daily_briefing(current_user()))
+    return success_response(daily_briefing(current_user()), message="Daily briefing loaded")
 
 
 @ai_bp.post("/feedback")
@@ -64,4 +64,8 @@ def feedback():
     )
     db.session.add(feedback_entry)
     db.session.commit()
-    return jsonify(feedback_entry.to_dict()), 201
+    return success_response(
+        feedback_entry.to_dict(),
+        201,
+        "Feedback saved",
+    )

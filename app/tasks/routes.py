@@ -4,7 +4,7 @@ from flask import Blueprint, jsonify, request
 
 from app.extensions import db
 from app.models import Priority, Task, TaskStatus
-from app.responses import error_response, service_error_response
+from app.responses import error_response, service_error_response, success_response
 from app.security import (
     current_user,
     dashboard_permission_required,
@@ -61,7 +61,7 @@ def suggest_task():
     suggestion, error, status = suggest_task_from_text(data, current_user())
     if error:
         return service_error_response(error, status)
-    return jsonify(suggestion)
+    return success_response(suggestion, message="Task suggestion generated")
 
 
 @tasks_bp.post("/prioritize")
@@ -74,7 +74,7 @@ def prioritize_tasks():
     )
     if error:
         return service_error_response(error, status)
-    return jsonify(priorities), status
+    return success_response(priorities, status, "Task priorities loaded")
 
 
 @tasks_bp.get("/today")
@@ -127,7 +127,7 @@ def start_task_endpoint(task_id):
     updated, error, status = start_task(task, current_user())
     if error:
         return service_error_response(error, status)
-    return jsonify(updated.to_dict()), status
+    return success_response(updated.to_dict(), status, "Task started")
 
 
 @tasks_bp.post("/<int:task_id>/complete")
@@ -150,7 +150,7 @@ def complete_task_endpoint(task_id):
     payload = updated.to_dict()
     if document:
         payload["generated_document"] = document.to_dict()
-    return jsonify(payload), status
+    return success_response(payload, status, "Task completed")
 
 
 @tasks_bp.delete("/<int:task_id>")

@@ -103,28 +103,12 @@
     <div class="card-body">
       <div class="panel-header">
         <div>
-          <h2 class="panel-title">Mitarbeiterliste</h2>
-          <p class="panel-meta">Dokumente koennen direkt pro Person hochgeladen werden</p>
+          <h2 class="panel-title">Mitarbeiteruebersicht</h2>
+          <p class="panel-meta">Schicht, Qualifikationen und Dokumentenstatus pro Person</p>
         </div>
+        <span class="badge badge-status is-open" data-employee-count>0 Mitarbeitende</span>
       </div>
-      <div class="table-wrap">
-        <table class="table data-table">
-          <thead>
-            <tr>
-              <th>Personalnr.</th>
-              <th>Name</th>
-              <th>Abteilung</th>
-              <th>Schicht</th>
-              <th>Team</th>
-              <th>Gehaltsklasse</th>
-              <th>Qualifikationen</th>
-              <th>Favoritenmaschine</th>
-              <th>Dokumente</th>
-            </tr>
-          </thead>
-          <tbody data-employee-list></tbody>
-        </table>
-      </div>
+      <div class="resource-card-grid" data-employee-list></div>
     </div>
   </article>
 </section>

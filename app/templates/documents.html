@@ -58,6 +58,30 @@
     </form>
   </details>
 
+  <article class="card app-card lg:col-span-12">
+    <form data-document-upload-check-form>
+      <div class="card-body">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">Upload pruefen</h2>
+            <p class="panel-meta">HTML- oder TXT-Bericht pruefen, ohne ihn zu speichern</p>
+          </div>
+          <span class="badge badge-ai">Pruefung</span>
+        </div>
+        <div class="upload-check-panel">
+          <div class="field">
+            <label for="document-check-file">Dokument</label>
+            <input class="input input-bordered" id="document-check-file" name="file" type="file" accept=".html,.htm,.txt,text/html,text/plain">
+          </div>
+          <div class="toolbar">
+            <button class="btn btn-primary" type="submit">Dokument pruefen</button>
+            <span class="panel-meta" data-document-upload-check-message></span>
+          </div>
+        </div>
+      </div>
+    </form>
+  </article>
+
   <article class="card app-card lg:col-span-12" data-document-review-panel hidden>
     <div class="card-body">
       <div class="panel-header">
@@ -65,29 +89,23 @@
           <h2 class="panel-title">Dokumentpruefung</h2>
           <p class="panel-meta" data-document-review-summary>Bericht pruefen, um fehlende oder schwache Angaben zu erkennen.</p>
         </div>
+        <span class="badge badge-status is-open" data-document-review-status-badge>ungeprueft</span>
       </div>
-      <div class="stats-list">
-        <div class="stat-row">
-          <span>Score</span>
+      <div class="review-score-card">
+        <div>
+          <span class="resource-label">Qualitaetsscore</span>
           <strong data-document-review-score>-</strong>
         </div>
-        <div class="stat-row">
-          <span>Status</span>
+        <div>
+          <span class="resource-label">Status</span>
           <strong data-document-review-status>-</strong>
         </div>
+        <div>
+          <span class="resource-label">Quelle</span>
+          <strong data-document-review-source>-</strong>
+        </div>
       </div>
-      <div class="table-wrap">
-        <table class="table data-table">
-          <thead>
-            <tr>
-              <th>Feld</th>
-              <th>Schweregrad</th>
-              <th>Hinweis</th>
-            </tr>
-          </thead>
-          <tbody data-document-review-findings></tbody>
-        </table>
-      </div>
+      <div class="review-checklist" data-document-review-findings></div>
       <div class="panel-meta" data-document-review-recommendations></div>
     </div>
   </article>
@@ -97,24 +115,11 @@
       <div class="panel-header">
         <div>
           <h2 class="panel-title">Generierte Dokumente</h2>
-          <p class="panel-meta">HTML-Berichte aus abgeschlossenen Tasks</p>
+          <p class="panel-meta">HTML-Berichte aus abgeschlossenen Tasks mit Review-Status</p>
         </div>
+        <span class="badge badge-status is-open" data-document-count>0 Dokumente</span>
       </div>
-      <div class="table-wrap">
-        <table class="table data-table">
-          <thead>
-            <tr>
-              <th>Titel</th>
-              <th>Task</th>
-              <th>Bereich</th>
-              <th>Maschine</th>
-              <th>Erstellt</th>
-              <th>Aktion</th>
-            </tr>
-          </thead>
-          <tbody data-document-list></tbody>
-        </table>
-      </div>
+      <div class="resource-card-grid" data-document-list></div>
     </div>
   </article>
 </section>

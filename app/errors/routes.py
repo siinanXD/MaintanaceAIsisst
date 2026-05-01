@@ -10,7 +10,7 @@ from app.errors.services import (
 )
 from app.extensions import db
 from app.models import ErrorEntry
-from app.responses import error_response, service_error_response
+from app.responses import error_response, service_error_response, success_response
 from app.security import (
     current_user,
     dashboard_permission_required,
@@ -50,7 +50,7 @@ def analyze_error():
     )
     if error:
         return service_error_response(error, status)
-    return jsonify(analysis)
+    return success_response(analysis, message="Error analysis generated")
 
 
 @errors_bp.post("/similar")
@@ -63,7 +63,7 @@ def similar_errors():
     )
     if error:
         return service_error_response(error, status)
-    return jsonify(result), status
+    return success_response(result, status, "Similar errors loaded")
 
 
 @errors_bp.get("/search")

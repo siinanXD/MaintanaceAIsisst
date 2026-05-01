@@ -194,7 +194,10 @@
       };
     }
 
-    const data = await response.json();
+    const responseData = await response.json();
+    const data = responseData && responseData.success === true && Object.prototype.hasOwnProperty.call(responseData, "data")
+      ? responseData.data
+      : responseData;
     const diagnostics = data.diagnostics || {};
     let answer = data.answer || "Ich habe keine Antwort erhalten.";
 

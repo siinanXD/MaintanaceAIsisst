@@ -30,6 +30,13 @@
   body.high-contrast .cockpit-task-card,
   body.high-contrast .task-card,
   body.high-contrast .stat-row,
+  body.high-contrast .resource-card,
+  body.high-contrast .resource-metric,
+  body.high-contrast .resource-note,
+  body.high-contrast .upload-check-panel,
+  body.high-contrast .review-score-card,
+  body.high-contrast .timeline-item,
+  body.high-contrast .review-check-item,
   body.high-contrast .shiftplan-card,
   body.high-contrast .shift-calendar-day,
   body.high-contrast .table-wrap,
@@ -51,7 +58,11 @@
   body.high-contrast .task-card-description,
   body.high-contrast .cockpit-task-meta,
   body.high-contrast .shift-calendar-time,
-  body.high-contrast .shift-calendar-meta {
+  body.high-contrast .shift-calendar-meta,
+  body.high-contrast .resource-card-subtitle,
+  body.high-contrast .resource-label,
+  body.high-contrast .resource-value,
+  body.high-contrast .timeline-summary {
     @apply text-slate-200;
   }
 
@@ -671,6 +682,158 @@
 
   .task-card-grid {
     @apply grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4 xl:grid-cols-3;
+  }
+
+  .resource-card-grid {
+    @apply grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4 xl:grid-cols-3;
+  }
+
+  .resource-card {
+    @apply flex min-h-64 flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-lg hover:shadow-blue-950/5;
+  }
+
+  .resource-card-header {
+    @apply flex flex-col items-start gap-3 sm:flex-row sm:justify-between;
+  }
+
+  .resource-card-title {
+    @apply text-base font-black leading-6 text-slate-950;
+  }
+
+  .resource-card-subtitle {
+    @apply mt-1 text-sm leading-5 text-slate-500;
+  }
+
+  .resource-card-badges {
+    @apply flex max-w-full shrink-0 flex-wrap justify-start gap-2 sm:justify-end;
+  }
+
+  .resource-meta-grid {
+    @apply mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2;
+  }
+
+  .resource-metric {
+    @apply rounded-2xl border border-slate-200 bg-slate-50 p-3;
+  }
+
+  .resource-label {
+    @apply block text-xs font-black uppercase tracking-wide text-slate-500;
+  }
+
+  .resource-value {
+    @apply mt-1 block break-words text-sm font-semibold leading-5 text-slate-800;
+  }
+
+  .resource-note {
+    @apply mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-600;
+  }
+
+  .resource-actions {
+    @apply mt-auto flex flex-wrap gap-2 pt-4;
+  }
+
+  .resource-upload {
+    @apply mt-3 w-full rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-sm text-slate-600;
+  }
+
+  .resource-upload input {
+    @apply mt-2 text-xs;
+  }
+
+  .upload-check-panel {
+    @apply grid grid-cols-1 gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end;
+  }
+
+  .badge-list {
+    @apply mt-4 flex flex-wrap gap-2;
+  }
+
+  .badge-skill {
+    @apply border-cyan-200 bg-cyan-50 text-cyan-700;
+  }
+
+  .badge-shift {
+    @apply border-indigo-200 bg-indigo-50 text-indigo-700;
+  }
+
+  .badge-machine {
+    @apply border-blue-200 bg-blue-50 text-blue-700;
+  }
+
+  .badge-review.is-unchecked {
+    @apply border-slate-200 bg-slate-100 text-slate-700;
+  }
+
+  .badge-review.is-checked {
+    @apply border-green-200 bg-green-50 text-green-700;
+  }
+
+  .badge-review.is-warning {
+    @apply border-amber-200 bg-amber-50 text-amber-800;
+  }
+
+  .badge-review.is-critical {
+    @apply border-red-200 bg-red-50 text-red-700;
+  }
+
+  .timeline-list {
+    @apply mt-5 grid grid-cols-1 gap-3 md:grid-cols-2;
+  }
+
+  .timeline-item {
+    @apply rounded-2xl border border-slate-200 bg-slate-50 p-4;
+  }
+
+  .timeline-item-header {
+    @apply flex items-start justify-between gap-3;
+  }
+
+  .timeline-title {
+    @apply text-sm font-black leading-5 text-slate-950;
+  }
+
+  .timeline-summary {
+    @apply mt-2 text-sm leading-6 text-slate-600;
+  }
+
+  .review-checklist {
+    @apply mt-5 grid grid-cols-1 gap-3;
+  }
+
+  .review-score-card {
+    @apply grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-3;
+  }
+
+  .review-score-card strong {
+    @apply mt-1 block text-2xl font-black text-slate-950;
+  }
+
+  .review-check-item {
+    @apply flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4;
+  }
+
+  .review-check-marker {
+    @apply mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full border border-slate-300 bg-white text-sm font-black text-slate-600;
+  }
+
+  .review-check-item.is-good .review-check-marker {
+    @apply border-green-200 bg-green-50 text-green-700;
+  }
+
+  .review-check-item.is-warning .review-check-marker {
+    @apply border-amber-200 bg-amber-50 text-amber-800;
+  }
+
+  .review-check-item.is-critical .review-check-marker {
+    @apply border-red-200 bg-red-50 text-red-700;
+  }
+
+  .review-check-content strong {
+    @apply block text-sm font-black text-slate-950;
+  }
+
+  .review-check-content span {
+    @apply mt-1 block text-sm leading-6 text-slate-600;
   }
 
   .task-card,
