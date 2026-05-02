@@ -214,14 +214,18 @@ class ErrorEntry(db.Model):
     possible_causes = db.Column(db.Text, nullable=False, default="")
     solution = db.Column(db.Text, nullable=False, default="")
     department_id = db.Column(db.Integer, db.ForeignKey("department.id"), nullable=False)
+    machine_id = db.Column(db.Integer, db.ForeignKey("machine.id"), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     department = db.relationship("Department", back_populates="errors")
+    machine_rel = db.relationship("Machine", foreign_keys=[machine_id])
 
     def to_dict(self):
         return {
             "id": self.id,
             "machine": self.machine,
+            "machine_id": self.machine_id,
+            "machine_obj": self.machine_rel.to_dict() if self.machine_rel else None,
             "error_code": self.error_code,
             "title": self.title,
             "description": self.description,
@@ -274,11 +278,13 @@ class GeneratedDocument(db.Model):
     relative_path = db.Column(db.String(500), nullable=False)
     department = db.Column(db.String(120), nullable=False, default="")
     machine = db.Column(db.String(160), nullable=False, default="")
+    machine_id = db.Column(db.Integer, db.ForeignKey("machine.id"), nullable=True)
     created_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     task = db.relationship("Task")
     creator = db.relationship("User")
+    machine_rel = db.relationship("Machine", foreign_keys=[machine_id])
 
     def to_dict(self):
         """Return a JSON-serializable representation of the document metadata."""
@@ -290,6 +296,8 @@ class GeneratedDocument(db.Model):
             "relative_path": self.relative_path,
             "department": self.department,
             "machine": self.machine,
+            "machine_id": self.machine_id,
+            "machine_obj": self.machine_rel.to_dict() if self.machine_rel else None,
             "created_by": self.created_by,
             "created_at": self.created_at.isoformat(),
             "download_url": f"/api/documents/{self.id}/download",
@@ -312,6 +320,7 @@ class Employee(db.Model):
     salary_group = db.Column(db.String(80), nullable=False, default="")
     qualifications = db.Column(db.Text, nullable=False, default="")
     favorite_machine = db.Column(db.String(160), nullable=False, default="")
+    favorite_machine_id = db.Column(db.Integer, db.ForeignKey("machine.id"), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     documents = db.relationship(
@@ -319,6 +328,7 @@ class Employee(db.Model):
         back_populates="employee",
         cascade="all, delete-orphan",
     )
+    favorite_machine_rel = db.relationship("Machine", foreign_keys=[favorite_machine_id])
 
     def to_dict(self, access_level="confidential"):
         """Return employee data filtered by the requested access level."""
@@ -338,6 +348,12 @@ class Employee(db.Model):
                 "current_shift": self.current_shift,
                 "qualifications": self.qualifications,
                 "favorite_machine": self.favorite_machine,
+                "favorite_machine_id": self.favorite_machine_id,
+                "favorite_machine_obj": (
+                    self.favorite_machine_rel.to_dict()
+                    if self.favorite_machine_rel
+                    else None
+                ),
             }
         )
         if access_level == "shift":

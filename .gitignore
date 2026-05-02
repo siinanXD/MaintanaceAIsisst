@@ -13,7 +13,7 @@ instance/
 data/*.db
 data/*.sqlite
 data/uploads/
-documents/
+/documents/
 logs/
 .env
 .idea/

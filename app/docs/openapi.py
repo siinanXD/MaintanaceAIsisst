@@ -31,6 +31,10 @@ OPENAPI_SPEC = {
         {"name": "AI", "description": "Daily briefing and AI assistant endpoints"},
         {"name": "Machines", "description": "Machine records and assistant"},
         {"name": "Inventory", "description": "Inventory and spare-part forecasts"},
+        {"name": "Employees", "description": "Employee records and document management"},
+        {"name": "ShiftPlans", "description": "AI-generated shift plans and calendar"},
+        {"name": "Documents", "description": "Generated maintenance reports and quality reviews"},
+        {"name": "Health", "description": "Service health probes"},
     ],
     "components": {
         "securitySchemes": {
@@ -213,6 +217,155 @@ OPENAPI_SPEC = {
                     "summary": {
                         "type": "object",
                         "example": {"critical": 1, "high": 2, "medium": 0, "total": 3},
+                    },
+                },
+            },
+            "Machine": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer", "example": 1},
+                    "name": {"type": "string", "example": "CNC-Fraese 01"},
+                    "produced_item": {"type": "string", "example": "Aluminiumgehaeuse"},
+                    "required_employees": {"type": "integer", "example": 2},
+                },
+            },
+            "Employee": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer", "example": 12},
+                    "personnel_number": {"type": "string", "example": "MA-0042"},
+                    "name": {"type": "string", "example": "Hans Mueller"},
+                    "department": {"type": "string", "example": "Instandhaltung"},
+                    "team": {"type": "integer", "nullable": True, "example": 2},
+                    "shift_model": {"type": "string", "example": "3-Schicht"},
+                    "current_shift": {"type": "string", "example": "Fruehschicht"},
+                    "qualifications": {
+                        "type": "string",
+                        "example": "Elektriker, SPS-Programmierung",
+                    },
+                    "favorite_machine": {"type": "string", "example": "CNC-Fraese 01"},
+                    "favorite_machine_id": {
+                        "type": "integer",
+                        "nullable": True,
+                        "example": 1,
+                    },
+                },
+            },
+            "EmployeeCreateRequest": {
+                "type": "object",
+                "required": ["personnel_number", "name"],
+                "properties": {
+                    "personnel_number": {"type": "string", "example": "MA-0042"},
+                    "name": {"type": "string", "example": "Hans Mueller"},
+                    "department": {"type": "string", "example": "Instandhaltung"},
+                    "shift_model": {"type": "string", "example": "3-Schicht"},
+                    "current_shift": {"type": "string", "example": "Fruehschicht"},
+                    "qualifications": {"type": "string", "example": "Elektriker"},
+                    "favorite_machine": {"type": "string", "example": "CNC-Fraese 01"},
+                    "favorite_machine_id": {"type": "integer", "nullable": True},
+                },
+            },
+            "ShiftPlanEntry": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer", "example": 101},
+                    "employee": {"$ref": "#/components/schemas/Employee"},
+                    "machine": {"$ref": "#/components/schemas/Machine"},
+                    "work_date": {
+                        "type": "string",
+                        "format": "date",
+                        "example": "2026-05-05",
+                    },
+                    "shift": {"type": "string", "example": "Fruehschicht"},
+                    "start_time": {"type": "string", "example": "06:00"},
+                    "end_time": {"type": "string", "example": "14:00"},
+                    "notes": {"type": "string", "example": ""},
+                },
+            },
+            "ShiftPlan": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer", "example": 5},
+                    "title": {"type": "string", "example": "Schichtplan KW 19"},
+                    "start_date": {
+                        "type": "string",
+                        "format": "date",
+                        "example": "2026-05-05",
+                    },
+                    "days": {"type": "integer", "example": 7},
+                    "rhythm": {"type": "string", "example": "3-Schicht"},
+                    "preferences": {
+                        "type": "string",
+                        "example": "Urlaub: Hans Mueller 06.-08.05.",
+                    },
+                    "notes": {"type": "string", "example": ""},
+                    "entries": {
+                        "type": "array",
+                        "items": {"$ref": "#/components/schemas/ShiftPlanEntry"},
+                    },
+                    "created_at": {"type": "string", "format": "date-time"},
+                },
+            },
+            "GeneratedDocument": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer", "example": 8},
+                    "task_id": {"type": "integer", "example": 42},
+                    "document_type": {
+                        "type": "string",
+                        "example": "maintenance_report",
+                    },
+                    "title": {
+                        "type": "string",
+                        "example": "Wartungsbericht Task 42",
+                    },
+                    "department": {"type": "string", "example": "Instandhaltung"},
+                    "machine": {"type": "string", "example": "CNC-Fraese 01"},
+                    "machine_id": {"type": "integer", "nullable": True, "example": 1},
+                    "created_at": {"type": "string", "format": "date-time"},
+                    "download_url": {
+                        "type": "string",
+                        "example": "/api/documents/8/download",
+                    },
+                },
+            },
+            "DocumentReview": {
+                "type": "object",
+                "properties": {
+                    "quality_score": {"type": "integer", "example": 80},
+                    "status": {
+                        "type": "string",
+                        "enum": ["good", "needs_review", "incomplete"],
+                        "example": "needs_review",
+                    },
+                    "findings": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "field": {"type": "string", "example": "Ursache"},
+                                "severity": {
+                                    "type": "string",
+                                    "enum": ["info", "warning", "critical"],
+                                    "example": "warning",
+                                },
+                                "message": {
+                                    "type": "string",
+                                    "example": "Ursache ist sehr knapp dokumentiert.",
+                                },
+                            },
+                        },
+                    },
+                    "recommendations": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "example": [
+                            "Ursache oder wahrscheinliche Fehlerquelle dokumentieren."
+                        ],
+                    },
+                    "diagnostics": {
+                        "type": "object",
+                        "example": {"status": "local_answer", "provider": "local"},
                     },
                 },
             },
@@ -753,6 +906,409 @@ OPENAPI_SPEC = {
                                     "answer": "Pruefe offene Tasks und knappe Ersatzteile.",
                                     "diagnostics": {"status": "local_answer"},
                                 }
+                            }
+                        },
+                    },
+                    "400": {"$ref": "#/components/responses/ValidationError"},
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                    "404": {"$ref": "#/components/responses/ValidationError"},
+                },
+            }
+        },
+        "/health": {
+            "get": {
+                "tags": ["Health"],
+                "summary": "Health probe",
+                "description": (
+                    "Returns 200 OK for load balancer and container probes. "
+                    "No authentication required."
+                ),
+                "responses": {
+                    "200": {
+                        "description": "Service is running",
+                        "content": {
+                            "application/json": {
+                                "example": {"status": "ok"}
+                            }
+                        },
+                    }
+                },
+            }
+        },
+        "/api/employees": {
+            "get": {
+                "tags": ["Employees"],
+                "summary": "List employees",
+                "description": (
+                    "Returns employees filtered by the caller's employee access level. "
+                    "Non-admin users see only their department."
+                ),
+                "security": [{"bearerAuth": []}],
+                "parameters": [
+                    {
+                        "name": "department",
+                        "in": "query",
+                        "required": False,
+                        "schema": {"type": "string"},
+                        "example": "Instandhaltung",
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Visible employee list",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {"$ref": "#/components/schemas/Employee"},
+                                }
+                            }
+                        },
+                    },
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                },
+            },
+            "post": {
+                "tags": ["Employees"],
+                "summary": "Create an employee",
+                "security": [{"bearerAuth": []}],
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/EmployeeCreateRequest"
+                            },
+                            "example": {
+                                "personnel_number": "MA-0042",
+                                "name": "Hans Mueller",
+                                "department": "Instandhaltung",
+                                "shift_model": "3-Schicht",
+                                "qualifications": "Elektriker, SPS-Programmierung",
+                                "favorite_machine": "CNC-Fraese 01",
+                            },
+                        }
+                    },
+                },
+                "responses": {
+                    "201": {
+                        "description": "Employee created",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Employee"}
+                            }
+                        },
+                    },
+                    "400": {"$ref": "#/components/responses/ValidationError"},
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                },
+            },
+        },
+        "/api/employees/{employee_id}": {
+            "put": {
+                "tags": ["Employees"],
+                "summary": "Update an employee",
+                "security": [{"bearerAuth": []}],
+                "parameters": [
+                    {
+                        "name": "employee_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "integer"},
+                    }
+                ],
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/EmployeeCreateRequest"
+                            }
+                        }
+                    },
+                },
+                "responses": {
+                    "200": {
+                        "description": "Employee updated",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Employee"}
+                            }
+                        },
+                    },
+                    "400": {"$ref": "#/components/responses/ValidationError"},
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                    "404": {"$ref": "#/components/responses/ValidationError"},
+                },
+            },
+            "delete": {
+                "tags": ["Employees"],
+                "summary": "Delete an employee",
+                "security": [{"bearerAuth": []}],
+                "parameters": [
+                    {
+                        "name": "employee_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "integer"},
+                    }
+                ],
+                "responses": {
+                    "204": {"description": "Employee deleted"},
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                    "404": {"$ref": "#/components/responses/ValidationError"},
+                },
+            },
+        },
+        "/api/shiftplans": {
+            "get": {
+                "tags": ["ShiftPlans"],
+                "summary": "List shift plans",
+                "security": [{"bearerAuth": []}],
+                "responses": {
+                    "200": {
+                        "description": "All shift plans with entries",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/ShiftPlan"
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                },
+            }
+        },
+        "/api/shiftplans/generate": {
+            "post": {
+                "tags": ["ShiftPlans", "AI"],
+                "summary": "Generate an AI shift plan",
+                "description": (
+                    "Generates a shift plan using AI or a local fallback. "
+                    "Returns warnings and coverage info alongside the persisted plan."
+                ),
+                "security": [{"bearerAuth": []}],
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "example": {
+                                "title": "Schichtplan KW 19",
+                                "start_date": "2026-05-05",
+                                "days": 7,
+                                "rhythm": "3-Schicht",
+                                "preferences": "Urlaub: Hans Mueller 06.-08.05.",
+                            }
+                        }
+                    },
+                },
+                "responses": {
+                    "201": {
+                        "description": "AI-generated shift plan",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "plan": {"id": 5, "title": "Schichtplan KW 19"},
+                                    "warnings": [],
+                                    "coverage": {"covered": 7, "total": 7},
+                                    "diagnostics": {"status": "openai_used"},
+                                }
+                            }
+                        },
+                    },
+                    "400": {"$ref": "#/components/responses/ValidationError"},
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                },
+            }
+        },
+        "/api/shiftplans/calendar": {
+            "get": {
+                "tags": ["ShiftPlans"],
+                "summary": "Get shift calendar for a user or employee",
+                "security": [{"bearerAuth": []}],
+                "parameters": [
+                    {
+                        "name": "employee_id",
+                        "in": "query",
+                        "required": False,
+                        "schema": {"type": "integer"},
+                        "description": (
+                            "Filter by employee ID; defaults to the current user's "
+                            "linked employee."
+                        ),
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Shift calendar entries for the requested employee",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "employee_id": 12,
+                                    "entries": [
+                                        {
+                                            "work_date": "2026-05-05",
+                                            "shift": "Fruehschicht",
+                                            "start_time": "06:00",
+                                            "end_time": "14:00",
+                                        }
+                                    ],
+                                }
+                            }
+                        },
+                    },
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                },
+            }
+        },
+        "/api/documents": {
+            "get": {
+                "tags": ["Documents"],
+                "summary": "List generated documents",
+                "security": [{"bearerAuth": []}],
+                "parameters": [
+                    {
+                        "name": "task_id",
+                        "in": "query",
+                        "required": False,
+                        "schema": {"type": "integer"},
+                        "example": 42,
+                    },
+                    {
+                        "name": "department",
+                        "in": "query",
+                        "required": False,
+                        "schema": {"type": "string"},
+                        "example": "Instandhaltung",
+                    },
+                    {
+                        "name": "machine",
+                        "in": "query",
+                        "required": False,
+                        "schema": {"type": "string"},
+                        "example": "CNC-Fraese 01",
+                    },
+                    {
+                        "name": "date_from",
+                        "in": "query",
+                        "required": False,
+                        "schema": {"type": "string", "format": "date"},
+                        "example": "2026-05-01",
+                    },
+                    {
+                        "name": "date_to",
+                        "in": "query",
+                        "required": False,
+                        "schema": {"type": "string", "format": "date"},
+                        "example": "2026-05-31",
+                    },
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Visible generated documents, newest first",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/GeneratedDocument"
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "400": {"$ref": "#/components/responses/ValidationError"},
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                },
+            }
+        },
+        "/api/documents/{document_id}/download": {
+            "get": {
+                "tags": ["Documents"],
+                "summary": "Download a generated document",
+                "security": [{"bearerAuth": []}],
+                "parameters": [
+                    {
+                        "name": "document_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "integer"},
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "HTML maintenance report as file download",
+                        "content": {
+                            "text/html": {
+                                "schema": {"type": "string", "format": "binary"}
+                            }
+                        },
+                    },
+                    "400": {"$ref": "#/components/responses/ValidationError"},
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                    "404": {"$ref": "#/components/responses/ValidationError"},
+                },
+            }
+        },
+        "/api/documents/{document_id}/review": {
+            "post": {
+                "tags": ["Documents", "AI"],
+                "summary": "Review document quality",
+                "description": (
+                    "Returns a non-persisted AI or local quality review for a "
+                    "generated maintenance report."
+                ),
+                "security": [{"bearerAuth": []}],
+                "parameters": [
+                    {
+                        "name": "document_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "integer"},
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": (
+                            "Quality review with score, findings, and recommendations"
+                        ),
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DocumentReview"
+                                },
+                                "example": {
+                                    "quality_score": 80,
+                                    "status": "needs_review",
+                                    "findings": [
+                                        {
+                                            "field": "Ursache",
+                                            "severity": "warning",
+                                            "message": (
+                                                "Ursache ist sehr knapp dokumentiert."
+                                            ),
+                                        }
+                                    ],
+                                    "recommendations": [
+                                        "Ursache oder wahrscheinliche Fehlerquelle "
+                                        "dokumentieren."
+                                    ],
+                                    "diagnostics": {"status": "local_answer"},
+                                },
                             }
                         },
                     },
