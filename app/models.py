@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from enum import Enum
 
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -509,3 +509,16 @@ class ShiftPlanEntry(db.Model):
             "end_time": self.end_time,
             "notes": self.notes,
         }
+
+
+class TokenBlocklist(db.Model):
+    """Stores revoked JWT JTIs so logout is enforced server-side."""
+
+    __tablename__ = "token_blocklist"
+
+    id = db.Column(db.Integer, primary_key=True)
+    jti = db.Column(db.String(36), nullable=False, unique=True, index=True)
+    revoked_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    def __repr__(self):
+        return f"<TokenBlocklist jti={self.jti}>"

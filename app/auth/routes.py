@@ -1,10 +1,13 @@
 import logging
+from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify, request
-from flask_jwt_extended import jwt_required
+from flask_jwt_extended import get_jwt, jwt_required
 
 from app.auth.services import authenticate, register_user
 from app.core.logging import safe_identifier
+from app.extensions import db
+from app.models import TokenBlocklist
 from app.responses import error_response, service_error_response
 from app.security import current_user
 
@@ -47,6 +50,17 @@ def login():
         return service_error_response(result, 403)
     logger.info("login_success user_id=%s", result["user"]["id"])
     return jsonify(result)
+
+
+@auth_bp.post("/logout")
+@jwt_required()
+def logout():
+    """Revoke the current JWT so it can no longer be used."""
+    jti = get_jwt()["jti"]
+    db.session.add(TokenBlocklist(jti=jti, revoked_at=datetime.now(timezone.utc)))
+    db.session.commit()
+    logger.info("logout_success user_id=%s jti=%s", current_user() and current_user().id, jti)
+    return jsonify({"message": "Logged out"}), 200
 
 
 @auth_bp.get("/me")
