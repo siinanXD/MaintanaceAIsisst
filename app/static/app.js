@@ -60,6 +60,20 @@
     return data;
   }
 
+  async function downloadFile(url, filename) {
+    const response = await fetch(url, {
+      headers: { "Authorization": "Bearer " + token() }
+    });
+    if (!response.ok) throw new Error("Download fehlgeschlagen");
+    const blob = await response.blob();
+    const objectUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = filename;
+    link.click();
+    window.URL.revokeObjectURL(objectUrl);
+  }
+
   function fillDepartments(selects, departments) {
     const currentUser = user();
     selects.forEach((select) => {
@@ -919,23 +933,13 @@
       });
       if (!response.ok) {
         const errorData = await response.json().catch(() => null);
-        throw new Error((errorData && errorData.error) || "Upload fehlgeschlagen");
+        throw new Error((errorData && (errorData.message || errorData.error)) || "Upload fehlgeschlagen");
       }
       return response.json();
     }
 
     async function downloadEmployeeDocument(documentItem) {
-      const response = await fetch(documentItem.download_url, {
-        headers: { "Authorization": "Bearer " + token() }
-      });
-      if (!response.ok) throw new Error("Download fehlgeschlagen");
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = documentItem.original_filename;
-      link.click();
-      window.URL.revokeObjectURL(url);
+      await downloadFile(documentItem.download_url, documentItem.original_filename);
     }
 
     async function load() {
@@ -2334,17 +2338,7 @@
     }
 
     async function downloadDocument(documentItem) {
-      const response = await fetch(documentItem.download_url, {
-        headers: { "Authorization": "Bearer " + token() }
-      });
-      if (!response.ok) throw new Error("Download fehlgeschlagen");
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "maintenance_report_task_" + documentItem.task_id + ".html";
-      link.click();
-      window.URL.revokeObjectURL(url);
+      await downloadFile(documentItem.download_url, "maintenance_report_task_" + documentItem.task_id + ".html");
     }
 
     async function load() {

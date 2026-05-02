@@ -6,7 +6,7 @@ from flask import Blueprint, current_app, jsonify, request, send_from_directory
 from werkzeug.utils import secure_filename
 
 from app.extensions import db
-from app.models import Employee, EmployeeDocument
+from app.models import Employee, EmployeeDocument, Machine
 from app.responses import error_response
 from app.security import (
     current_user,
@@ -17,6 +17,14 @@ from app.security import (
 
 
 employees_bp = Blueprint("employees", __name__)
+
+
+def _resolve_machine_id(name):
+    """Return Machine.id for an exact case-insensitive name match, or None."""
+    if not name:
+        return None
+    machine = Machine.query.filter(Machine.name.ilike(name)).first()
+    return machine.id if machine else None
 
 
 def parse_birth_date(value):
@@ -58,6 +66,7 @@ def create_employee():
         return error_response("personnel_number already exists", 409)
 
     try:
+        fav_machine = data.get("favorite_machine", "")
         employee = Employee(
             personnel_number=data["personnel_number"],
             name=data["name"],
@@ -71,7 +80,8 @@ def create_employee():
             team=int(data["team"]) if data.get("team") else None,
             salary_group=data.get("salary_group", ""),
             qualifications=data.get("qualifications", ""),
-            favorite_machine=data.get("favorite_machine", ""),
+            favorite_machine=fav_machine,
+            favorite_machine_id=_resolve_machine_id(fav_machine),
         )
     except ValueError:
         return error_response("Invalid birth_date or team", 400)
@@ -110,6 +120,8 @@ def update_employee(employee_id):
             employee.birth_date = parse_birth_date(data["birth_date"])
         if "team" in data:
             employee.team = int(data["team"]) if data["team"] else None
+        if "favorite_machine" in data:
+            employee.favorite_machine_id = _resolve_machine_id(data["favorite_machine"])
     except ValueError:
         return error_response("Invalid birth_date or team", 400)
 

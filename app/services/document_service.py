@@ -7,7 +7,7 @@ from pathlib import Path
 from flask import current_app
 
 from app.extensions import db
-from app.models import GeneratedDocument, Role
+from app.models import GeneratedDocument, Machine, Role
 from app.services.ai_service import AIServiceError, get_ai_provider
 
 
@@ -51,6 +51,14 @@ REPORT_FIELD_ALIASES = {
 
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_machine_id(name):
+    """Return Machine.id for an exact case-insensitive name match, or None."""
+    if not name:
+        return None
+    machine = Machine.query.filter(Machine.name.ilike(name)).first()
+    return machine.id if machine else None
 
 
 def visible_documents_query(user):
@@ -495,13 +503,15 @@ def generate_maintenance_report(task, user, payload=None):
         encoding="utf-8",
     )
 
+    machine_name = payload.get("machine", "")
     document = GeneratedDocument(
         task=task,
         document_type="maintenance_report",
         title=f"Wartungsbericht Task {task.id}",
         relative_path=str(relative_path).replace("\\", "/"),
         department=task.department.name if task.department else "",
-        machine=payload.get("machine", ""),
+        machine=machine_name,
+        machine_id=_resolve_machine_id(machine_name),
         created_by=user.id,
         created_at=created_at,
     )
