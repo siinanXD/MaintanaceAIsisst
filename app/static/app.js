@@ -330,21 +330,49 @@
           body: JSON.stringify({ status: "open", limit: 10 })
         });
       } catch (error) {
-        priorityList.innerHTML = '<tr><td colspan="5">Priorisierung konnte nicht geladen werden.</td></tr>';
+        priorityList.innerHTML = '<div class="empty-state">Priorisierung konnte nicht geladen werden.</div>';
         return;
       }
       if (!priorities.length) {
-        priorityList.innerHTML = '<tr><td colspan="5">Keine offenen Tasks zu priorisieren.</td></tr>';
+        priorityList.innerHTML = '<div class="empty-state">Keine offenen Tasks zu priorisieren.</div>';
         return;
       }
       priorities.forEach((item) => {
-        priorityList.appendChild(row([
-          String(item.score),
-          badge(item.risk_level, riskBadgeClass(item.risk_level)),
-          item.task.title,
-          item.reason,
-          item.recommended_action
-        ]));
+        const scoreClass = (item.risk_level === "critical" || item.risk_level === "high")
+          ? "priority-score-num is-high"
+          : item.risk_level === "medium"
+            ? "priority-score-num is-medium"
+            : "priority-score-num is-low";
+
+        const card = document.createElement("div");
+        card.className = "priority-score-card";
+
+        const scoreEl = document.createElement("div");
+        scoreEl.className = scoreClass;
+        scoreEl.textContent = String(item.score);
+
+        const body = document.createElement("div");
+        body.className = "priority-score-body";
+
+        const top = document.createElement("div");
+        top.className = "priority-score-top";
+        top.appendChild(badge(item.risk_level, riskBadgeClass(item.risk_level)));
+        const titleEl = document.createElement("span");
+        titleEl.className = "priority-score-title";
+        titleEl.textContent = item.task.title;
+        top.appendChild(titleEl);
+
+        const reasonEl = document.createElement("p");
+        reasonEl.className = "priority-score-reason";
+        reasonEl.textContent = item.reason;
+
+        const actionEl = document.createElement("p");
+        actionEl.className = "priority-score-action";
+        actionEl.textContent = item.recommended_action;
+
+        body.append(top, reasonEl, actionEl);
+        card.append(scoreEl, body);
+        priorityList.appendChild(card);
       });
     }
 

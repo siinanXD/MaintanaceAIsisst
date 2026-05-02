@@ -3,11 +3,12 @@
 {% block title %}Dashboard - Maintenance Assistant{% endblock %}
 
 {% block content %}
-<section class="page-hero">
+<section class="page-hero page-hero-gradient">
   <div>
-    <h1 class="page-title">Maintenance Cockpit</h1>
+    <p class="page-kicker">Wartungscockpit</p>
+    <h1 class="page-title">Tageslage</h1>
     <p class="page-description">
-      Tageslage, kritische Tasks, Maschinenhinweise und KI-Briefing in einer ruhigen Arbeitsansicht.
+      Kritische Tasks, Maschinenhinweise und KI-Briefing in einer Ansicht.
     </p>
   </div>
   <div class="hero-command-panel">
@@ -18,31 +19,37 @@
 
 <section class="dashboard-kpi-grid" aria-label="Cockpit Kennzahlen">
   <article class="kpi-card kpi-card-open">
+    <div class="kpi-icon" aria-hidden="true">📋</div>
     <p class="kpi-label">Offene Tasks</p>
     <p class="kpi-value" data-dashboard-open-count>0</p>
     <p class="kpi-meta">Noch nicht gestartet</p>
   </article>
   <article class="kpi-card kpi-card-progress">
+    <div class="kpi-icon" aria-hidden="true">⚙️</div>
     <p class="kpi-label">In Arbeit</p>
     <p class="kpi-value" data-dashboard-progress-count>0</p>
     <p class="kpi-meta">Aktuell bearbeitet</p>
   </article>
   <article class="kpi-card kpi-card-done">
+    <div class="kpi-icon" aria-hidden="true">✅</div>
     <p class="kpi-label">Erledigt</p>
     <p class="kpi-value" data-dashboard-done-count>0</p>
     <p class="kpi-meta">Abgeschlossen</p>
   </article>
   <article class="kpi-card kpi-card-critical">
+    <div class="kpi-icon" aria-hidden="true">🚨</div>
     <p class="kpi-label">Kritisch</p>
     <p class="kpi-value" data-dashboard-critical-count>0</p>
     <p class="kpi-meta">Urgent oder ueberfaellig</p>
   </article>
   <article class="kpi-card kpi-card-machine">
+    <div class="kpi-icon" aria-hidden="true">🖥️</div>
     <p class="kpi-label">Maschinenhinweise</p>
     <p class="kpi-value" data-dashboard-machine-issue-count>0</p>
     <p class="kpi-meta">Fehlerkatalog sichtbar</p>
   </article>
   <article class="kpi-card kpi-card-ai">
+    <div class="kpi-icon" aria-hidden="true">🤖</div>
     <p class="kpi-label">AI Briefing</p>
     <p class="kpi-value" data-dashboard-briefing-count>0</p>
     <p class="kpi-meta">Wichtige Hinweise</p>
@@ -155,15 +162,15 @@
         </div>
         <div class="priority-strip" data-dashboard-priority-list></div>
         <div class="cockpit-board" data-dashboard-task-board>
-          <section class="cockpit-column" aria-labelledby="cockpit-urgent-title">
+          <section class="cockpit-column is-urgent" aria-labelledby="cockpit-urgent-title">
             <h3 id="cockpit-urgent-title" class="cockpit-column-title">Dringend</h3>
             <div class="cockpit-task-list" data-cockpit-list="urgent"></div>
           </section>
-          <section class="cockpit-column" aria-labelledby="cockpit-today-title">
-            <h3 id="cockpit-today-title" class="cockpit-column-title">Heute</h3>
+          <section class="cockpit-column is-today" aria-labelledby="cockpit-today-title">
+            <h3 id="cockpit-today-title" class="cockpit-column-title">Heute faellig</h3>
             <div class="cockpit-task-list" data-cockpit-list="today"></div>
           </section>
-          <section class="cockpit-column" aria-labelledby="cockpit-progress-title">
+          <section class="cockpit-column is-progress" aria-labelledby="cockpit-progress-title">
             <h3 id="cockpit-progress-title" class="cockpit-column-title">In Arbeit</h3>
             <div class="cockpit-task-list" data-cockpit-list="progress"></div>
           </section>
