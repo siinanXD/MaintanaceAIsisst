@@ -9,6 +9,7 @@ from app.security import current_user, dashboard_permission_required
 from app.services.document_service import (
     document_path,
     review_document_quality,
+    review_uploaded_document,
     visible_documents_query,
 )
 
@@ -61,7 +62,10 @@ def list_documents():
 @dashboard_permission_required("documents", "view")
 def download_document(document_id):
     """Serve the generated HTML file for a document."""
-    document = GeneratedDocument.query.get_or_404(document_id)
+    user = current_user()
+    document = visible_documents_query(user).filter(
+        GeneratedDocument.id == document_id
+    ).first_or_404()
 
     try:
         path = document_path(document)
@@ -86,11 +90,25 @@ def download_document(document_id):
     )
 
 
+@documents_bp.post("/check")
+@dashboard_permission_required("documents", "view")
+def check_uploaded_document():
+    """Review an uploaded document file without persisting it."""
+    file = request.files.get("file")
+    review, error, status = review_uploaded_document(file)
+    if error:
+        return service_error_response(error, status)
+    return success_response(review, status, "Document review completed")
+
+
 @documents_bp.post("/<int:document_id>/review")
 @dashboard_permission_required("documents", "view")
 def review_document(document_id):
     """Return a non-persisted quality review for a generated document."""
-    document = GeneratedDocument.query.get_or_404(document_id)
+    user = current_user()
+    document = visible_documents_query(user).filter(
+        GeneratedDocument.id == document_id
+    ).first_or_404()
 
     review, error, status = review_document_quality(document)
     if error:

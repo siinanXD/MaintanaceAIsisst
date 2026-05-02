@@ -254,7 +254,7 @@ def test_generated_document_download_uses_temp_storage(
     )
 
     assert list_response.status_code == 200
-    assert list_response.get_json()["data"][0]["id"] == document_id
+    assert list_response.get_json()[0]["id"] == document_id
     assert download_response.status_code == 200
     assert b"report" in download_response.data
 
