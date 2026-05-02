@@ -206,6 +206,31 @@ def local_uploaded_document_review(metadata, html_text):
     }
 
 
+def local_uploaded_document_review(metadata, html_text):
+    """Return a deterministic quality review for uploaded report text."""
+    fields = parse_report_fields(html_text)
+    if not fields:
+        fields = fields_from_plain_text(html_text)
+
+    findings = []
+    recommendations = []
+    for field_name in REVIEW_REQUIRED_FIELDS:
+        finding = review_field(field_name, fields.get(field_name, ""))
+        if not finding:
+            continue
+        findings.append(finding)
+        recommendations.append(recommendation_for_field(field_name))
+
+    quality_score = score_from_findings(findings)
+    return {
+        "document": metadata,
+        "quality_score": quality_score,
+        "status": status_from_score(quality_score),
+        "findings": findings,
+        "recommendations": recommendations,
+    }
+
+
 def normalize_document_review(provider_review, document):
     """Normalize a provider review to the public response shape."""
     provider_review = provider_review or {}
@@ -235,6 +260,21 @@ def normalize_uploaded_document_review(provider_review, metadata):
         "extracted_fields": normalize_extracted_fields(
             provider_review.get("extracted_fields"),
         ),
+        "findings": normalize_findings(provider_review.get("findings")),
+        "recommendations": normalize_recommendations(
+            provider_review.get("recommendations"),
+        ),
+    }
+
+
+def normalize_uploaded_document_review(provider_review, metadata):
+    """Normalize a provider review for uploaded documents."""
+    provider_review = provider_review or {}
+    score = clamp_score(provider_review.get("quality_score"))
+    return {
+        "document": metadata,
+        "quality_score": score,
+        "status": valid_review_status(provider_review.get("status"), score),
         "findings": normalize_findings(provider_review.get("findings")),
         "recommendations": normalize_recommendations(
             provider_review.get("recommendations"),
@@ -276,6 +316,19 @@ def canonical_report_field(value):
     """Return the canonical report field name for a user-facing label."""
     key = " ".join(str(value or "").strip().lower().split())
     return REPORT_FIELD_ALIASES.get(key)
+
+
+def fields_from_plain_text(text):
+    """Extract known document fields from line-oriented plain text."""
+    fields = {}
+    for line in str(text or "").splitlines():
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        normalized_key = " ".join(key.strip().split())
+        if normalized_key in REVIEW_REQUIRED_FIELDS:
+            fields[normalized_key] = value.strip()
+    return fields
 
 
 def review_field(field_name, value):
