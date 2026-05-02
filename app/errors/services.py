@@ -3,11 +3,19 @@ import logging
 from sqlalchemy import or_
 
 from app.extensions import db
-from app.models import Department, ErrorEntry, Role
+from app.models import Department, ErrorEntry, Machine, Role
 from app.services.ai_service import AIServiceError, MockAIProvider, get_ai_provider
 
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_machine_id(name):
+    """Return Machine.id for an exact case-insensitive name match, or None."""
+    if not name:
+        return None
+    machine = Machine.query.filter(Machine.name.ilike(name)).first()
+    return machine.id if machine else None
 
 
 def visible_errors_query(user):
@@ -51,6 +59,7 @@ def create_error_entry(data, user):
 
     entry = ErrorEntry(
         machine=data["machine"],
+        machine_id=_resolve_machine_id(data["machine"]),
         error_code=data["error_code"].upper(),
         title=data["title"],
         description=data.get("description", ""),
@@ -76,6 +85,8 @@ def update_error_entry(entry, data, user):
     for field in ["machine", "title", "description", "possible_causes", "solution"]:
         if field in data:
             setattr(entry, field, data[field])
+    if "machine" in data:
+        entry.machine_id = _resolve_machine_id(data["machine"])
     if "error_code" in data:
         entry.error_code = data["error_code"].upper()
     db.session.commit()
