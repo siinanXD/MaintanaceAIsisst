@@ -1,13 +1,7 @@
-from flask import Blueprint, jsonify, render_template
+from flask import Blueprint, render_template
 
 
 web_bp = Blueprint("web", __name__)
-
-
-@web_bp.get("/health")
-def web_health_check():
-    """Return a public health response for local and container probes."""
-    return jsonify({"status": "ok"})
 
 
 @web_bp.get("/")
