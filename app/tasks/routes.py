@@ -4,7 +4,7 @@ from flask import Blueprint, jsonify, request
 
 from app.extensions import db
 from app.models import Priority, Task, TaskStatus
-from app.responses import error_response, service_error_response, success_response
+from app.responses import error_response, paginate_query, service_error_response, success_response
 from app.security import (
     current_user,
     dashboard_permission_required,
@@ -28,7 +28,14 @@ tasks_bp = Blueprint("tasks", __name__)
 @tasks_bp.get("")
 @dashboard_permission_required("tasks", "view")
 def list_tasks():
-    """Return visible tasks for the current user."""
+    """Return visible tasks for the current user with optional pagination and filters.
+
+    Query params:
+        status   — open | in_progress | done | cancelled
+        priority — urgent | soon | normal
+        page     — page number (default 1)
+        limit    — items per page, 1-100 (default 20)
+    """
     user = current_user()
     query = visible_tasks_query(user)
     status = request.args.get("status")
@@ -40,8 +47,8 @@ def list_tasks():
             query = query.filter(Task.priority == Priority(priority))
     except ValueError:
         return error_response("Invalid status or priority filter", 400)
-    tasks = query.order_by(Task.due_date.asc(), Task.id.desc()).all()
-    return jsonify([task.to_dict() for task in tasks])
+    query = query.order_by(Task.due_date.asc(), Task.id.desc())
+    return paginate_query(query, lambda t: t.to_dict())
 
 
 @tasks_bp.post("")

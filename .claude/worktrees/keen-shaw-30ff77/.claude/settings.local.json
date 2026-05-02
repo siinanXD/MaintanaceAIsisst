@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs basename *)",
+      "Bash(git status *)",
+      "Bash(python -m compileall app/documents/ -q)",
+      "Bash(python -m compileall app/ -q)",
+      "Bash(timeout 10 python -c ' *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(python -c ' *)",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "Read(//c/Users/sinan/PycharmProjects/MaintanaceAIsisst/**)",
+      "Bash(PYTHONPATH=/c/Users/sinan/PycharmProjects/MaintanaceAIsisst .venv/Scripts/pytest tests/ -q --tb=short)",
+      "Bash(PYTHONPATH=. .venv/Scripts/pytest tests/ -q)",
+      "Bash(awk '{print $NF}')",
+      "Bash(PYTHONPATH=. .venv/Scripts/pytest tests/test_api_stability.py::test_new_ai_frontend_routes_exist -q)",
+      "Bash(sed -i 's|\"/api/auth|\"/api/v1/auth|g; s|\"/api/tasks|\"/api/v1/tasks|g; s|\"/api/errors|\"/api/v1/errors|g; s|\"/api/employees|\"/api/v1/employees|g; s|\"/api/machines|\"/api/v1/machines|g; s|\"/api/inventory|\"/api/v1/inventory|g; s|\"/api/shiftplans|\"/api/v1/shiftplans|g; s|\"/api/documents|\"/api/v1/documents|g; s|\"/api/search|\"/api/v1/search|g; s|\"/api/ai|\"/api/v1/ai|g; s|\"/api/health|\"/api/v1/health|g; s|\"/api/admin|\"/api/v1/admin|g; s|\"/api/departments|\"/api/v1/departments|g' /c/Users/sinan/PycharmProjects/MaintanaceAIsisst/app/static/app.js)",
+      "Bash(sed -i 's|`/api/auth|`/api/v1/auth|g; s|`/api/tasks|`/api/v1/tasks|g; s|`/api/errors|`/api/v1/errors|g; s|`/api/employees|`/api/v1/employees|g; s|`/api/machines|`/api/v1/machines|g; s|`/api/inventory|`/api/v1/inventory|g; s|`/api/shiftplans|`/api/v1/shiftplans|g; s|`/api/documents|`/api/v1/documents|g; s|`/api/search|`/api/v1/search|g; s|`/api/ai|`/api/v1/ai|g; s|`/api/admin|`/api/v1/admin|g; s|`/api/departments|`/api/v1/departments|g' /c/Users/sinan/PycharmProjects/MaintanaceAIsisst/app/static/app.js)",
+      "Bash(PYTHONPATH=. .venv/Scripts/pytest tests/test_tasks.py::test_task_create_list_filter_and_update tests/test_tasks.py::test_task_validation_rejects_bad_payloads -q)",
+      "Bash(PYTHONPATH=. .venv/Scripts/pytest tests/test_permissions.py::test_employee_access_levels_filter_employee_payload tests/test_employees_shiftplans.py::test_employee_shift_access_includes_shift_but_not_confidential_fields -q)"
+    ]
+  }
+}

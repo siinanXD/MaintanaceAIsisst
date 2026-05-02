@@ -11,7 +11,7 @@ def test_error_entry_create_search_update_and_delete(client, make_user, auth_hea
     headers = auth_headers(user["username"])
 
     create_response = client.post(
-        "/api/errors",
+        "/api/v1/errors",
         headers=headers,
         json={
             "machine": "Maschine 3",
@@ -22,13 +22,13 @@ def test_error_entry_create_search_update_and_delete(client, make_user, auth_hea
         },
     )
     entry_id = create_response.get_json()["id"]
-    search_response = client.get("/api/errors/search?query=E104", headers=headers)
+    search_response = client.get("/api/v1/errors/search?query=E104", headers=headers)
     update_response = client.put(
-        f"/api/errors/{entry_id}",
+        f"/api/v1/errors/{entry_id}",
         headers=headers,
         json={"solution": "Sensor reinigen und Abstand pruefen"},
     )
-    delete_response = client.delete(f"/api/errors/{entry_id}", headers=headers)
+    delete_response = client.delete(f"/api/v1/errors/{entry_id}", headers=headers)
 
     assert create_response.status_code == 201
     assert create_response.get_json()["error_code"] == "E104"
@@ -44,7 +44,7 @@ def test_error_entry_validates_required_fields(client, make_user, auth_headers):
     user = make_user(username="error_validation")
 
     response = client.post(
-        "/api/errors",
+        "/api/v1/errors",
         headers=auth_headers(user["username"]),
         json={"machine": "Maschine 1"},
     )
@@ -67,7 +67,7 @@ def test_error_entry_rejects_other_department_writes(
     )
 
     response = client.post(
-        "/api/errors",
+        "/api/v1/errors",
         headers=auth_headers(user["username"]),
         json={
             "machine": "Maschine 3",
@@ -100,7 +100,7 @@ def test_error_detail_is_forbidden_across_departments(
     )
 
     response = client.get(
-        f"/api/errors/{entry_id}",
+        f"/api/v1/errors/{entry_id}",
         headers=auth_headers(requester["username"]),
     )
 
@@ -120,9 +120,9 @@ def test_error_analysis_validates_input_and_uses_mock_fallback(
     )
     headers = auth_headers(user["username"])
 
-    empty_response = client.post("/api/errors/analyze", headers=headers, json={})
+    empty_response = client.post("/api/v1/errors/analyze", headers=headers, json={})
     valid_response = client.post(
-        "/api/errors/analyze",
+        "/api/v1/errors/analyze",
         headers=headers,
         json={"description": "Sensor meldet sporadisch kein Signal an Maschine 3"},
     )
@@ -168,7 +168,7 @@ def test_similar_errors_respects_department_and_sorts_matches(
     )
 
     response = client.post(
-        "/api/errors/similar",
+        "/api/v1/errors/similar",
         headers=auth_headers(user["username"]),
         json={"text": "Sensor Signal an Anlage 4 fehlt", "machine": "Anlage 4"},
     )
@@ -184,9 +184,9 @@ def test_similar_errors_rejects_empty_and_invalid_limit(client, make_user, auth_
     user = make_user(username="similar_error_validation")
     headers = auth_headers(user["username"])
 
-    empty_response = client.post("/api/errors/similar", headers=headers, json={})
+    empty_response = client.post("/api/v1/errors/similar", headers=headers, json={})
     invalid_limit = client.post(
-        "/api/errors/similar",
+        "/api/v1/errors/similar",
         headers=headers,
         json={"text": "Sensor", "limit": 0},
     )

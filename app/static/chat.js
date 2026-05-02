@@ -190,7 +190,7 @@
       };
     }
 
-    const response = await fetch("/api/ai/chat", {
+    const response = await fetch("/api/v1/ai/chat", {
       method: "POST",
       headers: {
         "Authorization": "Bearer " + token,
@@ -244,7 +244,7 @@
   async function sendFeedback(prompt, response, rating) {
     const token = window.localStorage.getItem("maintenance_access_token");
     if (!token) return;
-    await fetch("/api/ai/feedback", {
+    await fetch("/api/v1/ai/feedback", {
       method: "POST",
       headers: {
         "Authorization": "Bearer " + token,

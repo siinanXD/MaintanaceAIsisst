@@ -41,7 +41,7 @@ def test_login_logging_does_not_store_password(
 
     with caplog.at_level(logging.WARNING):
         response = client.post(
-            "/api/auth/login",
+            "/api/v1/auth/login",
             json={"login": "logging_user", "password": "WrongSecret!"},
         )
 
@@ -52,7 +52,7 @@ def test_login_logging_does_not_store_password(
     assert safe_identifier("logging_user") in caplog.text
 
     success_response = client.get(
-        "/api/auth/me",
+        "/api/v1/auth/me",
         headers=auth_headers("logging_user", "TopSecret123!"),
     )
     assert success_response.status_code == 200

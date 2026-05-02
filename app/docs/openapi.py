@@ -20,8 +20,8 @@ OPENAPI_SPEC = {
     },
     "servers": [
         {
-            "url": "http://127.0.0.1:5050",
-            "description": "Local development server",
+            "url": "http://127.0.0.1:5050/api/v1",
+            "description": "Local development server (v1)",
         }
     ],
     "tags": [
@@ -50,7 +50,44 @@ OPENAPI_SPEC = {
                 "properties": {
                     "success": {"type": "boolean", "example": False},
                     "message": {"type": "string", "example": "Invalid credentials"},
-                    "error": {"type": "string", "example": "Invalid credentials"},
+                    "error": {"type": "string", "example": "invalid_credentials"},
+                },
+            },
+            "Pagination": {
+                "type": "object",
+                "description": "Pagination metadata returned by list endpoints.",
+                "properties": {
+                    "page":  {"type": "integer", "example": 1},
+                    "limit": {"type": "integer", "example": 20},
+                    "total": {"type": "integer", "example": 100},
+                    "pages": {"type": "integer", "example": 5},
+                },
+            },
+            "PaginatedTasks": {
+                "type": "object",
+                "properties": {
+                    "success": {"type": "boolean", "example": True},
+                    "data": {"type": "array", "items": {"$ref": "#/components/schemas/Task"}},
+                    "pagination": {"$ref": "#/components/schemas/Pagination"},
+                    "message": {"type": "string", "example": "OK"},
+                },
+            },
+            "PaginatedErrors": {
+                "type": "object",
+                "properties": {
+                    "success": {"type": "boolean", "example": True},
+                    "data": {"type": "array", "items": {"$ref": "#/components/schemas/ErrorEntry"}},
+                    "pagination": {"$ref": "#/components/schemas/Pagination"},
+                    "message": {"type": "string", "example": "OK"},
+                },
+            },
+            "PaginatedEmployees": {
+                "type": "object",
+                "properties": {
+                    "success": {"type": "boolean", "example": True},
+                    "data": {"type": "array", "items": {"$ref": "#/components/schemas/Employee"}},
+                    "pagination": {"$ref": "#/components/schemas/Pagination"},
+                    "message": {"type": "string", "example": "OK"},
                 },
             },
             "Department": {
@@ -325,7 +362,7 @@ OPENAPI_SPEC = {
                     "created_at": {"type": "string", "format": "date-time"},
                     "download_url": {
                         "type": "string",
-                        "example": "/api/documents/8/download",
+                        "example": "/api/v1/documents/8/download",
                     },
                 },
             },
@@ -398,7 +435,7 @@ OPENAPI_SPEC = {
         },
     },
     "paths": {
-        "/api/auth/register": {
+        "/api/v1/auth/register": {
             "post": {
                 "tags": ["Auth"],
                 "summary": "Register a user",
@@ -442,7 +479,7 @@ OPENAPI_SPEC = {
                 },
             }
         },
-        "/api/auth/login": {
+        "/api/v1/auth/login": {
             "post": {
                 "tags": ["Auth"],
                 "summary": "Login",
@@ -488,7 +525,7 @@ OPENAPI_SPEC = {
                 },
             }
         },
-        "/api/tasks": {
+        "/api/v1/tasks": {
             "get": {
                 "tags": ["Tasks"],
                 "summary": "List visible tasks",
@@ -563,7 +600,7 @@ OPENAPI_SPEC = {
                 },
             },
         },
-        "/api/tasks/{task_id}/start": {
+        "/api/v1/tasks/{task_id}/start": {
             "post": {
                 "tags": ["Tasks"],
                 "summary": "Start a task",
@@ -603,7 +640,7 @@ OPENAPI_SPEC = {
                 },
             }
         },
-        "/api/tasks/{task_id}/complete": {
+        "/api/v1/tasks/{task_id}/complete": {
             "post": {
                 "tags": ["Tasks"],
                 "summary": "Complete a task",
@@ -640,7 +677,7 @@ OPENAPI_SPEC = {
                                     "completed_by": 3,
                                     "generated_document": {
                                         "id": 8,
-                                        "download_url": "/api/documents/8/download",
+                                        "download_url": "/api/v1/documents/8/download",
                                     },
                                 },
                             }
@@ -654,7 +691,7 @@ OPENAPI_SPEC = {
                 },
             }
         },
-        "/api/tasks/prioritize": {
+        "/api/v1/tasks/prioritize": {
             "post": {
                 "tags": ["AI", "Tasks"],
                 "summary": "Prioritize visible tasks",
@@ -690,7 +727,7 @@ OPENAPI_SPEC = {
                 },
             }
         },
-        "/api/errors": {
+        "/api/v1/errors": {
             "post": {
                 "tags": ["Errors"],
                 "summary": "Create an error catalog entry",
@@ -727,7 +764,7 @@ OPENAPI_SPEC = {
                 },
             }
         },
-        "/api/errors/search": {
+        "/api/v1/errors/search": {
             "get": {
                 "tags": ["Errors"],
                 "summary": "Search the visible error catalog",
@@ -768,7 +805,7 @@ OPENAPI_SPEC = {
                 },
             }
         },
-        "/api/errors/similar": {
+        "/api/v1/errors/similar": {
             "post": {
                 "tags": ["AI", "Errors"],
                 "summary": "Suggest similar error catalog entries",
@@ -810,7 +847,7 @@ OPENAPI_SPEC = {
                 },
             }
         },
-        "/api/errors/analyze": {
+        "/api/v1/errors/analyze": {
             "post": {
                 "tags": ["AI", "Errors"],
                 "summary": "Analyze an error description",
@@ -846,7 +883,7 @@ OPENAPI_SPEC = {
                 },
             }
         },
-        "/api/ai/daily-briefing": {
+        "/api/v1/ai/daily-briefing": {
             "get": {
                 "tags": ["AI"],
                 "summary": "Get the daily briefing",
@@ -874,7 +911,7 @@ OPENAPI_SPEC = {
                 },
             }
         },
-        "/api/machines/{machine_id}/assistant": {
+        "/api/v1/machines/{machine_id}/assistant": {
             "post": {
                 "tags": ["AI", "Machines"],
                 "summary": "Ask the machine assistant",
@@ -936,7 +973,7 @@ OPENAPI_SPEC = {
                 },
             }
         },
-        "/api/employees": {
+        "/api/v1/employees": {
             "get": {
                 "tags": ["Employees"],
                 "summary": "List employees",
@@ -1007,7 +1044,7 @@ OPENAPI_SPEC = {
                 },
             },
         },
-        "/api/employees/{employee_id}": {
+        "/api/v1/employees/{employee_id}": {
             "put": {
                 "tags": ["Employees"],
                 "summary": "Update an employee",
@@ -1065,7 +1102,7 @@ OPENAPI_SPEC = {
                 },
             },
         },
-        "/api/shiftplans": {
+        "/api/v1/shiftplans": {
             "get": {
                 "tags": ["ShiftPlans"],
                 "summary": "List shift plans",
@@ -1089,7 +1126,7 @@ OPENAPI_SPEC = {
                 },
             }
         },
-        "/api/shiftplans/generate": {
+        "/api/v1/shiftplans/generate": {
             "post": {
                 "tags": ["ShiftPlans", "AI"],
                 "summary": "Generate an AI shift plan",
@@ -1132,7 +1169,7 @@ OPENAPI_SPEC = {
                 },
             }
         },
-        "/api/shiftplans/calendar": {
+        "/api/v1/shiftplans/calendar": {
             "get": {
                 "tags": ["ShiftPlans"],
                 "summary": "Get shift calendar for a user or employee",
@@ -1173,7 +1210,7 @@ OPENAPI_SPEC = {
                 },
             }
         },
-        "/api/documents": {
+        "/api/v1/documents": {
             "get": {
                 "tags": ["Documents"],
                 "summary": "List generated documents",
@@ -1235,7 +1272,7 @@ OPENAPI_SPEC = {
                 },
             }
         },
-        "/api/documents/{document_id}/download": {
+        "/api/v1/documents/{document_id}/download": {
             "get": {
                 "tags": ["Documents"],
                 "summary": "Download a generated document",
@@ -1264,7 +1301,7 @@ OPENAPI_SPEC = {
                 },
             }
         },
-        "/api/documents/{document_id}/review": {
+        "/api/v1/documents/{document_id}/review": {
             "post": {
                 "tags": ["Documents", "AI"],
                 "summary": "Review document quality",
@@ -1319,7 +1356,7 @@ OPENAPI_SPEC = {
                 },
             }
         },
-        "/api/inventory/forecast": {
+        "/api/v1/inventory/forecast": {
             "post": {
                 "tags": ["Inventory", "AI"],
                 "summary": "Forecast spare-part risks",
@@ -1389,7 +1426,8 @@ def include_schema_model(_tag):
 def configure_api_documentation(app):
     """Register OpenAPI JSON and Swagger UI routes on the Flask app."""
 
-    @app.get("/api/swagger.json")
+    @app.get("/api/v1/swagger.json")
+    @app.get("/api/swagger.json")  # backward compat redirect
     def swagger_json():
         """Return the OpenAPI specification as JSON."""
         return jsonify(OPENAPI_SPEC)

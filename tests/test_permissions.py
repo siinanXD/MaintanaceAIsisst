@@ -53,7 +53,7 @@ def test_non_admin_cannot_receive_effective_admin_user_permission(
     headers = auth_headers(admin["username"])
 
     response = client.put(
-        f"/api/admin/users/{user['id']}/permissions",
+        f"/api/v1/admin/users/{user['id']}/permissions",
         headers=headers,
         json={
             "permissions": {
@@ -67,7 +67,7 @@ def test_non_admin_cannot_receive_effective_admin_user_permission(
         },
     )
     permissions_response = client.get(
-        f"/api/admin/users/{user['id']}/permissions",
+        f"/api/v1/admin/users/{user['id']}/permissions",
         headers=headers,
     )
 
@@ -93,17 +93,17 @@ def test_update_user_permissions_validates_payload(
     headers = auth_headers(admin["username"])
 
     missing_response = client.put(
-        f"/api/admin/users/{user['id']}/permissions",
+        f"/api/v1/admin/users/{user['id']}/permissions",
         headers=headers,
         json={},
     )
     dashboard_response = client.put(
-        f"/api/admin/users/{user['id']}/permissions",
+        f"/api/v1/admin/users/{user['id']}/permissions",
         headers=headers,
         json={"permissions": {"unknown": {"can_view": True}}},
     )
     level_response = client.put(
-        f"/api/admin/users/{user['id']}/permissions",
+        f"/api/v1/admin/users/{user['id']}/permissions",
         headers=headers,
         json={
             "permissions": {
@@ -139,13 +139,13 @@ def test_employee_access_levels_filter_employee_payload(
         employee_access_level="basic",
     )
 
-    response = client.get("/api/employees", headers=auth_headers(user["username"]))
+    response = client.get("/api/v1/employees", headers=auth_headers(user["username"]))
 
     with app.app_context():
         stored_user = User.query.get(user["id"])
         access_level = get_employee_access_level(stored_user)
 
-    payload = response.get_json()[0]
+    payload = response.get_json()["data"][0]
     assert response.status_code == 200
     assert access_level == "basic"
     assert payload["name"] == "Anna Beispiel"

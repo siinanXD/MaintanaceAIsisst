@@ -14,7 +14,7 @@ from app.models import ErrorEntry, Employee, GeneratedDocument, Role
 def test_documents_list_returns_empty_array_for_new_user(client, make_user, auth_headers):
     """GET /api/documents returns 200 with an empty list when no documents exist."""
     user = make_user(username="doc_list_empty_user", role=Role.INSTANDHALTUNG, department_name="Instandhaltung")
-    response = client.get("/api/documents", headers=auth_headers(user["username"]))
+    response = client.get("/api/v1/documents", headers=auth_headers(user["username"]))
     assert response.status_code == 200
     assert response.get_json() == []
 
@@ -27,7 +27,7 @@ def test_documents_list_returns_own_document(
     task_id = make_task("Anlage prüfen", creator_username=user["username"], department_name="Instandhaltung")
     make_document(task_id=task_id, created_by=user["id"], department="Instandhaltung")
 
-    response = client.get("/api/documents", headers=auth_headers(user["username"]))
+    response = client.get("/api/v1/documents", headers=auth_headers(user["username"]))
     assert response.status_code == 200
     data = response.get_json()
     assert isinstance(data, list)
@@ -45,7 +45,7 @@ def test_documents_filter_by_task_id(
     make_document(task_id=task_a, created_by=user["id"], department="Instandhaltung", relative_path=f"2026/05/task_{task_a}/report.html")
     make_document(task_id=task_b, created_by=user["id"], department="Instandhaltung", relative_path=f"2026/05/task_{task_b}/report.html")
 
-    response = client.get(f"/api/documents?task_id={task_a}", headers=auth_headers(user["username"]))
+    response = client.get(f"/api/v1/documents?task_id={task_a}", headers=auth_headers(user["username"]))
     assert response.status_code == 200
     data = response.get_json()
     assert all(doc["task_id"] == task_a for doc in data)
@@ -71,7 +71,7 @@ def test_documents_filter_by_department(
         relative_path="2026/05/task_y/report.html",
     )
 
-    response = client.get("/api/documents?department=Instand", headers=auth_headers(user["username"]))
+    response = client.get("/api/v1/documents?department=Instand", headers=auth_headers(user["username"]))
     assert response.status_code == 200
     data = response.get_json()
     assert all("Instandhaltung" in doc["department"] for doc in data)
@@ -99,7 +99,7 @@ def test_documents_filter_by_machine(
         relative_path="2026/05/task_m2/report.html",
     )
 
-    response = client.get("/api/documents?machine=Anlage", headers=auth_headers(user["username"]))
+    response = client.get("/api/v1/documents?machine=Anlage", headers=auth_headers(user["username"]))
     assert response.status_code == 200
     data = response.get_json()
     assert all("Anlage" in doc["machine"] for doc in data)
@@ -130,7 +130,7 @@ def test_documents_filter_date_from_excludes_older(
 
     today_str = datetime.utcnow().date().isoformat()
     response = client.get(
-        f"/api/documents?date_from={today_str}",
+        f"/api/v1/documents?date_from={today_str}",
         headers=auth_headers(user["username"]),
     )
     assert response.status_code == 200
@@ -140,20 +140,20 @@ def test_documents_filter_date_from_excludes_older(
 def test_documents_filter_date_from_invalid_format(client, make_user, auth_headers):
     """GET /api/documents?date_from=not-a-date returns 400."""
     user = make_user(username="doc_filter_bad_date", role=Role.INSTANDHALTUNG, department_name="Instandhaltung")
-    response = client.get("/api/documents?date_from=not-a-date", headers=auth_headers(user["username"]))
+    response = client.get("/api/v1/documents?date_from=not-a-date", headers=auth_headers(user["username"]))
     assert response.status_code == 400
 
 
 def test_documents_filter_date_to_invalid_format(client, make_user, auth_headers):
     """GET /api/documents?date_to=garbage returns 400."""
     user = make_user(username="doc_filter_bad_date_to", role=Role.INSTANDHALTUNG, department_name="Instandhaltung")
-    response = client.get("/api/documents?date_to=garbage", headers=auth_headers(user["username"]))
+    response = client.get("/api/v1/documents?date_to=garbage", headers=auth_headers(user["username"]))
     assert response.status_code == 400
 
 
 def test_documents_requires_auth(client):
     """GET /api/documents without a token returns 401."""
-    response = client.get("/api/documents")
+    response = client.get("/api/v1/documents")
     assert response.status_code == 401
 
 
@@ -170,7 +170,7 @@ def test_error_entry_creation_resolves_machine_id(
     machine_id = make_machine(name="Testanlage Alpha")
 
     response = client.post(
-        "/api/errors",
+        "/api/v1/errors",
         headers=auth_headers(user["username"]),
         json={
             "machine": "Testanlage Alpha",
@@ -191,7 +191,7 @@ def test_error_entry_creation_leaves_machine_id_null_for_unknown_machine(
     user = make_user(username="err_no_machine_user", role=Role.INSTANDHALTUNG, department_name="Instandhaltung")
 
     response = client.post(
-        "/api/errors",
+        "/api/v1/errors",
         headers=auth_headers(user["username"]),
         json={
             "machine": "Unbekannte Maschine XYZ",
@@ -218,7 +218,7 @@ def test_error_entry_update_resolves_machine_id(
     )
 
     response = client.put(
-        f"/api/errors/{entry_id}",
+        f"/api/v1/errors/{entry_id}",
         headers=auth_headers(user["username"]),
         json={"machine": "Fräse Beta"},
     )
@@ -239,7 +239,7 @@ def test_employee_creation_resolves_favorite_machine_id(
     machine_id = make_machine(name="Lieblingsanlage Z")
 
     response = client.post(
-        "/api/employees",
+        "/api/v1/employees",
         headers=auth_headers(admin["username"]),
         json={
             "personnel_number": "P-7001",
@@ -269,7 +269,7 @@ def test_employee_creation_leaves_favorite_machine_id_null_for_unknown_name(
     admin = make_user(username="emp_no_machine_admin", role=Role.MASTER_ADMIN, department_name="Produktion")
 
     response = client.post(
-        "/api/employees",
+        "/api/v1/employees",
         headers=auth_headers(admin["username"]),
         json={
             "personnel_number": "P-7002",

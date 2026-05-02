@@ -1,4 +1,4 @@
-from flask import jsonify
+from flask import jsonify, request as _request
 
 
 def error_code_from_message(message):
@@ -53,3 +53,37 @@ def success_payload(data=None, message="OK"):
 def success_response(data=None, status_code=200, message="OK"):
     """Return a Flask JSON response for a successful API operation."""
     return jsonify(success_payload(data, message)), status_code
+
+
+def paginate_query(query, serializer):
+    """Return a paginated JSON response for a SQLAlchemy query.
+
+    Reads ?page= and ?limit= from the current request. page defaults to 1,
+    limit defaults to 20, max limit is 100.
+
+    Response shape:
+        {"success": true, "data": [...], "pagination": {"page": 1, "limit": 20,
+         "total": N, "pages": N}, "message": "OK"}
+    """
+    try:
+        page = max(1, int(_request.args.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        limit = min(max(1, int(_request.args.get("limit", 20))), 100)
+    except (TypeError, ValueError):
+        limit = 20
+
+    total = query.count()
+    items = query.offset((page - 1) * limit).limit(limit).all()
+    return jsonify({
+        "success": True,
+        "data": [serializer(item) for item in items],
+        "pagination": {
+            "page": page,
+            "limit": limit,
+            "total": total,
+            "pages": max(1, (total + limit - 1) // limit),
+        },
+        "message": "OK",
+    })

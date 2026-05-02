@@ -17,8 +17,8 @@ def test_frontend_task_workflow_routes_exist(app, client):
     routes = public_route_methods(app)
     script = client.get("/static/app.js").get_data(as_text=True)
 
-    assert ("/api/tasks/<int:task_id>/start", "POST") in routes
-    assert ("/api/tasks/<int:task_id>/complete", "POST") in routes
+    assert ("/api/v1/tasks/<int:task_id>/start", "POST") in routes
+    assert ("/api/v1/tasks/<int:task_id>/complete", "POST") in routes
     assert '"/start"' in script
     assert '"/complete"' in script
 
@@ -29,21 +29,21 @@ def test_new_ai_frontend_routes_exist(app, client):
     script = client.get("/static/app.js").get_data(as_text=True)
 
     expected_routes = {
-        ("/api/tasks/prioritize", "POST"),
-        ("/api/errors/similar", "POST"),
-        ("/api/inventory/forecast", "POST"),
-        ("/api/shiftplans/calendar", "GET"),
-        ("/api/machines/<int:machine_id>/history", "GET"),
-        ("/api/machines/<int:machine_id>/assistant", "POST"),
-        ("/api/ai/daily-briefing", "GET"),
-        ("/api/documents/<int:document_id>/review", "POST"),
+        ("/api/v1/tasks/prioritize", "POST"),
+        ("/api/v1/errors/similar", "POST"),
+        ("/api/v1/inventory/forecast", "POST"),
+        ("/api/v1/shiftplans/calendar", "GET"),
+        ("/api/v1/machines/<int:machine_id>/history", "GET"),
+        ("/api/v1/machines/<int:machine_id>/assistant", "POST"),
+        ("/api/v1/ai/daily-briefing", "GET"),
+        ("/api/v1/documents/<int:document_id>/review", "POST"),
     }
     assert expected_routes <= routes
-    assert "/api/tasks/prioritize" in script
-    assert "/api/errors/similar" in script
-    assert "/api/inventory/forecast" in script
-    assert "/api/shiftplans/calendar" in script
-    assert "/api/ai/daily-briefing" in script
+    assert "/api/v1/tasks/prioritize" in script
+    assert "/api/v1/errors/similar" in script
+    assert "/api/v1/inventory/forecast" in script
+    assert "/api/v1/shiftplans/calendar" in script
+    assert "/api/v1/ai/daily-briefing" in script
 
 
 def test_api_not_found_returns_consistent_json(client, make_user, auth_headers):
@@ -88,20 +88,20 @@ def test_core_ai_and_workflow_endpoints_smoke(
     )
     headers = auth_headers(user["username"])
 
-    start_response = client.post(f"/api/tasks/{task_id}/start", headers=headers)
+    start_response = client.post(f"/api/v1/tasks/{task_id}/start", headers=headers)
     complete_response = client.post(
-        f"/api/tasks/{task_id}/complete",
+        f"/api/v1/tasks/{task_id}/complete",
         headers=headers,
         json={},
     )
-    briefing_response = client.get("/api/ai/daily-briefing", headers=headers)
+    briefing_response = client.get("/api/v1/ai/daily-briefing", headers=headers)
     assistant_response = client.post(
-        f"/api/machines/{machine_id}/assistant",
+        f"/api/v1/machines/{machine_id}/assistant",
         headers=headers,
         json={"question": "Was ist wichtig?"},
     )
     forecast_response = client.post(
-        "/api/inventory/forecast",
+        "/api/v1/inventory/forecast",
         headers=headers,
         json={"status": "open", "limit": 20, "low_stock_threshold": 5},
     )

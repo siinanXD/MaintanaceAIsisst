@@ -42,6 +42,12 @@
   const TASK_PRIORITIES = ["urgent", "soon", "normal"];
   const TASK_STATUSES = ["open", "in_progress", "done", "cancelled"];
 
+  function listData(result) {
+    if (Array.isArray(result)) return result;
+    if (result && Array.isArray(result.data)) return result.data;
+    return [];
+  }
+
   async function api(path, options) {
     const headers = Object.assign({ "Content-Type": "application/json" }, options && options.headers);
     const authToken = token();
@@ -277,7 +283,7 @@
     const selects = document.querySelectorAll("select[name='department']");
     if (!selects.length || !token()) return;
     try {
-      const departments = await api("/api/departments");
+      const departments = await api("/api/v1/departments");
       fillDepartments(selects, departments);
     } catch (error) {
       selects.forEach((select) => {
@@ -319,7 +325,7 @@
       priorityList.innerHTML = "";
       let priorities = [];
       try {
-        priorities = await api("/api/tasks/prioritize", {
+        priorities = await api("/api/v1/tasks/prioritize", {
           method: "POST",
           body: JSON.stringify({ status: "open", limit: 10 })
         });
@@ -366,7 +372,7 @@
     }
 
     async function runTaskAction(task, action, button) {
-      const endpoint = "/api/tasks/" + task.id + "/" + action;
+      const endpoint = "/api/v1/tasks/" + task.id + "/" + action;
       const message = document.querySelector("[data-task-message]");
       if (button) button.disabled = true;
       try {
@@ -437,7 +443,7 @@
           evt.currentTarget.disabled = true;
           const statusMsg = document.querySelector("[data-task-message]");
           try {
-            await api("/api/tasks/" + task.id, { method: "DELETE" });
+            await api("/api/v1/tasks/" + task.id, { method: "DELETE" });
             await load();
             await loadPriorities();
             setStatusMessage(statusMsg, "Task gelöscht.");
@@ -455,7 +461,7 @@
     }
 
     async function load() {
-      const tasks = await api("/api/tasks");
+      const tasks = listData(await api("/api/v1/tasks"));
       list.innerHTML = "";
       if (!tasks.length) {
         list.innerHTML = '<div class="empty-state md:col-span-2 xl:col-span-3">Noch keine Tasks vorhanden.</div>';
@@ -468,7 +474,7 @@
       event.preventDefault();
       const data = taskFormPayload(form);
       const wasEditing = Boolean(editingTaskId);
-      const path = editingTaskId ? "/api/tasks/" + editingTaskId : "/api/tasks";
+      const path = editingTaskId ? "/api/v1/tasks/" + editingTaskId : "/api/v1/tasks";
       const method = editingTaskId ? "PUT" : "POST";
       const message = document.querySelector("[data-task-message]");
       try {
@@ -499,7 +505,7 @@
         const data = Object.fromEntries(new FormData(suggestForm).entries());
         setStatusMessage(message, "AI erstellt Vorschlag...");
         try {
-          currentSuggestion = await api("/api/tasks/suggest", {
+          currentSuggestion = await api("/api/v1/tasks/suggest", {
             method: "POST",
             body: JSON.stringify(data)
           });
@@ -601,7 +607,7 @@
     }
 
     async function loadSimilarErrors(data) {
-      const result = await api("/api/errors/similar", {
+      const result = await api("/api/v1/errors/similar", {
         method: "POST",
         body: JSON.stringify({
           text: data.description || data.title || "",
@@ -644,7 +650,7 @@
     }
 
     async function load() {
-      currentErrors = await api("/api/errors");
+      currentErrors = listData(await api("/api/v1/errors"));
       renderErrors();
     }
 
@@ -656,7 +662,7 @@
       try {
         setStatusMessage(message, "Fehler wird geprueft...");
         await loadSimilarErrors(data);
-        await api("/api/errors", { method: "POST", body: JSON.stringify(data) });
+        await api("/api/v1/errors", { method: "POST", body: JSON.stringify(data) });
         form.reset();
         await initDepartments();
         await load();
@@ -673,7 +679,7 @@
         const data = Object.fromEntries(new FormData(analyzeForm).entries());
         setStatusMessage(message, "AI analysiert...");
         try {
-          currentAnalysis = await api("/api/errors/analyze", {
+          currentAnalysis = await api("/api/v1/errors/analyze", {
             method: "POST",
             body: JSON.stringify(data)
           });
@@ -757,7 +763,7 @@
       });
       select.value = item.employee_id ? String(item.employee_id) : "";
       select.addEventListener("change", async () => {
-        await api("/api/admin/users/" + item.id, {
+        await api("/api/v1/admin/users/" + item.id, {
           method: "PUT",
           body: JSON.stringify({ employee_id: select.value })
         });
@@ -855,7 +861,7 @@
         payload.permissions.admin_users.can_view = selectedUser.role === "master_admin";
         payload.permissions.admin_users.can_write = selectedUser.role === "master_admin";
         try {
-          const updated = await api("/api/admin/users/" + selectedUser.id + "/permissions", {
+          const updated = await api("/api/v1/admin/users/" + selectedUser.id + "/permissions", {
             method: "PUT",
             body: JSON.stringify(payload)
           });
@@ -873,9 +879,9 @@
     }
 
     async function load() {
-      const users = await api("/api/admin/users");
+      const users = await api("/api/v1/admin/users");
       try {
-        employees = await api("/api/employees");
+        employees = listData(await api("/api/v1/employees"));
       } catch (error) {
         employees = [];
       }
@@ -891,7 +897,7 @@
         reset.addEventListener("click", async () => {
           const password = window.prompt("Neues Passwort fuer " + item.username);
           if (!password) return;
-          await api("/api/admin/users/" + item.id + "/reset-password", {
+          await api("/api/v1/admin/users/" + item.id + "/reset-password", {
             method: "POST",
             body: JSON.stringify({ password })
           });
@@ -902,7 +908,7 @@
         lock.type = "button";
         lock.textContent = item.is_active ? "Sperren" : "Entsperren";
         lock.addEventListener("click", async () => {
-          await api("/api/admin/users/" + item.id + "/" + (item.is_active ? "lock" : "unlock"), { method: "POST" });
+          await api("/api/v1/admin/users/" + item.id + "/" + (item.is_active ? "lock" : "unlock"), { method: "POST" });
           await load();
         });
 
@@ -912,7 +918,7 @@
         remove.textContent = "Loeschen";
         remove.addEventListener("click", async () => {
           if (!window.confirm(item.username + " wirklich loeschen?")) return;
-          await api("/api/admin/users/" + item.id, { method: "DELETE" });
+          await api("/api/v1/admin/users/" + item.id, { method: "DELETE" });
           await load();
         });
 
@@ -954,7 +960,7 @@
     async function uploadDocument(employeeId, file) {
       const formData = new FormData();
       formData.append("document", file);
-      const response = await fetch("/api/employees/" + employeeId + "/documents", {
+      const response = await fetch("/api/v1/employees/" + employeeId + "/documents", {
         method: "POST",
         headers: { "Authorization": "Bearer " + token() },
         body: formData
@@ -971,7 +977,7 @@
     }
 
     async function load() {
-      const employees = await api("/api/employees");
+      const employees = listData(await api("/api/v1/employees"));
       list.innerHTML = "";
       employees.forEach((employee) => {
         const docs = document.createElement("div");
@@ -1043,7 +1049,7 @@
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       const data = Object.fromEntries(new FormData(form).entries());
-      await api("/api/employees", { method: "POST", body: JSON.stringify(data) });
+      await api("/api/v1/employees", { method: "POST", body: JSON.stringify(data) });
       form.reset();
       await load();
       if (message) message.textContent = "Mitarbeiter gespeichert.";
@@ -1056,7 +1062,7 @@
     const selects = document.querySelectorAll("[data-machine-select]");
     if (!selects.length || !token()) return [];
     if (!canView("machines")) return [];
-    const machines = await api("/api/machines");
+    const machines = await api("/api/v1/machines");
     selects.forEach((select) => {
       const current = select.value;
       select.innerHTML = '<option value="">Keine Maschine</option>';
@@ -1140,7 +1146,7 @@
     }
 
     async function loadMachineHistory(machine) {
-      const history = await api("/api/machines/" + machine.id + "/history");
+      const history = await api("/api/v1/machines/" + machine.id + "/history");
       renderMachineHistory(history);
     }
 
@@ -1151,7 +1157,7 @@
         const data = Object.fromEntries(new FormData(assistantForm).entries());
         setStatusMessage(assistantAnswer, "Maschinen-Assistent denkt...");
         try {
-          const result = await api("/api/machines/" + activeHistoryMachine.id + "/assistant", {
+          const result = await api("/api/v1/machines/" + activeHistoryMachine.id + "/assistant", {
             method: "POST",
             body: JSON.stringify(data)
           });
@@ -1183,7 +1189,7 @@
     }
 
     async function load() {
-      const machines = await api("/api/machines");
+      const machines = await api("/api/v1/machines");
       list.innerHTML = "";
       machines.forEach((machine) => {
         const actions = document.createElement("div");
@@ -1192,7 +1198,7 @@
         if (canWrite("machines")) {
           actions.appendChild(actionButton("Loeschen", async () => {
             if (!window.confirm(machine.name + " wirklich loeschen?")) return;
-            await api("/api/machines/" + machine.id, { method: "DELETE" });
+            await api("/api/v1/machines/" + machine.id, { method: "DELETE" });
             await load();
           }, true));
         }
@@ -1208,7 +1214,7 @@
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       const data = Object.fromEntries(new FormData(form).entries());
-      await api("/api/machines", { method: "POST", body: JSON.stringify(data) });
+      await api("/api/v1/machines", { method: "POST", body: JSON.stringify(data) });
       form.reset();
       form.elements.required_employees.value = "1";
       await load();
@@ -1287,7 +1293,7 @@
       const data = Object.fromEntries(new FormData(forecastForm).entries());
       data.status = "open";
       data.limit = 20;
-      const forecast = await api("/api/inventory/forecast", {
+      const forecast = await api("/api/v1/inventory/forecast", {
         method: "POST",
         body: JSON.stringify(data)
       });
@@ -1296,7 +1302,7 @@
 
     async function load() {
       await fillMachineSelects();
-      const materials = await api("/api/inventory");
+      const materials = await api("/api/v1/inventory");
       list.innerHTML = "";
       materials.forEach((material) => {
         const actions = document.createElement("div");
@@ -1304,7 +1310,7 @@
         if (canWrite("inventory")) {
           actions.appendChild(actionButton("Loeschen", async () => {
             if (!window.confirm(material.name + " wirklich loeschen?")) return;
-            await api("/api/inventory/" + material.id, { method: "DELETE" });
+            await api("/api/v1/inventory/" + material.id, { method: "DELETE" });
             await load();
           }, true));
         }
@@ -1323,7 +1329,7 @@
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       const data = Object.fromEntries(new FormData(form).entries());
-      await api("/api/inventory", { method: "POST", body: JSON.stringify(data) });
+      await api("/api/v1/inventory", { method: "POST", body: JSON.stringify(data) });
       form.reset();
       await load();
       const message = document.querySelector("[data-inventory-message]");
@@ -1413,7 +1419,7 @@
       if (canWrite("shiftplans")) {
         const remove = actionButton("Loeschen", async () => {
           if (!window.confirm(plan.title + " wirklich loeschen?")) return;
-          await api("/api/shiftplans/" + plan.id, { method: "DELETE" });
+          await api("/api/v1/shiftplans/" + plan.id, { method: "DELETE" });
           await load();
         }, true);
         header.append(remove);
@@ -1466,7 +1472,7 @@
     }
 
     async function load() {
-      const plans = await api("/api/shiftplans");
+      const plans = await api("/api/v1/shiftplans");
       list.innerHTML = "";
       if (!plans.length) {
         list.innerHTML = '<div class="empty-state">Noch kein Schichtplan generiert.</div>';
@@ -1485,7 +1491,7 @@
       data.vacations = parseVacationText(data.vacations_text);
       delete data.vacations_text;
       try {
-        const plan = await api("/api/shiftplans/generate", { method: "POST", body: JSON.stringify(data) });
+        const plan = await api("/api/v1/shiftplans/generate", { method: "POST", body: JSON.stringify(data) });
         form.reset();
         if (startInput) startInput.value = new Date().toISOString().slice(0, 10);
         if (message) {
@@ -1594,14 +1600,14 @@
     }
 
     async function openTaskDetail(taskId) {
-      const task = await api("/api/tasks/" + taskId);
+      const task = await api("/api/v1/tasks/" + taskId);
       renderTaskDetail(task);
       if (taskDetailModal) taskDetailModal.hidden = false;
     }
 
     async function refreshActiveTask(message) {
       if (!activeTaskId) return;
-      const task = await api("/api/tasks/" + activeTaskId);
+      const task = await api("/api/v1/tasks/" + activeTaskId);
       renderTaskDetail(task);
       showTaskMessage(message);
       await loadDashboardTasks();
@@ -1641,7 +1647,7 @@
     }
 
     async function loadDashboardTasks() {
-      const tasks = await api("/api/tasks");
+      const tasks = listData(await api("/api/v1/tasks"));
       taskRail.innerHTML = "";
       taskCountElements.forEach((taskCount) => {
         taskCount.textContent = String(tasks.length);
@@ -1677,7 +1683,7 @@
     if (taskStartButton) {
       taskStartButton.addEventListener("click", async () => {
         await runTaskAction(
-          "/api/tasks/" + activeTaskId + "/start",
+          "/api/v1/tasks/" + activeTaskId + "/start",
           "Task gestartet."
         );
       });
@@ -1686,7 +1692,7 @@
     if (taskCompleteButton) {
       taskCompleteButton.addEventListener("click", async () => {
         await runTaskAction(
-          "/api/tasks/" + activeTaskId + "/complete",
+          "/api/v1/tasks/" + activeTaskId + "/complete",
           "Task abgeschlossen.",
           reportPayload()
         );
@@ -1698,7 +1704,7 @@
     }
 
     if (errorStats && canView("errors")) {
-      const errors = await api("/api/errors");
+      const errors = listData(await api("/api/v1/errors"));
       const counts = new Map();
       errors.forEach((entry) => {
         const name = entry.department ? entry.department.name : "Ohne Bereich";
@@ -1718,7 +1724,7 @@
     }
 
     if (inventoryStats && canView("inventory")) {
-      const summary = await api("/api/inventory/summary");
+      const summary = await api("/api/v1/inventory/summary");
       inventoryStats.innerHTML = "";
       inventoryStats.append(
         rowLikeStat("Materialien", String(summary.material_count)),
@@ -1888,11 +1894,11 @@
         event.preventDefault();
         try {
           submit.disabled = true;
-          await api("/api/tasks/" + task.id, {
+          await api("/api/v1/tasks/" + task.id, {
             method: "PUT",
             body: JSON.stringify(taskFormPayload(editForm))
           });
-          const updatedTask = await api("/api/tasks/" + task.id);
+          const updatedTask = await api("/api/v1/tasks/" + task.id);
           renderTaskDetail(updatedTask);
           await loadDashboardTasks();
           showTaskMessage("Task aktualisiert.");
@@ -1964,7 +1970,7 @@
     }
 
     async function openTaskDetail(taskId) {
-      const task = await api("/api/tasks/" + taskId);
+      const task = await api("/api/v1/tasks/" + taskId);
       renderTaskDetail(task);
       if (taskDetailModal) {
         taskDetailModal.hidden = false;
@@ -1974,7 +1980,7 @@
     }
 
     async function runTaskAction(taskId, action, body) {
-      const path = "/api/tasks/" + taskId + "/" + action;
+      const path = "/api/v1/tasks/" + taskId + "/" + action;
       const success = action === "start" ? "Task gestartet." : "Task abgeschlossen.";
       const options = { method: "POST" };
       if (body && Object.keys(body).length) {
@@ -1987,7 +1993,7 @@
           : "";
         announce(success + suffix);
         if (activeTaskId === taskId) {
-          renderTaskDetail(await api("/api/tasks/" + taskId));
+          renderTaskDetail(await api("/api/v1/tasks/" + taskId));
           showTaskMessage(success + suffix);
         }
         await loadDashboardTasks();
@@ -2059,7 +2065,7 @@
     }
 
     async function loadDashboardTasks() {
-      const tasks = await api("/api/tasks");
+      const tasks = listData(await api("/api/v1/tasks"));
       const lists = {
         urgent: document.querySelector("[data-cockpit-list='urgent']"),
         today: document.querySelector("[data-cockpit-list='today']"),
@@ -2110,7 +2116,7 @@
         const data = Object.fromEntries(new FormData(cockpitSuggestForm).entries());
         announce("KI erstellt Vorschlag...");
         try {
-          const suggestion = await api("/api/tasks/suggest", {
+          const suggestion = await api("/api/v1/tasks/suggest", {
             method: "POST",
             body: JSON.stringify(data)
           });
@@ -2134,7 +2140,7 @@
         event.preventDefault();
         const data = Object.fromEntries(new FormData(cockpitDraft).entries());
         try {
-          await api("/api/tasks", { method: "POST", body: JSON.stringify(data) });
+          await api("/api/v1/tasks", { method: "POST", body: JSON.stringify(data) });
           cockpitSuggestForm.reset();
           cockpitDraft.reset();
           cockpitDraft.hidden = true;
@@ -2177,7 +2183,7 @@
       priorityList.innerHTML = "";
       let priorities = [];
       try {
-        priorities = await api("/api/tasks/prioritize", {
+        priorities = await api("/api/v1/tasks/prioritize", {
           method: "POST",
           body: JSON.stringify({ status: "open", limit: 3 })
         });
@@ -2202,7 +2208,7 @@
       if (!briefingList) return;
       let briefing = null;
       try {
-        briefing = await api("/api/ai/daily-briefing");
+        briefing = await api("/api/v1/ai/daily-briefing");
       } catch (error) {
         if (briefingSummary) briefingSummary.textContent = "Briefing konnte nicht geladen werden.";
         briefingList.innerHTML = "";
@@ -2228,7 +2234,7 @@
     async function setupDashboardCalendarFilter() {
       if (!shiftCalendarEmployee || !canView("employees")) return;
       try {
-        const employees = await api("/api/employees");
+        const employees = listData(await api("/api/v1/employees"));
         shiftCalendarEmployee.hidden = false;
         employees.forEach((employee) => {
           const option = document.createElement("option");
@@ -2249,7 +2255,7 @@
         params.set("employee_id", shiftCalendarEmployee.value);
       }
       try {
-        const calendar = await api("/api/shiftplans/calendar?" + params.toString());
+        const calendar = await api("/api/v1/shiftplans/calendar?" + params.toString());
         renderShiftCalendar(shiftCalendar, calendar);
         if (shiftCalendarMessage) {
           shiftCalendarMessage.textContent = calendar.employee
@@ -2280,7 +2286,7 @@
     }
 
     if (errorStats && canView("errors")) {
-      const errors = await api("/api/errors");
+      const errors = listData(await api("/api/v1/errors"));
       setText("[data-dashboard-machine-issue-count]", errors.length);
       const counts = new Map();
       errors.forEach((entry) => {
@@ -2301,7 +2307,7 @@
     }
 
     if (inventoryStats && canView("inventory")) {
-      const summary = await api("/api/inventory/summary");
+      const summary = await api("/api/v1/inventory/summary");
       inventoryStats.innerHTML = "";
       inventoryStats.append(
         rowLikeStat("Materialien", String(summary.material_count)),
@@ -2359,7 +2365,7 @@
     }
 
     async function reviewDocument(documentItem) {
-      const review = await api("/api/documents/" + documentItem.id + "/review", {
+      const review = await api("/api/v1/documents/" + documentItem.id + "/review", {
         method: "POST"
       });
       renderDocumentReview(review);
@@ -2375,7 +2381,7 @@
         if (value) params.set(key, value);
       });
       const suffix = params.toString() ? "?" + params.toString() : "";
-      const documents = await api("/api/documents" + suffix);
+      const documents = await api("/api/v1/documents" + suffix);
       list.innerHTML = "";
       if (!documents.length) {
         list.innerHTML = '<tr><td colspan="6">Keine Dokumente gefunden.</td></tr>';

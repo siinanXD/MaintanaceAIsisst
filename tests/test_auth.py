@@ -3,14 +3,14 @@ from app.models import Role
 
 def test_register_validates_missing_fields_and_department(client):
     """Verify registration rejects incomplete payloads and non-admins without departments."""
-    missing_response = client.post("/api/auth/register", json={})
+    missing_response = client.post("/api/v1/auth/register", json={})
 
     assert missing_response.status_code == 400
     assert missing_response.get_json()["error"] == "missing_fields_username_email_password"
     assert "Missing fields" in missing_response.get_json()["message"]
 
     no_department_response = client.post(
-        "/api/auth/register",
+        "/api/v1/auth/register",
         json={
             "username": "tech",
             "email": "tech@example.test",
@@ -34,8 +34,8 @@ def test_register_master_admin_and_reject_duplicate(client):
         "role": Role.MASTER_ADMIN.value,
     }
 
-    response = client.post("/api/auth/register", json=payload)
-    duplicate_response = client.post("/api/auth/register", json=payload)
+    response = client.post("/api/v1/auth/register", json=payload)
+    duplicate_response = client.post("/api/v1/auth/register", json=payload)
 
     assert response.status_code == 201
     assert response.get_json()["role"] == Role.MASTER_ADMIN.value
@@ -47,17 +47,17 @@ def test_login_with_username_email_and_me(client, make_user):
     user = make_user(username="operator")
 
     username_response = client.post(
-        "/api/auth/login",
+        "/api/v1/auth/login",
         json={"login": user["username"], "password": user["password"]},
     )
     email_response = client.post(
-        "/api/auth/login",
+        "/api/v1/auth/login",
         json={"login": user["email"], "password": user["password"]},
     )
 
     token = username_response.get_json()["access_token"]
     me_response = client.get(
-        "/api/auth/me",
+        "/api/v1/auth/me",
         headers={"Authorization": f"Bearer {token}"},
     )
 
@@ -72,14 +72,14 @@ def test_login_rejects_invalid_credentials_and_locked_users(client, make_user):
     user = make_user(username="locked", is_active=False)
 
     bad_password_response = client.post(
-        "/api/auth/login",
+        "/api/v1/auth/login",
         json={"login": user["username"], "password": "wrong"},
     )
     locked_response = client.post(
-        "/api/auth/login",
+        "/api/v1/auth/login",
         json={"login": user["username"], "password": user["password"]},
     )
-    missing_response = client.post("/api/auth/login", json={"login": user["username"]})
+    missing_response = client.post("/api/v1/auth/login", json={"login": user["username"]})
 
     assert bad_password_response.status_code == 401
     assert locked_response.status_code == 403

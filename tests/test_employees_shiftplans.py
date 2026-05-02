@@ -15,9 +15,9 @@ def test_employee_create_rejects_missing_duplicate_and_invalid_values(
     )
     headers = auth_headers(admin["username"])
 
-    missing_response = client.post("/api/employees", headers=headers, json={})
+    missing_response = client.post("/api/v1/employees", headers=headers, json={})
     create_response = client.post(
-        "/api/employees",
+        "/api/v1/employees",
         headers=headers,
         json={
             "personnel_number": "P-200",
@@ -28,12 +28,12 @@ def test_employee_create_rejects_missing_duplicate_and_invalid_values(
         },
     )
     duplicate_response = client.post(
-        "/api/employees",
+        "/api/v1/employees",
         headers=headers,
         json={"personnel_number": "P-200", "name": "Lisa Produktion"},
     )
     invalid_response = client.post(
-        "/api/employees",
+        "/api/v1/employees",
         headers=headers,
         json={
             "personnel_number": "P-201",
@@ -70,9 +70,9 @@ def test_employee_shift_access_includes_shift_but_not_confidential_fields(
         employee_access_level="shift",
     )
 
-    response = client.get("/api/employees", headers=auth_headers(user["username"]))
+    response = client.get("/api/v1/employees", headers=auth_headers(user["username"]))
 
-    payload = response.get_json()[0]
+    payload = response.get_json()["data"][0]
     assert response.status_code == 200
     assert payload["qualifications"] == "CNC"
     assert "salary_group" not in payload
@@ -100,7 +100,7 @@ def test_employee_write_requires_confidential_access(
     )
 
     response = client.post(
-        "/api/employees",
+        "/api/v1/employees",
         headers=auth_headers(user["username"]),
         json={"personnel_number": "P-300", "name": "Nicht erlaubt"},
     )
@@ -124,12 +124,12 @@ def test_employee_update_rejects_invalid_birth_date_or_team(
     headers = auth_headers(admin["username"])
 
     invalid_date_response = client.put(
-        f"/api/employees/{employee_id}",
+        f"/api/v1/employees/{employee_id}",
         headers=headers,
         json={"birth_date": "01-01-1990"},
     )
     invalid_team_response = client.put(
-        f"/api/employees/{employee_id}",
+        f"/api/v1/employees/{employee_id}",
         headers=headers,
         json={"team": "team-a"},
     )
@@ -156,7 +156,7 @@ def test_shiftplan_generate_uses_local_fallback(
     make_machine(name="Schicht Anlage", required_employees=1)
 
     response = client.post(
-        "/api/shiftplans/generate",
+        "/api/v1/shiftplans/generate",
         headers=auth_headers(admin["username"]),
         json={
             "title": "KW Test",
@@ -186,7 +186,7 @@ def test_shiftplan_generate_rejects_when_no_production_employees(
     )
 
     response = client.post(
-        "/api/shiftplans/generate",
+        "/api/v1/shiftplans/generate",
         headers=auth_headers(admin["username"]),
         json={"start_date": "2026-05-01"},
     )
@@ -212,12 +212,12 @@ def test_shiftplan_generate_rejects_invalid_date_and_days(
     headers = auth_headers(admin["username"])
 
     invalid_date_response = client.post(
-        "/api/shiftplans/generate",
+        "/api/v1/shiftplans/generate",
         headers=headers,
         json={"start_date": "01.05.2026"},
     )
     invalid_days_response = client.post(
-        "/api/shiftplans/generate",
+        "/api/v1/shiftplans/generate",
         headers=headers,
         json={"start_date": "2026-05-01", "days": "seven"},
     )
@@ -250,7 +250,7 @@ def test_shiftplan_generate_returns_warnings_and_coverage(
     make_machine(name="Warn Anlage 2", required_employees=1)
 
     response = client.post(
-        "/api/shiftplans/generate",
+        "/api/v1/shiftplans/generate",
         headers=auth_headers(admin["username"]),
         json={
             "title": "Warnplan",
@@ -293,7 +293,7 @@ def test_admin_user_can_link_employee(
     )
 
     response = client.put(
-        f"/api/admin/users/{user['id']}",
+        f"/api/v1/admin/users/{user['id']}",
         headers=auth_headers(admin["username"]),
         json={"employee_id": employee_id},
     )
@@ -329,7 +329,7 @@ def test_shiftplan_generate_saves_vacation_and_skips_worker(
     make_machine(name="Vacation Anlage", required_employees=1)
 
     response = client.post(
-        "/api/shiftplans/generate",
+        "/api/v1/shiftplans/generate",
         headers=auth_headers(admin["username"]),
         json={
             "title": "Urlaubsplan",
@@ -388,7 +388,7 @@ def test_shiftplan_calendar_returns_own_calendar_and_free_days(
         db.session.commit()
 
     client.post(
-        "/api/shiftplans/generate",
+        "/api/v1/shiftplans/generate",
         headers=auth_headers(admin["username"]),
         json={
             "title": "Kalenderplan",
@@ -406,7 +406,7 @@ def test_shiftplan_calendar_returns_own_calendar_and_free_days(
     )
 
     response = client.get(
-        "/api/shiftplans/calendar?start_date=2026-05-01&days=2",
+        "/api/v1/shiftplans/calendar?start_date=2026-05-01&days=2",
         headers=auth_headers(user["username"]),
     )
 
@@ -438,7 +438,7 @@ def test_shiftplan_calendar_admin_can_filter_employee(
     )
 
     response = client.get(
-        f"/api/shiftplans/calendar?employee_id={employee_id}&start_date=2026-05-01&days=1",
+        f"/api/v1/shiftplans/calendar?employee_id={employee_id}&start_date=2026-05-01&days=1",
         headers=auth_headers(admin["username"]),
     )
 
@@ -477,7 +477,7 @@ def test_shiftplan_delete_requires_master_admin(
     make_machine(name="Del Anlage", required_employees=1)
 
     create_response = client.post(
-        "/api/shiftplans/generate",
+        "/api/v1/shiftplans/generate",
         headers=auth_headers(admin["username"]),
         json={"title": "Delete Test", "start_date": "2026-06-01", "days": 1, "rhythm": "2-Schicht"},
     )
@@ -485,13 +485,13 @@ def test_shiftplan_delete_requires_master_admin(
     plan_id = create_response.get_json()["id"]
 
     forbidden = client.delete(
-        f"/api/shiftplans/{plan_id}",
+        f"/api/v1/shiftplans/{plan_id}",
         headers=auth_headers(non_admin["username"]),
     )
     assert forbidden.status_code == 403
 
     ok = client.delete(
-        f"/api/shiftplans/{plan_id}",
+        f"/api/v1/shiftplans/{plan_id}",
         headers=auth_headers(admin["username"]),
     )
     assert ok.status_code == 204

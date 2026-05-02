@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request, send_from_directory
 
 from app.models import Employee
-from app.responses import error_response, service_error_response
+from app.responses import error_response, paginate_query, service_error_response
 from app.security import (
     current_user,
     dashboard_permission_required,
@@ -18,9 +18,15 @@ employees_bp = Blueprint("employees", __name__)
 @dashboard_permission_required("employees", "view")
 @employee_access_required("basic")
 def list_employees():
-    """Return employees filtered by the current user's access level."""
+    """Return employees filtered by the current user's access level with optional pagination.
+
+    Query params:
+        page  — page number (default 1)
+        limit — items per page, 1-100 (default 20)
+    """
     access_level = employee_access_level(current_user())
-    return jsonify([e.to_dict(access_level) for e in employee_svc.list_employees()])
+    query = Employee.query.order_by(Employee.name.asc())
+    return paginate_query(query, lambda e: e.to_dict(access_level))
 
 
 @employees_bp.post("")

@@ -18,7 +18,7 @@ def test_machine_create_rejects_duplicates_and_invalid_staffing(
     headers = auth_headers(admin["username"])
 
     create_response = client.post(
-        "/api/machines",
+        "/api/v1/machines",
         headers=headers,
         json={
             "name": "Anlage 4",
@@ -27,12 +27,12 @@ def test_machine_create_rejects_duplicates_and_invalid_staffing(
         },
     )
     duplicate_response = client.post(
-        "/api/machines",
+        "/api/v1/machines",
         headers=headers,
         json={"name": "Anlage 4"},
     )
     invalid_response = client.post(
-        "/api/machines",
+        "/api/v1/machines",
         headers=headers,
         json={"name": "Anlage 5", "required_employees": 0},
     )
@@ -56,7 +56,7 @@ def test_non_admin_without_machine_write_permission_is_forbidden(
     )
 
     response = client.post(
-        "/api/machines",
+        "/api/v1/machines",
         headers=auth_headers(user["username"]),
         json={"name": "Anlage ohne Recht"},
     )
@@ -80,7 +80,7 @@ def test_inventory_create_and_summary_calculates_totals(
     headers = auth_headers(admin["username"])
 
     create_response = client.post(
-        "/api/inventory",
+        "/api/v1/inventory",
         headers=headers,
         json={
             "name": "Schraube M6",
@@ -90,7 +90,7 @@ def test_inventory_create_and_summary_calculates_totals(
             "manufacturer": "ACME",
         },
     )
-    summary_response = client.get("/api/inventory/summary", headers=headers)
+    summary_response = client.get("/api/v1/inventory/summary", headers=headers)
 
     assert create_response.status_code == 201
     assert create_response.get_json()["total_value"] == 60.0
@@ -114,12 +114,12 @@ def test_inventory_rejects_negative_or_non_numeric_values(
     headers = auth_headers(admin["username"])
 
     negative_response = client.post(
-        "/api/inventory",
+        "/api/v1/inventory",
         headers=headers,
         json={"name": "Oel", "quantity": -1},
     )
     invalid_float_response = client.post(
-        "/api/inventory",
+        "/api/v1/inventory",
         headers=headers,
         json={"name": "Oel 2", "unit_cost": "abc"},
     )
@@ -144,12 +144,12 @@ def test_inventory_update_rejects_invalid_numbers(
     headers = auth_headers(admin["username"])
 
     negative_response = client.put(
-        f"/api/inventory/{material_id}",
+        f"/api/v1/inventory/{material_id}",
         headers=headers,
         json={"quantity": -5},
     )
     invalid_response = client.put(
-        f"/api/inventory/{material_id}",
+        f"/api/v1/inventory/{material_id}",
         headers=headers,
         json={"unit_cost": "teuer"},
     )
@@ -175,8 +175,8 @@ def test_delete_machine_detaches_inventory_material(
     make_material("Material", 2.5, 4, machine_id=machine_id)
     headers = auth_headers(admin["username"])
 
-    delete_response = client.delete(f"/api/machines/{machine_id}", headers=headers)
-    materials_response = client.get("/api/inventory", headers=headers)
+    delete_response = client.delete(f"/api/v1/machines/{machine_id}", headers=headers)
+    materials_response = client.get("/api/v1/inventory", headers=headers)
 
     assert delete_response.status_code == 204
     assert materials_response.get_json()[0]["machine_id"] is None
@@ -221,7 +221,7 @@ def test_inventory_forecast_respects_task_department_visibility(
     )
 
     response = client.post(
-        "/api/inventory/forecast",
+        "/api/v1/inventory/forecast",
         headers=auth_headers(requester["username"]),
         json={"status": "open", "low_stock_threshold": 5},
     )
@@ -258,12 +258,12 @@ def test_inventory_forecast_requires_inventory_and_task_view(
     )
 
     missing_inventory = client.post(
-        "/api/inventory/forecast",
+        "/api/v1/inventory/forecast",
         headers=auth_headers(tasks_only["username"]),
         json={},
     )
     missing_tasks = client.post(
-        "/api/inventory/forecast",
+        "/api/v1/inventory/forecast",
         headers=auth_headers(inventory_only["username"]),
         json={},
     )
@@ -298,7 +298,7 @@ def test_inventory_forecast_flags_low_stock_for_critical_task(
     )
 
     response = client.post(
-        "/api/inventory/forecast",
+        "/api/v1/inventory/forecast",
         headers=auth_headers(user["username"]),
         json={"status": "open", "low_stock_threshold": 5},
     )
@@ -337,7 +337,7 @@ def test_inventory_forecast_matches_machine_partial_name(
     )
 
     response = client.post(
-        "/api/inventory/forecast",
+        "/api/v1/inventory/forecast",
         headers=auth_headers(user["username"]),
         json={"status": "open", "low_stock_threshold": 5},
     )
@@ -371,7 +371,7 @@ def test_inventory_forecast_reports_unmatched_high_risk_tasks(
     )
 
     response = client.post(
-        "/api/inventory/forecast",
+        "/api/v1/inventory/forecast",
         headers=auth_headers(user["username"]),
         json={"status": "open", "low_stock_threshold": 5},
     )
@@ -396,17 +396,17 @@ def test_inventory_forecast_rejects_invalid_payloads(
     headers = auth_headers(user["username"])
 
     bad_threshold = client.post(
-        "/api/inventory/forecast",
+        "/api/v1/inventory/forecast",
         headers=headers,
         json={"low_stock_threshold": -1},
     )
     bad_limit = client.post(
-        "/api/inventory/forecast",
+        "/api/v1/inventory/forecast",
         headers=headers,
         json={"limit": 0},
     )
     bad_status = client.post(
-        "/api/inventory/forecast",
+        "/api/v1/inventory/forecast",
         headers=headers,
         json={"status": "unknown"},
     )
@@ -467,7 +467,7 @@ def test_machine_history_only_uses_permitted_sources(
     )
 
     response = client.get(
-        f"/api/machines/{machine_id}/history",
+        f"/api/v1/machines/{machine_id}/history",
         headers=auth_headers(user["username"]),
     )
 
@@ -542,7 +542,7 @@ def test_machine_history_respects_non_admin_department_scope(
     )
 
     response = client.get(
-        f"/api/machines/{machine_id}/history",
+        f"/api/v1/machines/{machine_id}/history",
         headers=auth_headers(requester["username"]),
     )
 
@@ -563,7 +563,7 @@ def test_machine_history_unknown_machine_returns_404(client, make_user, auth_hea
     )
 
     response = client.get(
-        "/api/machines/999/history",
+        "/api/v1/machines/999/history",
         headers=auth_headers(admin["username"]),
     )
 
@@ -585,7 +585,7 @@ def test_machine_history_uses_local_summary_without_openai_key(
     machine_id = make_machine(name="Anlage Zusammenfassung")
 
     response = client.get(
-        f"/api/machines/{machine_id}/history",
+        f"/api/v1/machines/{machine_id}/history",
         headers=auth_headers(admin["username"]),
     )
 
@@ -631,12 +631,12 @@ def test_machine_assistant_uses_local_context_and_requires_question(
     headers = auth_headers(user["username"])
 
     empty_response = client.post(
-        f"/api/machines/{machine_id}/assistant",
+        f"/api/v1/machines/{machine_id}/assistant",
         headers=headers,
         json={},
     )
     valid_response = client.post(
-        f"/api/machines/{machine_id}/assistant",
+        f"/api/v1/machines/{machine_id}/assistant",
         headers=headers,
         json={"question": "Was ist wichtig?"},
     )
@@ -691,7 +691,7 @@ def test_machine_assistant_excludes_unpermitted_sources(
     set_dashboard_permission(user["username"], "inventory", can_view=False)
 
     response = client.post(
-        f"/api/machines/{machine_id}/assistant",
+        f"/api/v1/machines/{machine_id}/assistant",
         headers=auth_headers(user["username"]),
         json={"question": "Was ist sichtbar?"},
     )
@@ -737,7 +737,7 @@ def test_machine_assistant_falls_back_when_ai_provider_fails(
     )
 
     response = client.post(
-        f"/api/machines/{machine_id}/assistant",
+        f"/api/v1/machines/{machine_id}/assistant",
         headers=auth_headers(user["username"]),
         json={"question": "Was ist zu tun?"},
     )

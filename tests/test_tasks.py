@@ -13,7 +13,7 @@ def test_task_create_list_filter_and_update(client, make_user, auth_headers):
     headers = auth_headers(user["username"])
 
     create_response = client.post(
-        "/api/tasks",
+        "/api/v1/tasks",
         headers=headers,
         json={
             "title": "Motor pruefen",
@@ -24,19 +24,19 @@ def test_task_create_list_filter_and_update(client, make_user, auth_headers):
         },
     )
     list_response = client.get(
-        "/api/tasks?status=open&priority=urgent",
+        "/api/v1/tasks?status=open&priority=urgent",
         headers=headers,
     )
     task_id = create_response.get_json()["id"]
     update_response = client.put(
-        f"/api/tasks/{task_id}",
+        f"/api/v1/tasks/{task_id}",
         headers=headers,
         json={"status": "in_progress", "priority": "soon"},
     )
 
     assert create_response.status_code == 201
     assert list_response.status_code == 200
-    assert len(list_response.get_json()) == 1
+    assert len(list_response.get_json()["data"]) == 1
     assert update_response.status_code == 200
     assert update_response.get_json()["status"] == "in_progress"
     assert update_response.get_json()["current_worker_id"] == user["id"]
@@ -44,7 +44,7 @@ def test_task_create_list_filter_and_update(client, make_user, auth_headers):
 
 def test_task_routes_require_token(client):
     """Verify protected task routes reject unauthenticated requests."""
-    response = client.get("/api/tasks")
+    response = client.get("/api/v1/tasks")
 
     assert response.status_code == 401
 
@@ -59,17 +59,17 @@ def test_task_validation_rejects_bad_payloads(client, make_user, auth_headers):
     headers = auth_headers(user["username"])
 
     missing_title = client.post(
-        "/api/tasks",
+        "/api/v1/tasks",
         headers=headers,
         json={"department": "Instandhaltung"},
     )
     blank_title = client.post(
-        "/api/tasks",
+        "/api/v1/tasks",
         headers=headers,
         json={"title": "   ", "department": "Instandhaltung"},
     )
     bad_date = client.post(
-        "/api/tasks",
+        "/api/v1/tasks",
         headers=headers,
         json={
             "title": "Datum kaputt",
@@ -77,7 +77,7 @@ def test_task_validation_rejects_bad_payloads(client, make_user, auth_headers):
             "due_date": "05-02-2026",
         },
     )
-    bad_filter = client.get("/api/tasks?status=unknown", headers=headers)
+    bad_filter = client.get("/api/v1/tasks?status=unknown", headers=headers)
 
     assert missing_title.status_code == 400
     assert blank_title.status_code == 400
@@ -98,7 +98,7 @@ def test_non_admin_cannot_write_task_for_other_department(
     )
 
     response = client.post(
-        "/api/tasks",
+        "/api/v1/tasks",
         headers=auth_headers(user["username"]),
         json={"title": "Fremder Task", "department": "Instandhaltung"},
     )
@@ -130,7 +130,7 @@ def test_task_detail_is_forbidden_across_departments(
     )
 
     response = client.get(
-        f"/api/tasks/{task_id}",
+        f"/api/v1/tasks/{task_id}",
         headers=auth_headers(requester["username"]),
     )
 
@@ -158,16 +158,16 @@ def test_task_start_and_complete_edgecases(
         status=TaskStatus.CANCELLED,
     )
 
-    start_response = client.post(f"/api/tasks/{task_id}/start", headers=headers)
-    second_start_response = client.post(f"/api/tasks/{task_id}/start", headers=headers)
-    complete_response = client.post(f"/api/tasks/{task_id}/complete", headers=headers)
+    start_response = client.post(f"/api/v1/tasks/{task_id}/start", headers=headers)
+    second_start_response = client.post(f"/api/v1/tasks/{task_id}/start", headers=headers)
+    complete_response = client.post(f"/api/v1/tasks/{task_id}/complete", headers=headers)
     second_complete_response = client.post(
-        f"/api/tasks/{task_id}/complete",
+        f"/api/v1/tasks/{task_id}/complete",
         headers=headers,
     )
-    start_done_response = client.post(f"/api/tasks/{done_task_id}/start", headers=headers)
+    start_done_response = client.post(f"/api/v1/tasks/{done_task_id}/start", headers=headers)
     complete_cancelled_response = client.post(
-        f"/api/tasks/{cancelled_task_id}/complete",
+        f"/api/v1/tasks/{cancelled_task_id}/complete",
         headers=headers,
     )
 
@@ -190,7 +190,7 @@ def test_task_create_start_complete_workflow(client, make_user, auth_headers):
     headers = auth_headers(user["username"])
 
     create_response = client.post(
-        "/api/tasks",
+        "/api/v1/tasks",
         headers=headers,
         json={
             "title": "Workflow Ende zu Ende",
@@ -200,9 +200,9 @@ def test_task_create_start_complete_workflow(client, make_user, auth_headers):
         },
     )
     task_id = create_response.get_json()["id"]
-    start_response = client.post(f"/api/tasks/{task_id}/start", headers=headers)
+    start_response = client.post(f"/api/v1/tasks/{task_id}/start", headers=headers)
     complete_response = client.post(
-        f"/api/tasks/{task_id}/complete",
+        f"/api/v1/tasks/{task_id}/complete",
         headers=headers,
         json={},
     )
@@ -220,7 +220,7 @@ def test_task_workflow_errors_use_consistent_payload(client, make_user, auth_hea
     user = make_user(username="workflow_error_shape")
 
     response = client.post(
-        "/api/tasks/999/start",
+        "/api/v1/tasks/999/start",
         headers=auth_headers(user["username"]),
     )
 
@@ -245,7 +245,7 @@ def test_today_tasks_only_returns_current_date(client, make_user, make_task, aut
         due_date_value=date.today() + timedelta(days=1),
     )
 
-    response = client.get("/api/tasks/today", headers=auth_headers(user["username"]))
+    response = client.get("/api/v1/tasks/today", headers=auth_headers(user["username"]))
 
     assert response.status_code == 200
     assert [task["title"] for task in response.get_json()] == ["Heute"]
@@ -280,7 +280,7 @@ def test_prioritize_tasks_only_returns_visible_department(
     )
 
     response = client.post(
-        "/api/tasks/prioritize",
+        "/api/v1/tasks/prioritize",
         headers=auth_headers(requester["username"]),
         json={"status": "open"},
     )
@@ -296,12 +296,12 @@ def test_prioritize_tasks_rejects_invalid_filters(client, make_user, auth_header
     headers = auth_headers(user["username"])
 
     bad_status = client.post(
-        "/api/tasks/prioritize",
+        "/api/v1/tasks/prioritize",
         headers=headers,
         json={"status": "unknown"},
     )
     bad_limit = client.post(
-        "/api/tasks/prioritize",
+        "/api/v1/tasks/prioritize",
         headers=headers,
         json={"limit": 0},
     )
@@ -334,7 +334,7 @@ def test_prioritize_tasks_sorts_urgent_overdue_before_normal(
     )
 
     response = client.post(
-        "/api/tasks/prioritize",
+        "/api/v1/tasks/prioritize",
         headers=auth_headers(user["username"]),
         json={"status": "open"},
     )
@@ -362,7 +362,7 @@ def test_prioritize_tasks_uses_local_fallback_without_openai_key(
     )
 
     response = client.post(
-        "/api/tasks/prioritize",
+        "/api/v1/tasks/prioritize",
         headers=auth_headers(user["username"]),
         json={"limit": 1},
     )

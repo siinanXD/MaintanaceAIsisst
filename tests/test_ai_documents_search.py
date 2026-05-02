@@ -18,7 +18,7 @@ def test_ai_chat_returns_today_tasks_without_openai(
     make_task("Task fuer heute", creator_username=user["username"])
 
     response = client.post(
-        "/api/ai/chat",
+        "/api/v1/ai/chat",
         headers=auth_headers(user["username"]),
         json={"message": "Welche Tasks stehen heute an?"},
     )
@@ -35,7 +35,7 @@ def test_ai_chat_rejects_empty_messages(client, make_user, auth_headers):
     user = make_user(username="ai_empty_user")
 
     response = client.post(
-        "/api/ai/chat",
+        "/api/v1/ai/chat",
         headers=auth_headers(user["username"]),
         json={"message": "   "},
     )
@@ -55,17 +55,17 @@ def test_ai_feedback_validates_rating_and_required_text(
     headers = auth_headers(user["username"])
 
     invalid_rating = client.post(
-        "/api/ai/feedback",
+        "/api/v1/ai/feedback",
         headers=headers,
         json={"prompt": "p", "response": "r", "rating": "ok"},
     )
     missing_text = client.post(
-        "/api/ai/feedback",
+        "/api/v1/ai/feedback",
         headers=headers,
         json={"rating": "helpful", "prompt": "", "response": "r"},
     )
     valid_response = client.post(
-        "/api/ai/feedback",
+        "/api/v1/ai/feedback",
         headers=headers,
         json={
             "prompt": "Was bedeutet E104?",
@@ -91,11 +91,11 @@ def test_ai_status_is_admin_only_and_redacted(client, make_user, auth_headers):
     user = make_user(username="ai_status_user")
 
     forbidden_response = client.get(
-        "/api/ai/status",
+        "/api/v1/ai/status",
         headers=auth_headers(user["username"]),
     )
     admin_response = client.get(
-        "/api/ai/status",
+        "/api/v1/ai/status",
         headers=auth_headers(admin["username"]),
     )
 
@@ -136,7 +136,7 @@ def test_daily_briefing_respects_permissions_and_uses_local_fallback(
     )
 
     response = client.get(
-        "/api/ai/daily-briefing",
+        "/api/v1/ai/daily-briefing",
         headers=auth_headers(user["username"]),
     )
 
@@ -180,7 +180,7 @@ def test_daily_briefing_returns_no_sections_without_permissions(
     set_dashboard_permission(user["username"], "errors", can_view=False)
 
     response = client.get(
-        "/api/ai/daily-briefing",
+        "/api/v1/ai/daily-briefing",
         headers=auth_headers(user["username"]),
     )
 
@@ -247,9 +247,9 @@ def test_generated_document_download_uses_temp_storage(
     )
     headers = auth_headers(user["username"])
 
-    list_response = client.get("/api/documents", headers=headers)
+    list_response = client.get("/api/v1/documents", headers=headers)
     download_response = client.get(
-        f"/api/documents/{document_id}/download",
+        f"/api/v1/documents/{document_id}/download",
         headers=headers,
     )
 
@@ -305,11 +305,11 @@ def test_document_review_only_allows_visible_documents(
     headers = auth_headers(user["username"])
 
     visible_response = client.post(
-        f"/api/documents/{visible_document_id}/review",
+        f"/api/v1/documents/{visible_document_id}/review",
         headers=headers,
     )
     hidden_response = client.post(
-        f"/api/documents/{hidden_document_id}/review",
+        f"/api/v1/documents/{hidden_document_id}/review",
         headers=headers,
     )
 
@@ -344,7 +344,7 @@ def test_document_review_missing_file_returns_404(
     _delete_document_file(app, document_id)
 
     response = client.post(
-        f"/api/documents/{document_id}/review",
+        f"/api/v1/documents/{document_id}/review",
         headers=auth_headers(user["username"]),
     )
 
@@ -390,7 +390,7 @@ def test_document_review_local_fallback_finds_missing_required_fields(
     )
 
     response = client.post(
-        f"/api/documents/{document_id}/review",
+        f"/api/v1/documents/{document_id}/review",
         headers=auth_headers(user["username"]),
     )
 
@@ -464,11 +464,11 @@ def test_document_review_scores_complete_report_higher(
     headers = auth_headers(user["username"])
 
     incomplete_response = client.post(
-        f"/api/documents/{incomplete_id}/review",
+        f"/api/v1/documents/{incomplete_id}/review",
         headers=headers,
     )
     complete_response = client.post(
-        f"/api/documents/{complete_id}/review",
+        f"/api/v1/documents/{complete_id}/review",
         headers=headers,
     )
 
@@ -494,15 +494,15 @@ def test_uploaded_document_check_validates_and_reviews_file(
     )
     headers = auth_headers(user["username"])
 
-    missing_response = client.post("/api/documents/check", headers=headers)
+    missing_response = client.post("/api/v1/documents/check", headers=headers)
     invalid_response = client.post(
-        "/api/documents/check",
+        "/api/v1/documents/check",
         headers=headers,
         data={"file": (BytesIO(b"binary"), "report.pdf")},
         content_type="multipart/form-data",
     )
     valid_response = client.post(
-        "/api/documents/check",
+        "/api/v1/documents/check",
         headers=headers,
         data={
             "file": (
@@ -552,7 +552,7 @@ def test_complete_task_can_generate_maintenance_report(
     task_id = make_task("Bericht Task", creator_username=user["username"])
 
     response = client.post(
-        f"/api/tasks/{task_id}/complete",
+        f"/api/v1/tasks/{task_id}/complete",
         headers=auth_headers(user["username"]),
         json={"generate_report": True, "machine": "Anlage 7", "result": "OK"},
     )
@@ -591,7 +591,7 @@ def test_search_returns_only_dashboards_visible_to_user(
     make_document(task_id=task_id, created_by=user["id"], department="Produktion")
 
     response = client.get(
-        "/api/search?q=Anlage",
+        "/api/v1/search?q=Anlage",
         headers=auth_headers(user["username"]),
     )
 
@@ -606,7 +606,7 @@ def test_search_requires_query(client, make_user, auth_headers):
     """Verify search rejects missing query text."""
     user = make_user(username="search_empty_user")
 
-    response = client.get("/api/search?q=   ", headers=auth_headers(user["username"]))
+    response = client.get("/api/v1/search?q=   ", headers=auth_headers(user["username"]))
 
     assert response.status_code == 400
 

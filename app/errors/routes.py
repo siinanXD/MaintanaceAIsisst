@@ -10,7 +10,7 @@ from app.services.error_service import (
 )
 from app.extensions import db
 from app.models import ErrorEntry
-from app.responses import error_response, service_error_response, success_response
+from app.responses import error_response, paginate_query, service_error_response, success_response
 from app.security import (
     current_user,
     dashboard_permission_required,
@@ -24,10 +24,15 @@ errors_bp = Blueprint("errors", __name__)
 @errors_bp.get("")
 @dashboard_permission_required("errors", "view")
 def list_errors():
-    """Return visible error catalog entries."""
+    """Return visible error catalog entries with optional pagination.
+
+    Query params:
+        page  — page number (default 1)
+        limit — items per page, 1-100 (default 20)
+    """
     user = current_user()
-    entries = visible_errors_query(user).order_by(ErrorEntry.error_code.asc()).all()
-    return jsonify([entry.to_dict() for entry in entries])
+    query = visible_errors_query(user).order_by(ErrorEntry.error_code.asc())
+    return paginate_query(query, lambda e: e.to_dict())
 
 
 @errors_bp.post("")

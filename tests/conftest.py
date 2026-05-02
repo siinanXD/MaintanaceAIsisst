@@ -114,7 +114,7 @@ def auth_headers(client):
     def _auth_headers(login, password="password"):
         """Authenticate a user and return a bearer token header."""
         response = client.post(
-            "/api/auth/login",
+            "/api/v1/auth/login",
             json={"login": login, "password": password},
         )
         assert response.status_code == 200, response.get_json()
