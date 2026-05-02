@@ -906,7 +906,8 @@ textarea:focus-visible,
   font-weight: 850;
 }
 
-.chat-close {
+.chat-close,
+.chat-clear {
   display: grid;
   width: 30px;
   height: 30px;
@@ -916,6 +917,29 @@ textarea:focus-visible,
   background: rgba(255, 255, 255, 0.06);
   color: var(--text);
   cursor: pointer;
+}
+
+.chat-clear {
+  font-size: 16px;
+  opacity: 0.7;
+}
+
+.chat-clear:hover {
+  opacity: 1;
+}
+
+.chat-code-block {
+  margin: 6px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.35);
+  overflow-x: auto;
+  font-family: ui-monospace, "Cascadia Code", Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+  color: var(--text);
 }
 
 .chat-panel-body {

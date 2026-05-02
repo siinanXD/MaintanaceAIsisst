@@ -1,8 +1,8 @@
 from flask import Blueprint, jsonify, request
 
 from app.extensions import db
-from app.models import ShiftPlan
-from app.responses import service_error_response
+from app.models import Role, ShiftPlan
+from app.responses import error_response, service_error_response
 from app.security import (
     current_user,
     dashboard_permission_required,
@@ -59,6 +59,8 @@ def generate():
 @dashboard_permission_required("shiftplans", "write")
 def delete_shiftplan(plan_id):
     """Delete a generated shift plan and its entries."""
+    if current_user().role != Role.MASTER_ADMIN:
+        return error_response("Nur Administratoren können Schichtpläne löschen", 403)
     plan = ShiftPlan.query.get_or_404(plan_id)
     db.session.delete(plan)
     db.session.commit()

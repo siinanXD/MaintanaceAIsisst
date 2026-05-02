@@ -457,3 +457,41 @@ def test_shiftplan_page_script_renders_warnings(client):
     assert "plan.warnings" in script
     assert "Warnungen" in script
     assert "data-shiftplan-calendar" in client.get("/shiftplans").get_data(as_text=True)
+
+
+def test_shiftplan_delete_requires_master_admin(
+    client,
+    make_user,
+    make_employee,
+    make_machine,
+    auth_headers,
+):
+    """Verify only MASTER_ADMIN can delete shift plans."""
+    admin = make_user(username="sp_del_admin", role=Role.MASTER_ADMIN, department_name=None)
+    non_admin = make_user(
+        username="sp_del_nonadmin",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    make_employee(personnel_number="P-601", name="Prod Del", department="Produktion")
+    make_machine(name="Del Anlage", required_employees=1)
+
+    create_response = client.post(
+        "/api/shiftplans/generate",
+        headers=auth_headers(admin["username"]),
+        json={"title": "Delete Test", "start_date": "2026-06-01", "days": 1, "rhythm": "2-Schicht"},
+    )
+    assert create_response.status_code == 201
+    plan_id = create_response.get_json()["id"]
+
+    forbidden = client.delete(
+        f"/api/shiftplans/{plan_id}",
+        headers=auth_headers(non_admin["username"]),
+    )
+    assert forbidden.status_code == 403
+
+    ok = client.delete(
+        f"/api/shiftplans/{plan_id}",
+        headers=auth_headers(admin["username"]),
+    )
+    assert ok.status_code == 204

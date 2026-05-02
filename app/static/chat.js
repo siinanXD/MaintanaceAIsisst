@@ -69,11 +69,35 @@
     container.innerHTML = "";
     const lines = String(text || "").split(/\r?\n/);
     let list = null;
+    let inCodeBlock = false;
+    let pre = null;
 
     lines.forEach((rawLine) => {
       const line = rawLine.trim();
+
+      if (inCodeBlock) {
+        if (line === "```") {
+          container.appendChild(pre);
+          pre = null;
+          inCodeBlock = false;
+        } else {
+          pre.querySelector("code").textContent += rawLine + "\n";
+        }
+        return;
+      }
+
       if (!line) {
         list = null;
+        return;
+      }
+
+      if (line.startsWith("```")) {
+        list = null;
+        pre = document.createElement("pre");
+        pre.className = "chat-code-block";
+        const code = document.createElement("code");
+        pre.appendChild(code);
+        inCodeBlock = true;
         return;
       }
 
@@ -104,6 +128,10 @@
       appendInlineText(paragraph, line);
       container.appendChild(paragraph);
     });
+
+    if (inCodeBlock && pre) {
+      container.appendChild(pre);
+    }
   }
 
   function appendMessage(text, type, diagnostics) {
@@ -250,8 +278,19 @@
     bubble.appendChild(actions);
   }
 
+  const clearBtn = document.querySelector(".chat-clear");
+
+  function clearChat() {
+    messages.innerHTML = "";
+    const initial = document.createElement("div");
+    initial.className = "chat-message is-assistant";
+    initial.textContent = "Frag mich nach Fehlercodes, Maschinenstoerungen oder heutigen Tasks.";
+    messages.appendChild(initial);
+  }
+
   toggle.addEventListener("click", () => setOpen(!widget.classList.contains("is-open")));
   close.addEventListener("click", () => setOpen(false));
+  if (clearBtn) clearBtn.addEventListener("click", clearChat);
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();

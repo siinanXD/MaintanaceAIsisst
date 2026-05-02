@@ -365,9 +365,10 @@
       form.elements.title.focus();
     }
 
-    async function runTaskAction(task, action) {
+    async function runTaskAction(task, action, button) {
       const endpoint = "/api/tasks/" + task.id + "/" + action;
       const message = document.querySelector("[data-task-message]");
+      if (button) button.disabled = true;
       try {
         setStatusMessage(message, action === "start" ? "Task wird gestartet..." : "Task wird abgeschlossen...");
         await api(endpoint, { method: "POST" });
@@ -376,6 +377,7 @@
         setStatusMessage(message, action === "start" ? "Task gestartet." : "Task abgeschlossen.");
       } catch (error) {
         setStatusMessage(message, error.message, true);
+        if (button) button.disabled = false;
       }
     }
 
@@ -417,17 +419,35 @@
       const actions = document.createElement("div");
       actions.className = "task-card-actions";
       if (canWrite("tasks") && task.status === "open") {
-        const start = actionButton("Starten", () => runTaskAction(task, "start"));
+        const start = actionButton("Starten", (evt) => runTaskAction(task, "start", evt.currentTarget));
         start.className = "btn btn-primary btn-sm";
         actions.appendChild(start);
       }
       if (canWrite("tasks") && task.status !== "done" && task.status !== "cancelled") {
-        const complete = actionButton("Erledigt", () => runTaskAction(task, "complete"));
+        const complete = actionButton("Erledigt", (evt) => runTaskAction(task, "complete", evt.currentTarget));
         complete.className = "btn btn-success btn-sm text-white";
         actions.appendChild(complete);
       }
       if (canWrite("tasks")) {
         actions.appendChild(actionButton("Bearbeiten", () => editTask(task)));
+      }
+      if (canWrite("tasks") && task.status !== "in_progress") {
+        const del = actionButton("Löschen", async (evt) => {
+          if (!confirm('Task "' + task.title + '" wirklich löschen?')) return;
+          evt.currentTarget.disabled = true;
+          const statusMsg = document.querySelector("[data-task-message]");
+          try {
+            await api("/api/tasks/" + task.id, { method: "DELETE" });
+            await load();
+            await loadPriorities();
+            setStatusMessage(statusMsg, "Task gelöscht.");
+          } catch (error) {
+            setStatusMessage(statusMsg, error.message, true);
+            evt.currentTarget.disabled = false;
+          }
+        });
+        del.className = "btn btn-error btn-sm text-white";
+        actions.appendChild(del);
       }
 
       card.append(top, description, meta, actions);
@@ -515,9 +535,17 @@
       });
     }
 
-    priorityRefreshButtons.forEach((priorityRefresh) => {
-      priorityRefresh.addEventListener("click", async () => {
-        await loadPriorities();
+    priorityRefreshButtons.forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        const original = btn.textContent;
+        btn.textContent = "Wird geladen…";
+        try {
+          await loadPriorities();
+        } finally {
+          btn.textContent = original;
+          btn.disabled = false;
+        }
       });
     });
 
