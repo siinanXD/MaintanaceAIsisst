@@ -85,12 +85,29 @@ def _run_lightweight_migrations():
             employee_migrations = {
                 "qualifications": "TEXT NOT NULL DEFAULT ''",
                 "favorite_machine": "VARCHAR(160) NOT NULL DEFAULT ''",
+                "favorite_machine_id": "INTEGER",
             }
             for column_name, column_type in employee_migrations.items():
                 if column_name not in employee_columns:
                     connection.exec_driver_sql(
                         f"ALTER TABLE employee ADD COLUMN {column_name} {column_type}"
                     )
+
+        if "error_entry" in table_names:
+            error_columns = {column["name"] for column in inspector.get_columns("error_entry")}
+            if "machine_id" not in error_columns:
+                connection.exec_driver_sql(
+                    "ALTER TABLE error_entry ADD COLUMN machine_id INTEGER"
+                )
+
+        if "generated_document" in table_names:
+            doc_columns = {
+                column["name"] for column in inspector.get_columns("generated_document")
+            }
+            if "machine_id" not in doc_columns:
+                connection.exec_driver_sql(
+                    "ALTER TABLE generated_document ADD COLUMN machine_id INTEGER"
+                )
 
 
 def register_error_handlers(app):
