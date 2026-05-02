@@ -10,8 +10,9 @@ from app.security import (
     dashboard_permission_required,
     same_department_or_admin,
 )
-from app.tasks.services import (
+from app.services.task_service import (
     create_task,
+    delete_task,
     prioritize_visible_tasks,
     start_task,
     suggest_task_from_text,
@@ -155,11 +156,12 @@ def complete_task_endpoint(task_id):
 
 @tasks_bp.delete("/<int:task_id>")
 @dashboard_permission_required("tasks", "write")
-def delete_task(task_id):
+def delete_task_endpoint(task_id):
     """Delete a visible task."""
     task = Task.query.get_or_404(task_id)
     if not same_department_or_admin(task):
         return error_response("Forbidden", 403)
-    db.session.delete(task)
-    db.session.commit()
+    _, error, status = delete_task(task)
+    if error:
+        return service_error_response(error, status)
     return "", 204

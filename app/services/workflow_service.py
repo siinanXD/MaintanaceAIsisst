@@ -1,7 +1,7 @@
 import logging
 
 from app.services.document_service import generate_maintenance_report
-from app.tasks.services import complete_task
+from app.services.task_service import complete_task
 
 
 logger = logging.getLogger(__name__)

@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request
 
-from app.errors.services import (
+from app.services.error_service import (
     analyze_error_description,
     create_error_entry,
     search_errors,

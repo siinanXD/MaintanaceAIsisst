@@ -1,44 +1,17 @@
-from datetime import date
-from pathlib import Path
-from uuid import uuid4
+from flask import Blueprint, jsonify, request, send_from_directory
 
-from flask import Blueprint, current_app, jsonify, request, send_from_directory
-from werkzeug.utils import secure_filename
-
-from app.extensions import db
-from app.models import Employee, EmployeeDocument, Machine
-from app.responses import error_response
+from app.models import Employee
+from app.responses import error_response, service_error_response
 from app.security import (
     current_user,
     dashboard_permission_required,
     employee_access_level,
     employee_access_required,
 )
+import app.services.employee_service as employee_svc
 
 
 employees_bp = Blueprint("employees", __name__)
-
-
-def _resolve_machine_id(name):
-    """Return Machine.id for an exact case-insensitive name match, or None."""
-    if not name:
-        return None
-    machine = Machine.query.filter(Machine.name.ilike(name)).first()
-    return machine.id if machine else None
-
-
-def parse_birth_date(value):
-    """Parse an optional ISO birth date."""
-    if not value:
-        return None
-    return date.fromisoformat(value)
-
-
-def employee_upload_dir(employee_id):
-    """Return and create the upload directory for an employee."""
-    path = Path(current_app.config["UPLOAD_FOLDER"]) / "employees" / str(employee_id)
-    path.mkdir(parents=True, exist_ok=True)
-    return path
 
 
 @employees_bp.get("")
@@ -46,9 +19,8 @@ def employee_upload_dir(employee_id):
 @employee_access_required("basic")
 def list_employees():
     """Return employees filtered by the current user's access level."""
-    employees = Employee.query.order_by(Employee.name.asc()).all()
     access_level = employee_access_level(current_user())
-    return jsonify([employee.to_dict(access_level) for employee in employees])
+    return jsonify([e.to_dict(access_level) for e in employee_svc.list_employees()])
 
 
 @employees_bp.post("")
@@ -56,39 +28,10 @@ def list_employees():
 @employee_access_required("confidential")
 def create_employee():
     """Create an employee with confidential personnel data."""
-    data = request.get_json(silent=True) or {}
-    required = ["personnel_number", "name"]
-    missing = [field for field in required if not data.get(field)]
-    if missing:
-        return error_response(f"Missing fields: {', '.join(missing)}", 400)
-
-    if Employee.query.filter_by(personnel_number=data["personnel_number"]).first():
-        return error_response("personnel_number already exists", 409)
-
-    try:
-        fav_machine = data.get("favorite_machine", "")
-        employee = Employee(
-            personnel_number=data["personnel_number"],
-            name=data["name"],
-            birth_date=parse_birth_date(data.get("birth_date")),
-            city=data.get("city", ""),
-            street=data.get("street", ""),
-            postal_code=data.get("postal_code", ""),
-            department=data.get("department", ""),
-            shift_model=data.get("shift_model", ""),
-            current_shift=data.get("current_shift", ""),
-            team=int(data["team"]) if data.get("team") else None,
-            salary_group=data.get("salary_group", ""),
-            qualifications=data.get("qualifications", ""),
-            favorite_machine=fav_machine,
-            favorite_machine_id=_resolve_machine_id(fav_machine),
-        )
-    except ValueError:
-        return error_response("Invalid birth_date or team", 400)
-
-    db.session.add(employee)
-    db.session.commit()
-    return jsonify(employee.to_dict()), 201
+    employee, error, status = employee_svc.create_employee(request.get_json(silent=True) or {})
+    if error:
+        return service_error_response(error, status)
+    return jsonify(employee.to_dict()), status
 
 
 @employees_bp.put("/<int:employee_id>")
@@ -97,36 +40,10 @@ def create_employee():
 def update_employee(employee_id):
     """Update an employee with confidential personnel data."""
     employee = Employee.query.get_or_404(employee_id)
-    data = request.get_json(silent=True) or {}
-
-    fields = [
-        "personnel_number",
-        "name",
-        "city",
-        "street",
-        "postal_code",
-        "department",
-        "shift_model",
-        "current_shift",
-        "salary_group",
-        "qualifications",
-        "favorite_machine",
-    ]
-    try:
-        for field in fields:
-            if field in data:
-                setattr(employee, field, data[field])
-        if "birth_date" in data:
-            employee.birth_date = parse_birth_date(data["birth_date"])
-        if "team" in data:
-            employee.team = int(data["team"]) if data["team"] else None
-        if "favorite_machine" in data:
-            employee.favorite_machine_id = _resolve_machine_id(data["favorite_machine"])
-    except ValueError:
-        return error_response("Invalid birth_date or team", 400)
-
-    db.session.commit()
-    return jsonify(employee.to_dict())
+    updated, error, status = employee_svc.update_employee(employee, request.get_json(silent=True) or {})
+    if error:
+        return service_error_response(error, status)
+    return jsonify(updated.to_dict())
 
 
 @employees_bp.delete("/<int:employee_id>")
@@ -135,8 +52,9 @@ def update_employee(employee_id):
 def delete_employee(employee_id):
     """Delete an employee and related documents."""
     employee = Employee.query.get_or_404(employee_id)
-    db.session.delete(employee)
-    db.session.commit()
+    _, error, status = employee_svc.delete_employee(employee)
+    if error:
+        return service_error_response(error, status)
     return "", 204
 
 
@@ -147,23 +65,10 @@ def upload_document(employee_id):
     """Upload a confidential document for an employee."""
     employee = Employee.query.get_or_404(employee_id)
     file = request.files.get("document")
-    if not file or not file.filename:
-        return error_response("document file is required", 400)
-
-    original = secure_filename(file.filename)
-    stored = f"{uuid4().hex}_{original}"
-    upload_dir = employee_upload_dir(employee.id)
-    file.save(upload_dir / stored)
-
-    document = EmployeeDocument(
-        employee=employee,
-        original_filename=original,
-        stored_filename=stored,
-        content_type=file.mimetype or "",
-    )
-    db.session.add(document)
-    db.session.commit()
-    return jsonify(document.to_dict()), 201
+    document, error, status = employee_svc.upload_employee_document(employee, file)
+    if error:
+        return service_error_response(error, status)
+    return jsonify(document.to_dict()), status
 
 
 @employees_bp.get("/<int:employee_id>/documents/<int:document_id>")
@@ -171,11 +76,10 @@ def upload_document(employee_id):
 @employee_access_required("confidential")
 def download_document(employee_id, document_id):
     """Download a confidential employee document."""
-    document = EmployeeDocument.query.filter_by(
-        id=document_id,
-        employee_id=employee_id,
-    ).first_or_404()
-    upload_dir = employee_upload_dir(employee_id)
+    document = employee_svc.get_employee_document(employee_id, document_id)
+    if not document:
+        return error_response("Document not found", 404)
+    upload_dir = employee_svc.employee_upload_dir(employee_id)
     return send_from_directory(
         upload_dir,
         document.stored_filename,
