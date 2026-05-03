@@ -4,8 +4,8 @@ from flask_jwt_extended import jwt_required
 from app.ai.services import ai_status, answer_chat, daily_briefing, save_chat_message
 from app.extensions import db
 from app.models import AIFeedback, Role
-from app.responses import error_response, success_response
-from app.security import current_user, roles_required
+from app.responses import error_response, service_error_response, success_response
+from app.security import current_user, has_dashboard_permission, roles_required
 
 
 ai_bp = Blueprint("ai", __name__)
@@ -40,6 +40,37 @@ def status():
 def briefing():
     """Return a daily maintenance briefing for the current user."""
     return success_response(daily_briefing(current_user()), message="Daily briefing loaded")
+
+
+@ai_bp.post("/error-assistant")
+@jwt_required()
+def error_assistant():
+    """Search the error catalog and return causes and fixes for a fault description.
+
+    Request body (JSON):
+        query (str, required): Free-text fault description, e.g.
+            "Maschine 3 zeigt Fehler E42 und macht Geraeusche."
+        limit (int, optional): Maximum number of catalog matches to return (1–20,
+            default 5).
+
+    Response ``data`` keys:
+        query        — the original query string
+        matches      — scored catalog entries (entry, score, reason)
+        causes       — deduplicated list of possible-cause strings
+        fixes        — deduplicated list of solution strings
+        diagnostics  — search metadata and ai_enhanced flag
+    """
+    from app.services.error_assistant_service import run_error_assistant
+
+    user = current_user()
+    if not has_dashboard_permission(user, "errors", "view"):
+        return error_response("Keine Berechtigung fuer den Fehlerkatalog", 403)
+
+    data = request.get_json(silent=True) or {}
+    result, error, status = run_error_assistant(data, user)
+    if error:
+        return service_error_response(error, status)
+    return success_response(result, message="Error assistant result")
 
 
 @ai_bp.post("/feedback")

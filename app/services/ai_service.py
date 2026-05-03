@@ -41,8 +41,24 @@ class BaseAIProvider(ABC):
         """Return structured prioritization results for visible tasks."""
 
     @abstractmethod
+    @abstractmethod
     def review_document(self, html_text, metadata=None):
         """Return a structured quality review for a maintenance document."""
+
+    @abstractmethod
+    def error_assistant_query(self, query, matches):
+        """Return AI-enhanced causes and fixes for a fault description.
+
+        Args:
+            query:   The raw user fault description string.
+            matches: List of similarity-scored catalog match dicts already found
+                     by the local search (each has keys ``entry``, ``score``,
+                     ``reason``).
+
+        Returns:
+            dict with keys ``causes`` (list[str]), ``fixes`` (list[str]), and
+            optionally ``summary`` (str) — or ``None`` to skip enhancement.
+        """
 
 
 class MockAIProvider(BaseAIProvider):
@@ -118,6 +134,10 @@ class MockAIProvider(BaseAIProvider):
             "findings": [],
             "recommendations": [],
         }
+
+    def error_assistant_query(self, query, matches):
+        """Return None — local similarity results are sufficient in mock mode."""
+        return None
 
 
 class OpenAIProvider(BaseAIProvider):
@@ -220,6 +240,23 @@ class OpenAIProvider(BaseAIProvider):
                         "recommended_action": "short German next action",
                     }
                 ]
+            },
+        }
+        return self._json_completion(prompt)
+
+    def error_assistant_query(self, query, matches):
+        """Return AI-enhanced causes and fixes for a fault description."""
+        prompt = {
+            "task": (
+                "Given a machine fault description and matching catalog entries, "
+                "return concise German causes and fix instructions as JSON."
+            ),
+            "query": query,
+            "catalog_matches": [m["entry"] for m in matches[:3]],
+            "schema": {
+                "causes": ["string — one German cause per item"],
+                "fixes": ["string — one German fix instruction per item"],
+                "summary": "string — one-sentence German summary of the fault",
             },
         }
         return self._json_completion(prompt)
