@@ -109,6 +109,29 @@ def _run_lightweight_migrations():
                     "ALTER TABLE generated_document ADD COLUMN machine_id INTEGER"
                 )
 
+        if "shift_plan" in table_names:
+            sp_columns = {
+                column["name"] for column in inspector.get_columns("shift_plan")
+            }
+            shift_plan_migrations = {
+                "department": "VARCHAR(120) NOT NULL DEFAULT ''",
+                "created_by": "INTEGER",
+            }
+            for column_name, column_type in shift_plan_migrations.items():
+                if column_name not in sp_columns:
+                    connection.exec_driver_sql(
+                        f"ALTER TABLE shift_plan ADD COLUMN {column_name} {column_type}"
+                    )
+
+        if "shift_plan_entry" in table_names:
+            spe_columns = {
+                column["name"] for column in inspector.get_columns("shift_plan_entry")
+            }
+            if "created_at" not in spe_columns:
+                connection.exec_driver_sql(
+                    "ALTER TABLE shift_plan_entry ADD COLUMN created_at DATETIME"
+                )
+
 
 def register_error_handlers(app):
     """Register JSON error handlers for API and app-level failures."""

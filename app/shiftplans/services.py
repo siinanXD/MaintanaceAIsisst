@@ -49,13 +49,19 @@ def parse_days(value):
     return min(max(days, 1), 31)
 
 
-def production_employees():
-    """Return employees assigned to production for shift planning."""
+def department_employees(department):
+    """Return employees assigned to a given department for shift planning."""
     return (
-        Employee.query.filter(Employee.department.ilike("%produktion%"))
+        Employee.query
+        .filter(Employee.department.ilike(f"%{department}%"))
         .order_by(Employee.team.asc(), Employee.name.asc())
         .all()
     )
+
+
+def production_employees():
+    """Backward-compatible wrapper: return production employees."""
+    return department_employees("Produktion")
 
 
 def employee_payload(employees):
@@ -100,7 +106,11 @@ def shift_datetimes(work_date, start, end):
 
 
 def local_shift_entries(start_date, days, rhythm, employees, machines, unavailable=None):
-    """Build a deterministic fallback plan without calling OpenAI."""
+    """Build a fair deterministic fallback plan without calling OpenAI.
+
+    Uses a minimum-shift-count selection instead of round-robin so that
+    no employee accumulates significantly more shifts than others.
+    """
     entries = []
     warnings = []
     unavailable = unavailable or {}
@@ -112,25 +122,23 @@ def local_shift_entries(start_date, days, rhythm, employees, machines, unavailab
         if "nacht" in rhythm.lower() or "3" in rhythm
         else ["Frueh", "Spaet"]
     )
-    employee_index = 0
+    shift_count = {emp.id: 0 for emp in employees}
     machines_to_plan = machines or [None]
 
     for day_offset in range(days):
         work_date = start_date + timedelta(days=day_offset)
+        assigned_today = set()
         for machine in machines_to_plan:
             required = (
                 machine.required_employees
                 if machine
                 else max(1, len(employees) // len(shift_names))
             )
-            for shift_index, shift in enumerate(shift_names):
+            for shift in shift_names:
                 start_time, end_time = SHIFT_WINDOWS[shift]
                 for _ in range(required):
-                    employee, employee_index = next_available_employee(
-                        employees,
-                        employee_index,
-                        work_date,
-                        unavailable,
+                    employee = _pick_fairest_employee(
+                        employees, shift_count, work_date, unavailable, assigned_today,
                     )
                     if not employee:
                         warnings.append(
@@ -144,6 +152,8 @@ def local_shift_entries(start_date, days, rhythm, employees, machines, unavailab
                             }
                         )
                         continue
+                    shift_count[employee.id] += 1
+                    assigned_today.add(employee.id)
                     entries.append(
                         {
                             "employee_id": employee.id,
@@ -161,19 +171,16 @@ def local_shift_entries(start_date, days, rhythm, employees, machines, unavailab
     return entries, warnings
 
 
-def next_available_employee(employees, start_index, work_date, unavailable):
-    """Return the next employee not blocked on the given date."""
-    if not employees:
-        return None, start_index
-    checked = 0
-    employee_count = len(employees)
-    while checked < employee_count:
-        employee = employees[start_index % employee_count]
-        start_index += 1
-        checked += 1
-        if employee.id not in unavailable.get(work_date, set()):
-            return employee, start_index
-    return None, start_index
+def _pick_fairest_employee(employees, shift_count, work_date, unavailable, assigned_today):
+    """Return the available employee with the fewest shifts assigned so far."""
+    blocked = unavailable.get(work_date, set())
+    candidates = [
+        emp for emp in employees
+        if emp.id not in blocked and emp.id not in assigned_today
+    ]
+    if not candidates:
+        return None
+    return min(candidates, key=lambda emp: (shift_count[emp.id], emp.id))
 
 
 def parse_vacation_entries(data, employees, start_date, days):
@@ -226,6 +233,104 @@ def remove_unavailable_work_entries(entries, unavailable):
             continue
         filtered_entries.append(entry)
     return filtered_entries
+
+
+def validate_arbzg(entries):
+    """Enforce Arbeitszeitgesetz (ArbZG) rules on a list of entry dicts.
+
+    Raises ValueError with a human-readable German message on the first
+    violation found.  Only work shifts (Frueh/Spaet/Nacht) are counted;
+    Urlaub and Frei entries are ignored for most checks.
+
+    Rules enforced:
+    - §3  Max 8 h/day (extendable to 10 h in individual cases) — reject > 10 h
+    - §5  Min 11 h rest between consecutive shifts per employee
+    - §3  Max 48 h/week per employee (averaged weekly)
+    - §9  Max 6 consecutive working days
+    - One shift per day per employee
+    """
+    work_shifts = {"Frueh", "Spaet", "Nacht"}
+
+    # Collect work entries per employee
+    by_employee = {}
+    seen_day = set()
+    for entry in entries:
+        shift = str(entry.get("shift") or "")
+        if shift not in work_shifts:
+            continue
+        emp_id = int(entry["employee_id"])
+        work_date = entry["work_date"]
+        if isinstance(work_date, str):
+            work_date = date.fromisoformat(work_date)
+
+        # One shift per day per employee
+        key = (emp_id, work_date)
+        if key in seen_day:
+            raise ValueError(
+                f"Mitarbeiter {emp_id} hat am {work_date.isoformat()} "
+                "mehr als eine Schicht geplant (ArbZG §3)."
+            )
+        seen_day.add(key)
+        by_employee.setdefault(emp_id, []).append(
+            {
+                "work_date": work_date,
+                "start_time": entry["start_time"],
+                "end_time": entry["end_time"],
+            }
+        )
+
+    for emp_id, emp_entries in by_employee.items():
+        emp_entries_sorted = sorted(emp_entries, key=lambda e: e["work_date"])
+
+        prev_end_dt = None
+        prev_date = None
+        consecutive = 0
+        weekly_hours = {}
+
+        for e in emp_entries_sorted:
+            work_date = e["work_date"]
+            start_dt, end_dt = shift_datetimes(work_date, e["start_time"], e["end_time"])
+            duration = (end_dt - start_dt).total_seconds() / 3600
+
+            # Max 10 h per shift
+            if duration > 10:
+                raise ValueError(
+                    f"Mitarbeiter {emp_id}: Schicht am {work_date.isoformat()} "
+                    f"dauert {duration:.1f}h — max. 10 Stunden erlaubt (ArbZG §3)."
+                )
+
+            # 11 h rest
+            if prev_end_dt is not None:
+                rest_hours = (start_dt - prev_end_dt).total_seconds() / 3600
+                if rest_hours < 11:
+                    raise ValueError(
+                        f"Mitarbeiter {emp_id}: Nur {rest_hours:.1f}h Ruhezeit zwischen "
+                        f"{prev_end_dt.date().isoformat()} und {work_date.isoformat()} "
+                        "— min. 11 Stunden erforderlich (ArbZG §5)."
+                    )
+
+            # 48 h/week
+            week_key = work_date.isocalendar()[:2]  # (year, week)
+            weekly_hours[week_key] = weekly_hours.get(week_key, 0) + duration
+            if weekly_hours[week_key] > 48:
+                raise ValueError(
+                    f"Mitarbeiter {emp_id}: Wochenstunden in KW {week_key[1]} "
+                    f"ueberschreiten 48h ({weekly_hours[week_key]:.1f}h) — ArbZG §3."
+                )
+
+            # 6 consecutive working days
+            if prev_date is not None and (work_date - prev_date).days == 1:
+                consecutive += 1
+            else:
+                consecutive = 1
+            if consecutive > 6:
+                raise ValueError(
+                    f"Mitarbeiter {emp_id}: Mehr als 6 aufeinanderfolgende Arbeitstage "
+                    f"(bis {work_date.isoformat()}) — ArbZG §9 analog."
+                )
+
+            prev_end_dt = end_dt
+            prev_date = work_date
 
 
 def validate_entries(entries, employees, machines, start_date, days):
@@ -543,8 +648,17 @@ def openai_shift_entries(start_date, days, rhythm, preferences, employees, machi
         return None
 
 
-def generate_shift_plan(data):
-    """Generate, validate and save a shift plan from request data."""
+def generate_shift_plan(data, user=None):
+    """Generate, validate and save a shift plan from request data.
+
+    Args:
+        data: Parsed JSON request body.
+        user: The User object of the requesting user (for audit trail).
+    """
+    department = (data.get("department") or "").strip()
+    if not department:
+        return None, {"error": "Abteilung ist erforderlich"}, 400
+
     try:
         start_date = parse_date(data.get("start_date"))
         days = parse_days(data.get("days"))
@@ -552,12 +666,12 @@ def generate_shift_plan(data):
         return None, {"error": str(exc)}, 400
     rhythm = data.get("rhythm", "2-Schicht Rhythmus")
     preferences = data.get("preferences", "")
-    title = data.get("title") or f"Schichtplan ab {start_date.isoformat()}"
+    title = data.get("title") or f"Schichtplan {department} ab {start_date.isoformat()}"
 
-    employees = production_employees()
+    employees = department_employees(department)
     machines = Machine.query.order_by(Machine.name.asc()).all()
     if not employees:
-        return None, {"error": "Keine Produktionsmitarbeiter gefunden"}, 400
+        return None, {"error": f"Keine Mitarbeitenden in Abteilung '{department}' gefunden"}, 400
     try:
         vacation_entries, unavailable = parse_vacation_entries(
             data,
@@ -604,6 +718,13 @@ def generate_shift_plan(data):
     )
     if not entries:
         return None, {"error": "Es konnte kein gueltiger Schichtplan erzeugt werden"}, 400
+
+    # Enforce Arbeitszeitgesetz on work entries only
+    try:
+        validate_arbzg([e for e in entries if e.get("shift") not in ("Urlaub", "Frei", "")])
+    except ValueError as exc:
+        return None, {"error": str(exc)}, 422
+
     warnings, coverage_summary = analyze_shift_plan(entries, employees, machines)
     employee_by_id = {employee.id: employee for employee in employees}
     warnings.extend(planning_warnings)
@@ -618,6 +739,8 @@ def generate_shift_plan(data):
         rhythm=rhythm,
         preferences=preferences,
         notes=notes,
+        department=department,
+        created_by=user.id if user else None,
     )
     db.session.add(plan)
     db.session.flush()

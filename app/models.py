@@ -453,6 +453,8 @@ class ShiftPlan(db.Model):
     rhythm = db.Column(db.String(160), nullable=False, default="")
     preferences = db.Column(db.Text, nullable=False, default="")
     notes = db.Column(db.Text, nullable=False, default="")
+    department = db.Column(db.String(120), nullable=False, default="")
+    created_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     entries = db.relationship(
@@ -460,6 +462,7 @@ class ShiftPlan(db.Model):
         back_populates="plan",
         cascade="all, delete-orphan",
     )
+    creator = db.relationship("User", foreign_keys=[created_by])
 
     def to_dict(self, employee_access_level="confidential"):
         """Return shift plan data with filtered employee fields."""
@@ -471,6 +474,8 @@ class ShiftPlan(db.Model):
             "rhythm": self.rhythm,
             "preferences": self.preferences,
             "notes": self.notes,
+            "department": self.department,
+            "created_by": self.creator.username if self.creator else None,
             "entries": [
                 entry.to_dict(employee_access_level) for entry in self.entries
             ],
@@ -479,6 +484,13 @@ class ShiftPlan(db.Model):
 
 
 class ShiftPlanEntry(db.Model):
+    __table_args__ = (
+        db.UniqueConstraint(
+            "plan_id", "employee_id", "work_date",
+            name="uq_entry_emp_day",
+        ),
+    )
+
     id = db.Column(db.Integer, primary_key=True)
     plan_id = db.Column(db.Integer, db.ForeignKey("shift_plan.id"), nullable=False)
     employee_id = db.Column(db.Integer, db.ForeignKey("employee.id"), nullable=False)
@@ -488,6 +500,7 @@ class ShiftPlanEntry(db.Model):
     start_time = db.Column(db.String(5), nullable=False)
     end_time = db.Column(db.String(5), nullable=False)
     notes = db.Column(db.Text, nullable=False, default="")
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     plan = db.relationship("ShiftPlan", back_populates="entries")
     employee = db.relationship("Employee")
@@ -508,6 +521,45 @@ class ShiftPlanEntry(db.Model):
             "start_time": self.start_time,
             "end_time": self.end_time,
             "notes": self.notes,
+            "created_at": self.created_at.isoformat(),
+        }
+
+
+class ShiftPlanChangeLog(db.Model):
+    """Tracks every manual change to shift plan entries."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    entry_id = db.Column(
+        db.Integer,
+        db.ForeignKey("shift_plan_entry.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    plan_id = db.Column(
+        db.Integer,
+        db.ForeignKey("shift_plan.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    changed_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    action = db.Column(db.String(20), nullable=False)
+    field_name = db.Column(db.String(80), nullable=True)
+    old_value = db.Column(db.Text, nullable=True)
+    new_value = db.Column(db.Text, nullable=True)
+
+    user = db.relationship("User", foreign_keys=[user_id])
+
+    def to_dict(self):
+        """Return a JSON-serializable representation of the changelog entry."""
+        return {
+            "id": self.id,
+            "entry_id": self.entry_id,
+            "plan_id": self.plan_id,
+            "user": self.user.username if self.user else None,
+            "changed_at": self.changed_at.isoformat(),
+            "action": self.action,
+            "field_name": self.field_name,
+            "old_value": self.old_value,
+            "new_value": self.new_value,
         }
 
 

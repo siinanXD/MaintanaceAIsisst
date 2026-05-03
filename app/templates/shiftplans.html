@@ -7,72 +7,693 @@
   <div>
     <p class="page-kicker">KI-Planung</p>
     <h1 class="page-title">Schichtplan</h1>
-    <p class="page-description">Automatisch fuer Produktionsmitarbeiter planen: Rhythmus, Arbeitsschutz und Praeferenzen werden beruecksichtigt.</p>
+    <p class="page-description">Abteilung auswählen, Zeitraum festlegen und KI-gestützten Plan generieren — Arbeitszeitgesetz und faire Verteilung inklusive.</p>
   </div>
 </section>
 
 <section class="dashboard-grid">
+
+  <!-- Generierungs-Formular -->
   <details class="card app-card mobile-action-section lg:col-span-12" data-mobile-collapsible data-permission-write="shiftplans" open>
     <summary class="mobile-action-summary">
       <span>
         <span class="mobile-action-title">KI-Schichtplan generieren</span>
-        <span class="mobile-action-meta">Zeitraum und Praeferenzen festlegen</span>
+        <span class="mobile-action-meta">Abteilung, Zeitraum und Präferenzen</span>
       </span>
     </summary>
     <form data-shiftplan-form>
       <div class="card-body">
-      <div class="panel-header">
-        <div>
-          <h2 class="panel-title">KI-Schichtplan generieren</h2>
-          <p class="panel-meta">Plant nur Mitarbeitende mit Abteilung Produktion.</p>
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">Schichtplan generieren</h2>
+            <p class="panel-meta">ArbZG: max. 8h/Schicht · 11h Ruhezeit · 48h/Woche · max. 6 Tage am Stück</p>
+          </div>
+          <span class="badge badge-info badge-outline">KI</span>
         </div>
-        <span class="badge badge-info badge-outline">KI</span>
-      </div>
-      <div class="form-grid">
-        <div class="field">
-          <label for="shiftplan-title">Titel</label>
-          <input class="input input-bordered" id="shiftplan-title" name="title" placeholder="Schichtplan KW">
+        <div class="form-grid">
+          <div class="field">
+            <label for="sp-department">Abteilung <span aria-hidden="true">*</span></label>
+            <select class="select select-bordered" id="sp-department" name="department" required aria-required="true">
+              <option value="" disabled selected>Bitte wählen…</option>
+              <option value="Produktion">Produktion</option>
+              <option value="Instandhaltung">Instandhaltung</option>
+              <option value="Verwaltung">Verwaltung</option>
+              <option value="IT">IT</option>
+              <option value="Personalabteilung">Personalabteilung</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="sp-title">Titel</label>
+            <input class="input input-bordered" id="sp-title" name="title" placeholder="Schichtplan KW 22">
+          </div>
+          <div class="field">
+            <label for="sp-start">Startdatum <span aria-hidden="true">*</span></label>
+            <input class="input input-bordered" id="sp-start" name="start_date" type="date" required aria-required="true">
+          </div>
+          <div class="field">
+            <label for="sp-days">Tage</label>
+            <input class="input input-bordered" id="sp-days" name="days" type="number" min="1" max="31" value="7" aria-label="Planungszeitraum in Tagen">
+          </div>
+          <div class="field">
+            <label for="sp-rhythm">Rhythmus</label>
+            <input class="input input-bordered" id="sp-rhythm" name="rhythm" placeholder="z. B. 2-Schicht, 3-Schicht">
+          </div>
+          <div class="field is-full">
+            <label for="sp-preferences">Präferenzen</label>
+            <textarea class="textarea textarea-bordered" id="sp-preferences" name="preferences" rows="2" placeholder="Wünsche, Sperrtage, Teamregeln, bevorzugte Maschinen"></textarea>
+          </div>
+          <div class="field is-full">
+            <label for="sp-vacations">Urlaub <span class="stat-label">(Mitarbeiter-ID, Datum, Notiz — eine Zeile je Eintrag)</span></label>
+            <textarea class="textarea textarea-bordered" id="sp-vacations" name="vacations_text" rows="2" placeholder="12, 2026-05-04, Urlaub"></textarea>
+          </div>
         </div>
-        <div class="field">
-          <label for="shiftplan-start">Startdatum</label>
-          <input class="input input-bordered" id="shiftplan-start" name="start_date" type="date" required>
+        <div class="toolbar form-actions">
+          <button class="btn btn-primary" type="submit" aria-label="Schichtplan generieren">Plan generieren</button>
+          <span class="panel-meta" data-shiftplan-message role="status" aria-live="polite"></span>
         </div>
-        <div class="field">
-          <label for="shiftplan-days">Tage</label>
-          <input class="input input-bordered" id="shiftplan-days" name="days" type="number" min="1" max="31" value="7">
-        </div>
-        <div class="field">
-          <label for="shiftplan-rhythm">Rhythmus</label>
-          <input class="input input-bordered" id="shiftplan-rhythm" name="rhythm" placeholder="z. B. 2-Schicht, 3-Schicht, 4 Tage Arbeit / 2 frei">
-        </div>
-        <div class="field is-full">
-          <label for="shiftplan-preferences">Praeferenzen</label>
-          <textarea class="textarea textarea-bordered" id="shiftplan-preferences" name="preferences" placeholder="Wuensche, Sperrtage, Teamregeln, bevorzugte Maschinen"></textarea>
-        </div>
-        <div class="field is-full">
-          <label for="shiftplan-vacations">Urlaub</label>
-          <textarea class="textarea textarea-bordered" id="shiftplan-vacations" name="vacations_text" placeholder="Eine Zeile je Urlaub: Mitarbeiter-ID, Datum, Notiz. Beispiel: 12, 2026-05-04, Urlaub"></textarea>
-        </div>
-      </div>
-      <div class="toolbar form-actions">
-        <button class="btn btn-primary" type="submit">Plan generieren</button>
-        <span class="panel-meta" data-shiftplan-message></span>
-      </div>
       </div>
     </form>
   </details>
 
+  <!-- Pläne-Liste -->
   <article class="card app-card mobile-primary-card lg:col-span-12">
     <div class="card-body">
       <div class="panel-header">
         <div>
-          <h2 class="panel-title">Schichtplaene</h2>
-          <p class="panel-meta">Zuletzt generierte Plaene mit Kalender- und Tabellenansicht</p>
+          <h2 class="panel-title">Schichtpläne</h2>
+          <p class="panel-meta" id="sp-list-meta">Zuletzt generierte Pläne</p>
+        </div>
+        <div class="toolbar">
+          <button class="btn btn-ghost btn-sm" id="sp-print-btn" hidden aria-label="Aktuellen Plan drucken">Drucken</button>
+          <button class="btn btn-ghost btn-sm" id="sp-csv-btn" hidden aria-label="Aktuellen Plan als CSV herunterladen">CSV</button>
         </div>
       </div>
-      <div class="shift-calendar" data-shiftplan-calendar></div>
-      <div class="shiftplan-list" data-shiftplan-list></div>
+      <div id="sp-plan-selector" class="toolbar mb-4" hidden>
+        <label for="sp-plan-select" class="stat-label">Plan:</label>
+        <select class="select select-bordered select-sm" id="sp-plan-select" aria-label="Schichtplan auswählen"></select>
+      </div>
+
+      <!-- Kompakte Kalender-Tabelle -->
+      <div class="overflow-x-auto" id="sp-table-wrap" data-shiftplan-calendar hidden>
+        <table class="table table-xs table-zebra" id="sp-shift-table" role="grid" aria-label="Schichtplan-Kalender">
+          <thead id="sp-table-head"></thead>
+          <tbody id="sp-table-body"></tbody>
+        </table>
+      </div>
+
+      <p class="panel-meta mt-4" id="sp-empty-msg">Noch keine Schichtpläne vorhanden. Plan generieren um zu starten.</p>
+
+      <!-- Statistik-Panel -->
+      <details class="mt-6" id="sp-stats-details" hidden>
+        <summary class="stat-label cursor-pointer select-none mb-2">Schichtstatistik (Fairness-Übersicht)</summary>
+        <div class="overflow-x-auto">
+          <table class="table table-xs" id="sp-stats-table" aria-label="Schichtstatistik pro Mitarbeiter">
+            <thead>
+              <tr>
+                <th scope="col">Mitarbeiter</th>
+                <th scope="col">Früh</th>
+                <th scope="col">Spät</th>
+                <th scope="col">Nacht</th>
+                <th scope="col">Urlaub</th>
+                <th scope="col">Ges. Stunden</th>
+              </tr>
+            </thead>
+            <tbody id="sp-stats-body"></tbody>
+          </table>
+        </div>
+      </details>
+
+      <!-- Warnings -->
+      <div id="sp-warnings-wrap" class="mt-4" hidden>
+        <h3 class="stat-label mb-2">Warnungen</h3>
+        <ul id="sp-warnings-list" class="space-y-1" role="list"></ul>
+      </div>
+
+      <!-- Changelog (Admin only) -->
+      <details class="mt-6" id="sp-changelog-details" data-hr-only hidden>
+        <summary class="stat-label cursor-pointer select-none mb-2">Änderungsprotokoll</summary>
+        <div class="overflow-x-auto">
+          <table class="table table-xs" aria-label="Änderungsprotokoll">
+            <thead>
+              <tr>
+                <th scope="col">Zeitpunkt</th>
+                <th scope="col">Benutzer</th>
+                <th scope="col">Aktion</th>
+                <th scope="col">Feld</th>
+                <th scope="col">Alt</th>
+                <th scope="col">Neu</th>
+              </tr>
+            </thead>
+            <tbody id="sp-changelog-body"></tbody>
+          </table>
+        </div>
+      </details>
+
+      <!-- Plan löschen (Admin only) -->
+      <div class="toolbar mt-6" id="sp-delete-wrap" data-hr-only hidden>
+        <button class="btn btn-error btn-sm" id="sp-delete-btn" aria-label="Schichtplan löschen">Plan löschen</button>
+      </div>
     </div>
   </article>
 </section>
+
+<!-- Inline-Edit-Dialog -->
+<dialog id="sp-edit-dialog" aria-modal="true" aria-labelledby="sp-edit-dialog-title" class="modal">
+  <div class="modal-box">
+    <h3 class="font-bold text-lg mb-4" id="sp-edit-dialog-title">Schichteintrag bearbeiten</h3>
+    <p class="stat-label mb-4" id="sp-edit-info"></p>
+    <div class="field mb-3">
+      <label for="edit-shift">Schicht</label>
+      <select class="select select-bordered w-full" id="edit-shift" aria-label="Schichttyp">
+        <option value="Frueh">Frühschicht (06:00–14:00)</option>
+        <option value="Spaet">Spätschicht (14:00–22:00)</option>
+        <option value="Nacht">Nachtschicht (22:00–06:00)</option>
+        <option value="Urlaub">Urlaub</option>
+        <option value="Frei">Frei</option>
+      </select>
+    </div>
+    <div class="form-grid" id="edit-time-fields">
+      <div class="field">
+        <label for="edit-start">Beginn</label>
+        <input class="input input-bordered" type="time" id="edit-start" aria-label="Schichtbeginn">
+      </div>
+      <div class="field">
+        <label for="edit-end">Ende</label>
+        <input class="input input-bordered" type="time" id="edit-end" aria-label="Schichtende">
+      </div>
+    </div>
+    <div class="field mb-4">
+      <label for="edit-notes">Notiz</label>
+      <input class="input input-bordered w-full" type="text" id="edit-notes" placeholder="Optionale Anmerkung" aria-label="Notiz zum Schichteintrag">
+    </div>
+    <div class="modal-action">
+      <button class="btn btn-primary btn-sm" id="edit-save-btn" aria-label="Änderungen speichern">Speichern</button>
+      <button class="btn btn-error btn-sm" id="edit-delete-btn" data-hr-only hidden aria-label="Eintrag löschen">Löschen</button>
+      <button class="btn btn-ghost btn-sm" id="edit-cancel-btn" aria-label="Abbrechen">Abbrechen</button>
+    </div>
+    <p class="panel-meta mt-2" id="edit-msg" role="status" aria-live="polite"></p>
+  </div>
+</dialog>
+
+<script>
+(function () {
+  "use strict";
+
+  const BASE = "/api/v1/shiftplans";
+  const SHIFT_WINDOWS = {
+    Frueh: ["06:00", "14:00"],
+    Spaet: ["14:00", "22:00"],
+    Nacht: ["22:00", "06:00"],
+  };
+  const SHIFT_LABELS = { Frueh: "F", Spaet: "S", Nacht: "N", Urlaub: "U", Frei: "–" };
+  const SHIFT_BADGE = {
+    Frueh: "badge-success",
+    Spaet: "badge-info",
+    Nacht: "badge-secondary",
+    Urlaub: "badge-warning",
+    Frei: "badge-ghost",
+  };
+  const DAYS_DE = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+
+  let allPlans = [];
+  let currentPlan = null;
+  let editingEntryId = null;
+
+  // ── DOM refs ──────────────────────────────────────────────────────────────
+  const form = document.querySelector("[data-shiftplan-form]");
+  const formMsg = document.querySelector("[data-shiftplan-message]");
+  const planSelect = document.getElementById("sp-plan-select");
+  const planSelector = document.getElementById("sp-plan-selector");
+  const tableWrap = document.getElementById("sp-table-wrap");
+  const tableHead = document.getElementById("sp-table-head");
+  const tableBody = document.getElementById("sp-table-body");
+  const emptyMsg = document.getElementById("sp-empty-msg");
+  const statsDetails = document.getElementById("sp-stats-details");
+  const statsBody = document.getElementById("sp-stats-body");
+  const warningsWrap = document.getElementById("sp-warnings-wrap");
+  const warningsList = document.getElementById("sp-warnings-list");
+  const changelogDetails = document.getElementById("sp-changelog-details");
+  const changelogBody = document.getElementById("sp-changelog-body");
+  const deleteWrap = document.getElementById("sp-delete-wrap");
+  const deleteBtn = document.getElementById("sp-delete-btn");
+  const printBtn = document.getElementById("sp-print-btn");
+  const csvBtn = document.getElementById("sp-csv-btn");
+  const dialog = document.getElementById("sp-edit-dialog");
+  const editInfo = document.getElementById("sp-edit-info");
+  const editShift = document.getElementById("edit-shift");
+  const editStart = document.getElementById("edit-start");
+  const editEnd = document.getElementById("edit-end");
+  const editNotes = document.getElementById("edit-notes");
+  const editTimeFields = document.getElementById("edit-time-fields");
+  const editSaveBtn = document.getElementById("edit-save-btn");
+  const editDeleteBtn = document.getElementById("edit-delete-btn");
+  const editCancelBtn = document.getElementById("edit-cancel-btn");
+  const editMsg = document.getElementById("edit-msg");
+
+  // ── Auth helpers ──────────────────────────────────────────────────────────
+  function authHeaders() {
+    const token = window.maintenanceAuth && window.maintenanceAuth.token
+      ? window.maintenanceAuth.token()
+      : window.localStorage.getItem("maintenance_access_token");
+    return token ? { Authorization: "Bearer " + token } : {};
+  }
+
+  async function apiFetch(url, options) {
+    const res = await fetch(url, {
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      ...options,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.message || body.error || "Fehler " + res.status);
+    }
+    if (res.status === 204) return null;
+    const body = await res.json();
+    return body && body.success && Object.prototype.hasOwnProperty.call(body, "data")
+      ? body.data
+      : body;
+  }
+
+  // ── Load plans ────────────────────────────────────────────────────────────
+  async function loadPlans() {
+    try {
+      const raw = await fetch(BASE, { headers: authHeaders() });
+      if (!raw.ok) return;
+      allPlans = await raw.json();
+    } catch (_) {
+      allPlans = [];
+    }
+
+    if (!allPlans.length) {
+      emptyMsg.hidden = false;
+      tableWrap.hidden = true;
+      planSelector.hidden = true;
+      statsDetails.hidden = true;
+      warningsWrap.hidden = true;
+      deleteWrap.hidden = true;
+      printBtn.hidden = true;
+      csvBtn.hidden = true;
+      return;
+    }
+
+    emptyMsg.hidden = true;
+    planSelector.hidden = false;
+    printBtn.hidden = false;
+    csvBtn.hidden = false;
+
+    planSelect.innerHTML = "";
+    allPlans.forEach((plan, idx) => {
+      const opt = document.createElement("option");
+      opt.value = idx;
+      opt.textContent = plan.title + (plan.department ? " [" + plan.department + "]" : "");
+      planSelect.appendChild(opt);
+    });
+
+    renderPlan(allPlans[0]);
+  }
+
+  function renderPlan(plan) {
+    currentPlan = plan;
+    renderTable(plan);
+    renderStats(plan);
+    loadChangelog(plan.id);
+
+    // Warnings from API (stored on plan object after generate)
+    warningsWrap.hidden = true;
+    warningsList.innerHTML = "";
+
+    const isAdmin = window.maintenanceAuth && window.maintenanceAuth.isAdmin
+      ? window.maintenanceAuth.isAdmin()
+      : false;
+    deleteWrap.hidden = !isAdmin;
+    if (changelogDetails) changelogDetails.hidden = !isAdmin;
+  }
+
+  // ── Table rendering ───────────────────────────────────────────────────────
+  function renderTable(plan) {
+    tableWrap.hidden = false;
+
+    const start = new Date(plan.start_date + "T00:00:00");
+    const dates = [];
+    for (let i = 0; i < plan.days; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      dates.push(d);
+    }
+
+    // Group entries by employee
+    const empMap = {};
+    const empNames = {};
+    plan.entries.forEach((entry) => {
+      const empId = entry.employee ? entry.employee.id : null;
+      if (!empId) return;
+      empNames[empId] = entry.employee.name;
+      if (!empMap[empId]) empMap[empId] = {};
+      empMap[empId][entry.work_date] = entry;
+    });
+
+    // Header row
+    tableHead.innerHTML = "";
+    const headRow = document.createElement("tr");
+    const thEmp = document.createElement("th");
+    thEmp.scope = "col";
+    thEmp.textContent = "Mitarbeiter";
+    headRow.appendChild(thEmp);
+    dates.forEach((d) => {
+      const th = document.createElement("th");
+      th.scope = "col";
+      th.textContent = DAYS_DE[d.getDay()] + " " + d.getDate() + "." + (d.getMonth() + 1) + ".";
+      headRow.appendChild(th);
+    });
+    tableHead.appendChild(headRow);
+
+    // Body rows
+    tableBody.innerHTML = "";
+    const canEdit = window.maintenanceAuth && window.maintenanceAuth.canWrite
+      ? window.maintenanceAuth.canWrite("shiftplans")
+      : false;
+
+    Object.keys(empNames).sort((a, b) => empNames[a].localeCompare(empNames[b])).forEach((empId) => {
+      const tr = document.createElement("tr");
+      const tdName = document.createElement("th");
+      tdName.scope = "row";
+      tdName.textContent = empNames[empId];
+      tdName.className = "whitespace-nowrap";
+      tr.appendChild(tdName);
+
+      dates.forEach((d) => {
+        const dateStr = d.toISOString().slice(0, 10);
+        const entry = empMap[empId] && empMap[empId][dateStr];
+        const td = document.createElement("td");
+        td.className = "text-center";
+
+        if (entry) {
+          const shiftKey = entry.shift;
+          const badge = document.createElement("button");
+          badge.className = "badge " + (SHIFT_BADGE[shiftKey] || "badge-ghost") + " cursor-pointer border-0";
+          badge.textContent = SHIFT_LABELS[shiftKey] || shiftKey.charAt(0);
+          badge.title = shiftKey + (entry.start_time ? " " + entry.start_time + "–" + entry.end_time : "");
+          badge.setAttribute("aria-label", empNames[empId] + " am " + dateStr + ": " + shiftKey);
+          if (canEdit) {
+            badge.addEventListener("click", () => openEditDialog(entry));
+          } else {
+            badge.setAttribute("tabindex", "0");
+          }
+          td.appendChild(badge);
+        } else {
+          td.textContent = "·";
+          td.style.opacity = "0.3";
+        }
+
+        tr.appendChild(td);
+      });
+
+      tableBody.appendChild(tr);
+    });
+  }
+
+  // ── Statistics ────────────────────────────────────────────────────────────
+  function renderStats(plan) {
+    statsDetails.hidden = false;
+    statsBody.innerHTML = "";
+
+    const empStats = {};
+    plan.entries.forEach((entry) => {
+      const empId = entry.employee ? entry.employee.id : null;
+      const empName = entry.employee ? entry.employee.name : null;
+      if (!empId) return;
+      if (!empStats[empId]) {
+        empStats[empId] = { name: empName, Frueh: 0, Spaet: 0, Nacht: 0, Urlaub: 0, hours: 0 };
+      }
+      if (entry.shift === "Frueh") empStats[empId].Frueh++;
+      else if (entry.shift === "Spaet") empStats[empId].Spaet++;
+      else if (entry.shift === "Nacht") empStats[empId].Nacht++;
+      else if (entry.shift === "Urlaub") empStats[empId].Urlaub++;
+      if (entry.start_time && entry.end_time) {
+        empStats[empId].hours += shiftHours(entry.start_time, entry.end_time);
+      }
+    });
+
+    Object.values(empStats)
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .forEach((s) => {
+        const tr = document.createElement("tr");
+        [s.name, s.Frueh, s.Spaet, s.Nacht, s.Urlaub, s.hours.toFixed(1) + "h"].forEach((val, i) => {
+          const td = i === 0 ? document.createElement("th") : document.createElement("td");
+          if (i === 0) td.scope = "row";
+          td.textContent = val;
+          tr.appendChild(td);
+        });
+        statsBody.appendChild(tr);
+      });
+  }
+
+  function shiftHours(start, end) {
+    const [sh, sm] = start.split(":").map(Number);
+    const [eh, em] = end.split(":").map(Number);
+    let diff = (eh * 60 + em) - (sh * 60 + sm);
+    if (diff <= 0) diff += 24 * 60;
+    return diff / 60;
+  }
+
+  // ── Changelog ─────────────────────────────────────────────────────────────
+  async function loadChangelog(planId) {
+    const isAdmin = window.maintenanceAuth && window.maintenanceAuth.isAdmin
+      ? window.maintenanceAuth.isAdmin()
+      : false;
+    if (!isAdmin || !changelogDetails) return;
+
+    try {
+      const logs = await apiFetch(BASE + "/" + planId + "/changelog");
+      changelogBody.innerHTML = "";
+      (logs || []).forEach((log) => {
+        const tr = document.createElement("tr");
+        [
+          new Date(log.changed_at).toLocaleString("de-DE"),
+          log.user || "–",
+          log.action,
+          log.field_name || "–",
+          log.old_value || "–",
+          log.new_value || "–",
+        ].forEach((val) => {
+          const td = document.createElement("td");
+          td.textContent = val;
+          tr.appendChild(td);
+        });
+        changelogBody.appendChild(tr);
+      });
+    } catch (_) {}
+  }
+
+  // ── Edit dialog ───────────────────────────────────────────────────────────
+  function openEditDialog(entry) {
+    editingEntryId = entry.id;
+    editMsg.textContent = "";
+    editShift.value = entry.shift;
+    editStart.value = entry.start_time || "";
+    editEnd.value = entry.end_time || "";
+    editNotes.value = entry.notes || "";
+    editInfo.textContent = (entry.employee ? entry.employee.name : "") + " — " + entry.work_date;
+
+    const isWorkShift = !["Frei", "Urlaub"].includes(entry.shift);
+    editTimeFields.hidden = !isWorkShift;
+
+    const isAdmin = window.maintenanceAuth && window.maintenanceAuth.isAdmin
+      ? window.maintenanceAuth.isAdmin()
+      : false;
+    editDeleteBtn.hidden = !isAdmin;
+
+    dialog.showModal();
+  }
+
+  editShift.addEventListener("change", () => {
+    const isWork = !["Frei", "Urlaub"].includes(editShift.value);
+    editTimeFields.hidden = !isWork;
+    if (isWork && SHIFT_WINDOWS[editShift.value]) {
+      editStart.value = SHIFT_WINDOWS[editShift.value][0];
+      editEnd.value = SHIFT_WINDOWS[editShift.value][1];
+    }
+  });
+
+  editSaveBtn.addEventListener("click", async () => {
+    if (!editingEntryId) return;
+    editMsg.textContent = "Wird gespeichert…";
+    editSaveBtn.disabled = true;
+    const payload = {
+      shift: editShift.value,
+      notes: editNotes.value,
+    };
+    if (!["Frei", "Urlaub"].includes(editShift.value)) {
+      payload.start_time = editStart.value;
+      payload.end_time = editEnd.value;
+    }
+    try {
+      await apiFetch(BASE + "/entries/" + editingEntryId, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
+      dialog.close();
+      await loadPlans();
+      if (currentPlan) {
+        const refreshed = allPlans.find((p) => p.id === currentPlan.id);
+        if (refreshed) renderPlan(refreshed);
+      }
+    } catch (err) {
+      editMsg.textContent = err.message;
+    } finally {
+      editSaveBtn.disabled = false;
+    }
+  });
+
+  editDeleteBtn.addEventListener("click", async () => {
+    if (!editingEntryId) return;
+    if (!confirm("Eintrag wirklich löschen?")) return;
+    editDeleteBtn.disabled = true;
+    try {
+      await apiFetch(BASE + "/entries/" + editingEntryId, { method: "DELETE" });
+      dialog.close();
+      await loadPlans();
+      if (currentPlan) {
+        const refreshed = allPlans.find((p) => p.id === currentPlan.id);
+        if (refreshed) renderPlan(refreshed);
+      }
+    } catch (err) {
+      editMsg.textContent = err.message;
+    } finally {
+      editDeleteBtn.disabled = false;
+    }
+  });
+
+  editCancelBtn.addEventListener("click", () => dialog.close());
+
+  dialog.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") dialog.close();
+  });
+
+  // ── Plan selector ─────────────────────────────────────────────────────────
+  planSelect.addEventListener("change", () => {
+    const idx = parseInt(planSelect.value, 10);
+    if (!isNaN(idx) && allPlans[idx]) renderPlan(allPlans[idx]);
+  });
+
+  // ── Delete plan ───────────────────────────────────────────────────────────
+  deleteBtn.addEventListener("click", async () => {
+    if (!currentPlan) return;
+    if (!confirm("Schichtplan \"" + currentPlan.title + "\" wirklich löschen?")) return;
+    deleteBtn.disabled = true;
+    try {
+      await apiFetch(BASE + "/" + currentPlan.id, { method: "DELETE" });
+      currentPlan = null;
+      await loadPlans();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      deleteBtn.disabled = false;
+    }
+  });
+
+  // ── Print ─────────────────────────────────────────────────────────────────
+  printBtn.addEventListener("click", () => window.print());
+
+  // ── CSV Export ────────────────────────────────────────────────────────────
+  csvBtn.addEventListener("click", () => {
+    if (!currentPlan) return;
+    const rows = [["Mitarbeiter", "Datum", "Schicht", "Beginn", "Ende", "Notiz"]];
+    currentPlan.entries.forEach((e) => {
+      rows.push([
+        e.employee ? e.employee.name : "",
+        e.work_date,
+        e.shift,
+        e.start_time,
+        e.end_time,
+        e.notes,
+      ]);
+    });
+    const csv = rows.map((r) => r.map((v) => '"' + String(v || "").replace(/"/g, '""') + '"').join(",")).join("\n");
+    const a = document.createElement("a");
+    a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
+    a.download = (currentPlan.title || "schichtplan") + ".csv";
+    a.click();
+  });
+
+  // ── Form submit ───────────────────────────────────────────────────────────
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const submitBtn = form.querySelector("[type=submit]");
+    submitBtn.disabled = true;
+    formMsg.textContent = "Plan wird generiert…";
+
+    const fd = new FormData(form);
+
+    // Parse vacation textarea
+    const vacText = fd.get("vacations_text") || "";
+    const vacations = vacText.split("\n").flatMap((line) => {
+      const parts = line.split(",").map((s) => s.trim());
+      if (parts.length >= 2 && parts[0] && parts[1]) {
+        return [{ employee_id: parseInt(parts[0], 10), date: parts[1], notes: parts[2] || "" }];
+      }
+      return [];
+    });
+
+    const payload = {
+      department: fd.get("department"),
+      title: fd.get("title"),
+      start_date: fd.get("start_date"),
+      days: parseInt(fd.get("days") || "7", 10),
+      rhythm: fd.get("rhythm") || "2-Schicht Rhythmus",
+      preferences: fd.get("preferences"),
+      vacations,
+    };
+
+    try {
+      const result = await apiFetch(BASE + "/generate", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+
+      formMsg.textContent = "Plan erfolgreich generiert.";
+
+      // Show warnings if present
+      if (result && result.warnings && result.warnings.length) {
+        warningsWrap.hidden = false;
+        warningsList.innerHTML = "";
+        result.warnings.forEach((w) => {
+          const li = document.createElement("li");
+          li.className = w.severity === "critical" ? "text-error" : "text-warning";
+          li.textContent = w.message;
+          warningsList.appendChild(li);
+        });
+      }
+
+      await loadPlans();
+      // Select the newest plan
+      if (allPlans.length) {
+        planSelect.value = "0";
+        renderPlan(allPlans[0]);
+      }
+    } catch (err) {
+      formMsg.textContent = "Fehler: " + err.message;
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  window.addEventListener("maintenance-auth-ready", loadPlans);
+  document.addEventListener("DOMContentLoaded", () => {
+    if (window.maintenanceAuth && window.maintenanceAuth.token && window.maintenanceAuth.token()) {
+      loadPlans();
+    }
+  });
+})();
+</script>
+
+<style>
+@media print {
+  .page-hero, .mobile-action-section, #sp-plan-selector,
+  #sp-stats-details, #sp-warnings-wrap, #sp-changelog-details,
+  #sp-delete-wrap, .toolbar, .panel-header .toolbar { display: none !important; }
+  #sp-table-wrap { display: block !important; }
+}
+</style>
 {% endblock %}
