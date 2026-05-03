@@ -93,9 +93,9 @@
         <select class="select select-bordered select-sm" id="sp-plan-select" aria-label="Schichtplan auswählen"></select>
       </div>
 
-      <!-- Kompakte Kalender-Tabelle -->
+      <!-- Schichtplan-Kalender: Zeilen = Schichttyp, Spalten = Tage -->
       <div class="overflow-x-auto" id="sp-table-wrap" data-shiftplan-calendar hidden>
-        <table class="table table-xs table-zebra" id="sp-shift-table" role="grid" aria-label="Schichtplan-Kalender">
+        <table class="table table-sm" id="sp-shift-table" role="grid" aria-label="Schichtplan-Kalender">
           <thead id="sp-table-head"></thead>
           <tbody id="sp-table-body"></tbody>
         </table>
@@ -123,11 +123,11 @@
         </div>
       </details>
 
-      <!-- Warnings -->
-      <div id="sp-warnings-wrap" class="mt-4" hidden>
-        <h3 class="stat-label mb-2">Warnungen</h3>
-        <ul id="sp-warnings-list" class="space-y-1" role="list"></ul>
-      </div>
+      <!-- Warnings (optional, standardmäßig zugeklappt) -->
+      <details class="mt-4" id="sp-warnings-wrap" hidden>
+        <summary class="stat-label cursor-pointer select-none mb-2" id="sp-warnings-summary">Warnungen anzeigen</summary>
+        <ul id="sp-warnings-list" class="space-y-1 mt-2" role="list"></ul>
+      </details>
 
       <!-- Changelog (Admin only) -->
       <details class="mt-6" id="sp-changelog-details" data-hr-only hidden>
@@ -157,10 +157,10 @@
   </article>
 </section>
 
-<!-- Inline-Edit-Dialog -->
-<dialog id="sp-edit-dialog" aria-modal="true" aria-labelledby="sp-edit-dialog-title" class="modal">
-  <div class="modal-box">
-    <h3 class="font-bold text-lg mb-4" id="sp-edit-dialog-title">Schichteintrag bearbeiten</h3>
+<!-- Inline-Edit-Dialog (kein DaisyUI-modal, damit es nicht automatisch erscheint) -->
+<dialog id="sp-edit-dialog" aria-modal="true" aria-labelledby="sp-edit-dialog-title">
+  <div class="card app-card" style="min-width:320px;max-width:480px;padding:1.5rem;">
+    <h3 class="panel-title mb-2" id="sp-edit-dialog-title">Schichteintrag bearbeiten</h3>
     <p class="stat-label mb-4" id="sp-edit-info"></p>
     <div class="field mb-3">
       <label for="edit-shift">Schicht</label>
@@ -186,7 +186,7 @@
       <label for="edit-notes">Notiz</label>
       <input class="input input-bordered w-full" type="text" id="edit-notes" placeholder="Optionale Anmerkung" aria-label="Notiz zum Schichteintrag">
     </div>
-    <div class="modal-action">
+    <div class="toolbar">
       <button class="btn btn-primary btn-sm" id="edit-save-btn" aria-label="Änderungen speichern">Speichern</button>
       <button class="btn btn-error btn-sm" id="edit-delete-btn" data-hr-only hidden aria-label="Eintrag löschen">Löschen</button>
       <button class="btn btn-ghost btn-sm" id="edit-cancel-btn" aria-label="Abbrechen">Abbrechen</button>
@@ -318,7 +318,7 @@
     renderStats(plan);
     loadChangelog(plan.id);
 
-    // Warnings from API (stored on plan object after generate)
+    // Warnings reset (werden nur nach Generierung gefüllt)
     warningsWrap.hidden = true;
     warningsList.innerHTML = "";
 
@@ -329,7 +329,27 @@
     if (changelogDetails) changelogDetails.hidden = !isAdmin;
   }
 
+  function showWarnings(warnings) {
+    warningsList.innerHTML = "";
+    if (!warnings || !warnings.length) {
+      warningsWrap.hidden = true;
+      return;
+    }
+    const summary = document.getElementById("sp-warnings-summary");
+    if (summary) summary.textContent = "Warnungen anzeigen (" + warnings.length + ")";
+    warnings.forEach((w) => {
+      const li = document.createElement("li");
+      li.className = "panel-meta " + (w.severity === "critical" ? "text-error" : "text-warning");
+      li.textContent = (w.severity === "critical" ? "⚠ " : "ℹ ") + w.message;
+      warningsList.appendChild(li);
+    });
+    warningsWrap.hidden = false;
+  }
+
   // ── Table rendering ───────────────────────────────────────────────────────
+  // Layout: Zeilen = Schichttyp (Früh / Spät / Nacht / Urlaub)
+  //         Spalten = Tage
+  //         Zellen = Maschine → Mitarbeiter (klickbar zum Bearbeiten)
   function renderTable(plan) {
     tableWrap.hidden = false;
 
@@ -341,70 +361,112 @@
       dates.push(d);
     }
 
-    // Group entries by employee
-    const empMap = {};
-    const empNames = {};
+    // Index entries by shift → date → list of entries
+    const SHIFT_ORDER = ["Frueh", "Spaet", "Nacht", "Urlaub", "Frei"];
+    const shiftDateMap = {};   // shiftKey → dateStr → [entry, ...]
+    const usedShifts = new Set();
     plan.entries.forEach((entry) => {
-      const empId = entry.employee ? entry.employee.id : null;
-      if (!empId) return;
-      empNames[empId] = entry.employee.name;
-      if (!empMap[empId]) empMap[empId] = {};
-      empMap[empId][entry.work_date] = entry;
+      const s = entry.shift;
+      usedShifts.add(s);
+      if (!shiftDateMap[s]) shiftDateMap[s] = {};
+      if (!shiftDateMap[s][entry.work_date]) shiftDateMap[s][entry.work_date] = [];
+      shiftDateMap[s][entry.work_date].push(entry);
     });
 
-    // Header row
-    tableHead.innerHTML = "";
-    const headRow = document.createElement("tr");
-    const thEmp = document.createElement("th");
-    thEmp.scope = "col";
-    thEmp.textContent = "Mitarbeiter";
-    headRow.appendChild(thEmp);
-    dates.forEach((d) => {
-      const th = document.createElement("th");
-      th.scope = "col";
-      th.textContent = DAYS_DE[d.getDay()] + " " + d.getDate() + "." + (d.getMonth() + 1) + ".";
-      headRow.appendChild(th);
-    });
-    tableHead.appendChild(headRow);
+    const activeShifts = SHIFT_ORDER.filter((s) => usedShifts.has(s));
 
-    // Body rows
-    tableBody.innerHTML = "";
     const canEdit = window.maintenanceAuth && window.maintenanceAuth.canWrite
       ? window.maintenanceAuth.canWrite("shiftplans")
       : false;
 
-    Object.keys(empNames).sort((a, b) => empNames[a].localeCompare(empNames[b])).forEach((empId) => {
-      const tr = document.createElement("tr");
-      const tdName = document.createElement("th");
-      tdName.scope = "row";
-      tdName.textContent = empNames[empId];
-      tdName.className = "whitespace-nowrap";
-      tr.appendChild(tdName);
+    const SHIFT_FULL = {
+      Frueh: "Frühschicht 06:00–14:00",
+      Spaet: "Spätschicht 14:00–22:00",
+      Nacht: "Nachtschicht 22:00–06:00",
+      Urlaub: "Urlaub",
+      Frei: "Frei",
+    };
 
+    // Header: Schicht-Spalte + eine Spalte je Tag
+    tableHead.innerHTML = "";
+    const headRow = document.createElement("tr");
+    const thShift = document.createElement("th");
+    thShift.scope = "col";
+    thShift.textContent = "Schicht";
+    thShift.style.minWidth = "110px";
+    headRow.appendChild(thShift);
+    dates.forEach((d) => {
+      const th = document.createElement("th");
+      th.scope = "col";
+      th.textContent = DAYS_DE[d.getDay()] + " " + d.getDate() + "." + (d.getMonth() + 1) + ".";
+      th.style.minWidth = "120px";
+      headRow.appendChild(th);
+    });
+    tableHead.appendChild(headRow);
+
+    // Body: eine Zeile je aktiver Schichttyp
+    tableBody.innerHTML = "";
+    activeShifts.forEach((shiftKey) => {
+      const tr = document.createElement("tr");
+
+      // Schichttyp-Label
+      const thRow = document.createElement("th");
+      thRow.scope = "row";
+      const badge = document.createElement("span");
+      badge.className = "badge " + (SHIFT_BADGE[shiftKey] || "badge-ghost");
+      badge.textContent = SHIFT_FULL[shiftKey] || shiftKey;
+      thRow.appendChild(badge);
+      tr.appendChild(thRow);
+
+      // Eine Zelle je Tag
       dates.forEach((d) => {
         const dateStr = d.toISOString().slice(0, 10);
-        const entry = empMap[empId] && empMap[empId][dateStr];
         const td = document.createElement("td");
-        td.className = "text-center";
+        td.style.verticalAlign = "top";
 
-        if (entry) {
-          const shiftKey = entry.shift;
-          const badge = document.createElement("button");
-          badge.className = "badge " + (SHIFT_BADGE[shiftKey] || "badge-ghost") + " cursor-pointer border-0";
-          badge.textContent = SHIFT_LABELS[shiftKey] || shiftKey.charAt(0);
-          badge.title = shiftKey + (entry.start_time ? " " + entry.start_time + "–" + entry.end_time : "");
-          badge.setAttribute("aria-label", empNames[empId] + " am " + dateStr + ": " + shiftKey);
-          if (canEdit) {
-            badge.addEventListener("click", () => openEditDialog(entry));
-          } else {
-            badge.setAttribute("tabindex", "0");
-          }
-          td.appendChild(badge);
+        const dayEntries = (shiftDateMap[shiftKey] || {})[dateStr] || [];
+        if (dayEntries.length === 0) {
+          td.innerHTML = '<span style="opacity:.3">–</span>';
         } else {
-          td.textContent = "·";
-          td.style.opacity = "0.3";
-        }
+          const ul = document.createElement("ul");
+          ul.style.listStyle = "none";
+          ul.style.margin = "0";
+          ul.style.padding = "0";
+          ul.style.display = "flex";
+          ul.style.flexDirection = "column";
+          ul.style.gap = "2px";
 
+          dayEntries.forEach((entry) => {
+            const li = document.createElement("li");
+            const machineName = entry.machine ? entry.machine.name : null;
+            const empName = entry.employee ? entry.employee.name : "?";
+
+            if (canEdit) {
+              const btn = document.createElement("button");
+              btn.className = "btn btn-ghost btn-xs text-left w-full justify-start";
+              btn.style.height = "auto";
+              btn.style.padding = "2px 4px";
+              btn.setAttribute("aria-label", "Bearbeiten: " + empName + (machineName ? " an " + machineName : ""));
+              if (machineName) {
+                btn.innerHTML = '<span style="font-weight:600;opacity:.7">' + machineName + '</span><br><span>' + empName + '</span>';
+              } else {
+                btn.textContent = empName;
+              }
+              btn.addEventListener("click", () => openEditDialog(entry));
+              li.appendChild(btn);
+            } else {
+              if (machineName) {
+                li.innerHTML = '<span style="font-weight:600;opacity:.7">' + machineName + '</span><br><span>' + empName + '</span>';
+              } else {
+                li.textContent = empName;
+              }
+              li.style.padding = "2px 4px";
+              li.style.fontSize = "0.8rem";
+            }
+            ul.appendChild(li);
+          });
+          td.appendChild(ul);
+        }
         tr.appendChild(td);
       });
 
@@ -653,17 +715,8 @@
 
       formMsg.textContent = "Plan erfolgreich generiert.";
 
-      // Show warnings if present
-      if (result && result.warnings && result.warnings.length) {
-        warningsWrap.hidden = false;
-        warningsList.innerHTML = "";
-        result.warnings.forEach((w) => {
-          const li = document.createElement("li");
-          li.className = w.severity === "critical" ? "text-error" : "text-warning";
-          li.textContent = w.message;
-          warningsList.appendChild(li);
-        });
-      }
+      // Warnungen optional anzeigen (zugeklappt, nur wenn vorhanden)
+      showWarnings(result && result.warnings);
 
       await loadPlans();
       // Select the newest plan
@@ -689,6 +742,19 @@
 </script>
 
 <style>
+/* Edit-Dialog: kein DaisyUI-modal, damit er nicht automatisch sichtbar ist */
+#sp-edit-dialog {
+  border: none;
+  border-radius: 0.75rem;
+  padding: 0;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+  max-width: 90vw;
+}
+#sp-edit-dialog::backdrop {
+  background: rgba(0,0,0,0.45);
+  backdrop-filter: blur(2px);
+}
+
 @media print {
   .page-hero, .mobile-action-section, #sp-plan-selector,
   #sp-stats-details, #sp-warnings-wrap, #sp-changelog-details,
