@@ -120,7 +120,7 @@
     if (!authToken) return null;
 
     try {
-      const response = await fetch("/api/auth/me", {
+      const response = await fetch("/api/v1/auth/me", {
         headers: { "Authorization": "Bearer " + authToken }
       });
       if (!response.ok) {
