@@ -61,10 +61,10 @@ def _extract_machine_name(text):
 
 def _aggregate_causes_and_fixes(matches):
     """Return deduplicated causes and fixes from a list of scored match dicts."""
-    causes: list[str] = []
-    fixes: list[str] = []
-    seen_causes: set[str] = set()
-    seen_fixes: set[str] = set()
+    causes = []
+    fixes = []
+    seen_causes = set()
+    seen_fixes = set()
 
     for match in matches:
         entry = match["entry"]
@@ -107,18 +107,22 @@ def _try_ai_enhance(query, matches):
 
     The mock provider always returns None.  A real OpenAI provider returns a
     dict with keys ``causes``, ``fixes``, and optionally ``summary``.
-    Any exception from the provider is swallowed so local results remain.
+    Any exception from the provider is caught so local results remain valid.
     """
-    from app.services.ai_service import AIServiceError, get_ai_provider
+    from app.services.ai_service import get_ai_provider
 
     try:
         provider = get_ai_provider()
         result = provider.error_assistant_query(query, matches)
         if result and isinstance(result, dict):
-            return {"causes": result.get("causes", []), "fixes": result.get("fixes", []),
-                    "summary": result.get("summary", ""), "provider": provider.name}
+            return {
+                "causes": result.get("causes", []),
+                "fixes": result.get("fixes", []),
+                "summary": result.get("summary", ""),
+                "provider": provider.name,
+            }
         return None
-    except (AIServiceError, Exception):
+    except Exception:
         logger.debug("error_assistant ai_enhance skipped — provider not available")
         return None
 

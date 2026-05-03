@@ -6,6 +6,7 @@ from app.extensions import db
 from app.models import AIFeedback, Role
 from app.responses import error_response, service_error_response, success_response
 from app.security import current_user, has_dashboard_permission, roles_required
+from app.services.error_assistant_service import run_error_assistant
 
 
 ai_bp = Blueprint("ai", __name__)
@@ -50,8 +51,8 @@ def error_assistant():
     Request body (JSON):
         query (str, required): Free-text fault description, e.g.
             "Maschine 3 zeigt Fehler E42 und macht Geraeusche."
-        limit (int, optional): Maximum number of catalog matches to return (1–20,
-            default 5).
+        limit (int, optional): Maximum number of catalog matches to return
+            (1–20, default 5).
 
     Response ``data`` keys:
         query        — the original query string
@@ -60,16 +61,14 @@ def error_assistant():
         fixes        — deduplicated list of solution strings
         diagnostics  — search metadata and ai_enhanced flag
     """
-    from app.services.error_assistant_service import run_error_assistant
-
     user = current_user()
     if not has_dashboard_permission(user, "errors", "view"):
         return error_response("Keine Berechtigung fuer den Fehlerkatalog", 403)
 
     data = request.get_json(silent=True) or {}
-    result, error, status = run_error_assistant(data, user)
+    result, error, status_code = run_error_assistant(data, user)
     if error:
-        return service_error_response(error, status)
+        return service_error_response(error, status_code)
     return success_response(result, message="Error assistant result")
 
 

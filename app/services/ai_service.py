@@ -41,7 +41,6 @@ class BaseAIProvider(ABC):
         """Return structured prioritization results for visible tasks."""
 
     @abstractmethod
-    @abstractmethod
     def review_document(self, html_text, metadata=None):
         """Return a structured quality review for a maintenance document."""
 
@@ -51,13 +50,14 @@ class BaseAIProvider(ABC):
 
         Args:
             query:   The raw user fault description string.
-            matches: List of similarity-scored catalog match dicts already found
-                     by the local search (each has keys ``entry``, ``score``,
-                     ``reason``).
+            matches: List of similarity-scored catalog match dicts already
+                     found by the local search.  Each dict has keys
+                     ``entry``, ``score``, and ``reason``.
 
         Returns:
-            dict with keys ``causes`` (list[str]), ``fixes`` (list[str]), and
-            optionally ``summary`` (str) — or ``None`` to skip enhancement.
+            dict with keys ``causes`` (list[str]), ``fixes`` (list[str]),
+            and optionally ``summary`` (str) — or ``None`` to skip
+            enhancement and keep local results unchanged.
         """
 
 
@@ -312,7 +312,11 @@ class OpenAIProvider(BaseAIProvider):
             )
             return json.loads(completion.choices[0].message.content)
         except (OpenAIError, TypeError, json.JSONDecodeError) as exc:
-            logger.exception("ai_call_failed provider=%s model=%s mode=json", self.name, self.model)
+            logger.exception(
+                "ai_call_failed provider=%s model=%s mode=json",
+                self.name,
+                self.model,
+            )
             raise AIServiceError("AI provider failed to return valid JSON") from exc
 
     def _text_completion(self, messages):
@@ -331,7 +335,11 @@ class OpenAIProvider(BaseAIProvider):
             )
             return completion.choices[0].message.content
         except OpenAIError as exc:
-            logger.exception("ai_call_failed provider=%s model=%s mode=text", self.name, self.model)
+            logger.exception(
+                "ai_call_failed provider=%s model=%s mode=text",
+                self.name,
+                self.model,
+            )
             raise AIServiceError("AI provider failed to return text") from exc
 
 

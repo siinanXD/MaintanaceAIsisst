@@ -38,7 +38,7 @@ def test_error_assistant_rejects_missing_query(client, make_user, auth_headers):
 
 
 def test_error_assistant_rejects_blank_query(client, make_user, auth_headers):
-    """Request with an empty string query must return 400."""
+    """Request with a whitespace-only query must return 400."""
     user = make_user(username="ea_blank_query")
     response = client.post(
         "/api/v1/ai/error-assistant",
@@ -161,7 +161,6 @@ def test_error_assistant_finds_matching_entry(
     assert len(data["matches"]) > 0
     assert len(data["causes"]) > 0
     assert len(data["fixes"]) > 0
-    # Catalog text must appear in the aggregated output
     assert any("Lager" in c for c in data["causes"])
     assert any("schmieren" in f or "austauschen" in f for f in data["fixes"])
 
@@ -265,12 +264,8 @@ def test_error_assistant_scopes_to_department(
     client, make_user, make_error_entry, auth_headers
 ):
     """Users must not see error catalog entries from another department."""
-    # Create IT department via a user, then seed an IT-only error entry
-    it_user = make_user(
-        username="ea_it_owner",
-        role=Role.IT,
-        department_name="IT",
-    )
+    # Create the IT department by registering an IT user first
+    make_user(username="ea_it_owner", role=Role.IT, department_name="IT")
     prod_user = make_user(
         username="ea_prod_user",
         role=Role.PRODUKTION,
@@ -292,7 +287,6 @@ def test_error_assistant_scopes_to_department(
     )
 
     assert response.status_code == 200
-    # Produktion user must not see the IT department entry
     assert response.get_json()["data"]["diagnostics"]["match_count"] == 0
 
 
@@ -332,6 +326,5 @@ def test_error_assistant_deduplicates_causes_and_fixes(
     data = response.get_json()["data"]
     causes = data["causes"]
     fixes = data["fixes"]
-    # Each unique string must appear at most once
     assert len(causes) == len(set(causes))
     assert len(fixes) == len(set(fixes))
