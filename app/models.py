@@ -521,7 +521,7 @@ class ShiftPlanEntry(db.Model):
             "start_time": self.start_time,
             "end_time": self.end_time,
             "notes": self.notes,
-            "created_at": self.created_at.isoformat(),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
 

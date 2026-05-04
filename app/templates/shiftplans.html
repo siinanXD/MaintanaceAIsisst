@@ -212,6 +212,14 @@
   const SHIFT_LABEL  = { Frueh:"Frühschicht\n06:00–14:00", Spaet:"Spätschicht\n14:00–22:00", Nacht:"Nachtschicht\n22:00–06:00", Urlaub:"Urlaub", Frei:"Frei" };
   const DAYS_DE = ["So","Mo","Di","Mi","Do","Fr","Sa"];
 
+  // Local ISO date string (avoids UTC/timezone shift from toISOString())
+  function localISO(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+
   let allPlans = [];
   let currentPlan = null;
   let editEntryId = null;
@@ -285,9 +293,18 @@
     if (!token()) return;
     try {
       const res = await fetch(BASE, { headers: authHdr() });
-      if (!res.ok) return;
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        emptyMsg.textContent = "Fehler beim Laden der Pläne: " + (body.message || res.status);
+        emptyMsg.hidden = false;
+        return;
+      }
       allPlans = await res.json();
-    } catch (_) { allPlans = []; }
+    } catch (err) {
+      allPlans = [];
+      emptyMsg.textContent = "Netzwerkfehler: " + err.message;
+      emptyMsg.hidden = false;
+    }
 
     if (!allPlans.length) {
       emptyMsg.hidden  = false;
@@ -407,7 +424,7 @@
 
       // Day cells
       dates.forEach((d) => {
-        const dateStr = d.toISOString().slice(0, 10);
+        const dateStr = localISO(d);
         const td = document.createElement("td");
         td.className = "sp-day-cell";
 
