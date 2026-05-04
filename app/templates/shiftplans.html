@@ -3,37 +3,37 @@
 {% block title %}Schichtplan - Maintenance Assistant{% endblock %}
 
 {% block content %}
-<section class="page-hero">
+<section class="page-hero no-print">
   <div>
     <p class="page-kicker">KI-Planung</p>
     <h1 class="page-title">Schichtplan</h1>
-    <p class="page-description">Abteilung auswählen, Zeitraum festlegen und KI-gestützten Plan generieren — Arbeitszeitgesetz und faire Verteilung inklusive.</p>
+    <p class="page-description">Abteilung auswählen, Zeitraum festlegen und KI-gestützten Plan generieren — ArbZG-konform und fair verteilt.</p>
   </div>
 </section>
 
 <section class="dashboard-grid">
 
   <!-- Generierungs-Formular -->
-  <details class="card app-card mobile-action-section lg:col-span-12" data-mobile-collapsible data-permission-write="shiftplans" open>
+  <details class="card app-card mobile-action-section lg:col-span-12 no-print" data-mobile-collapsible data-permission-write="shiftplans" open>
     <summary class="mobile-action-summary">
       <span>
-        <span class="mobile-action-title">KI-Schichtplan generieren</span>
+        <span class="mobile-action-title">Schichtplan generieren</span>
         <span class="mobile-action-meta">Abteilung, Zeitraum und Präferenzen</span>
       </span>
     </summary>
-    <form data-shiftplan-form>
+    <form id="sp-form">
       <div class="card-body">
         <div class="panel-header">
           <div>
             <h2 class="panel-title">Schichtplan generieren</h2>
-            <p class="panel-meta">ArbZG: max. 8h/Schicht · 11h Ruhezeit · 48h/Woche · max. 6 Tage am Stück</p>
+            <p class="panel-meta">ArbZG: max. 10h/Schicht · 11h Ruhezeit · faire Verteilung</p>
           </div>
           <span class="badge badge-info badge-outline">KI</span>
         </div>
         <div class="form-grid">
           <div class="field">
-            <label for="sp-department">Abteilung <span aria-hidden="true">*</span></label>
-            <select class="select select-bordered" id="sp-department" name="department" required aria-required="true">
+            <label for="sp-department">Abteilung *</label>
+            <select class="select select-bordered" id="sp-department" required>
               <option value="" disabled selected>Bitte wählen…</option>
               <option value="Produktion">Produktion</option>
               <option value="Instandhaltung">Instandhaltung</option>
@@ -44,78 +44,94 @@
           </div>
           <div class="field">
             <label for="sp-title">Titel</label>
-            <input class="input input-bordered" id="sp-title" name="title" placeholder="Schichtplan KW 22">
+            <input class="input input-bordered" id="sp-title" placeholder="Schichtplan KW 22">
           </div>
           <div class="field">
-            <label for="sp-start">Startdatum <span aria-hidden="true">*</span></label>
-            <input class="input input-bordered" id="sp-start" name="start_date" type="date" required aria-required="true">
+            <label for="sp-start">Startdatum *</label>
+            <input class="input input-bordered" id="sp-start" type="date" required>
           </div>
           <div class="field">
             <label for="sp-days">Tage</label>
-            <input class="input input-bordered" id="sp-days" name="days" type="number" min="1" max="31" value="7" aria-label="Planungszeitraum in Tagen">
+            <input class="input input-bordered" id="sp-days" type="number" min="1" max="31" value="7">
           </div>
           <div class="field">
             <label for="sp-rhythm">Rhythmus</label>
-            <input class="input input-bordered" id="sp-rhythm" name="rhythm" placeholder="z. B. 2-Schicht, 3-Schicht">
+            <input class="input input-bordered" id="sp-rhythm" placeholder="z. B. 2-Schicht, 3-Schicht">
           </div>
           <div class="field is-full">
             <label for="sp-preferences">Präferenzen</label>
-            <textarea class="textarea textarea-bordered" id="sp-preferences" name="preferences" rows="2" placeholder="Wünsche, Sperrtage, Teamregeln, bevorzugte Maschinen"></textarea>
+            <textarea class="textarea textarea-bordered" id="sp-preferences" rows="2" placeholder="Wünsche, Sperrtage, Teamregeln"></textarea>
           </div>
           <div class="field is-full">
-            <label for="sp-vacations">Urlaub <span class="stat-label">(Mitarbeiter-ID, Datum, Notiz — eine Zeile je Eintrag)</span></label>
-            <textarea class="textarea textarea-bordered" id="sp-vacations" name="vacations_text" rows="2" placeholder="12, 2026-05-04, Urlaub"></textarea>
+            <label for="sp-vacations">Urlaub <span class="stat-label">(Mitarbeiter-ID, Datum — eine Zeile je Eintrag)</span></label>
+            <textarea class="textarea textarea-bordered" id="sp-vacations" rows="2" placeholder="12, 2026-05-04, Urlaub"></textarea>
           </div>
         </div>
         <div class="toolbar form-actions">
-          <button class="btn btn-primary" type="submit" aria-label="Schichtplan generieren">Plan generieren</button>
-          <span class="panel-meta" data-shiftplan-message role="status" aria-live="polite"></span>
+          <button class="btn btn-primary" id="sp-submit-btn" type="button">Plan generieren</button>
+          <span class="panel-meta" id="sp-msg" role="status" aria-live="polite"></span>
         </div>
       </div>
     </form>
   </details>
 
-  <!-- Pläne-Liste -->
-  <article class="card app-card mobile-primary-card lg:col-span-12">
+  <!-- Plan-Ansicht -->
+  <article class="card app-card lg:col-span-12" id="sp-view-card">
     <div class="card-body">
-      <div class="panel-header">
+
+      <div class="panel-header no-print">
         <div>
-          <h2 class="panel-title">Schichtpläne</h2>
-          <p class="panel-meta" id="sp-list-meta">Zuletzt generierte Pläne</p>
+          <h2 class="panel-title" id="sp-view-title">Schichtpläne</h2>
+          <p class="panel-meta" id="sp-view-meta">Zuletzt generierte Pläne</p>
         </div>
         <div class="toolbar">
-          <button class="btn btn-ghost btn-sm" id="sp-print-btn" hidden aria-label="Aktuellen Plan drucken">Drucken</button>
-          <button class="btn btn-ghost btn-sm" id="sp-csv-btn" hidden aria-label="Aktuellen Plan als CSV herunterladen">CSV</button>
+          <button class="btn btn-ghost btn-sm no-print" id="sp-print-btn" hidden aria-label="Plan drucken">🖨 Drucken</button>
+          <button class="btn btn-ghost btn-sm no-print" id="sp-csv-btn" hidden aria-label="Als CSV exportieren">⬇ CSV</button>
         </div>
       </div>
-      <div id="sp-plan-selector" class="toolbar mb-4" hidden>
+
+      <!-- Plan-Auswahl -->
+      <div class="toolbar mb-3 no-print" id="sp-selector" hidden>
         <label for="sp-plan-select" class="stat-label">Plan:</label>
-        <select class="select select-bordered select-sm" id="sp-plan-select" aria-label="Schichtplan auswählen"></select>
+        <select class="select select-bordered select-sm" id="sp-plan-select" aria-label="Schichtplan wählen"></select>
       </div>
 
-      <!-- Schichtplan-Kalender: Zeilen = Schichttyp, Spalten = Tage -->
-      <div class="overflow-x-auto" id="sp-table-wrap" data-shiftplan-calendar hidden>
-        <table class="table table-sm" id="sp-shift-table" role="grid" aria-label="Schichtplan-Kalender">
-          <thead id="sp-table-head"></thead>
-          <tbody id="sp-table-body"></tbody>
-        </table>
-      </div>
+      <!-- Leer-Nachricht -->
+      <p class="panel-meta" id="sp-empty-msg">Noch keine Schichtpläne vorhanden. Plan generieren um zu starten.</p>
 
-      <p class="panel-meta mt-4" id="sp-empty-msg">Noch keine Schichtpläne vorhanden. Plan generieren um zu starten.</p>
+      <!-- ===== EXCEL-TABELLE ===== -->
+      <div id="sp-table-wrap" data-shiftplan-calendar hidden>
+        <!-- Druckkopf (nur beim Drucken sichtbar) -->
+        <div class="print-only" style="margin-bottom:12px;">
+          <strong id="print-title" style="font-size:14pt;"></strong>
+          <span id="print-meta" style="margin-left:16px;font-size:10pt;color:#555;"></span>
+        </div>
 
-      <!-- Statistik-Panel -->
-      <details class="mt-6" id="sp-stats-details" hidden>
-        <summary class="stat-label cursor-pointer select-none mb-2">Schichtstatistik (Fairness-Übersicht)</summary>
         <div class="overflow-x-auto">
-          <table class="table table-xs" id="sp-stats-table" aria-label="Schichtstatistik pro Mitarbeiter">
+          <table id="sp-grid" class="sp-excel-table">
+            <thead id="sp-thead"></thead>
+            <tbody id="sp-tbody"></tbody>
+          </table>
+        </div>
+
+        <!-- Legende -->
+        <div class="toolbar mt-3 no-print" style="gap:12px;flex-wrap:wrap;">
+          <span class="badge badge-success badge-outline">F = Frühschicht 06–14</span>
+          <span class="badge badge-info badge-outline">S = Spätschicht 14–22</span>
+          <span class="badge badge-secondary badge-outline">N = Nachtschicht 22–06</span>
+          <span class="badge badge-warning badge-outline">U = Urlaub</span>
+          <span class="badge badge-ghost badge-outline">– = Frei</span>
+        </div>
+      </div>
+
+      <!-- Statistik (optional) -->
+      <details class="mt-5 no-print" id="sp-stats" hidden>
+        <summary class="stat-label cursor-pointer select-none mb-2">📊 Fairness-Statistik</summary>
+        <div class="overflow-x-auto">
+          <table class="table table-xs">
             <thead>
               <tr>
-                <th scope="col">Mitarbeiter</th>
-                <th scope="col">Früh</th>
-                <th scope="col">Spät</th>
-                <th scope="col">Nacht</th>
-                <th scope="col">Urlaub</th>
-                <th scope="col">Ges. Stunden</th>
+                <th>Mitarbeiter</th><th>Früh</th><th>Spät</th><th>Nacht</th><th>Urlaub</th><th>Stunden</th>
               </tr>
             </thead>
             <tbody id="sp-stats-body"></tbody>
@@ -123,48 +139,39 @@
         </div>
       </details>
 
-      <!-- Warnings (optional, standardmäßig zugeklappt) -->
-      <details class="mt-4" id="sp-warnings-wrap" hidden>
-        <summary class="stat-label cursor-pointer select-none mb-2" id="sp-warnings-summary">Warnungen anzeigen</summary>
-        <ul id="sp-warnings-list" class="space-y-1 mt-2" role="list"></ul>
+      <!-- Warnungen (optional, zugeklappt) -->
+      <details class="mt-4 no-print" id="sp-warnings" hidden>
+        <summary class="stat-label cursor-pointer select-none mb-2" id="sp-warn-summary">⚠ Warnungen anzeigen</summary>
+        <ul id="sp-warn-list" class="space-y-1 mt-2" role="list"></ul>
       </details>
 
       <!-- Changelog (Admin only) -->
-      <details class="mt-6" id="sp-changelog-details" data-hr-only hidden>
-        <summary class="stat-label cursor-pointer select-none mb-2">Änderungsprotokoll</summary>
+      <details class="mt-5 no-print" id="sp-changelog" data-hr-only hidden>
+        <summary class="stat-label cursor-pointer select-none mb-2">📋 Änderungsprotokoll</summary>
         <div class="overflow-x-auto">
-          <table class="table table-xs" aria-label="Änderungsprotokoll">
-            <thead>
-              <tr>
-                <th scope="col">Zeitpunkt</th>
-                <th scope="col">Benutzer</th>
-                <th scope="col">Aktion</th>
-                <th scope="col">Feld</th>
-                <th scope="col">Alt</th>
-                <th scope="col">Neu</th>
-              </tr>
-            </thead>
+          <table class="table table-xs">
+            <thead><tr><th>Zeitpunkt</th><th>Benutzer</th><th>Aktion</th><th>Feld</th><th>Alt</th><th>Neu</th></tr></thead>
             <tbody id="sp-changelog-body"></tbody>
           </table>
         </div>
       </details>
 
       <!-- Plan löschen (Admin only) -->
-      <div class="toolbar mt-6" id="sp-delete-wrap" data-hr-only hidden>
-        <button class="btn btn-error btn-sm" id="sp-delete-btn" aria-label="Schichtplan löschen">Plan löschen</button>
+      <div class="toolbar mt-5 no-print" id="sp-delete-wrap" data-hr-only hidden>
+        <button class="btn btn-error btn-sm" id="sp-delete-btn">Plan löschen</button>
       </div>
     </div>
   </article>
 </section>
 
-<!-- Inline-Edit-Dialog (kein DaisyUI-modal, damit es nicht automatisch erscheint) -->
-<dialog id="sp-edit-dialog" aria-modal="true" aria-labelledby="sp-edit-dialog-title">
-  <div class="card app-card" style="min-width:320px;max-width:480px;padding:1.5rem;">
-    <h3 class="panel-title mb-2" id="sp-edit-dialog-title">Schichteintrag bearbeiten</h3>
-    <p class="stat-label mb-4" id="sp-edit-info"></p>
+<!-- ── Edit-Dialog ── -->
+<dialog id="sp-dialog" aria-modal="true" aria-labelledby="sp-dlg-title">
+  <div class="card app-card" style="min-width:320px;max-width:460px;padding:1.5rem;">
+    <h3 class="panel-title mb-1" id="sp-dlg-title">Eintrag bearbeiten</h3>
+    <p class="stat-label mb-4" id="sp-dlg-info"></p>
     <div class="field mb-3">
-      <label for="edit-shift">Schicht</label>
-      <select class="select select-bordered w-full" id="edit-shift" aria-label="Schichttyp">
+      <label for="dlg-shift">Schicht</label>
+      <select class="select select-bordered w-full" id="dlg-shift">
         <option value="Frueh">Frühschicht (06:00–14:00)</option>
         <option value="Spaet">Spätschicht (14:00–22:00)</option>
         <option value="Nacht">Nachtschicht (22:00–06:00)</option>
@@ -172,26 +179,26 @@
         <option value="Frei">Frei</option>
       </select>
     </div>
-    <div class="form-grid" id="edit-time-fields">
+    <div class="form-grid" id="dlg-times">
       <div class="field">
-        <label for="edit-start">Beginn</label>
-        <input class="input input-bordered" type="time" id="edit-start" aria-label="Schichtbeginn">
+        <label for="dlg-start">Beginn</label>
+        <input class="input input-bordered" type="time" id="dlg-start">
       </div>
       <div class="field">
-        <label for="edit-end">Ende</label>
-        <input class="input input-bordered" type="time" id="edit-end" aria-label="Schichtende">
+        <label for="dlg-end">Ende</label>
+        <input class="input input-bordered" type="time" id="dlg-end">
       </div>
     </div>
     <div class="field mb-4">
-      <label for="edit-notes">Notiz</label>
-      <input class="input input-bordered w-full" type="text" id="edit-notes" placeholder="Optionale Anmerkung" aria-label="Notiz zum Schichteintrag">
+      <label for="dlg-notes">Notiz</label>
+      <input class="input input-bordered w-full" type="text" id="dlg-notes" placeholder="Optional">
     </div>
     <div class="toolbar">
-      <button class="btn btn-primary btn-sm" id="edit-save-btn" aria-label="Änderungen speichern">Speichern</button>
-      <button class="btn btn-error btn-sm" id="edit-delete-btn" data-hr-only hidden aria-label="Eintrag löschen">Löschen</button>
-      <button class="btn btn-ghost btn-sm" id="edit-cancel-btn" aria-label="Abbrechen">Abbrechen</button>
+      <button class="btn btn-primary btn-sm" id="dlg-save">Speichern</button>
+      <button class="btn btn-error btn-sm" id="dlg-delete" data-hr-only hidden>Löschen</button>
+      <button class="btn btn-ghost btn-sm" id="dlg-cancel">Abbrechen</button>
     </div>
-    <p class="panel-meta mt-2" id="edit-msg" role="status" aria-live="polite"></p>
+    <p class="panel-meta mt-2" id="dlg-msg" role="status" aria-live="polite"></p>
   </div>
 </dialog>
 
@@ -200,158 +207,141 @@
   "use strict";
 
   const BASE = "/api/v1/shiftplans";
-  const SHIFT_WINDOWS = {
-    Frueh: ["06:00", "14:00"],
-    Spaet: ["14:00", "22:00"],
-    Nacht: ["22:00", "06:00"],
-  };
-  const SHIFT_LABELS = { Frueh: "F", Spaet: "S", Nacht: "N", Urlaub: "U", Frei: "–" };
-  const SHIFT_BADGE = {
-    Frueh: "badge-success",
-    Spaet: "badge-info",
-    Nacht: "badge-secondary",
-    Urlaub: "badge-warning",
-    Frei: "badge-ghost",
-  };
-  const DAYS_DE = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+  const SHIFT_WINDOWS = { Frueh: ["06:00","14:00"], Spaet: ["14:00","22:00"], Nacht: ["22:00","06:00"] };
+  const SHIFT_ORDER  = ["Frueh","Spaet","Nacht","Urlaub","Frei"];
+  const SHIFT_LABEL  = { Frueh:"Frühschicht\n06:00–14:00", Spaet:"Spätschicht\n14:00–22:00", Nacht:"Nachtschicht\n22:00–06:00", Urlaub:"Urlaub", Frei:"Frei" };
+  const DAYS_DE = ["So","Mo","Di","Mi","Do","Fr","Sa"];
 
   let allPlans = [];
   let currentPlan = null;
-  let editingEntryId = null;
+  let editEntryId = null;
 
-  // ── DOM refs ──────────────────────────────────────────────────────────────
-  const form = document.querySelector("[data-shiftplan-form]");
-  const formMsg = document.querySelector("[data-shiftplan-message]");
-  const planSelect = document.getElementById("sp-plan-select");
-  const planSelector = document.getElementById("sp-plan-selector");
-  const tableWrap = document.getElementById("sp-table-wrap");
-  const tableHead = document.getElementById("sp-table-head");
-  const tableBody = document.getElementById("sp-table-body");
-  const emptyMsg = document.getElementById("sp-empty-msg");
-  const statsDetails = document.getElementById("sp-stats-details");
-  const statsBody = document.getElementById("sp-stats-body");
-  const warningsWrap = document.getElementById("sp-warnings-wrap");
-  const warningsList = document.getElementById("sp-warnings-list");
-  const changelogDetails = document.getElementById("sp-changelog-details");
+  // ── DOM ───────────────────────────────────────────────────────────────────
+  const form        = document.getElementById("sp-form");
+  const submitBtn   = document.getElementById("sp-submit-btn");
+  const spMsg       = document.getElementById("sp-msg");
+  const spSelector  = document.getElementById("sp-selector");
+  const planSelect  = document.getElementById("sp-plan-select");
+  const tableWrap   = document.getElementById("sp-table-wrap");
+  const thead       = document.getElementById("sp-thead");
+  const tbody       = document.getElementById("sp-tbody");
+  const emptyMsg    = document.getElementById("sp-empty-msg");
+  const statsEl     = document.getElementById("sp-stats");
+  const statsBody   = document.getElementById("sp-stats-body");
+  const warningsEl  = document.getElementById("sp-warnings");
+  const warnSummary = document.getElementById("sp-warn-summary");
+  const warnList    = document.getElementById("sp-warn-list");
+  const changelogEl = document.getElementById("sp-changelog");
   const changelogBody = document.getElementById("sp-changelog-body");
-  const deleteWrap = document.getElementById("sp-delete-wrap");
-  const deleteBtn = document.getElementById("sp-delete-btn");
-  const printBtn = document.getElementById("sp-print-btn");
-  const csvBtn = document.getElementById("sp-csv-btn");
-  const dialog = document.getElementById("sp-edit-dialog");
-  const editInfo = document.getElementById("sp-edit-info");
-  const editShift = document.getElementById("edit-shift");
-  const editStart = document.getElementById("edit-start");
-  const editEnd = document.getElementById("edit-end");
-  const editNotes = document.getElementById("edit-notes");
-  const editTimeFields = document.getElementById("edit-time-fields");
-  const editSaveBtn = document.getElementById("edit-save-btn");
-  const editDeleteBtn = document.getElementById("edit-delete-btn");
-  const editCancelBtn = document.getElementById("edit-cancel-btn");
-  const editMsg = document.getElementById("edit-msg");
+  const deleteWrap  = document.getElementById("sp-delete-wrap");
+  const deleteBtn   = document.getElementById("sp-delete-btn");
+  const printBtn    = document.getElementById("sp-print-btn");
+  const csvBtn      = document.getElementById("sp-csv-btn");
+  const printTitle  = document.getElementById("print-title");
+  const printMeta   = document.getElementById("print-meta");
+  const dialog      = document.getElementById("sp-dialog");
+  const dlgInfo     = document.getElementById("sp-dlg-info");
+  const dlgShift    = document.getElementById("dlg-shift");
+  const dlgStart    = document.getElementById("dlg-start");
+  const dlgEnd      = document.getElementById("dlg-end");
+  const dlgNotes    = document.getElementById("dlg-notes");
+  const dlgTimes    = document.getElementById("dlg-times");
+  const dlgSave     = document.getElementById("dlg-save");
+  const dlgDelete   = document.getElementById("dlg-delete");
+  const dlgCancel   = document.getElementById("dlg-cancel");
+  const dlgMsg      = document.getElementById("dlg-msg");
 
-  // ── Auth helpers ──────────────────────────────────────────────────────────
-  function authHeaders() {
-    const token = window.maintenanceAuth && window.maintenanceAuth.token
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function token() {
+    return (window.maintenanceAuth && window.maintenanceAuth.token)
       ? window.maintenanceAuth.token()
       : window.localStorage.getItem("maintenance_access_token");
-    return token ? { Authorization: "Bearer " + token } : {};
   }
-
-  async function apiFetch(url, options) {
+  function authHdr() {
+    const t = token();
+    return t ? { Authorization: "Bearer " + t } : {};
+  }
+  async function api(url, opts) {
     const res = await fetch(url, {
-      headers: { "Content-Type": "application/json", ...authHeaders() },
-      ...options,
+      headers: { "Content-Type": "application/json", ...authHdr() },
+      ...opts,
     });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.message || body.error || "Fehler " + res.status);
-    }
     if (res.status === 204) return null;
-    const body = await res.json();
-    return body && body.success && Object.prototype.hasOwnProperty.call(body, "data")
-      ? body.data
-      : body;
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.message || body.error || "Fehler " + res.status);
+    return (body && body.success && "data" in body) ? body.data : body;
+  }
+  function isAdmin() {
+    return window.maintenanceAuth && window.maintenanceAuth.isAdmin
+      ? window.maintenanceAuth.isAdmin() : false;
+  }
+  function canWrite() {
+    return window.maintenanceAuth && window.maintenanceAuth.canWrite
+      ? window.maintenanceAuth.canWrite("shiftplans") : false;
   }
 
-  // ── Load plans ────────────────────────────────────────────────────────────
-  async function loadPlans() {
+  // ── Load & select plans ───────────────────────────────────────────────────
+  async function loadPlans(selectId) {
+    if (!token()) return;
     try {
-      const raw = await fetch(BASE, { headers: authHeaders() });
-      if (!raw.ok) return;
-      allPlans = await raw.json();
-    } catch (_) {
-      allPlans = [];
-    }
+      const res = await fetch(BASE, { headers: authHdr() });
+      if (!res.ok) return;
+      allPlans = await res.json();
+    } catch (_) { allPlans = []; }
 
     if (!allPlans.length) {
-      emptyMsg.hidden = false;
+      emptyMsg.hidden  = false;
       tableWrap.hidden = true;
-      planSelector.hidden = true;
-      statsDetails.hidden = true;
-      warningsWrap.hidden = true;
+      spSelector.hidden = true;
+      statsEl.hidden   = true;
+      warningsEl.hidden = true;
+      printBtn.hidden  = true;
+      csvBtn.hidden    = true;
       deleteWrap.hidden = true;
-      printBtn.hidden = true;
-      csvBtn.hidden = true;
       return;
     }
 
-    emptyMsg.hidden = true;
-    planSelector.hidden = false;
-    printBtn.hidden = false;
-    csvBtn.hidden = false;
+    emptyMsg.hidden   = false; // keep visible but below table
+    emptyMsg.hidden   = true;
+    spSelector.hidden = false;
+    printBtn.hidden   = false;
+    csvBtn.hidden     = false;
 
     planSelect.innerHTML = "";
-    allPlans.forEach((plan, idx) => {
+    allPlans.forEach((p, i) => {
       const opt = document.createElement("option");
-      opt.value = idx;
-      opt.textContent = plan.title + (plan.department ? " [" + plan.department + "]" : "");
+      opt.value = i;
+      opt.textContent = p.title + (p.department ? " [" + p.department + "]" : "");
       planSelect.appendChild(opt);
     });
 
-    renderPlan(allPlans[0]);
+    const idx = selectId !== undefined
+      ? allPlans.findIndex((p) => p.id === selectId)
+      : 0;
+    planSelect.value = Math.max(0, idx);
+    renderPlan(allPlans[planSelect.value] || allPlans[0]);
   }
 
   function renderPlan(plan) {
     currentPlan = plan;
-    renderTable(plan);
+    renderGrid(plan);
     renderStats(plan);
-    loadChangelog(plan.id);
-
-    // Warnings reset (werden nur nach Generierung gefüllt)
-    warningsWrap.hidden = true;
-    warningsList.innerHTML = "";
-
-    const isAdmin = window.maintenanceAuth && window.maintenanceAuth.isAdmin
-      ? window.maintenanceAuth.isAdmin()
-      : false;
-    deleteWrap.hidden = !isAdmin;
-    if (changelogDetails) changelogDetails.hidden = !isAdmin;
+    const admin = isAdmin();
+    deleteWrap.hidden = !admin;
+    if (changelogEl) changelogEl.hidden = !admin;
+    if (admin) loadChangelog(plan.id);
+    // Update print header
+    printTitle.textContent = plan.title || "Schichtplan";
+    printMeta.textContent  = "Abteilung: " + (plan.department || "–") +
+      " | " + plan.start_date + " | " + plan.days + " Tage";
   }
 
-  function showWarnings(warnings) {
-    warningsList.innerHTML = "";
-    if (!warnings || !warnings.length) {
-      warningsWrap.hidden = true;
-      return;
-    }
-    const summary = document.getElementById("sp-warnings-summary");
-    if (summary) summary.textContent = "Warnungen anzeigen (" + warnings.length + ")";
-    warnings.forEach((w) => {
-      const li = document.createElement("li");
-      li.className = "panel-meta " + (w.severity === "critical" ? "text-error" : "text-warning");
-      li.textContent = (w.severity === "critical" ? "⚠ " : "ℹ ") + w.message;
-      warningsList.appendChild(li);
-    });
-    warningsWrap.hidden = false;
-  }
-
-  // ── Table rendering ───────────────────────────────────────────────────────
-  // Layout: Zeilen = Schichttyp (Früh / Spät / Nacht / Urlaub)
-  //         Spalten = Tage
-  //         Zellen = Maschine → Mitarbeiter (klickbar zum Bearbeiten)
-  function renderTable(plan) {
+  // ── Excel-Grid ────────────────────────────────────────────────────────────
+  // Rows = Schichttyp, Cols = day, Cell = machine+employee list
+  function renderGrid(plan) {
     tableWrap.hidden = false;
+    thead.innerHTML  = "";
+    tbody.innerHTML  = "";
 
     const start = new Date(plan.start_date + "T00:00:00");
     const dates = [];
@@ -361,405 +351,393 @@
       dates.push(d);
     }
 
-    // Index entries by shift → date → list of entries
-    const SHIFT_ORDER = ["Frueh", "Spaet", "Nacht", "Urlaub", "Frei"];
-    const shiftDateMap = {};   // shiftKey → dateStr → [entry, ...]
+    // Index: shiftKey → dateStr → [entry]
+    const idx = {};
     const usedShifts = new Set();
-    plan.entries.forEach((entry) => {
-      const s = entry.shift;
+    plan.entries.forEach((e) => {
+      const s = e.shift;
       usedShifts.add(s);
-      if (!shiftDateMap[s]) shiftDateMap[s] = {};
-      if (!shiftDateMap[s][entry.work_date]) shiftDateMap[s][entry.work_date] = [];
-      shiftDateMap[s][entry.work_date].push(entry);
+      if (!idx[s]) idx[s] = {};
+      const ds = e.work_date;
+      if (!idx[s][ds]) idx[s][ds] = [];
+      idx[s][ds].push(e);
     });
 
     const activeShifts = SHIFT_ORDER.filter((s) => usedShifts.has(s));
+    const canEdit = canWrite();
 
-    const canEdit = window.maintenanceAuth && window.maintenanceAuth.canWrite
-      ? window.maintenanceAuth.canWrite("shiftplans")
-      : false;
-
-    const SHIFT_FULL = {
-      Frueh: "Frühschicht 06:00–14:00",
-      Spaet: "Spätschicht 14:00–22:00",
-      Nacht: "Nachtschicht 22:00–06:00",
-      Urlaub: "Urlaub",
-      Frei: "Frei",
-    };
-
-    // Header: Schicht-Spalte + eine Spalte je Tag
-    tableHead.innerHTML = "";
-    const headRow = document.createElement("tr");
-    const thShift = document.createElement("th");
-    thShift.scope = "col";
-    thShift.textContent = "Schicht";
-    thShift.style.minWidth = "110px";
-    headRow.appendChild(thShift);
+    // ── Header ──
+    const hrow = document.createElement("tr");
+    const th0 = document.createElement("th");
+    th0.className = "sp-col-shift";
+    th0.textContent = "Schicht";
+    hrow.appendChild(th0);
     dates.forEach((d) => {
       const th = document.createElement("th");
-      th.scope = "col";
-      th.textContent = DAYS_DE[d.getDay()] + " " + d.getDate() + "." + (d.getMonth() + 1) + ".";
-      th.style.minWidth = "120px";
-      headRow.appendChild(th);
+      th.className = "sp-col-day";
+      const dow = DAYS_DE[d.getDay()];
+      const dd  = String(d.getDate()).padStart(2, "0");
+      const mm  = String(d.getMonth() + 1).padStart(2, "0");
+      th.innerHTML = "<span class='sp-dow'>" + dow + "</span><br><span class='sp-date'>" + dd + "." + mm + ".</span>";
+      hrow.appendChild(th);
     });
-    tableHead.appendChild(headRow);
+    thead.appendChild(hrow);
 
-    // Body: eine Zeile je aktiver Schichttyp
-    tableBody.innerHTML = "";
+    // ── Rows ──
+    if (!activeShifts.length) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = dates.length + 1;
+      td.className = "text-center";
+      td.style.opacity = "0.5";
+      td.textContent = "Keine Einträge im Plan.";
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+      return;
+    }
+
     activeShifts.forEach((shiftKey) => {
       const tr = document.createElement("tr");
 
-      // Schichttyp-Label
+      // Schicht-Label
       const thRow = document.createElement("th");
-      thRow.scope = "row";
-      const badge = document.createElement("span");
-      badge.className = "badge " + (SHIFT_BADGE[shiftKey] || "badge-ghost");
-      badge.textContent = SHIFT_FULL[shiftKey] || shiftKey;
-      thRow.appendChild(badge);
+      thRow.className = "sp-col-shift sp-shift-label sp-shift-" + shiftKey.toLowerCase();
+      thRow.textContent = SHIFT_LABEL[shiftKey] || shiftKey;
       tr.appendChild(thRow);
 
-      // Eine Zelle je Tag
+      // Day cells
       dates.forEach((d) => {
         const dateStr = d.toISOString().slice(0, 10);
         const td = document.createElement("td");
-        td.style.verticalAlign = "top";
+        td.className = "sp-day-cell";
 
-        const dayEntries = (shiftDateMap[shiftKey] || {})[dateStr] || [];
-        if (dayEntries.length === 0) {
-          td.innerHTML = '<span style="opacity:.3">–</span>';
+        const dayEntries = (idx[shiftKey] || {})[dateStr] || [];
+        if (!dayEntries.length) {
+          td.innerHTML = "<span class='sp-empty'>–</span>";
         } else {
-          const ul = document.createElement("ul");
-          ul.style.listStyle = "none";
-          ul.style.margin = "0";
-          ul.style.padding = "0";
-          ul.style.display = "flex";
-          ul.style.flexDirection = "column";
-          ul.style.gap = "2px";
-
           dayEntries.forEach((entry) => {
-            const li = document.createElement("li");
             const machineName = entry.machine ? entry.machine.name : null;
-            const empName = entry.employee ? entry.employee.name : "?";
-
+            const empName     = entry.employee ? entry.employee.name : "?";
+            const chip = document.createElement(canEdit ? "button" : "div");
+            chip.className = "sp-chip";
             if (canEdit) {
-              const btn = document.createElement("button");
-              btn.className = "btn btn-ghost btn-xs text-left w-full justify-start";
-              btn.style.height = "auto";
-              btn.style.padding = "2px 4px";
-              btn.setAttribute("aria-label", "Bearbeiten: " + empName + (machineName ? " an " + machineName : ""));
-              if (machineName) {
-                btn.innerHTML = '<span style="font-weight:600;opacity:.7">' + machineName + '</span><br><span>' + empName + '</span>';
-              } else {
-                btn.textContent = empName;
-              }
-              btn.addEventListener("click", () => openEditDialog(entry));
-              li.appendChild(btn);
-            } else {
-              if (machineName) {
-                li.innerHTML = '<span style="font-weight:600;opacity:.7">' + machineName + '</span><br><span>' + empName + '</span>';
-              } else {
-                li.textContent = empName;
-              }
-              li.style.padding = "2px 4px";
-              li.style.fontSize = "0.8rem";
+              chip.type = "button";
+              chip.setAttribute("aria-label", "Bearbeiten: " + empName);
+              chip.addEventListener("click", () => openDialog(entry));
             }
-            ul.appendChild(li);
+            if (machineName) {
+              chip.innerHTML =
+                "<span class='sp-machine'>" + machineName + "</span>" +
+                "<span class='sp-emp'>" + empName + "</span>";
+            } else {
+              chip.innerHTML = "<span class='sp-emp'>" + empName + "</span>";
+            }
+            td.appendChild(chip);
           });
-          td.appendChild(ul);
         }
         tr.appendChild(td);
       });
 
-      tableBody.appendChild(tr);
+      tbody.appendChild(tr);
     });
   }
 
-  // ── Statistics ────────────────────────────────────────────────────────────
+  // ── Stats ─────────────────────────────────────────────────────────────────
   function renderStats(plan) {
-    statsDetails.hidden = false;
+    statsEl.hidden = false;
     statsBody.innerHTML = "";
-
-    const empStats = {};
-    plan.entries.forEach((entry) => {
-      const empId = entry.employee ? entry.employee.id : null;
-      const empName = entry.employee ? entry.employee.name : null;
-      if (!empId) return;
-      if (!empStats[empId]) {
-        empStats[empId] = { name: empName, Frueh: 0, Spaet: 0, Nacht: 0, Urlaub: 0, hours: 0 };
-      }
-      if (entry.shift === "Frueh") empStats[empId].Frueh++;
-      else if (entry.shift === "Spaet") empStats[empId].Spaet++;
-      else if (entry.shift === "Nacht") empStats[empId].Nacht++;
-      else if (entry.shift === "Urlaub") empStats[empId].Urlaub++;
-      if (entry.start_time && entry.end_time) {
-        empStats[empId].hours += shiftHours(entry.start_time, entry.end_time);
-      }
+    const emp = {};
+    plan.entries.forEach((e) => {
+      const id = e.employee ? e.employee.id : null;
+      if (!id) return;
+      if (!emp[id]) emp[id] = { name: e.employee.name, Frueh:0, Spaet:0, Nacht:0, Urlaub:0, h:0 };
+      if (e.shift === "Frueh") emp[id].Frueh++;
+      else if (e.shift === "Spaet") emp[id].Spaet++;
+      else if (e.shift === "Nacht") emp[id].Nacht++;
+      else if (e.shift === "Urlaub") emp[id].Urlaub++;
+      if (e.start_time && e.end_time) emp[id].h += shiftH(e.start_time, e.end_time);
     });
-
-    Object.values(empStats)
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .forEach((s) => {
-        const tr = document.createElement("tr");
-        [s.name, s.Frueh, s.Spaet, s.Nacht, s.Urlaub, s.hours.toFixed(1) + "h"].forEach((val, i) => {
-          const td = i === 0 ? document.createElement("th") : document.createElement("td");
-          if (i === 0) td.scope = "row";
-          td.textContent = val;
-          tr.appendChild(td);
-        });
-        statsBody.appendChild(tr);
+    Object.values(emp).sort((a,b) => a.name.localeCompare(b.name)).forEach((s) => {
+      const tr = document.createElement("tr");
+      [s.name, s.Frueh, s.Spaet, s.Nacht, s.Urlaub, s.h.toFixed(1)+"h"].forEach((v, i) => {
+        const td = i === 0 ? document.createElement("th") : document.createElement("td");
+        if (i === 0) td.scope = "row";
+        td.textContent = v;
+        tr.appendChild(td);
       });
+      statsBody.appendChild(tr);
+    });
+  }
+  function shiftH(s, e) {
+    const [sh,sm] = s.split(":").map(Number);
+    const [eh,em] = e.split(":").map(Number);
+    let d = (eh*60+em) - (sh*60+sm);
+    if (d <= 0) d += 24*60;
+    return d/60;
   }
 
-  function shiftHours(start, end) {
-    const [sh, sm] = start.split(":").map(Number);
-    const [eh, em] = end.split(":").map(Number);
-    let diff = (eh * 60 + em) - (sh * 60 + sm);
-    if (diff <= 0) diff += 24 * 60;
-    return diff / 60;
+  // ── Warnings ──────────────────────────────────────────────────────────────
+  function showWarnings(list) {
+    warnList.innerHTML = "";
+    if (!list || !list.length) { warningsEl.hidden = true; return; }
+    warnSummary.textContent = "⚠ Warnungen anzeigen (" + list.length + ")";
+    list.forEach((w) => {
+      const li = document.createElement("li");
+      li.className = "panel-meta " + (w.severity === "critical" ? "text-error" : "text-warning");
+      li.textContent = (w.severity === "critical" ? "⛔ " : "⚠ ") + w.message;
+      warnList.appendChild(li);
+    });
+    warningsEl.hidden = false;
   }
 
   // ── Changelog ─────────────────────────────────────────────────────────────
   async function loadChangelog(planId) {
-    const isAdmin = window.maintenanceAuth && window.maintenanceAuth.isAdmin
-      ? window.maintenanceAuth.isAdmin()
-      : false;
-    if (!isAdmin || !changelogDetails) return;
-
+    if (!isAdmin()) return;
     try {
-      const logs = await apiFetch(BASE + "/" + planId + "/changelog");
+      const logs = await api(BASE + "/" + planId + "/changelog");
       changelogBody.innerHTML = "";
-      (logs || []).forEach((log) => {
+      (logs || []).forEach((l) => {
         const tr = document.createElement("tr");
-        [
-          new Date(log.changed_at).toLocaleString("de-DE"),
-          log.user || "–",
-          log.action,
-          log.field_name || "–",
-          log.old_value || "–",
-          log.new_value || "–",
-        ].forEach((val) => {
-          const td = document.createElement("td");
-          td.textContent = val;
-          tr.appendChild(td);
-        });
+        [new Date(l.changed_at).toLocaleString("de-DE"), l.user||"–", l.action, l.field_name||"–", l.old_value||"–", l.new_value||"–"]
+          .forEach((v) => { const td = document.createElement("td"); td.textContent = v; tr.appendChild(td); });
         changelogBody.appendChild(tr);
       });
     } catch (_) {}
   }
 
   // ── Edit dialog ───────────────────────────────────────────────────────────
-  function openEditDialog(entry) {
-    editingEntryId = entry.id;
-    editMsg.textContent = "";
-    editShift.value = entry.shift;
-    editStart.value = entry.start_time || "";
-    editEnd.value = entry.end_time || "";
-    editNotes.value = entry.notes || "";
-    editInfo.textContent = (entry.employee ? entry.employee.name : "") + " — " + entry.work_date;
-
-    const isWorkShift = !["Frei", "Urlaub"].includes(entry.shift);
-    editTimeFields.hidden = !isWorkShift;
-
-    const isAdmin = window.maintenanceAuth && window.maintenanceAuth.isAdmin
-      ? window.maintenanceAuth.isAdmin()
-      : false;
-    editDeleteBtn.hidden = !isAdmin;
-
+  function openDialog(entry) {
+    editEntryId = entry.id;
+    dlgMsg.textContent = "";
+    dlgShift.value = entry.shift;
+    dlgStart.value = entry.start_time || "";
+    dlgEnd.value   = entry.end_time   || "";
+    dlgNotes.value = entry.notes      || "";
+    dlgInfo.textContent = (entry.employee ? entry.employee.name : "") + " — " + entry.work_date;
+    dlgTimes.hidden = ["Frei","Urlaub"].includes(entry.shift);
+    dlgDelete.hidden = !isAdmin();
     dialog.showModal();
   }
 
-  editShift.addEventListener("change", () => {
-    const isWork = !["Frei", "Urlaub"].includes(editShift.value);
-    editTimeFields.hidden = !isWork;
-    if (isWork && SHIFT_WINDOWS[editShift.value]) {
-      editStart.value = SHIFT_WINDOWS[editShift.value][0];
-      editEnd.value = SHIFT_WINDOWS[editShift.value][1];
+  dlgShift.addEventListener("change", () => {
+    const isWork = !["Frei","Urlaub"].includes(dlgShift.value);
+    dlgTimes.hidden = !isWork;
+    if (isWork && SHIFT_WINDOWS[dlgShift.value]) {
+      dlgStart.value = SHIFT_WINDOWS[dlgShift.value][0];
+      dlgEnd.value   = SHIFT_WINDOWS[dlgShift.value][1];
     }
   });
 
-  editSaveBtn.addEventListener("click", async () => {
-    if (!editingEntryId) return;
-    editMsg.textContent = "Wird gespeichert…";
-    editSaveBtn.disabled = true;
-    const payload = {
-      shift: editShift.value,
-      notes: editNotes.value,
-    };
-    if (!["Frei", "Urlaub"].includes(editShift.value)) {
-      payload.start_time = editStart.value;
-      payload.end_time = editEnd.value;
+  dlgSave.addEventListener("click", async () => {
+    if (!editEntryId) return;
+    dlgMsg.textContent = "Wird gespeichert…";
+    dlgSave.disabled = true;
+    const payload = { shift: dlgShift.value, notes: dlgNotes.value };
+    if (!["Frei","Urlaub"].includes(dlgShift.value)) {
+      payload.start_time = dlgStart.value;
+      payload.end_time   = dlgEnd.value;
     }
     try {
-      await apiFetch(BASE + "/entries/" + editingEntryId, {
-        method: "PATCH",
-        body: JSON.stringify(payload),
-      });
+      await api(BASE + "/entries/" + editEntryId, { method: "PATCH", body: JSON.stringify(payload) });
       dialog.close();
-      await loadPlans();
-      if (currentPlan) {
-        const refreshed = allPlans.find((p) => p.id === currentPlan.id);
-        if (refreshed) renderPlan(refreshed);
-      }
-    } catch (err) {
-      editMsg.textContent = err.message;
-    } finally {
-      editSaveBtn.disabled = false;
-    }
+      const pid = currentPlan ? currentPlan.id : undefined;
+      await loadPlans(pid);
+    } catch (err) { dlgMsg.textContent = err.message; }
+    finally { dlgSave.disabled = false; }
   });
 
-  editDeleteBtn.addEventListener("click", async () => {
-    if (!editingEntryId) return;
-    if (!confirm("Eintrag wirklich löschen?")) return;
-    editDeleteBtn.disabled = true;
+  dlgDelete.addEventListener("click", async () => {
+    if (!editEntryId || !confirm("Eintrag wirklich löschen?")) return;
+    dlgDelete.disabled = true;
     try {
-      await apiFetch(BASE + "/entries/" + editingEntryId, { method: "DELETE" });
+      await api(BASE + "/entries/" + editEntryId, { method: "DELETE" });
       dialog.close();
-      await loadPlans();
-      if (currentPlan) {
-        const refreshed = allPlans.find((p) => p.id === currentPlan.id);
-        if (refreshed) renderPlan(refreshed);
-      }
-    } catch (err) {
-      editMsg.textContent = err.message;
-    } finally {
-      editDeleteBtn.disabled = false;
-    }
+      const pid = currentPlan ? currentPlan.id : undefined;
+      await loadPlans(pid);
+    } catch (err) { dlgMsg.textContent = err.message; }
+    finally { dlgDelete.disabled = false; }
   });
 
-  editCancelBtn.addEventListener("click", () => dialog.close());
-
-  dialog.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") dialog.close();
-  });
+  dlgCancel.addEventListener("click", () => dialog.close());
+  dialog.addEventListener("keydown", (e) => { if (e.key === "Escape") dialog.close(); });
 
   // ── Plan selector ─────────────────────────────────────────────────────────
   planSelect.addEventListener("change", () => {
-    const idx = parseInt(planSelect.value, 10);
-    if (!isNaN(idx) && allPlans[idx]) renderPlan(allPlans[idx]);
+    const p = allPlans[parseInt(planSelect.value, 10)];
+    if (p) renderPlan(p);
   });
 
   // ── Delete plan ───────────────────────────────────────────────────────────
   deleteBtn.addEventListener("click", async () => {
-    if (!currentPlan) return;
-    if (!confirm("Schichtplan \"" + currentPlan.title + "\" wirklich löschen?")) return;
+    if (!currentPlan || !confirm("Plan \"" + currentPlan.title + "\" wirklich löschen?")) return;
     deleteBtn.disabled = true;
     try {
-      await apiFetch(BASE + "/" + currentPlan.id, { method: "DELETE" });
+      await api(BASE + "/" + currentPlan.id, { method: "DELETE" });
       currentPlan = null;
       await loadPlans();
-    } catch (err) {
-      alert(err.message);
-    } finally {
-      deleteBtn.disabled = false;
-    }
+    } catch (err) { alert(err.message); }
+    finally { deleteBtn.disabled = false; }
   });
 
-  // ── Print ─────────────────────────────────────────────────────────────────
+  // ── Print / CSV ───────────────────────────────────────────────────────────
   printBtn.addEventListener("click", () => window.print());
 
-  // ── CSV Export ────────────────────────────────────────────────────────────
   csvBtn.addEventListener("click", () => {
     if (!currentPlan) return;
-    const rows = [["Mitarbeiter", "Datum", "Schicht", "Beginn", "Ende", "Notiz"]];
+    const rows = [["Mitarbeiter","Datum","Schicht","Beginn","Ende","Maschine","Notiz"]];
     currentPlan.entries.forEach((e) => {
       rows.push([
         e.employee ? e.employee.name : "",
-        e.work_date,
-        e.shift,
-        e.start_time,
-        e.end_time,
+        e.work_date, e.shift, e.start_time, e.end_time,
+        e.machine  ? e.machine.name  : "",
         e.notes,
       ]);
     });
-    const csv = rows.map((r) => r.map((v) => '"' + String(v || "").replace(/"/g, '""') + '"').join(",")).join("\n");
+    const csv = rows.map((r) => r.map((v) => '"' + String(v||"").replace(/"/g,'""') + '"').join(",")).join("\n");
     const a = document.createElement("a");
     a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
-    a.download = (currentPlan.title || "schichtplan") + ".csv";
+    a.download = (currentPlan.title||"schichtplan") + ".csv";
     a.click();
   });
 
   // ── Form submit ───────────────────────────────────────────────────────────
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const submitBtn = form.querySelector("[type=submit]");
-    submitBtn.disabled = true;
-    formMsg.textContent = "Plan wird generiert…";
+  submitBtn.addEventListener("click", async () => {
+    const dept  = document.getElementById("sp-department").value;
+    const start = document.getElementById("sp-start").value;
+    if (!dept)  { spMsg.textContent = "Bitte Abteilung wählen."; return; }
+    if (!start) { spMsg.textContent = "Bitte Startdatum angeben."; return; }
 
-    const fd = new FormData(form);
+    submitBtn.disabled = true;
+    spMsg.textContent  = "Plan wird generiert…";
 
     // Parse vacation textarea
-    const vacText = fd.get("vacations_text") || "";
+    const vacText = document.getElementById("sp-vacations").value || "";
     const vacations = vacText.split("\n").flatMap((line) => {
       const parts = line.split(",").map((s) => s.trim());
       if (parts.length >= 2 && parts[0] && parts[1]) {
-        return [{ employee_id: parseInt(parts[0], 10), date: parts[1], notes: parts[2] || "" }];
+        return [{ employee_id: parseInt(parts[0], 10), date: parts[1], notes: parts[2]||"" }];
       }
       return [];
     });
 
     const payload = {
-      department: fd.get("department"),
-      title: fd.get("title"),
-      start_date: fd.get("start_date"),
-      days: parseInt(fd.get("days") || "7", 10),
-      rhythm: fd.get("rhythm") || "2-Schicht Rhythmus",
-      preferences: fd.get("preferences"),
+      department:   dept,
+      title:        document.getElementById("sp-title").value,
+      start_date:   start,
+      days:         parseInt(document.getElementById("sp-days").value||"7", 10),
+      rhythm:       document.getElementById("sp-rhythm").value || "2-Schicht Rhythmus",
+      preferences:  document.getElementById("sp-preferences").value,
       vacations,
     };
 
     try {
-      const result = await apiFetch(BASE + "/generate", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
+      const result = await api(BASE + "/generate", { method: "POST", body: JSON.stringify(payload) });
+      spMsg.textContent = "✓ Plan erfolgreich generiert.";
 
-      formMsg.textContent = "Plan erfolgreich generiert.";
-
-      // Warnungen optional anzeigen (zugeklappt, nur wenn vorhanden)
+      // Show warnings (optional, collapsible)
       showWarnings(result && result.warnings);
 
-      await loadPlans();
-      // Select the newest plan
-      if (allPlans.length) {
-        planSelect.value = "0";
-        renderPlan(allPlans[0]);
-      }
+      // Reload plan list and select the new plan by id
+      await loadPlans(result && result.id);
+
     } catch (err) {
-      formMsg.textContent = "Fehler: " + err.message;
+      spMsg.textContent = "Fehler: " + err.message;
     } finally {
       submitBtn.disabled = false;
     }
   });
 
   // ── Init ──────────────────────────────────────────────────────────────────
-  window.addEventListener("maintenance-auth-ready", loadPlans);
+  window.addEventListener("maintenance-auth-ready", () => loadPlans());
   document.addEventListener("DOMContentLoaded", () => {
-    if (window.maintenanceAuth && window.maintenanceAuth.token && window.maintenanceAuth.token()) {
-      loadPlans();
-    }
+    // Set today as default start date
+    const startInput = document.getElementById("sp-start");
+    if (startInput && !startInput.value) startInput.value = new Date().toISOString().slice(0,10);
+    if (token()) loadPlans();
   });
 })();
 </script>
 
 <style>
-/* Edit-Dialog: kein DaisyUI-modal, damit er nicht automatisch sichtbar ist */
-#sp-edit-dialog {
+/* ── Excel-Tabelle ─────────────────────────────────────────── */
+.sp-excel-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.82rem;
+}
+.sp-excel-table th,
+.sp-excel-table td {
+  border: 1px solid #d1d5db;
+  padding: 6px 8px;
+  vertical-align: top;
+}
+.sp-col-shift {
+  min-width: 110px;
+  white-space: pre-line;
+  background: #f9fafb;
+  font-weight: 600;
+}
+.sp-col-day {
+  min-width: 110px;
+  text-align: center;
+  background: #f3f4f6;
+}
+.sp-dow { font-weight: 700; font-size: 0.85em; }
+.sp-date { font-size: 0.78em; color: #6b7280; }
+.sp-shift-label { text-align: center; }
+.sp-shift-frueh  { border-left: 4px solid #22c55e; }
+.sp-shift-spaet  { border-left: 4px solid #3b82f6; }
+.sp-shift-nacht  { border-left: 4px solid #a855f7; }
+.sp-shift-urlaub { border-left: 4px solid #f59e0b; }
+.sp-shift-frei   { border-left: 4px solid #9ca3af; }
+.sp-day-cell { min-width: 110px; }
+.sp-empty { opacity: 0.3; }
+.sp-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 3px 6px;
+  margin-bottom: 3px;
+  border-radius: 4px;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  transition: background 0.15s;
+}
+button.sp-chip:hover { background: #e0f2fe; }
+.sp-machine { font-size: 0.72em; font-weight: 700; color: #0369a1; line-height: 1.2; }
+.sp-emp     { font-size: 0.8em; color: #1e3a5f; line-height: 1.3; }
+
+/* ── Edit-Dialog ────────────────────────────────────────────── */
+#sp-dialog {
   border: none;
   border-radius: 0.75rem;
   padding: 0;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.28);
   max-width: 90vw;
 }
-#sp-edit-dialog::backdrop {
+#sp-dialog::backdrop {
   background: rgba(0,0,0,0.45);
   backdrop-filter: blur(2px);
 }
 
+/* ── Drucken ────────────────────────────────────────────────── */
+.print-only { display: none; }
+
 @media print {
-  .page-hero, .mobile-action-section, #sp-plan-selector,
-  #sp-stats-details, #sp-warnings-wrap, #sp-changelog-details,
-  #sp-delete-wrap, .toolbar, .panel-header .toolbar { display: none !important; }
+  @page { size: A4 landscape; margin: 12mm; }
+  .no-print, nav, header, footer,
+  .page-hero, .mobile-action-section { display: none !important; }
+  .print-only { display: block !important; }
   #sp-table-wrap { display: block !important; }
+  .sp-excel-table { font-size: 9pt; }
+  .sp-excel-table th,
+  .sp-excel-table td { border: 1px solid #000; padding: 4px 5px; }
+  .sp-chip { background: none; border: none; padding: 1px 0; }
+  .sp-machine { color: #000; font-weight: bold; }
+  .sp-emp { color: #000; }
 }
 </style>
 {% endblock %}

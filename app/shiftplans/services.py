@@ -236,20 +236,22 @@ def remove_unavailable_work_entries(entries, unavailable):
 
 
 def validate_arbzg(entries):
-    """Enforce Arbeitszeitgesetz (ArbZG) rules on a list of entry dicts.
+    """Check Arbeitszeitgesetz (ArbZG) rules on a list of entry dicts.
 
-    Raises ValueError with a human-readable German message on the first
-    violation found.  Only work shifts (Frueh/Spaet/Nacht) are counted;
-    Urlaub and Frei entries are ignored for most checks.
+    Returns a list of warning dicts for soft violations.
+    Raises ValueError only for hard violations that make the plan invalid.
 
-    Rules enforced:
-    - §3  Max 8 h/day (extendable to 10 h in individual cases) — reject > 10 h
-    - §5  Min 11 h rest between consecutive shifts per employee
-    - §3  Max 48 h/week per employee (averaged weekly)
-    - §9  Max 6 consecutive working days
+    Hard errors (plan rejected):
     - One shift per day per employee
+    - Max 10 h per shift (§3 Satz 2 — absolute limit)
+    - Min 11 h rest between consecutive shifts (§5)
+
+    Soft warnings (plan allowed, admin sees hint):
+    - >48 h/week (§3 — average over reference period, not a per-week hard cap)
+    - >6 consecutive working days (§9 — depends on employer agreement)
     """
     work_shifts = {"Frueh", "Spaet", "Nacht"}
+    warnings = []
 
     # Collect work entries per employee
     by_employee = {}
@@ -263,7 +265,7 @@ def validate_arbzg(entries):
         if isinstance(work_date, str):
             work_date = date.fromisoformat(work_date)
 
-        # One shift per day per employee
+        # HARD: One shift per day per employee
         key = (emp_id, work_date)
         if key in seen_day:
             raise ValueError(
@@ -292,14 +294,14 @@ def validate_arbzg(entries):
             start_dt, end_dt = shift_datetimes(work_date, e["start_time"], e["end_time"])
             duration = (end_dt - start_dt).total_seconds() / 3600
 
-            # Max 10 h per shift
+            # HARD: Max 10 h per shift (ArbZG §3 Satz 2)
             if duration > 10:
                 raise ValueError(
                     f"Mitarbeiter {emp_id}: Schicht am {work_date.isoformat()} "
                     f"dauert {duration:.1f}h — max. 10 Stunden erlaubt (ArbZG §3)."
                 )
 
-            # 11 h rest
+            # HARD: 11 h rest between shifts (ArbZG §5)
             if prev_end_dt is not None:
                 rest_hours = (start_dt - prev_end_dt).total_seconds() / 3600
                 if rest_hours < 11:
@@ -309,28 +311,38 @@ def validate_arbzg(entries):
                         "— min. 11 Stunden erforderlich (ArbZG §5)."
                     )
 
-            # 48 h/week
-            week_key = work_date.isocalendar()[:2]  # (year, week)
+            # SOFT: 48 h/week (ArbZG §3 — Durchschnittswert, kein wöchentliches Maximum)
+            week_key = work_date.isocalendar()[:2]
             weekly_hours[week_key] = weekly_hours.get(week_key, 0) + duration
             if weekly_hours[week_key] > 48:
-                raise ValueError(
-                    f"Mitarbeiter {emp_id}: Wochenstunden in KW {week_key[1]} "
-                    f"ueberschreiten 48h ({weekly_hours[week_key]:.1f}h) — ArbZG §3."
-                )
+                warnings.append({
+                    "type": "arbzg_weekly_hours",
+                    "severity": "warning",
+                    "message": (
+                        f"Mitarbeiter {emp_id}: {weekly_hours[week_key]:.0f}h in KW "
+                        f"{week_key[1]} — Richtwert 48h/Woche ueberschritten (ArbZG §3)."
+                    ),
+                })
 
-            # 6 consecutive working days
+            # SOFT: 6 consecutive working days (ArbZG §9 — Ausnahmen per Tarifvertrag moeglich)
             if prev_date is not None and (work_date - prev_date).days == 1:
                 consecutive += 1
             else:
                 consecutive = 1
             if consecutive > 6:
-                raise ValueError(
-                    f"Mitarbeiter {emp_id}: Mehr als 6 aufeinanderfolgende Arbeitstage "
-                    f"(bis {work_date.isoformat()}) — ArbZG §9 analog."
-                )
+                warnings.append({
+                    "type": "arbzg_consecutive_days",
+                    "severity": "warning",
+                    "message": (
+                        f"Mitarbeiter {emp_id}: {consecutive} aufeinanderfolgende "
+                        f"Arbeitstage bis {work_date.isoformat()} (Empfehlung: max. 6)."
+                    ),
+                })
 
             prev_end_dt = end_dt
             prev_date = work_date
+
+    return warnings
 
 
 def validate_entries(entries, employees, machines, start_date, days):
@@ -719,15 +731,18 @@ def generate_shift_plan(data, user=None):
     if not entries:
         return None, {"error": "Es konnte kein gueltiger Schichtplan erzeugt werden"}, 400
 
-    # Enforce Arbeitszeitgesetz on work entries only
+    # Check Arbeitszeitgesetz — hard violations reject plan, soft ones become warnings
     try:
-        validate_arbzg([e for e in entries if e.get("shift") not in ("Urlaub", "Frei", "")])
+        arbzg_warnings = validate_arbzg(
+            [e for e in entries if e.get("shift") not in ("Urlaub", "Frei", "")]
+        )
     except ValueError as exc:
         return None, {"error": str(exc)}, 422
 
     warnings, coverage_summary = analyze_shift_plan(entries, employees, machines)
     employee_by_id = {employee.id: employee for employee in employees}
     warnings.extend(planning_warnings)
+    warnings.extend(arbzg_warnings)
     warnings.extend(
         detect_vacation_assignment_warnings(entries, vacation_entries, employee_by_id)
     )
