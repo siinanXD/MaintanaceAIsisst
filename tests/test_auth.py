@@ -1,9 +1,12 @@
 from app.models import Role
 
 
-def test_register_validates_missing_fields_and_department(client):
+def test_register_validates_missing_fields_and_department(client, make_user, auth_headers):
     """Verify registration rejects incomplete payloads and non-admins without departments."""
-    missing_response = client.post("/api/v1/auth/register", json={})
+    make_user(username="bootstrap_admin", role=Role.MASTER_ADMIN, department_name=None)
+    headers = auth_headers("bootstrap_admin")
+
+    missing_response = client.post("/api/v1/auth/register", json={}, headers=headers)
 
     assert missing_response.status_code == 400
     assert missing_response.get_json()["error"] == "missing_fields_username_email_password"
@@ -17,6 +20,7 @@ def test_register_validates_missing_fields_and_department(client):
             "password": "password",
             "role": Role.INSTANDHALTUNG.value,
         },
+        headers=headers,
     )
 
     assert no_department_response.status_code == 400
@@ -25,8 +29,11 @@ def test_register_validates_missing_fields_and_department(client):
     )
 
 
-def test_register_master_admin_and_reject_duplicate(client):
+def test_register_master_admin_and_reject_duplicate(client, make_user, auth_headers):
     """Verify master admins can register without a department and duplicates fail."""
+    make_user(username="bootstrap_admin", role=Role.MASTER_ADMIN, department_name=None)
+    headers = auth_headers("bootstrap_admin")
+
     payload = {
         "username": "admin",
         "email": "admin@example.test",
@@ -34,8 +41,8 @@ def test_register_master_admin_and_reject_duplicate(client):
         "role": Role.MASTER_ADMIN.value,
     }
 
-    response = client.post("/api/v1/auth/register", json=payload)
-    duplicate_response = client.post("/api/v1/auth/register", json=payload)
+    response = client.post("/api/v1/auth/register", json=payload, headers=headers)
+    duplicate_response = client.post("/api/v1/auth/register", json=payload, headers=headers)
 
     assert response.status_code == 201
     assert response.get_json()["role"] == Role.MASTER_ADMIN.value

@@ -214,31 +214,6 @@ def local_uploaded_document_review(metadata, html_text):
     }
 
 
-def local_uploaded_document_review(metadata, html_text):
-    """Return a deterministic quality review for uploaded report text."""
-    fields = parse_report_fields(html_text)
-    if not fields:
-        fields = fields_from_plain_text(html_text)
-
-    findings = []
-    recommendations = []
-    for field_name in REVIEW_REQUIRED_FIELDS:
-        finding = review_field(field_name, fields.get(field_name, ""))
-        if not finding:
-            continue
-        findings.append(finding)
-        recommendations.append(recommendation_for_field(field_name))
-
-    quality_score = score_from_findings(findings)
-    return {
-        "document": metadata,
-        "quality_score": quality_score,
-        "status": status_from_score(quality_score),
-        "findings": findings,
-        "recommendations": recommendations,
-    }
-
-
 def normalize_document_review(provider_review, document):
     """Normalize a provider review to the public response shape."""
     provider_review = provider_review or {}

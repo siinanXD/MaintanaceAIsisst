@@ -7,9 +7,9 @@ from flask_jwt_extended import get_jwt, jwt_required
 from app.auth.services import authenticate, register_user
 from app.core.logging import safe_identifier
 from app.extensions import db
-from app.models import TokenBlocklist
+from app.models import Role, TokenBlocklist
 from app.responses import error_response, service_error_response
-from app.security import current_user
+from app.security import current_user, roles_required
 
 
 auth_bp = Blueprint("auth", __name__)
@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 @auth_bp.post("/register")
+@roles_required(Role.MASTER_ADMIN)
 def register():
     """Register a new user account."""
     user, error, status = register_user(request.get_json(silent=True) or {})

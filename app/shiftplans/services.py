@@ -723,7 +723,7 @@ def generate_shift_plan(data, user=None):
                         unavailable.setdefault(d, set()).add(vr.employee_id)
                 d += timedelta(days=1)
     except Exception:
-        pass  # Don't fail plan generation if vacation import errors
+        logger.exception("Vacation import failed; continuing plan generation")
 
     ai_result = openai_shift_entries(
         start_date,
