@@ -68,3 +68,13 @@ def inventory_page():
 def documents_page():
     """Render the generated documents overview."""
     return render_template("documents.html")
+
+
+@web_bp.get("/handover")
+def handover_page():
+    return render_template("handover.html")
+
+
+@web_bp.get("/vacations")
+def vacations_page():
+    return render_template("vacations.html")

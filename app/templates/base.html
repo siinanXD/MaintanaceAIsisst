@@ -35,10 +35,12 @@
                 <li data-dashboard-nav="inventory" hidden><a class="nav-link {% if request.path == '/inventory' %}is-active{% endif %}" href="/inventory">Lager</a></li>
               </ul>
             </details>
-            <details class="nav-group" data-nav-group {% if request.path in ['/shiftplans', '/documents'] %}open{% endif %}>
+            <details class="nav-group" data-nav-group {% if request.path in ['/shiftplans', '/documents', '/handover', '/vacations'] %}open{% endif %}>
               <summary>Planung & Dokumente</summary>
               <ul class="menu gap-1 p-0 text-sm font-medium">
                 <li data-dashboard-nav="shiftplans" hidden><a class="nav-link {% if request.path == '/shiftplans' %}is-active{% endif %}" href="/shiftplans">Schichtplan</a></li>
+                <li data-dashboard-nav="shiftplans" hidden><a class="nav-link {% if request.path == '/handover' %}is-active{% endif %}" href="/handover">Schichtübergabe</a></li>
+                <li data-dashboard-nav="employees" hidden><a class="nav-link {% if request.path == '/vacations' %}is-active{% endif %}" href="/vacations">Urlaubsplanung</a></li>
                 <li data-dashboard-nav="documents" hidden><a class="nav-link {% if request.path == '/documents' %}is-active{% endif %}" href="/documents">Dokumente</a></li>
               </ul>
             </details>
@@ -89,6 +91,8 @@
                   <summary>Planung</summary>
                   <div class="top-nav-panel">
                     <a data-dashboard-nav="shiftplans" hidden class="top-nav-link {% if request.path == '/shiftplans' %}is-active{% endif %}" href="/shiftplans">Schichtplan</a>
+                    <a data-dashboard-nav="shiftplans" hidden class="top-nav-link {% if request.path == '/handover' %}is-active{% endif %}" href="/handover">Schichtübergabe</a>
+                    <a data-dashboard-nav="employees" hidden class="top-nav-link {% if request.path == '/vacations' %}is-active{% endif %}" href="/vacations">Urlaubsplanung</a>
                     <a data-dashboard-nav="documents" hidden class="top-nav-link {% if request.path == '/documents' %}is-active{% endif %}" href="/documents">Dokumente</a>
                   </div>
                 </details>
@@ -128,6 +132,8 @@
                 <details class="nav-group" data-nav-group>
                   <summary>Planung</summary>
                   <a data-dashboard-nav="shiftplans" hidden class="top-nav-link {% if request.path == '/shiftplans' %}is-active{% endif %}" href="/shiftplans">Schichtplan</a>
+                  <a data-dashboard-nav="shiftplans" hidden class="top-nav-link {% if request.path == '/handover' %}is-active{% endif %}" href="/handover">Schichtübergabe</a>
+                  <a data-dashboard-nav="employees" hidden class="top-nav-link {% if request.path == '/vacations' %}is-active{% endif %}" href="/vacations">Urlaubsplanung</a>
                   <a data-dashboard-nav="documents" hidden class="top-nav-link {% if request.path == '/documents' %}is-active{% endif %}" href="/documents">Dokumente</a>
                 </details>
                 <details class="nav-group" data-nav-group>

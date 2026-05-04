@@ -24,6 +24,8 @@ from app.admin.routes import admin_bp
 from app.shiftplans.routes import shiftplans_bp
 from app.search.routes import search_bp
 from app.web.routes import web_bp
+from app.handover.routes import handover_bp
+from app.vacations.routes import vacations_bp
 from app.permissions import ensure_all_user_default_permissions
 from app.responses import error_response
 
@@ -86,6 +88,7 @@ def _run_lightweight_migrations():
                 "qualifications": "TEXT NOT NULL DEFAULT ''",
                 "favorite_machine": "VARCHAR(160) NOT NULL DEFAULT ''",
                 "favorite_machine_id": "INTEGER",
+                "vacation_days_per_year": "INTEGER NOT NULL DEFAULT 30",
             }
             for column_name, column_type in employee_migrations.items():
                 if column_name not in employee_columns:
@@ -195,6 +198,8 @@ def create_app(config_class=Config):
     app.register_blueprint(ai_bp, url_prefix="/api/v1/ai")
     app.register_blueprint(admin_bp, url_prefix="/api/v1/admin")
     app.register_blueprint(web_bp)
+    app.register_blueprint(handover_bp,  url_prefix="/api/v1/handover")
+    app.register_blueprint(vacations_bp, url_prefix="/api/v1/vacations")
     configure_api_documentation(app)
     register_error_handlers(app)
 

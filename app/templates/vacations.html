@@ -1,0 +1,270 @@
+{% extends "base.html" %}
+{% block title %}Urlaubsplanung - Maintenance Assistant{% endblock %}
+{% block content %}
+<section class="page-hero">
+  <div>
+    <p class="page-kicker">Personalplanung</p>
+    <h1 class="page-title">Urlaubsplanung</h1>
+    <p class="page-description">Urlaubsanträge stellen, genehmigen und Resturlaub im Blick behalten.</p>
+  </div>
+</section>
+
+<section class="dashboard-grid">
+
+  <!-- Neuer Antrag -->
+  <details class="card app-card lg:col-span-5" id="vac-new-wrap">
+    <summary class="mobile-action-summary">
+      <span>
+        <span class="mobile-action-title">Neuer Urlaubsantrag</span>
+        <span class="mobile-action-meta">Zeitraum und Mitarbeiter wählen</span>
+      </span>
+    </summary>
+    <div class="card-body">
+      <div class="panel-header"><h2 class="panel-title">Urlaubsantrag stellen</h2></div>
+      <div class="form-grid">
+        <div class="field is-full">
+          <label for="vac-employee">Mitarbeiter *</label>
+          <select class="select select-bordered" id="vac-employee" required>
+            <option value="" disabled selected>Bitte wählen…</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="vac-start">Von *</label>
+          <input class="input input-bordered" id="vac-start" type="date" required>
+        </div>
+        <div class="field">
+          <label for="vac-end">Bis *</label>
+          <input class="input input-bordered" id="vac-end" type="date" required>
+        </div>
+        <div class="field is-full">
+          <label>Arbeitstage: <strong id="vac-days-count">–</strong></label>
+        </div>
+        <div class="field is-full">
+          <label for="vac-notes">Notiz</label>
+          <input class="input input-bordered" id="vac-notes" type="text" placeholder="Optional">
+        </div>
+      </div>
+      <div class="toolbar form-actions">
+        <button class="btn btn-primary" id="vac-submit-btn" type="button">Antrag stellen</button>
+        <span class="panel-meta" id="vac-msg" role="status" aria-live="polite"></span>
+      </div>
+    </div>
+  </details>
+
+  <!-- Resturlaub -->
+  <div class="card app-card lg:col-span-7">
+    <div class="card-body">
+      <div class="panel-header">
+        <h2 class="panel-title">Resturlaub</h2>
+        <div class="toolbar">
+          <label class="stat-label">Jahr:</label>
+          <select class="select select-bordered select-sm" id="vac-year"></select>
+        </div>
+      </div>
+      <div id="vac-summary-list">
+        <p class="panel-meta">Wird geladen…</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Anträge Liste -->
+  <div class="card app-card lg:col-span-12">
+    <div class="card-body">
+      <div class="panel-header">
+        <h2 class="panel-title">Urlaubsanträge</h2>
+        <div class="toolbar">
+          <select class="select select-bordered select-sm" id="vac-filter-status">
+            <option value="">Alle Status</option>
+            <option value="pending">Ausstehend</option>
+            <option value="approved">Genehmigt</option>
+            <option value="rejected">Abgelehnt</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" id="vac-filter-btn">Filtern</button>
+        </div>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="table table-sm">
+          <thead>
+            <tr><th>Mitarbeiter</th><th>Von</th><th>Bis</th><th>Tage</th><th>Status</th><th>Notiz</th><th>Aktionen</th></tr>
+          </thead>
+          <tbody id="vac-table-body"></tbody>
+        </table>
+      </div>
+      <p class="panel-meta" id="vac-empty" hidden>Keine Anträge vorhanden.</p>
+    </div>
+  </div>
+
+</section>
+
+<script>
+(function () {
+  "use strict";
+  const BASE_VAC = "/api/v1/vacations";
+  const BASE_EMP = "/api/v1/employees";
+
+  function token() {
+    return (window.maintenanceAuth && window.maintenanceAuth.token)
+      ? window.maintenanceAuth.token()
+      : window.localStorage.getItem("maintenance_access_token");
+  }
+  function authHdr() { const t = token(); return t ? { Authorization: "Bearer " + t } : {}; }
+  async function api(url, opts) {
+    const res = await fetch(url, { headers: { "Content-Type": "application/json", ...authHdr() }, ...opts });
+    if (res.status === 204) return null;
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.message || body.error || "Fehler " + res.status);
+    return (body && body.success && "data" in body) ? body.data : body;
+  }
+  function isAdmin() { return window.maintenanceAuth?.isAdmin ? window.maintenanceAuth.isAdmin() : false; }
+
+  // Year selector
+  const yearSel = document.getElementById("vac-year");
+  const thisYear = new Date().getFullYear();
+  for (let y = thisYear - 1; y <= thisYear + 2; y++) {
+    const o = document.createElement("option");
+    o.value = y; o.textContent = y;
+    if (y === thisYear) o.selected = true;
+    yearSel.appendChild(o);
+  }
+
+  // Workday counter
+  function countWorkdays(start, end) {
+    let count = 0, d = new Date(start + "T00:00:00");
+    const e = new Date(end + "T00:00:00");
+    while (d <= e) { if (d.getDay() >= 1 && d.getDay() <= 5) count++; d.setDate(d.getDate() + 1); }
+    return count;
+  }
+  ["vac-start","vac-end"].forEach(id => document.getElementById(id).addEventListener("change", () => {
+    const s = document.getElementById("vac-start").value;
+    const e = document.getElementById("vac-end").value;
+    document.getElementById("vac-days-count").textContent = (s && e && e >= s) ? countWorkdays(s, e) : "–";
+  }));
+
+  // Load employees for select
+  async function loadEmployees() {
+    if (!token()) return;
+    try {
+      const res = await fetch(BASE_EMP, { headers: authHdr() });
+      if (!res.ok) return;
+      const body = await res.json();
+      const emps = body.data || body;
+      const sel = document.getElementById("vac-employee");
+      (Array.isArray(emps) ? emps : []).forEach(e => {
+        const o = document.createElement("option");
+        o.value = e.id;
+        o.textContent = e.name + (e.department ? " (" + e.department + ")" : "");
+        sel.appendChild(o);
+      });
+    } catch (_) {}
+  }
+
+  // Summary
+  async function loadSummary() {
+    const year = yearSel.value;
+    try {
+      const data = await api(BASE_VAC + "/summary?year=" + year);
+      const wrap = document.getElementById("vac-summary-list");
+      wrap.innerHTML = "";
+      (data || []).forEach(s => {
+        const pct = s.total > 0 ? Math.round((s.used / s.total) * 100) : 0;
+        const color = pct >= 80 ? "progress-warning" : "progress-success";
+        wrap.innerHTML += `<div class="mb-3">
+          <div class="toolbar" style="justify-content:space-between">
+            <span class="stat-label">${s.name}</span>
+            <span class="panel-meta">${s.used}/${s.total} Tage · noch ${s.remaining}</span>
+          </div>
+          <progress class="progress ${color} w-full" value="${s.used}" max="${s.total}"></progress>
+        </div>`;
+      });
+      if (!data || !data.length) wrap.innerHTML = '<p class="panel-meta">Keine Mitarbeiter.</p>';
+    } catch (_) {}
+  }
+
+  // Requests table
+  async function loadVacations() {
+    const status = document.getElementById("vac-filter-status").value;
+    try {
+      let data = await api(BASE_VAC + (status ? "?status=" + status : ""));
+      if (!Array.isArray(data)) data = [];
+      const tbody = document.getElementById("vac-table-body");
+      const empty = document.getElementById("vac-empty");
+      tbody.innerHTML = "";
+      empty.hidden = data.length > 0;
+      const statusMap = { pending: "badge-warning", approved: "badge-success", rejected: "badge-error" };
+      const statusLbl = { pending: "Ausstehend", approved: "Genehmigt", rejected: "Abgelehnt" };
+      data.forEach(v => {
+        const tr = document.createElement("tr");
+        const badgeCls = statusMap[v.status] || "";
+        const actions = [];
+        if (v.status === "pending") {
+          if (isAdmin()) {
+            actions.push(`<button class="btn btn-success btn-xs mr-1" data-approve="${v.id}">✓</button>`);
+            actions.push(`<button class="btn btn-error btn-xs mr-1" data-reject="${v.id}">✗</button>`);
+          }
+          actions.push(`<button class="btn btn-ghost btn-xs" data-delete="${v.id}">Zurückziehen</button>`);
+        }
+        tr.innerHTML = `
+          <td>${v.employee ? v.employee.name : v.employee_id}</td>
+          <td>${v.start_date}</td>
+          <td>${v.end_date}</td>
+          <td>${v.days_used}</td>
+          <td><span class="badge ${badgeCls}">${statusLbl[v.status] || v.status}</span></td>
+          <td>${v.notes || "–"}</td>
+          <td>${actions.join("")}</td>`;
+        tr.querySelector("[data-approve]")?.addEventListener("click", () => decide(v.id, "approve"));
+        tr.querySelector("[data-reject]")?.addEventListener("click",  () => decide(v.id, "reject"));
+        tr.querySelector("[data-delete]")?.addEventListener("click",  () => withdraw(v.id));
+        tbody.appendChild(tr);
+      });
+    } catch (err) { console.error(err); }
+  }
+
+  async function decide(id, action) {
+    const label = action === "approve" ? "genehmigen" : "ablehnen";
+    if (!confirm("Urlaubsantrag " + label + "?")) return;
+    try {
+      await api(BASE_VAC + "/" + id + "/" + action, { method: "POST" });
+      await Promise.all([loadVacations(), loadSummary()]);
+    } catch (err) { alert(err.message); }
+  }
+
+  async function withdraw(id) {
+    if (!confirm("Urlaubsantrag zurückziehen?")) return;
+    try {
+      await api(BASE_VAC + "/" + id, { method: "DELETE" });
+      await Promise.all([loadVacations(), loadSummary()]);
+    } catch (err) { alert(err.message); }
+  }
+
+  document.getElementById("vac-submit-btn").addEventListener("click", async () => {
+    const emp   = document.getElementById("vac-employee").value;
+    const start = document.getElementById("vac-start").value;
+    const end   = document.getElementById("vac-end").value;
+    if (!emp || !start || !end) { document.getElementById("vac-msg").textContent = "Bitte alle Felder ausfüllen."; return; }
+    const btn = document.getElementById("vac-submit-btn");
+    btn.disabled = true;
+    document.getElementById("vac-msg").textContent = "Wird gesendet…";
+    try {
+      await api(BASE_VAC, { method: "POST", body: JSON.stringify({
+        employee_id: parseInt(emp), start_date: start, end_date: end,
+        notes: document.getElementById("vac-notes").value,
+      })});
+      document.getElementById("vac-msg").textContent = "✓ Antrag gestellt.";
+      await Promise.all([loadVacations(), loadSummary()]);
+    } catch (err) { document.getElementById("vac-msg").textContent = "Fehler: " + err.message; }
+    finally { btn.disabled = false; }
+  });
+
+  yearSel.addEventListener("change", loadSummary);
+  document.getElementById("vac-filter-btn").addEventListener("click", loadVacations);
+
+  async function init() {
+    await loadEmployees();
+    await Promise.all([loadVacations(), loadSummary()]);
+  }
+
+  window.addEventListener("maintenance-auth-ready", init);
+  document.addEventListener("DOMContentLoaded", () => { if (token()) init(); });
+})();
+</script>
+{% endblock %}

@@ -694,6 +694,37 @@ def generate_shift_plan(data, user=None):
     except ValueError as exc:
         return None, {"error": str(exc)}, 400
 
+    # Auto-import approved vacation requests for this period
+    try:
+        from app.models import VacationRequest
+        employee_ids = [e.id for e in employees]
+        period_end = start_date + timedelta(days=days - 1)
+        approved_vrs = VacationRequest.query.filter(
+            VacationRequest.employee_id.in_(employee_ids),
+            VacationRequest.status == "approved",
+            VacationRequest.start_date <= period_end,
+            VacationRequest.end_date   >= start_date,
+        ).all()
+        for vr in approved_vrs:
+            d = max(vr.start_date, start_date)
+            while d <= min(vr.end_date, period_end):
+                if d.weekday() < 5:
+                    key = (vr.employee_id, d)
+                    if key not in {(e["employee_id"], e["work_date"]) for e in vacation_entries if isinstance(e["work_date"], type(d))}:
+                        vacation_entries.append({
+                            "employee_id": vr.employee_id,
+                            "machine_id": None,
+                            "work_date": d,
+                            "shift": "Urlaub",
+                            "start_time": "",
+                            "end_time": "",
+                            "notes": f"Genehmigter Urlaub (Antrag #{vr.id})",
+                        })
+                        unavailable.setdefault(d, set()).add(vr.employee_id)
+                d += timedelta(days=1)
+    except Exception:
+        pass  # Don't fail plan generation if vacation import errors
+
     ai_result = openai_shift_entries(
         start_date,
         days,

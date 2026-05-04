@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+{% block title %}Schichtübergabe - Maintenance Assistant{% endblock %}
+{% block content %}
+<section class="page-hero">
+  <div>
+    <p class="page-kicker">Schichtbetrieb</p>
+    <h1 class="page-title">Schichtübergabe-Protokoll</h1>
+    <p class="page-description">Digitales Schichtbuch — Was wurde erledigt, was ist offen, Maschinenzustand und Hinweise für die nächste Schicht.</p>
+  </div>
+</section>
+
+<section class="dashboard-grid">
+
+  <!-- Neues Protokoll -->
+  <details class="card app-card lg:col-span-12" data-permission-write="shiftplans" id="ho-new-wrap">
+    <summary class="mobile-action-summary">
+      <span>
+        <span class="mobile-action-title">Neue Übergabe erfassen</span>
+        <span class="mobile-action-meta">Formular ausfüllen und speichern</span>
+      </span>
+    </summary>
+    <div class="card-body">
+      <div class="panel-header">
+        <h2 class="panel-title">Neue Schichtübergabe</h2>
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="ho-department">Abteilung *</label>
+          <select class="select select-bordered" id="ho-department" required>
+            <option value="" disabled selected>Bitte wählen…</option>
+            <option value="Produktion">Produktion</option>
+            <option value="Instandhaltung">Instandhaltung</option>
+            <option value="Verwaltung">Verwaltung</option>
+            <option value="IT">IT</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="ho-date">Datum *</label>
+          <input class="input input-bordered" id="ho-date" type="date" required>
+        </div>
+        <div class="field">
+          <label for="ho-shift-type">Schicht *</label>
+          <select class="select select-bordered" id="ho-shift-type" required>
+            <option value="" disabled selected>Bitte wählen…</option>
+            <option value="Frueh">Frühschicht</option>
+            <option value="Spaet">Spätschicht</option>
+            <option value="Nacht">Nachtschicht</option>
+          </select>
+        </div>
+        <div class="field is-full">
+          <label for="ho-content">Was wurde erledigt?</label>
+          <textarea class="textarea textarea-bordered" id="ho-content" rows="3" placeholder="Aufgaben, Produktionsmengen, Wartungsarbeiten…"></textarea>
+        </div>
+        <div class="field is-full">
+          <label for="ho-open-tasks">Was ist noch offen?</label>
+          <textarea class="textarea textarea-bordered" id="ho-open-tasks" rows="2" placeholder="Offene Aufgaben, Folgearbeiten…"></textarea>
+        </div>
+        <div class="field is-full">
+          <label for="ho-machine-notes">Maschinenzustand</label>
+          <textarea class="textarea textarea-bordered" id="ho-machine-notes" rows="2" placeholder="Auffälligkeiten, Störungen, Wartungsbedarf…"></textarea>
+        </div>
+        <div class="field is-full">
+          <label for="ho-next-notes">Hinweise für nächste Schicht</label>
+          <textarea class="textarea textarea-bordered" id="ho-next-notes" rows="2" placeholder="Besonderheiten, Prioritäten, Sicherheitshinweise…"></textarea>
+        </div>
+      </div>
+      <div class="toolbar form-actions">
+        <button class="btn btn-primary" id="ho-submit-btn" type="button">Übergabe speichern</button>
+        <span class="panel-meta" id="ho-msg" role="status" aria-live="polite"></span>
+      </div>
+    </div>
+  </details>
+
+  <!-- Filter -->
+  <div class="card app-card lg:col-span-12">
+    <div class="card-body">
+      <div class="toolbar" id="ho-filter-bar">
+        <label class="stat-label">Filter:</label>
+        <select class="select select-bordered select-sm" id="filter-dept">
+          <option value="">Alle Abteilungen</option>
+          <option value="Produktion">Produktion</option>
+          <option value="Instandhaltung">Instandhaltung</option>
+          <option value="Verwaltung">Verwaltung</option>
+          <option value="IT">IT</option>
+        </select>
+        <input class="input input-bordered input-sm" type="date" id="filter-date" placeholder="Datum">
+        <select class="select select-bordered select-sm" id="filter-shift">
+          <option value="">Alle Schichten</option>
+          <option value="Frueh">Frühschicht</option>
+          <option value="Spaet">Spätschicht</option>
+          <option value="Nacht">Nachtschicht</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" id="ho-filter-btn">Filtern</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Liste -->
+  <div class="lg:col-span-12" id="ho-list-wrap">
+    <p class="panel-meta" id="ho-empty">Keine Übergaben gefunden.</p>
+  </div>
+
+</section>
+
+<!-- Edit-Dialog -->
+<dialog id="ho-dialog" aria-modal="true" aria-labelledby="ho-dlg-title">
+  <div class="card app-card" style="min-width:340px;max-width:560px;padding:1.5rem;">
+    <h3 class="panel-title mb-3" id="ho-dlg-title">Übergabe bearbeiten</h3>
+    <div class="field mb-2">
+      <label for="dlg-ho-content">Was wurde erledigt?</label>
+      <textarea class="textarea textarea-bordered w-full" id="dlg-ho-content" rows="3"></textarea>
+    </div>
+    <div class="field mb-2">
+      <label for="dlg-ho-open">Was ist offen?</label>
+      <textarea class="textarea textarea-bordered w-full" id="dlg-ho-open" rows="2"></textarea>
+    </div>
+    <div class="field mb-2">
+      <label for="dlg-ho-machine">Maschinenzustand</label>
+      <textarea class="textarea textarea-bordered w-full" id="dlg-ho-machine" rows="2"></textarea>
+    </div>
+    <div class="field mb-3">
+      <label for="dlg-ho-next">Hinweise für nächste Schicht</label>
+      <textarea class="textarea textarea-bordered w-full" id="dlg-ho-next" rows="2"></textarea>
+    </div>
+    <div class="toolbar">
+      <button class="btn btn-primary btn-sm" id="dlg-ho-save">Speichern</button>
+      <button class="btn btn-ghost btn-sm" id="dlg-ho-cancel">Abbrechen</button>
+    </div>
+    <p class="panel-meta mt-2" id="dlg-ho-msg" role="status" aria-live="polite"></p>
+  </div>
+</dialog>
+
+<script>
+(function () {
+  "use strict";
+  const BASE = "/api/v1/handover";
+  const SHIFT_LABEL = { Frueh: "Frühschicht", Spaet: "Spätschicht", Nacht: "Nachtschicht" };
+
+  function token() {
+    return (window.maintenanceAuth && window.maintenanceAuth.token)
+      ? window.maintenanceAuth.token()
+      : window.localStorage.getItem("maintenance_access_token");
+  }
+  function authHdr() { const t = token(); return t ? { Authorization: "Bearer " + t } : {}; }
+  async function api(url, opts) {
+    const res = await fetch(url, { headers: { "Content-Type": "application/json", ...authHdr() }, ...opts });
+    if (res.status === 204) return null;
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.message || body.error || "Fehler " + res.status);
+    return (body && body.success && "data" in body) ? body.data : body;
+  }
+  function canWrite() {
+    return window.maintenanceAuth && window.maintenanceAuth.canWrite
+      ? window.maintenanceAuth.canWrite("shiftplans") : false;
+  }
+
+  const listWrap  = document.getElementById("ho-list-wrap");
+  const emptyEl   = document.getElementById("ho-empty");
+  const hoMsg     = document.getElementById("ho-msg");
+  const dialog    = document.getElementById("ho-dialog");
+  const dlgSave   = document.getElementById("dlg-ho-save");
+  const dlgCancel = document.getElementById("dlg-ho-cancel");
+  const dlgMsg    = document.getElementById("dlg-ho-msg");
+  let editId = null;
+
+  async function loadHandovers() {
+    if (!token()) return;
+    const dept  = document.getElementById("filter-dept").value;
+    const date  = document.getElementById("filter-date").value;
+    const shift = document.getElementById("filter-shift").value;
+    let url = BASE + "?";
+    if (dept)  url += "department=" + encodeURIComponent(dept) + "&";
+    if (date)  url += "date=" + date + "&";
+    if (shift) url += "shift_type=" + encodeURIComponent(shift) + "&";
+    try {
+      const data = await api(url);
+      renderList(Array.isArray(data) ? data : (data || []));
+    } catch (err) {
+      emptyEl.textContent = "Fehler: " + err.message;
+      emptyEl.hidden = false;
+    }
+  }
+
+  function renderList(items) {
+    // Remove old cards
+    listWrap.querySelectorAll(".ho-card").forEach(el => el.remove());
+    emptyEl.hidden = items.length > 0;
+    emptyEl.textContent = "Keine Übergaben gefunden.";
+
+    items.forEach(h => {
+      const card = document.createElement("article");
+      card.className = "card app-card ho-card mb-3";
+      const statusCls = h.status === "completed" ? "badge-success" : "badge-warning";
+      const statusTxt = h.status === "completed" ? "✓ Abgeschlossen" : "Offen";
+      const editable  = h.status === "open" && canWrite();
+      card.innerHTML = `
+        <div class="card-body">
+          <div class="panel-header">
+            <div>
+              <h3 class="panel-title">${h.shift_date} · ${SHIFT_LABEL[h.shift_type] || h.shift_type} · ${h.department}</h3>
+              <p class="panel-meta">Von: ${h.handed_over_by || "–"} ${h.handed_over_at ? "· " + new Date(h.handed_over_at).toLocaleString("de-DE") : ""}</p>
+            </div>
+            <div class="toolbar">
+              <span class="badge ${statusCls}">${statusTxt}</span>
+              ${editable ? `<button class="btn btn-ghost btn-xs" data-edit="${h.id}">✏ Bearbeiten</button>` : ""}
+              ${editable ? `<button class="btn btn-success btn-xs" data-complete="${h.id}">✓ Abschließen</button>` : ""}
+            </div>
+          </div>
+          ${h.content     ? `<div class="mt-2"><span class="stat-label">Erledigt:</span><p class="panel-meta mt-1" style="white-space:pre-wrap">${h.content}</p></div>` : ""}
+          ${h.open_tasks  ? `<div class="mt-2"><span class="stat-label">Offen:</span><p class="panel-meta mt-1" style="white-space:pre-wrap">${h.open_tasks}</p></div>` : ""}
+          ${h.machine_notes ? `<div class="mt-2"><span class="stat-label">Maschinen:</span><p class="panel-meta mt-1" style="white-space:pre-wrap">${h.machine_notes}</p></div>` : ""}
+          ${h.next_notes  ? `<div class="mt-2"><span class="stat-label">Nächste Schicht:</span><p class="panel-meta mt-1" style="white-space:pre-wrap">${h.next_notes}</p></div>` : ""}
+        </div>`;
+      // Wire up buttons
+      card.querySelector("[data-edit]")?.addEventListener("click", () => openEditDialog(h));
+      card.querySelector("[data-complete]")?.addEventListener("click", () => completeHandover(h.id));
+      listWrap.appendChild(card);
+    });
+  }
+
+  function openEditDialog(h) {
+    editId = h.id;
+    document.getElementById("dlg-ho-content").value = h.content || "";
+    document.getElementById("dlg-ho-open").value    = h.open_tasks || "";
+    document.getElementById("dlg-ho-machine").value = h.machine_notes || "";
+    document.getElementById("dlg-ho-next").value    = h.next_notes || "";
+    dlgMsg.textContent = "";
+    dialog.showModal();
+  }
+
+  dlgSave.addEventListener("click", async () => {
+    if (!editId) return;
+    dlgSave.disabled = true;
+    dlgMsg.textContent = "Wird gespeichert…";
+    try {
+      await api(BASE + "/" + editId, { method: "PATCH", body: JSON.stringify({
+        content:       document.getElementById("dlg-ho-content").value,
+        open_tasks:    document.getElementById("dlg-ho-open").value,
+        machine_notes: document.getElementById("dlg-ho-machine").value,
+        next_notes:    document.getElementById("dlg-ho-next").value,
+      })});
+      dialog.close();
+      await loadHandovers();
+    } catch (err) { dlgMsg.textContent = err.message; }
+    finally { dlgSave.disabled = false; }
+  });
+
+  dlgCancel.addEventListener("click", () => dialog.close());
+
+  async function completeHandover(id) {
+    if (!confirm("Übergabe wirklich abschließen? Danach nicht mehr bearbeitbar.")) return;
+    try {
+      await api(BASE + "/" + id + "/complete", { method: "POST" });
+      await loadHandovers();
+    } catch (err) { alert(err.message); }
+  }
+
+  document.getElementById("ho-submit-btn").addEventListener("click", async () => {
+    const dept  = document.getElementById("ho-department").value;
+    const date  = document.getElementById("ho-date").value;
+    const shift = document.getElementById("ho-shift-type").value;
+    if (!dept || !date || !shift) { hoMsg.textContent = "Bitte alle Pflichtfelder ausfüllen."; return; }
+    const btn = document.getElementById("ho-submit-btn");
+    btn.disabled = true;
+    hoMsg.textContent = "Wird gespeichert…";
+    try {
+      await api(BASE, { method: "POST", body: JSON.stringify({
+        department: dept, shift_date: date, shift_type: shift,
+        content:       document.getElementById("ho-content").value,
+        open_tasks:    document.getElementById("ho-open-tasks").value,
+        machine_notes: document.getElementById("ho-machine-notes").value,
+        next_notes:    document.getElementById("ho-next-notes").value,
+      })});
+      hoMsg.textContent = "✓ Übergabe gespeichert.";
+      ["ho-content","ho-open-tasks","ho-machine-notes","ho-next-notes"].forEach(id => document.getElementById(id).value = "");
+      await loadHandovers();
+    } catch (err) { hoMsg.textContent = "Fehler: " + err.message; }
+    finally { btn.disabled = false; }
+  });
+
+  document.getElementById("ho-filter-btn").addEventListener("click", loadHandovers);
+
+  window.addEventListener("maintenance-auth-ready", loadHandovers);
+  document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("ho-date").value = new Date().toISOString().slice(0, 10);
+    if (token()) loadHandovers();
+  });
+})();
+</script>
+
+<style>
+#ho-dialog { border: none; border-radius: 0.75rem; padding: 0; box-shadow: 0 8px 32px rgba(0,0,0,0.28); max-width: 90vw; }
+#ho-dialog::backdrop { background: rgba(0,0,0,0.45); backdrop-filter: blur(2px); }
+</style>
+{% endblock %}

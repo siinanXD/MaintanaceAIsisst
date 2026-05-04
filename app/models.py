@@ -321,6 +321,7 @@ class Employee(db.Model):
     qualifications = db.Column(db.Text, nullable=False, default="")
     favorite_machine = db.Column(db.String(160), nullable=False, default="")
     favorite_machine_id = db.Column(db.Integer, db.ForeignKey("machine.id"), nullable=True)
+    vacation_days_per_year = db.Column(db.Integer, nullable=False, default=30)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     documents = db.relationship(
@@ -329,6 +330,7 @@ class Employee(db.Model):
         cascade="all, delete-orphan",
     )
     favorite_machine_rel = db.relationship("Machine", foreign_keys=[favorite_machine_id])
+    vacation_requests = db.relationship("VacationRequest", back_populates="employee", cascade="all, delete-orphan")
 
     def to_dict(self, access_level="confidential"):
         """Return employee data filtered by the requested access level."""
@@ -568,6 +570,78 @@ class ShiftPlanChangeLog(db.Model):
             "field_name": self.field_name,
             "old_value": self.old_value,
             "new_value": self.new_value,
+        }
+
+
+class ShiftHandover(db.Model):
+    """Digital shift handover log."""
+    id             = db.Column(db.Integer, primary_key=True)
+    plan_id        = db.Column(db.Integer, db.ForeignKey("shift_plan.id", ondelete="SET NULL"), nullable=True)
+    department     = db.Column(db.String(120), nullable=False, default="")
+    shift_date     = db.Column(db.Date, nullable=False)
+    shift_type     = db.Column(db.String(40), nullable=False)
+    status         = db.Column(db.String(20), nullable=False, default="open")
+    handed_over_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    handed_over_at = db.Column(db.DateTime, nullable=True)
+    content        = db.Column(db.Text, nullable=False, default="")
+    open_tasks     = db.Column(db.Text, nullable=False, default="")
+    machine_notes  = db.Column(db.Text, nullable=False, default="")
+    next_notes     = db.Column(db.Text, nullable=False, default="")
+    created_at     = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    plan   = db.relationship("ShiftPlan")
+    author = db.relationship("User", foreign_keys=[handed_over_by])
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "plan_id": self.plan_id,
+            "department": self.department,
+            "shift_date": self.shift_date.isoformat(),
+            "shift_type": self.shift_type,
+            "status": self.status,
+            "handed_over_by": self.author.username if self.author else None,
+            "handed_over_at": self.handed_over_at.isoformat() if self.handed_over_at else None,
+            "content": self.content,
+            "open_tasks": self.open_tasks,
+            "machine_notes": self.machine_notes,
+            "next_notes": self.next_notes,
+            "created_at": self.created_at.isoformat(),
+        }
+
+
+class VacationRequest(db.Model):
+    """Employee vacation request with approval workflow."""
+    id           = db.Column(db.Integer, primary_key=True)
+    employee_id  = db.Column(db.Integer, db.ForeignKey("employee.id"), nullable=False)
+    start_date   = db.Column(db.Date, nullable=False)
+    end_date     = db.Column(db.Date, nullable=False)
+    days_used    = db.Column(db.Integer, nullable=False)
+    status       = db.Column(db.String(20), nullable=False, default="pending")
+    requested_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    approved_by  = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    decided_at   = db.Column(db.DateTime, nullable=True)
+    notes        = db.Column(db.Text, nullable=False, default="")
+    created_at   = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    employee  = db.relationship("Employee", back_populates="vacation_requests")
+    requester = db.relationship("User", foreign_keys=[requested_by])
+    approver  = db.relationship("User", foreign_keys=[approved_by])
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "employee_id": self.employee_id,
+            "employee": self.employee.to_dict("basic") if self.employee else None,
+            "start_date": self.start_date.isoformat(),
+            "end_date": self.end_date.isoformat(),
+            "days_used": self.days_used,
+            "status": self.status,
+            "requested_by": self.requester.username if self.requester else None,
+            "approved_by": self.approver.username if self.approver else None,
+            "decided_at": self.decided_at.isoformat() if self.decided_at else None,
+            "notes": self.notes,
+            "created_at": self.created_at.isoformat(),
         }
 
 

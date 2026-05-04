@@ -158,6 +158,86 @@ def update_entry(entry_id):
     return success_response(entry.to_dict(), message="Eintrag aktualisiert")
 
 
+@shiftplans_bp.patch("/entries/<int:entry_id>/move")
+@dashboard_permission_required("shiftplans", "write")
+def move_entry(entry_id):
+    """Move or swap a shift entry to a new date/shift. Swaps if target cell is occupied."""
+    from app.shiftplans.services import SHIFT_WINDOWS, parse_date
+    entry = ShiftPlanEntry.query.get_or_404(entry_id)
+    data = request.get_json(silent=True) or {}
+    try:
+        target_date = parse_date(data.get("target_date"))
+    except ValueError as exc:
+        return error_response(str(exc), 400)
+    target_shift = str(data.get("target_shift") or "").strip()
+    if not target_shift:
+        return error_response("target_shift erforderlich", 400)
+
+    # Find another entry in the same plan at the target cell
+    existing = ShiftPlanEntry.query.filter(
+        ShiftPlanEntry.plan_id   == entry.plan_id,
+        ShiftPlanEntry.work_date == target_date,
+        ShiftPlanEntry.shift     == target_shift,
+        ShiftPlanEntry.id        != entry.id,
+    ).first()
+
+    user = current_user()
+    if existing:
+        # Swap the slot (date+shift+times) between the two entries while keeping employee_ids.
+        # This avoids the (plan_id, employee_id, work_date) unique constraint violation.
+        old_emp_a = entry.employee_id
+        old_emp_b = existing.employee_id
+        # Swap slot data: entry moves to existing's slot, existing moves to entry's slot
+        old_date_a, old_shift_a = entry.work_date, entry.shift
+        old_start_a, old_end_a = entry.start_time, entry.end_time
+        entry.work_date   = existing.work_date
+        entry.shift       = existing.shift
+        entry.start_time  = existing.start_time
+        entry.end_time    = existing.end_time
+        existing.work_date  = old_date_a
+        existing.shift      = old_shift_a
+        existing.start_time = old_start_a
+        existing.end_time   = old_end_a
+        db.session.flush()
+        db.session.add(ShiftPlanChangeLog(
+            entry_id=entry.id, plan_id=entry.plan_id, user_id=user.id,
+            action="swap", field_name="employee_id",
+            old_value=str(old_emp_a), new_value=str(old_emp_b),
+        ))
+        db.session.add(ShiftPlanChangeLog(
+            entry_id=existing.id, plan_id=existing.plan_id, user_id=user.id,
+            action="swap", field_name="employee_id",
+            old_value=str(old_emp_b), new_value=str(old_emp_a),
+        ))
+    else:
+        # Check if the entry's employee already has an entry on the target date (different shift)
+        conflict = ShiftPlanEntry.query.filter(
+            ShiftPlanEntry.plan_id     == entry.plan_id,
+            ShiftPlanEntry.employee_id == entry.employee_id,
+            ShiftPlanEntry.work_date   == target_date,
+            ShiftPlanEntry.id          != entry.id,
+        ).first()
+        if conflict:
+            return error_response(
+                "Mitarbeiter hat bereits einen Eintrag an diesem Tag", 409
+            )
+        old_val = f"{entry.work_date.isoformat()} {entry.shift}"
+        entry.work_date = target_date
+        entry.shift     = target_shift
+        if target_shift in SHIFT_WINDOWS:
+            entry.start_time, entry.end_time = SHIFT_WINDOWS[target_shift]
+        db.session.flush()
+        db.session.add(ShiftPlanChangeLog(
+            entry_id=entry.id, plan_id=entry.plan_id, user_id=user.id,
+            action="move", old_value=old_val,
+            new_value=f"{target_date.isoformat()} {target_shift}",
+        ))
+
+    db.session.commit()
+    plan = db.session.get(ShiftPlan, entry.plan_id)
+    return success_response(plan.to_dict(employee_access_level(user)), message="Eintrag verschoben")
+
+
 @shiftplans_bp.delete("/entries/<int:entry_id>")
 @dashboard_permission_required("shiftplans", "write")
 def delete_entry(entry_id):

@@ -454,6 +454,23 @@
         const td = document.createElement("td");
         td.className = "sp-day-cell sp-cell-" + shiftKey.toLowerCase();
 
+        if (canEdit) {
+          td.addEventListener("dragover", (ev) => { ev.preventDefault(); td.classList.add("sp-drop-target"); });
+          td.addEventListener("dragleave", () => td.classList.remove("sp-drop-target"));
+          td.addEventListener("drop", async (ev) => {
+            ev.preventDefault();
+            td.classList.remove("sp-drop-target");
+            const entryId = ev.dataTransfer.getData("entry_id");
+            if (!entryId) return;
+            try {
+              await api(BASE + "/entries/" + entryId + "/move", {
+                method: "PATCH",
+                body: JSON.stringify({ target_date: dateStr, target_shift: shiftKey }),
+              });
+              await loadPlans(currentPlan ? currentPlan.id : undefined);
+            } catch (err) { alert("Fehler beim Verschieben: " + err.message); }
+          });
+        }
         const dayEntries = (idx[shiftKey] || {})[dateStr] || [];
         if (!dayEntries.length) {
           td.innerHTML = "<span class='sp-empty'>–</span>";
@@ -466,7 +483,15 @@
             if (canEdit) {
               chip.type = "button";
               chip.setAttribute("aria-label", "Bearbeiten: " + empName);
+              chip.setAttribute("draggable", "true");
+              chip.dataset.entryId = entry.id;
               chip.addEventListener("click", () => openDialog(entry));
+              chip.addEventListener("dragstart", (ev) => {
+                ev.dataTransfer.setData("entry_id", entry.id);
+                ev.dataTransfer.effectAllowed = "move";
+                chip.classList.add("sp-dragging");
+              });
+              chip.addEventListener("dragend", () => chip.classList.remove("sp-dragging"));
             }
             if (machineName) {
               chip.innerHTML =
@@ -778,6 +803,10 @@
   transition: filter 0.15s;
 }
 button.sp-chip:hover { filter: brightness(0.94); }
+.sp-chip[draggable="true"] { cursor: grab; }
+.sp-chip[draggable="true"]:active { cursor: grabbing; }
+.sp-dragging { opacity: 0.35 !important; }
+.sp-drop-target { outline: 2px dashed #3b82f6 !important; outline-offset: -2px; background: #dbeafe !important; }
 /* Chip-Farben nach Schichttyp */
 .sp-cell-frueh  .sp-chip { border-color: #86efac; }
 .sp-cell-spaet  .sp-chip { border-color: #93c5fd; }
