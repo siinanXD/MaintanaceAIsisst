@@ -492,6 +492,27 @@
                 chip.classList.add("sp-dragging");
               });
               chip.addEventListener("dragend", () => chip.classList.remove("sp-dragging"));
+              chip.addEventListener("dragover", (ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                if (ev.dataTransfer.getData("entry_id") !== String(entry.id))
+                  chip.classList.add("sp-chip-drop-target");
+              });
+              chip.addEventListener("dragleave", () => chip.classList.remove("sp-chip-drop-target"));
+              chip.addEventListener("drop", async (ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                chip.classList.remove("sp-chip-drop-target");
+                const entryId = ev.dataTransfer.getData("entry_id");
+                if (!entryId || entryId === String(entry.id)) return;
+                try {
+                  await api(BASE + "/entries/" + entryId + "/move", {
+                    method: "PATCH",
+                    body: JSON.stringify({ target_entry_id: entry.id }),
+                  });
+                  await loadPlans(currentPlan ? currentPlan.id : undefined);
+                } catch (err) { alert("Fehler beim Tauschen: " + err.message); }
+              });
             }
             if (machineName) {
               chip.innerHTML =
@@ -807,6 +828,7 @@ button.sp-chip:hover { filter: brightness(0.94); }
 .sp-chip[draggable="true"]:active { cursor: grabbing; }
 .sp-dragging { opacity: 0.35 !important; }
 .sp-drop-target { outline: 2px dashed #3b82f6 !important; outline-offset: -2px; background: #dbeafe !important; }
+.sp-chip-drop-target { outline: 2px dashed #f59e0b !important; outline-offset: 1px; background: #fef3c7 !important; }
 /* Chip-Farben nach Schichttyp */
 .sp-cell-frueh  .sp-chip { border-color: #86efac; }
 .sp-cell-spaet  .sp-chip { border-color: #93c5fd; }

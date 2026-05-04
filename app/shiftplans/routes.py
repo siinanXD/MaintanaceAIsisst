@@ -161,27 +161,40 @@ def update_entry(entry_id):
 @shiftplans_bp.patch("/entries/<int:entry_id>/move")
 @dashboard_permission_required("shiftplans", "write")
 def move_entry(entry_id):
-    """Move or swap a shift entry to a new date/shift. Swaps if target cell is occupied."""
+    """Move or swap a shift entry. Chip-to-chip uses target_entry_id for deterministic swap."""
     from app.shiftplans.services import SHIFT_WINDOWS, parse_date
     entry = ShiftPlanEntry.query.get_or_404(entry_id)
     data = request.get_json(silent=True) or {}
-    try:
-        target_date = parse_date(data.get("target_date"))
-    except ValueError as exc:
-        return error_response(str(exc), 400)
-    target_shift = str(data.get("target_shift") or "").strip()
-    if not target_shift:
-        return error_response("target_shift erforderlich", 400)
-
-    # Find another entry in the same plan at the target cell
-    existing = ShiftPlanEntry.query.filter(
-        ShiftPlanEntry.plan_id   == entry.plan_id,
-        ShiftPlanEntry.work_date == target_date,
-        ShiftPlanEntry.shift     == target_shift,
-        ShiftPlanEntry.id        != entry.id,
-    ).first()
-
     user = current_user()
+
+    target_entry_id = data.get("target_entry_id")
+    if target_entry_id:
+        existing = db.session.get(ShiftPlanEntry, int(target_entry_id))
+        if not existing:
+            return error_response("Ziel-Eintrag nicht gefunden", 404)
+        if existing.plan_id != entry.plan_id:
+            return error_response("Einträge gehören zu verschiedenen Plänen", 400)
+        if existing.id == entry.id:
+            return success_response(
+                db.session.get(ShiftPlan, entry.plan_id).to_dict(employee_access_level(user)),
+                message="Kein Tausch nötig",
+            )
+    else:
+        try:
+            target_date = parse_date(data.get("target_date"))
+        except ValueError as exc:
+            return error_response(str(exc), 400)
+        target_shift = str(data.get("target_shift") or "").strip()
+        if not target_shift:
+            return error_response("target_shift erforderlich", 400)
+
+        existing = ShiftPlanEntry.query.filter(
+            ShiftPlanEntry.plan_id   == entry.plan_id,
+            ShiftPlanEntry.work_date == target_date,
+            ShiftPlanEntry.shift     == target_shift,
+            ShiftPlanEntry.id        != entry.id,
+        ).first()
+
     if existing:
         # Swap the slot (date+shift+times) between the two entries while keeping employee_ids.
         # This avoids the (plan_id, employee_id, work_date) unique constraint violation.
