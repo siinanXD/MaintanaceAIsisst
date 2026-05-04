@@ -1,24 +1,49 @@
+# Python
 .venv/
 venv/
-.codex_deps/
 __pycache__/
 *.pyc
 *.py[cod]
+*.egg-info/
+*.egg
 .pytest_cache/
 .mypy_cache/
-.tmp/
+.coverage
+htmlcov/
+coverage.xml
+
+# Environment & secrets
+.env
+*.pem
+*.key
+*.crt
+
+# App data
 instance/
-*.sqlite
-*.db
-data/*.db
-data/*.sqlite
-data/uploads/
+data/
 /documents/
 logs/
-.env
-.idea/
-.vscode/
+
+# Database files
+*.sqlite
+*.db
+
+# Node / Tailwind
 node_modules/
 dist/
 build/
+npm-debug.log*
+yarn-error.log*
+
+# Editors
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+.codex_deps/
+.tmp/
 *.log

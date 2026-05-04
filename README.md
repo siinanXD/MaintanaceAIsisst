@@ -1,8 +1,10 @@
 # Maintenance Assistant
 
 [![CI](https://github.com/siinanXD/MaintanaceAIsisst/actions/workflows/ci.yml/badge.svg)](https://github.com/siinanXD/MaintanaceAIsisst/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
+[![Docker](https://img.shields.io/badge/docker-ready-2496ED?logo=docker&logoColor=white)](./Dockerfile)
 
-Modulare Flask-Anwendung fuer Wartung, Produktion und Instandhaltung. Die App bietet JWT-Login, rollenbasierte Navigation, Aufgaben, Fehlerkataloge, Mitarbeiterdaten, Maschinen, Lager und optionale KI-Funktionen.
+A modular Flask application for industrial maintenance teams. Manages tasks, error catalogs, employees, machines, inventory, and shift plans — with an optional OpenAI integration that falls back to local rules when no API key is configured.
 
 ## Screenshots
 
@@ -10,382 +12,170 @@ Modulare Flask-Anwendung fuer Wartung, Produktion und Instandhaltung. Die App bi
 | --- | --- |
 | ![Dashboard](docs/screenshots/dashboard.svg) | ![Tasks](docs/screenshots/tasks.svg) |
 
-| Fehlerkatalog | KI-Funktionen |
+| Error Catalog | AI Features |
 | --- | --- |
-| ![Fehlerkatalog](docs/screenshots/error-catalog.svg) | ![KI-Funktionen](docs/screenshots/ai-features.svg) |
+| ![Error Catalog](docs/screenshots/error-catalog.svg) | ![AI Features](docs/screenshots/ai-features.svg) |
 
 ## Features
 
-* Benutzer-Authentifizierung mit JWT
-* Rollen- und Dashboard-Rechteverwaltung
-* Bereichsbasierte Tasks und Fehlerlisten
-* Admin-konfigurierbare Dashboard-Rechte mit getrenntem Lesen und Schreiben
-* KI-Service-Layer mit OpenAI- und Mock-Provider
-* Smart Task Generator aus Freitext
-* KI-gestuetzte Task-Priorisierung mit lokalem Fallback
-* KI-gestuetzte Fehleranalyse fuer den Fehlerkatalog
-* Vorschlag aehnlicher Fehler zur Duplikatvermeidung
-* Automatische HTML-Wartungsberichte fuer abgeschlossene Tasks
-* Dokumentenuebersicht mit Filtern und Download
-* KI-Dokumentpruefung fuer Wartungsberichte mit lokalem Fallback
-* Wissenssuche ueber Tasks, Fehler und Dokument-Metadaten
-* AI-Feedback fuer spaetere Qualitaetsverbesserung
-* Mitarbeiterverwaltung mit Qualifikationen und Favoritenmaschine
-* Maschinenverwaltung mit Produktionsinhalt und benoetigter Mitarbeiterzahl
-* Maschinen-Historie mit Tasks, Fehlern, Wartungsberichten und Zusammenfassung
-* Lagerverwaltung mit Materialname, Kosten, Anzahl, Maschine, Hersteller und Gesamtwert
-* Ersatzteil-Prognose auf Basis von Tasks, Maschinen und Lagerbestand
-* KI-Chat fuer Fehlerhilfe und heutige Tasks
-* Taegliches KI-Briefing fuer Tasks, Lager, Fehler und Dokumente
-* Maschinen-KI-Assistent auf Basis der Anlagenakte
-* KI-gestuetzte Schichtplanung fuer Produktionsmitarbeiter mit lokalem Fallback
-* Persistente Datenspeicherung via SQLite
+**Auth & Access Control**
+- JWT authentication with role-based navigation
+- Per-dashboard read/write permissions configurable by admins
+- Employee data access tiers: none · basic · shift · confidential
 
-## Setup
+**Tasks & Errors**
+- Department-scoped task and error catalog management
+- AI-assisted task suggestions from free text, with priority scoring
+- Similar-error detection to avoid duplicate catalog entries
+- Automatic HTML maintenance reports on task completion
 
-Voraussetzungen:
+**AI Integration** (OpenAI optional, local fallback included)
+- Daily briefing summarizing tasks, inventory, errors, and documents
+- Machine assistant answering questions from the asset history
+- Document quality review for maintenance reports
+- Shift plan generation respecting ArbZG work-time rules
 
-* Python 3.11 oder neuer
-* Node.js nur, wenn CSS neu gebaut werden soll
+**Workforce & Production**
+- Employee management with qualifications and preferred machine
+- Machine management with production content and staffing requirements
+- Drag-and-drop shift planner with publish workflow and audit log
+- Shift handover protocol (digital logbook)
+- Vacation request workflow with manager approval and calendar view
 
-```powershell
+**Infrastructure**
+- Knowledge search across tasks, errors, and document metadata
+- Inventory management with spare-parts forecast
+- Swagger UI + OpenAPI JSON auto-generated from code
+- Docker Compose setup with Gunicorn and persistent volumes
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Backend | Flask, SQLAlchemy, Flask-JWT-Extended |
+| Database | SQLite (dev) — swap via `DATABASE_URL` |
+| AI | OpenAI API with local rule-based fallback |
+| Frontend | Jinja2 templates, Tailwind CSS, vanilla JS |
+| Tests | pytest (133 tests, no external services required) |
+| CI | GitHub Actions — lint, compile, test, Docker build |
+
+## Getting Started
+
+**Prerequisites:** Python 3.11+, Node.js only if rebuilding CSS.
+
+```bash
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+source .venv/bin/activate        # Windows: .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-copy .env.example .env
+cp .env.example .env             # Windows: copy .env.example .env
 python seed.py
 python run.py --host 127.0.0.1 --port 5050
 ```
 
-Optional mit lokalem HTTPS:
+Open `http://127.0.0.1:5050`. Demo credentials after `seed.py`:
 
-```powershell
-python run.py --https
-```
+| Username | Password | Role |
+|----------|----------|------|
+| `master.admin` | `Demo1234!` | Master Admin |
+| `produktion.leitung` | `Demo1234!` | Production lead |
+| `instandhaltung.leitung` | `Demo1234!` | Maintenance lead |
 
-Die Standarddatenbank liegt unter `data/maintenance.db`. Beim Start werden die Standardbereiche IT, Verwaltung, Instandhaltung und Produktion angelegt.
+### Docker
 
-Demo-Login nach `python seed.py`:
-
-* User: `master.admin`
-* Passwort: `Demo1234!`
-* Weitere Demo-User: `instandhaltung.leitung`, `produktion.leitung`, `it.leitung`, `verwaltung.leitung`
-* Alle Demo-User nutzen lokal dasselbe Demo-Passwort. Keine echten Passwoerter oder produktiven Secrets im Repository ablegen.
-
-## Docker Setup
-
-Die App kann lokal production-like mit Docker Compose gestartet werden. Docker
-nutzt `gunicorn`, bindet im Container auf `0.0.0.0:5050` und speichert SQLite,
-Dokumente und Logs in Docker-Volumes.
-
-Vorbereitung:
-
-```powershell
-copy .env.example .env
-```
-
-Setze in `.env` mindestens produktionsnahe Secrets:
-
-```env
-SECRET_KEY=replace-with-a-long-random-secret
-JWT_SECRET_KEY=replace-with-a-different-long-random-secret
-OPENAI_API_KEY=
-```
-
-Build und Start:
-
-```powershell
-docker compose build
-docker compose up
-```
-
-Alternativ in einem Schritt:
-
-```powershell
+```bash
+cp .env.example .env   # set SECRET_KEY and JWT_SECRET_KEY
 docker compose up --build
 ```
 
-Die App ist danach unter `http://127.0.0.1:5050` erreichbar. Der Healthcheck
-fuer Container, Reverse Proxy oder Monitoring liegt unter:
+App runs at `http://127.0.0.1:5050`. Health check: `GET /health`.
 
-```http
-GET http://127.0.0.1:5050/health
+## Configuration
+
+Copy `.env.example` to `.env` and set these values:
+
+```env
+SECRET_KEY=change-this-in-production
+JWT_SECRET_KEY=change-this-in-production
+DATABASE_URL=sqlite:///data/maintenance.db
+AI_PROVIDER=openai          # or "mock" for local-only mode
+OPENAI_API_KEY=             # leave empty to use local fallback
+OPENAI_MODEL=gpt-4o-mini
 ```
 
-Erwartete Antwort:
+`.env` is excluded from version control. Never commit real secrets.
 
-```json
-{
-  "status": "ok"
-}
+## Project Structure
+
+```
+app/
+├── __init__.py          # app factory, blueprint registration
+├── models.py            # SQLAlchemy models
+├── config.py            # configuration class
+├── extensions.py        # db, jwt, migrate instances
+├── security.py          # auth decorators
+├── permissions.py       # role and dashboard permission helpers
+├── responses.py         # consistent JSON response helpers
+├── services/            # business logic (task, error, AI, search…)
+├── templates/           # Jinja2 HTML templates
+├── static/              # Tailwind CSS output, JS
+├── auth/                # login, logout, /me
+├── tasks/               # task CRUD and AI workflows
+├── errors/              # error catalog and similarity search
+├── employees/           # employee management
+├── machines/            # machine management and AI assistant
+├── shiftplans/          # shift planning, drag-and-drop, audit log
+├── handover/            # shift handover protocol
+├── vacations/           # vacation requests and approval workflow
+├── inventory/           # inventory and spare-parts forecast
+├── documents/           # document listing and AI review
+├── ai/                  # chat, daily briefing, status endpoints
+├── search/              # cross-domain knowledge search
+└── admin/               # user and permission management
+tests/                   # 133 pytest tests, SQLite in-memory
+docs/
+├── API_PROTOCOL.md      # full endpoint reference
+└── screenshots/
 ```
 
-Container stoppen:
-
-```powershell
-docker compose down
-```
-
-Persistente Demo-Daten liegen im Docker-Volume `maintenance_data`. Um auch
-Volumes zu loeschen:
-
-```powershell
-docker compose down -v
-```
-
-## Quality Checks
-
-Lokal dieselben Basischecks wie in GitHub Actions ausfuehren:
-
-```powershell
-.\.venv\Scripts\python.exe -m ruff check .
-.\.venv\Scripts\python.exe -m compileall app seed_demo.py seed.py run.py
-.\.venv\Scripts\python.exe -m pytest
-```
-
-Die CI laeuft auf Pushes und Pull Requests mit Python 3.11, nutzt eine
-isolierte SQLite-Testdatenbank, setzt `AI_PROVIDER=mock` und benoetigt keinen
-echten OpenAI-Key. Zusaetzlich wird das Docker-Image gebaut, aber nicht
-gepusht.
-
-## Demo Walkthrough
-
-1. App starten und unter `http://127.0.0.1:5050` oeffnen.
-2. Mit `master.admin` und `Demo1234!` anmelden.
-3. Dashboard pruefen: KPI-Karten, Daily Briefing und priorisierte Tasks zeigen den Betriebszustand.
-4. In `Tasks` einen offenen Task starten und danach abschliessen. Optional einen Wartungsbericht erzeugen.
-5. In `Fehlerkatalog` nach `Temperatur CNC` suchen und aehnliche Fehler pruefen.
-6. In `Maschinen` eine Anlage oeffnen und den Maschinen-Assistenten mit einer Wartungsfrage testen.
-7. In `Lager` die Ersatzteil-Prognose ausfuehren und knappe Materialien pruefen.
-8. In `Dokumente` generierte Wartungsberichte pruefen und herunterladen.
-9. In `Swagger` die API-Endpunkte und Beispielpayloads nachvollziehen.
-
-## Architektur
+## Architecture
 
 ```mermaid
 flowchart LR
-    Browser["Browser UI<br>Jinja + CSS + JavaScript"] --> Flask["Flask App Factory"]
-    Flask --> Routes["Blueprint Routes<br>auth, tasks, errors, ai, inventory"]
-    Routes --> Services["Service Layer<br>validation, workflows, AI fallback"]
+    Browser["Browser\nJinja2 + Tailwind + JS"] --> Flask["Flask App Factory"]
+    Flask --> Routes["Blueprint Routes\n16 domain modules"]
+    Routes --> Services["Service Layer\nvalidation · workflows · AI"]
     Services --> Models["SQLAlchemy Models"]
-    Models --> SQLite["SQLite database"]
-    Services --> AI["OpenAI provider<br>or local fallback"]
-    Flask --> Logs["Structured logs<br>logs/app.log + logs/error.log"]
+    Models --> SQLite["SQLite"]
+    Services --> AI["OpenAI API\nor local fallback"]
+    Flask --> Logs["Structured logs\nlogs/app.log"]
 ```
 
-Die Anwendung folgt einer einfachen Trennung: Routes nehmen HTTP-Daten an,
-Services validieren und fuehren Workflows aus, Models kapseln Persistenz.
-KI-Integrationen sind optional und fallen bei fehlendem API-Key auf lokale
-Regeln zurueck.
+Routes accept HTTP input and delegate immediately to services. Services validate, run workflows, and return `(result, error, status_code)` tuples. AI integrations are isolated behind a provider interface and always have a local fallback.
 
-## Rollen, Rechte und Navigation
+## API
 
-`master_admin` sieht alle Bereiche: Dashboard, Tasks, Fehlerliste, Mitarbeiter, Schichtplan, Maschinen, Lager und Users.
+Interactive docs available after starting the app:
 
-Alle anderen Rollen bekommen Dashboard-Rechte ueber die Admin-Oberflaeche. Pro Dashboard kann der Admin `Anzeigen` und `Bearbeiten` setzen. Die API prueft diese Rechte serverseitig; die Navigation versteckt nur die nicht erlaubten Bereiche.
+- **Swagger UI:** `http://127.0.0.1:5050/swagger/`
+- **OpenAPI JSON:** `http://127.0.0.1:5050/api/swagger.json`
 
-Mitarbeiterdaten sind zusaetzlich gestuft:
-
-* `none`: keine Mitarbeiterdaten
-* `basic`: Personalnummer, Name, Abteilung, Team
-* `shift`: zusaetzlich Schicht, Qualifikationen und Favoritenmaschine
-* `confidential`: zusaetzlich Geburtsdatum, Adresse, Gehaltsklasse und Dokumente
-
-Tasks und Fehler bleiben fuer Nicht-Admins weiterhin auf den eigenen Bereich gefiltert.
-
-## Wichtige API-Bereiche
-
-Alle geschuetzten Endpunkte verwenden:
-
+All protected endpoints require:
 ```http
 Authorization: Bearer <access_token>
 ```
 
-Auth:
+See [`docs/API_PROTOCOL.md`](docs/API_PROTOCOL.md) for the full endpoint reference.
 
-* `POST /api/auth/login`
-* `GET /api/auth/me`
+## Running Tests
 
-Tasks und Fehler:
-
-* `GET/POST /api/tasks`
-* `POST /api/tasks/prioritize`
-* `GET/PUT/DELETE /api/tasks/<id>`
-* `POST /api/tasks/<id>/start`
-* `POST /api/tasks/<id>/complete`
-* `GET/POST /api/errors`
-* `GET/PUT/DELETE /api/errors/<id>`
-* `GET /api/errors/search?query=...`
-* `POST /api/errors/similar`
-* `GET /api/ai/daily-briefing`
-* `POST /api/machines/<id>/assistant`
-
-Admin-only Erweiterungen:
-
-* `GET/POST /api/employees`
-* `GET/POST /api/machines`
-* `GET/POST /api/inventory`
-* `GET /api/inventory/summary`
-* `POST /api/inventory/forecast`
-* `GET /api/shiftplans`
-* `POST /api/shiftplans/generate`
-* `DELETE /api/shiftplans/<id>`
-* `GET /api/machines/<id>/history`
-
-Admin-Rechteverwaltung:
-
-* `GET /api/admin/users/<id>/permissions`
-* `PUT /api/admin/users/<id>/permissions`
-
-## Swagger API Documentation
-
-Die strukturierte API-Dokumentation ist nach dem Start unter folgenden Routen
-verfuegbar:
-
-* Swagger UI: `http://127.0.0.1:5050/swagger/`
-* OpenAPI JSON: `http://127.0.0.1:5050/api/swagger.json`
-* HTML-Uebersicht: `http://127.0.0.1:5050/api-docs`
-
-Dokumentiert sind Auth, Task-Lifecycle, Fehlerkatalog, KI-Endpunkte,
-Maschinen-Assistent und Ersatzteil-Prognose inklusive Request- und
-Response-Beispielen.
-
-## KI-Integration
-
-OpenAI ist optional. Ohne API-Key nutzt die App lokale Fallbacks fuer Chat und Schichtplanung. Der KI-Chat baut seinen Kontext aus denselben Dashboard- und Mitarbeiterdatenrechten wie die API. Produktion kann dadurch keine Personaldaten ueber die KI abrufen, waehrend Personalabteilung oder Admins je nach Freigabe mehr Kontext erhalten.
-
-```env
-OPENAI_API_KEY=your_openai_api_key_here
-OPENAI_MODEL=gpt-4o-mini
-AI_PROVIDER=openai
-DOCUMENTS_FOLDER=documents
+```bash
+pytest                    # run all 133 tests
+pytest tests/test_auth.py # single file
+pytest -q --tb=short      # compact output
 ```
 
-Wichtig: `.env.example` ist nur eine Vorlage und wird nicht fuer echte Secrets genutzt. Die App laedt lokale Werte aus `.env`. Lege den echten Key deshalb in `.env` ab; diese Datei ist per `.gitignore` ausgeschlossen.
+Tests use an in-memory SQLite database and a mock AI provider — no `.env` or external services required.
 
-Die Chat-API gibt sichere Diagnosestati zurueck, ohne Keys offenzulegen:
+## License
 
-* `api_key_missing`
-* `openai_error`
-* `fallback_used`
-* `openai_used`
-
-Die Chat-Bubble zeigt pro Antwort, ob OpenAI genutzt wurde, eine lokale Spezialantwort gegriffen hat oder ein Fallback aktiv war. Als Admin kann `/api/ai/status` genutzt werden, um zu pruefen, ob `OPENAI_API_KEY` geladen wurde.
-
-Troubleshooting:
-
-* `api_key_missing`: `.env` fehlt oder `OPENAI_API_KEY` ist leer.
-* `openai_error`: Key, Modell oder Netzwerk pruefen.
-* `local_answer`: Erwartet fuer schnelle Spezialfaelle wie heutige Tasks.
-
-## KI-Workflows
-
-Smart Task Generator:
-
-* `POST /api/tasks/suggest`
-* Erzeugt aus Freitext einen bearbeitbaren Vorschlag.
-* Speichert nichts, bis der Nutzer den Vorschlag ins Taskformular uebernimmt.
-
-Task-Priorisierung:
-
-* `POST /api/tasks/prioritize`
-* Bewertet sichtbare Tasks nach Dringlichkeit, Faelligkeit, Status und Risikobegriffen.
-* Speichert keine Scores und nutzt ohne OpenAI-Key einen lokalen Fallback.
-
-KI-Fehleranalyse:
-
-* `POST /api/errors/analyze`
-* Erzeugt Maschine, Fehler, moegliche Ursachen und Loesung als Vorschlag.
-* Speichert nichts, bis der Nutzer den Vorschlag uebernimmt und den Fehler speichert.
-
-Aehnliche Fehler:
-
-* `POST /api/errors/similar`
-* Findet sichtbare Katalogeintraege mit aehnlicher Maschine, Beschreibung oder Fehlernummer.
-* Hilft, doppelte Fehlerkatalogeintraege vor dem Speichern zu vermeiden.
-
-Wartungsberichte:
-
-* Beim Abschluss eines Tasks kann `generate_report: true` gesendet werden.
-* Die App erzeugt einen HTML-Bericht unter `documents/YYYY/MM/task_<id>/`.
-* Dokument-Metadaten werden in der Datenbank gespeichert und ueber `/api/documents` gelistet.
-
-Dokumentpruefung:
-
-* `POST /api/documents/<id>/review`
-* Prueft Wartungsberichte auf Maschine, Ursache, Massnahme, Ergebnis und Notizen.
-* Speichert keine Ergebnisse und nutzt ohne OpenAI-Key einen lokalen Fallback.
-
-Wissenssuche:
-
-* `GET /api/search?q=...`
-* Durchsucht zunaechst sichtbare Tasks, Fehler und Dokument-Metadaten.
-* Die Struktur ist fuer spaetere Embeddings oder Vector Search vorbereitet.
-
-Ersatzteil-Prognose:
-
-* `POST /api/inventory/forecast`
-* Verknuepft sichtbare Tasks mit Maschinen und Lagerpositionen.
-* Liefert nicht gespeicherte Warnungen fuer knappe oder fehlende Ersatzteile.
-
-Die Schichtplanung nutzt Produktionsmitarbeiter, Rhythmus, Praeferenzen, Qualifikationen, Favoritenmaschine und Maschinenbedarf. Der lokale Fallback plant mit max. 8h Schichtdauer und 11h Ruhezeit als Regelhinweis.
-Generierte Plaene enthalten Warnungen zu Doppelbelegung, Qualifikationshinweisen, Ruhezeit und Maschinenabdeckung.
-
-Maschinen-Historie:
-
-* `GET /api/machines/<id>/history`
-* Buendelt sichtbare Tasks, Fehler und Wartungsberichte pro Maschine.
-* Nutzt OpenAI fuer Zusammenfassungen, wenn konfiguriert; sonst lokalen Fallback.
-
-Maschinen-KI-Assistent:
-
-* `POST /api/machines/<id>/assistant`
-* Antwortet anhand der sichtbaren Anlagenakte und optionaler Lager-Prognose.
-
-Taegliches Briefing:
-
-* `GET /api/ai/daily-briefing`
-* Buendelt wichtige sichtbare Hinweise fuer den aktuellen Tag.
-
-## Konfiguration
-
-```env
-FLASK_ENV=development
-SECRET_KEY=change-this-secret-in-production
-JWT_SECRET_KEY=change-this-secret-in-production
-DATABASE_URL=sqlite:///data/maintenance.db
-OPENAI_API_KEY=your_openai_api_key_here
-OPENAI_MODEL=gpt-4o-mini
-```
-
-`.env` darf nicht committed werden. `.env.example` enthaelt nur Platzhalter. Wenn ein echter Key versehentlich in `.env.example` stand, sollte er beim Anbieter rotiert werden.
-
-## Dokumentation
-
-Das ausfuehrliche API-Protokoll liegt in `docs/API_PROTOCOL.md`. Die
-maschinenlesbare OpenAPI-Spezifikation wird aus `app/docs/openapi.py`
-bereitgestellt.
-
-## Release-Checks
-
-Vor einem Release sollten die Kernchecks lokal gruen sein:
-
-```powershell
-.\.venv\Scripts\python.exe -m pytest
-.\.venv\Scripts\python.exe -m compileall app seed_demo.py
-npm.cmd run build:css
-```
-
-`npm.cmd` vermeidet unter Windows die PowerShell-Execution-Policy fuer `npm.ps1`.
-Der CSS-Build darf keine funktionalen Dateien ausser `app/static/css/output.css`
-veraendern.
-
-Manueller Smoke-Test:
-
-* Demo-Daten seeden und App lokal starten.
-* Als Admin und eingeschraenkter User anmelden.
-* Dashboard-Briefing, Task-Priorisierung, aehnliche Fehler, Lager-Prognose,
-  Maschinen-Historie/Assistent, Dokumentpruefung und Schichtplan-Warnungen
-  pruefen.
-* Sicherstellen, dass eingeschraenkte User nur erlaubte Dashboards und eigene
-  Bereichsdaten sehen.
+MIT
