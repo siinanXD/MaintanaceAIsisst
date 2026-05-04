@@ -1,10 +1,10 @@
 from sqlalchemy import or_
 
-from app.errors.services import visible_errors_query
+from app.services.error_service import visible_errors_query
 from app.models import ErrorEntry, GeneratedDocument, Task
 from app.security import has_dashboard_permission
 from app.services.document_service import visible_documents_query
-from app.tasks.services import visible_tasks_query
+from app.services.task_service import visible_tasks_query
 
 
 def search_knowledge(query_text, user):

@@ -2,7 +2,7 @@ import re
 import unicodedata
 
 from app.models import InventoryMaterial, Machine
-from app.tasks.services import prioritize_visible_tasks
+from app.services.task_service import prioritize_visible_tasks
 
 
 def forecast_inventory_risks(data, user):

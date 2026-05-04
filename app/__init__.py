@@ -183,23 +183,30 @@ def create_app(config_class=Config):
     migrate.init_app(app, db)
     jwt.init_app(app)
 
+    # Auth & administration
     app.register_blueprint(auth_bp, url_prefix="/api/v1/auth")
+    app.register_blueprint(admin_bp, url_prefix="/api/v1/admin")
+
+    # Core domain: tasks, errors, documents
     app.register_blueprint(departments_bp, url_prefix="/api/v1/departments")
     app.register_blueprint(tasks_bp, url_prefix="/api/v1/tasks")
     app.register_blueprint(errors_bp, url_prefix="/api/v1/errors")
+    app.register_blueprint(documents_bp, url_prefix="/api/v1/documents")
+
+    # Workforce & production
     app.register_blueprint(employees_bp, url_prefix="/api/v1/employees")
     app.register_blueprint(machines_bp, url_prefix="/api/v1/machines")
     app.register_blueprint(inventory_bp, url_prefix="/api/v1/inventory")
     app.register_blueprint(shiftplans_bp, url_prefix="/api/v1/shiftplans")
-    app.register_blueprint(documents_bp, url_prefix="/api/v1/documents")
+    app.register_blueprint(handover_bp, url_prefix="/api/v1/handover")
+    app.register_blueprint(vacations_bp, url_prefix="/api/v1/vacations")
+
+    # Cross-cutting: AI, search, health, frontend
+    app.register_blueprint(ai_bp, url_prefix="/api/v1/ai")
     app.register_blueprint(search_bp, url_prefix="/api/v1/search")
     app.register_blueprint(health_bp, url_prefix="/api/v1/health")
     app.register_blueprint(public_health_bp)
-    app.register_blueprint(ai_bp, url_prefix="/api/v1/ai")
-    app.register_blueprint(admin_bp, url_prefix="/api/v1/admin")
     app.register_blueprint(web_bp)
-    app.register_blueprint(handover_bp,  url_prefix="/api/v1/handover")
-    app.register_blueprint(vacations_bp, url_prefix="/api/v1/vacations")
     configure_api_documentation(app)
     register_error_handlers(app)
 

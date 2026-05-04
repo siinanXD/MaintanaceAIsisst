@@ -5,7 +5,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from flask import current_app
 
-from app.errors.services import search_errors
+from app.services.error_service import search_errors
 from app.inventory.services import forecast_inventory_risks
 from app.extensions import db
 from app.models import (
@@ -19,7 +19,7 @@ from app.models import (
 from app.security import employee_access_level, has_dashboard_permission
 from app.services.document_service import visible_documents_query
 from app.services.ai_service import AIServiceError, get_ai_provider
-from app.tasks.services import visible_tasks_query
+from app.services.task_service import visible_tasks_query
 
 
 LAST_OPENAI_ERROR = None
