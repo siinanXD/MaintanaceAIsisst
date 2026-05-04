@@ -772,6 +772,11 @@
     const permissionList = document.querySelector("[data-permission-list]");
     const permissionForm = document.querySelector("[data-permission-form]");
     const permissionMessage = document.querySelector("[data-permission-message]");
+    const filterQ = document.querySelector("[data-filter-q]");
+    const filterRole = document.querySelector("[data-filter-role]");
+    const filterStatus = document.querySelector("[data-filter-status]");
+    const emptyHint = document.querySelector("[data-user-empty]");
+    const tableWrap = document.querySelector("[data-user-table]");
     let selectedUser = null;
     let employees = [];
 
@@ -907,7 +912,25 @@
     }
 
     async function load() {
-      const users = await api("/api/v1/admin/users");
+      const q = filterQ ? filterQ.value.trim() : "";
+      const role = filterRole ? filterRole.value : "";
+      const status = filterStatus ? filterStatus.value : "";
+      const hasFilter = q || role || status;
+
+      if (!hasFilter) {
+        if (emptyHint) emptyHint.hidden = false;
+        if (tableWrap) tableWrap.hidden = true;
+        list.innerHTML = "";
+        return [];
+      }
+      if (emptyHint) emptyHint.hidden = true;
+      if (tableWrap) tableWrap.hidden = false;
+
+      const params = new URLSearchParams();
+      if (q) params.set("q", q);
+      if (role) params.set("role", role);
+      if (status) params.set("status", status);
+      const users = await api("/api/v1/admin/users?" + params.toString());
       try {
         employees = listData(await api("/api/v1/employees"));
       } catch (error) {
@@ -976,7 +999,14 @@
       return users;
     }
 
-    await load();
+    let debounceTimer = null;
+    function scheduleLoad() {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(load, 300);
+    }
+    if (filterQ) filterQ.addEventListener("input", scheduleLoad);
+    if (filterRole) filterRole.addEventListener("change", load);
+    if (filterStatus) filterStatus.addEventListener("change", load);
   }
 
   async function initEmployees() {

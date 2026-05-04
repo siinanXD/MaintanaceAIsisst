@@ -46,11 +46,31 @@
     <div class="card-body">
       <div class="panel-header">
         <div>
-          <h2 class="panel-title">Alle Nutzer</h2>
+          <h2 class="panel-title">Nutzer suchen</h2>
           <p class="panel-meta">Nur fuer Master/Admin sichtbar</p>
         </div>
       </div>
-      <div class="table-wrap">
+      <div class="toolbar mb-4 flex flex-wrap gap-3">
+        <input class="input input-bordered flex-1 min-w-48" type="search"
+               placeholder="Nutzername oder E-Mail..."
+               data-filter-q autocomplete="off">
+        <select class="select select-bordered" data-filter-role>
+          <option value="">Alle Rollen</option>
+          <option value="master_admin">Master Admin</option>
+          <option value="it">IT</option>
+          <option value="verwaltung">Verwaltung</option>
+          <option value="instandhaltung">Instandhaltung</option>
+          <option value="produktion">Produktion</option>
+          <option value="personalabteilung">Personalabteilung</option>
+        </select>
+        <select class="select select-bordered" data-filter-status>
+          <option value="">Alle Status</option>
+          <option value="active">Aktiv</option>
+          <option value="inactive">Gesperrt</option>
+        </select>
+      </div>
+      <p class="panel-meta py-6 text-center" data-user-empty>Filter eingeben um Nutzer zu laden.</p>
+      <div class="table-wrap" data-user-table hidden>
         <table class="table data-table">
           <thead>
             <tr>
