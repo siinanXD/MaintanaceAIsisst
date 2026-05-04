@@ -1,7 +1,6 @@
 from pathlib import Path
 
 from flask import Flask
-from sqlalchemy import inspect
 from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.exceptions import HTTPException
 
@@ -28,114 +27,6 @@ from app.handover.routes import handover_bp
 from app.vacations.routes import vacations_bp
 from app.permissions import ensure_all_user_default_permissions
 from app.responses import error_response
-
-
-def _run_lightweight_migrations():
-    """Apply small SQLite-safe schema updates for existing installations."""
-    inspector = inspect(db.engine)
-    table_names = inspector.get_table_names()
-    if "user" not in table_names:
-        return
-
-    if "dashboard_permission" not in table_names:
-        with db.engine.begin() as connection:
-            connection.exec_driver_sql(
-                """
-                CREATE TABLE dashboard_permission (
-                    id INTEGER NOT NULL PRIMARY KEY,
-                    user_id INTEGER NOT NULL,
-                    dashboard VARCHAR(40) NOT NULL,
-                    can_view BOOLEAN NOT NULL DEFAULT 0,
-                    can_write BOOLEAN NOT NULL DEFAULT 0,
-                    employee_access_level VARCHAR(40) NOT NULL DEFAULT 'none',
-                    FOREIGN KEY(user_id) REFERENCES user (id),
-                    CONSTRAINT uq_dashboard_permission_user_dashboard
-                        UNIQUE (user_id, dashboard)
-                )
-                """
-            )
-
-    columns = {column["name"] for column in inspector.get_columns("user")}
-    if "is_active" not in columns:
-        with db.engine.begin() as connection:
-            connection.exec_driver_sql(
-                "ALTER TABLE user ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1"
-            )
-    if "employee_id" not in columns:
-        with db.engine.begin() as connection:
-            connection.exec_driver_sql(
-                "ALTER TABLE user ADD COLUMN employee_id INTEGER"
-            )
-
-    with db.engine.begin() as connection:
-        if "task" in table_names:
-            task_columns = {column["name"] for column in inspector.get_columns("task")}
-            task_migrations = {
-                "current_worker_id": "INTEGER",
-                "started_at": "DATETIME",
-                "completed_by_id": "INTEGER",
-                "completed_at": "DATETIME",
-            }
-            for column_name, column_type in task_migrations.items():
-                if column_name not in task_columns:
-                    connection.exec_driver_sql(
-                        f"ALTER TABLE task ADD COLUMN {column_name} {column_type}"
-                    )
-
-        if "employee" in table_names:
-            employee_columns = {column["name"] for column in inspector.get_columns("employee")}
-            employee_migrations = {
-                "qualifications": "TEXT NOT NULL DEFAULT ''",
-                "favorite_machine": "VARCHAR(160) NOT NULL DEFAULT ''",
-                "favorite_machine_id": "INTEGER",
-                "vacation_days_per_year": "INTEGER NOT NULL DEFAULT 30",
-            }
-            for column_name, column_type in employee_migrations.items():
-                if column_name not in employee_columns:
-                    connection.exec_driver_sql(
-                        f"ALTER TABLE employee ADD COLUMN {column_name} {column_type}"
-                    )
-
-        if "error_entry" in table_names:
-            error_columns = {column["name"] for column in inspector.get_columns("error_entry")}
-            if "machine_id" not in error_columns:
-                connection.exec_driver_sql(
-                    "ALTER TABLE error_entry ADD COLUMN machine_id INTEGER"
-                )
-
-        if "generated_document" in table_names:
-            doc_columns = {
-                column["name"] for column in inspector.get_columns("generated_document")
-            }
-            if "machine_id" not in doc_columns:
-                connection.exec_driver_sql(
-                    "ALTER TABLE generated_document ADD COLUMN machine_id INTEGER"
-                )
-
-        if "shift_plan" in table_names:
-            sp_columns = {
-                column["name"] for column in inspector.get_columns("shift_plan")
-            }
-            shift_plan_migrations = {
-                "department": "VARCHAR(120) NOT NULL DEFAULT ''",
-                "created_by": "INTEGER",
-                "status": "VARCHAR(20) NOT NULL DEFAULT 'draft'",
-                "published_at": "DATETIME",
-            }
-            for column_name, column_type in shift_plan_migrations.items():
-                if column_name not in sp_columns:
-                    connection.exec_driver_sql(
-                        f"ALTER TABLE shift_plan ADD COLUMN {column_name} {column_type}"
-                    )
-
-        if "shift_plan_entry" in table_names:
-            spe_columns = {
-                column["name"] for column in inspector.get_columns("shift_plan_entry")
-            }
-            if "created_at" not in spe_columns:
-                connection.exec_driver_sql(
-                    "ALTER TABLE shift_plan_entry ADD COLUMN created_at DATETIME"
-                )
 
 
 def register_error_handlers(app):
@@ -212,7 +103,6 @@ def create_app(config_class=Config):
 
     with app.app_context():
         db.create_all()
-        _run_lightweight_migrations()
         ensure_default_departments()
         ensure_all_user_default_permissions()
 
