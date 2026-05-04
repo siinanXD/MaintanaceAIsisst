@@ -35,11 +35,9 @@ Dieses Dokument beschreibt den aktuellen Stand der Codebasis, bekannte technisch
 
 ### 🔴 Hoch
 
-**1. `_run_lightweight_migrations()` in `app/__init__.py` ablösen**
-- 130 Zeilen rohe `ALTER TABLE` Statements laufen bei jedem App-Start
-- Flask-Migrate ist installiert aber nicht initialisiert (`flask db init` fehlt)
-- Fix: `flask db init` → `flask db migrate` → `flask db upgrade` → Block entfernen
-- Dateien: `app/__init__.py`, neue `migrations/` Ordnerstruktur
+**1. ~~`_run_lightweight_migrations()` in `app/__init__.py` ablösen~~ ✅ ERLEDIGT**
+- Funktion entfernt; `migrations/` Ordner mit initialer Alembic-Baseline angelegt
+- Neue Schema-Änderungen: `flask db migrate` + `flask db upgrade`
 
 **2. `app/models.py` aufteilen**
 - Alle 15+ Modelle in einer 658-Zeilen-Datei
@@ -208,7 +206,7 @@ Dieses Dokument beschreibt den aktuellen Stand der Codebasis, bekannte technisch
 | 4 | `app/shiftplans/services.py` | `914 Zeilen` — könnte in Sub-Module aufgeteilt werden | M |
 | 5 | `tests/conftest.py` | `make_document` nutzt `datetime.utcnow()` | XS |
 | 6 | Alle Routes | `Query.get()` → `db.session.get()` Legacy-Warnings | S |
-| 7 | `app/__init__.py` | `_run_lightweight_migrations()` → Alembic | L |
+| 7 | `app/__init__.py` | ~~`_run_lightweight_migrations()` → Alembic~~ ✅ | L |
 | 8 | `app/models.py` | 658 Zeilen, alle Modelle in einer Datei | L |
 | 9 | `seed.py` + `seed_demo.py` | zwei Skripte mit überlappender Logik | S |
 | 10 | Alle Templates | Inline-JS → externe Modul-Dateien | L |
@@ -233,6 +231,26 @@ npm.cmd run build:css
 # Demo-Daten
 python seed.py
 ```
+
+**Datenbankmigrationen (Flask-Migrate / Alembic):**
+
+```bash
+# Nach Modell-Änderungen in app/models.py — neue Migration erzeugen
+flask db migrate -m "kurze beschreibung"
+
+# Migration anwenden (lokale DB oder nach Deployment)
+flask db upgrade
+
+# Aktuellen Migrationsstand prüfen
+flask db current
+
+# Bestehende DB auf aktuellen Stand stempeln (einmalig nach Einführung von Alembic)
+flask db stamp head
+```
+
+> `db.create_all()` in `create_app()` übernimmt das erstmalige Anlegen aller Tabellen (Neuinstallation).
+> `flask db upgrade` wendet ausstehende Alembic-Migrationen an (Schema-Updates auf bestehenden DBs).
+> Neue Migrations-Dateien liegen unter `migrations/versions/`.
 
 **Neue Route anlegen:**
 1. `app/<domain>/routes.py` → Blueprint-Endpunkt

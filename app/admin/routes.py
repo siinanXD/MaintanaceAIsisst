@@ -32,8 +32,27 @@ def find_employee(employee_id):
 @admin_bp.get("/users")
 @roles_required(Role.MASTER_ADMIN)
 def list_users():
-    """Return all users for the master admin user management view."""
-    users = User.query.order_by(User.id.asc()).all()
+    """Return users filtered by optional query parameters: q, role, status."""
+    q = request.args.get("q", "").strip()
+    role_param = request.args.get("role", "").strip()
+    status_param = request.args.get("status", "").strip()
+
+    query = User.query
+    if q:
+        query = query.filter(
+            db.or_(User.username.ilike(f"%{q}%"), User.email.ilike(f"%{q}%"))
+        )
+    if role_param:
+        try:
+            query = query.filter(User.role == Role(role_param))
+        except ValueError:
+            return error_response(f"Invalid role: {role_param}", 400)
+    if status_param == "active":
+        query = query.filter(User.is_active.is_(True))
+    elif status_param == "inactive":
+        query = query.filter(User.is_active.is_(False))
+
+    users = query.order_by(User.id.asc()).all()
     return jsonify([user.to_dict() for user in users])
 
 
