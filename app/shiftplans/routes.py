@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from flask import Blueprint, jsonify, request
 
 from app.extensions import db
@@ -23,10 +25,39 @@ shiftplans_bp = Blueprint("shiftplans", __name__)
 @shiftplans_bp.get("")
 @dashboard_permission_required("shiftplans", "view")
 def list_shiftplans():
-    """Return generated shift plans with their entries."""
-    plans = ShiftPlan.query.order_by(ShiftPlan.created_at.desc()).all()
-    access_level = employee_access_level(current_user())
+    """Return shift plans — admins see all, others see only published."""
+    user = current_user()
+    query = ShiftPlan.query.order_by(ShiftPlan.created_at.desc())
+    if user.role != Role.MASTER_ADMIN:
+        query = query.filter(ShiftPlan.status == "published")
+    plans = query.all()
+    access_level = employee_access_level(user)
     return jsonify([plan.to_dict(access_level) for plan in plans])
+
+
+@shiftplans_bp.patch("/<int:plan_id>/publish")
+@dashboard_permission_required("shiftplans", "write")
+def publish_shiftplan(plan_id):
+    """Toggle a shift plan between draft and published."""
+    if current_user().role != Role.MASTER_ADMIN:
+        return error_response("Nur Administratoren koennen Plaene veroeffentlichen", 403)
+    plan = ShiftPlan.query.get_or_404(plan_id)
+    if plan.is_published:
+        plan.status = "draft"
+        plan.published_at = None
+    else:
+        plan.status = "published"
+        plan.published_at = datetime.utcnow()
+    db.session.add(
+        ShiftPlanChangeLog(
+            plan_id=plan.id,
+            user_id=current_user().id,
+            action="publish" if plan.is_published else "unpublish",
+        )
+    )
+    db.session.commit()
+    access_level = employee_access_level(current_user())
+    return success_response(plan.to_dict(access_level), message="Status aktualisiert")
 
 
 @shiftplans_bp.get("/calendar")

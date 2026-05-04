@@ -454,6 +454,8 @@ class ShiftPlan(db.Model):
     preferences = db.Column(db.Text, nullable=False, default="")
     notes = db.Column(db.Text, nullable=False, default="")
     department = db.Column(db.String(120), nullable=False, default="")
+    status = db.Column(db.String(20), nullable=False, default="draft")
+    published_at = db.Column(db.DateTime, nullable=True)
     created_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
@@ -463,6 +465,10 @@ class ShiftPlan(db.Model):
         cascade="all, delete-orphan",
     )
     creator = db.relationship("User", foreign_keys=[created_by])
+
+    @property
+    def is_published(self):
+        return self.status == "published"
 
     def to_dict(self, employee_access_level="confidential"):
         """Return shift plan data with filtered employee fields."""
@@ -475,6 +481,8 @@ class ShiftPlan(db.Model):
             "preferences": self.preferences,
             "notes": self.notes,
             "department": self.department,
+            "status": self.status,
+            "published_at": self.published_at.isoformat() if self.published_at else None,
             "created_by": self.creator.username if self.creator else None,
             "entries": [
                 entry.to_dict(employee_access_level) for entry in self.entries

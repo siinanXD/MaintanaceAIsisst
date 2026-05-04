@@ -116,6 +116,8 @@ def _run_lightweight_migrations():
             shift_plan_migrations = {
                 "department": "VARCHAR(120) NOT NULL DEFAULT ''",
                 "created_by": "INTEGER",
+                "status": "VARCHAR(20) NOT NULL DEFAULT 'draft'",
+                "published_at": "DATETIME",
             }
             for column_name, column_type in shift_plan_migrations.items():
                 if column_name not in sp_columns:
