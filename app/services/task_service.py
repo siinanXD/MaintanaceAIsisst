@@ -6,7 +6,7 @@ and do nothing more than validate input, call the service, and return a response
 """
 
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -216,14 +216,14 @@ def update_task_status(task, new_status, user):
         task.completed_at = None
     elif new_status == TaskStatus.IN_PROGRESS:
         task.current_worker = user
-        task.started_at = task.started_at or datetime.utcnow()
+        task.started_at = task.started_at or datetime.now(timezone.utc)
         task.completed_by_user = None
         task.completed_at = None
     elif new_status == TaskStatus.DONE:
         task.current_worker = task.current_worker or user
-        task.started_at = task.started_at or datetime.utcnow()
+        task.started_at = task.started_at or datetime.now(timezone.utc)
         task.completed_by_user = user
-        task.completed_at = datetime.utcnow()
+        task.completed_at = datetime.now(timezone.utc)
     elif new_status == TaskStatus.CANCELLED:
         task.completed_by_user = None
         task.completed_at = None
@@ -243,7 +243,7 @@ def start_task(task, user):
 
     task.status = TaskStatus.IN_PROGRESS
     task.current_worker = user
-    task.started_at = datetime.utcnow()
+    task.started_at = datetime.now(timezone.utc)
     task.completed_by_user = None
     task.completed_at = None
 
@@ -270,7 +270,7 @@ def complete_task(task, user):
 
     task.status = TaskStatus.DONE
     task.completed_by_user = user
-    task.completed_at = datetime.utcnow()
+    task.completed_at = datetime.now(timezone.utc)
 
     try:
         db.session.commit()

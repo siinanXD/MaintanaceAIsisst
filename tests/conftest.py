@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from itertools import count
 from pathlib import Path
 
@@ -324,7 +324,7 @@ def make_document(app):
                 department=department,
                 machine=machine,
                 created_by=created_by,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(timezone.utc),
             )
             db.session.add(document)
             db.session.commit()
@@ -344,7 +344,7 @@ def create_generated_document(app, task_id, created_by, relative_path, departmen
             department=department,
             machine="Anlage 1",
             created_by=created_by,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
         db.session.add(document)
         db.session.commit()

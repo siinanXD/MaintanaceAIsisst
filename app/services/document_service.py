@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from html import escape
 from html.parser import HTMLParser
 from pathlib import Path
@@ -460,7 +460,7 @@ class ReportTableParser(HTMLParser):
 def generate_maintenance_report(task, user, payload=None):
     """Generate and persist an HTML maintenance report for a completed task."""
     payload = payload or {}
-    created_at = datetime.utcnow()
+    created_at = datetime.now(timezone.utc)
     relative_dir = Path(
         str(created_at.year),
         f"{created_at.month:02d}",

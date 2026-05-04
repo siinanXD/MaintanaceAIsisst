@@ -1,5 +1,6 @@
 import pytest
 
+from app.extensions import db
 from app.models import Role, User
 from app.permissions import (
     get_employee_access_level,
@@ -18,7 +19,7 @@ def test_master_admin_has_all_effective_permissions(app, make_user):
     )
 
     with app.app_context():
-        user = User.query.get(user_data["id"])
+        user = db.session.get(User, user_data["id"])
         permissions = serialize_permissions(user)
 
     assert all(permission["can_view"] for permission in permissions.values())
@@ -31,7 +32,7 @@ def test_invalid_permission_inputs_raise_clear_errors(app, make_user):
     user_data = make_user(username="permission_user")
 
     with app.app_context():
-        user = User.query.get(user_data["id"])
+        user = db.session.get(User, user_data["id"])
         with pytest.raises(ValueError, match="Invalid dashboard"):
             validate_dashboard_key("unknown")
         with pytest.raises(ValueError, match="action must be view or write"):
@@ -142,7 +143,7 @@ def test_employee_access_levels_filter_employee_payload(
     response = client.get("/api/v1/employees", headers=auth_headers(user["username"]))
 
     with app.app_context():
-        stored_user = User.query.get(user["id"])
+        stored_user = db.session.get(User, user["id"])
         access_level = get_employee_access_level(stored_user)
 
     payload = response.get_json()["data"][0]

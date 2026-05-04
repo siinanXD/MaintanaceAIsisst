@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, request
 
@@ -120,7 +120,7 @@ def approve_vacation(request_id):
         return error_response("Antrag ist nicht mehr ausstehend", 409)
     vr.status      = "approved"
     vr.approved_by = current_user().id
-    vr.decided_at  = datetime.utcnow()
+    vr.decided_at  = datetime.now(timezone.utc)
     db.session.commit()
     return success_response(vr.to_dict(), message="Urlaubsantrag genehmigt")
 
@@ -136,7 +136,7 @@ def reject_vacation(request_id):
         return error_response("Antrag ist nicht mehr ausstehend", 409)
     vr.status      = "rejected"
     vr.approved_by = current_user().id
-    vr.decided_at  = datetime.utcnow()
+    vr.decided_at  = datetime.now(timezone.utc)
     db.session.commit()
     return success_response(vr.to_dict(), message="Urlaubsantrag abgelehnt")
 
@@ -146,7 +146,7 @@ def reject_vacation(request_id):
 def vacation_summary():
     """Return vacation balance for all employees for a given year."""
     try:
-        year = int(request.args.get("year") or datetime.utcnow().year)
+        year = int(request.args.get("year") or datetime.now(timezone.utc).year)
     except (TypeError, ValueError):
         return error_response("year muss eine Zahl sein", 400)
     employees = Employee.query.order_by(Employee.name.asc()).all()

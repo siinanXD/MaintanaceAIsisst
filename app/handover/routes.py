@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from flask import Blueprint, request
 
@@ -90,6 +90,6 @@ def complete_handover(handover_id):
     if handover.status == "completed":
         return error_response("Übergabe bereits abgeschlossen", 409)
     handover.status         = "completed"
-    handover.handed_over_at = datetime.utcnow()
+    handover.handed_over_at = datetime.now(timezone.utc)
     db.session.commit()
     return success_response(handover.to_dict(), message="Übergabe abgeschlossen")

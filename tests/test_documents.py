@@ -1,6 +1,6 @@
 """Tests for GET /api/documents filters and machine_id auto-resolution."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.extensions import db
 from app.models import ErrorEntry, Employee, GeneratedDocument, Role
@@ -113,7 +113,7 @@ def test_documents_filter_date_from_excludes_older(
     user = make_user(username="doc_filter_date_from", role=Role.INSTANDHALTUNG, department_name="Instandhaltung")
     task_id = make_task("Aufgabe D", creator_username=user["username"], department_name="Instandhaltung")
 
-    old_date = datetime.utcnow() - timedelta(days=30)
+    old_date = datetime.now(timezone.utc) - timedelta(days=30)
     with app.app_context():
         old_doc = GeneratedDocument(
             task_id=task_id,
@@ -128,7 +128,7 @@ def test_documents_filter_date_from_excludes_older(
         db.session.add(old_doc)
         db.session.commit()
 
-    today_str = datetime.utcnow().date().isoformat()
+    today_str = datetime.now(timezone.utc).date().isoformat()
     response = client.get(
         f"/api/v1/documents?date_from={today_str}",
         headers=auth_headers(user["username"]),

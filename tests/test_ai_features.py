@@ -3,6 +3,7 @@ from io import BytesIO
 
 import pytest
 
+from app.extensions import db
 from app.models import GeneratedDocument, Priority, Role
 from app.services.document_service import document_path
 
@@ -614,7 +615,7 @@ def test_search_requires_query(client, make_user, auth_headers):
 def _write_report(app, document_id, rows):
     """Write a generated report table for a test document."""
     with app.app_context():
-        document = GeneratedDocument.query.get(document_id)
+        document = db.session.get(GeneratedDocument, document_id)
         table_rows = "\n".join(
             f"<tr><th>{label}</th><td>{value}</td></tr>"
             for label, value in rows.items()
@@ -628,7 +629,7 @@ def _write_report(app, document_id, rows):
 def _delete_document_file(app, document_id):
     """Delete the stored file for a test document."""
     with app.app_context():
-        document = GeneratedDocument.query.get(document_id)
+        document = db.session.get(GeneratedDocument, document_id)
         path = document_path(document)
         if path.exists():
             path.unlink()
