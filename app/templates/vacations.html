@@ -18,30 +18,30 @@
       <div class="form-grid">
         <div class="field is-full">
           <label for="vac-employee">Mitarbeiter *</label>
-          <select class="select select-bordered" id="vac-employee" required>
+          <select class="select select-bordered" id="vac-employee" data-vac-employee required>
             <option value="" disabled selected>Bitte wählen…</option>
           </select>
         </div>
         <div class="field">
           <label for="vac-start">Von *</label>
-          <input class="input input-bordered" id="vac-start" type="date" required>
+          <input class="input input-bordered" id="vac-start" data-vac-start type="date" required>
         </div>
         <div class="field">
           <label for="vac-end">Bis *</label>
-          <input class="input input-bordered" id="vac-end" type="date" required>
+          <input class="input input-bordered" id="vac-end" data-vac-end type="date" required>
         </div>
-        <div class="field is-full" id="vac-days-wrap" hidden>
+        <div class="field is-full" data-vac-days-wrap hidden>
           <span class="panel-meta">Arbeitstage: </span>
-          <span class="badge badge-neutral" id="vac-days-count">–</span>
+          <span class="badge badge-neutral" data-vac-days-count>–</span>
         </div>
         <div class="field is-full">
           <label for="vac-notes">Notiz</label>
-          <input class="input input-bordered" id="vac-notes" type="text" placeholder="Optional">
+          <input class="input input-bordered" id="vac-notes" data-vac-notes type="text" placeholder="Optional">
         </div>
       </div>
       <div class="toolbar form-actions">
-        <button class="btn btn-primary" id="vac-submit-btn" type="button">Antrag stellen</button>
-        <span class="panel-meta" id="vac-msg" role="status" aria-live="polite"></span>
+        <button class="btn btn-primary" data-vac-submit type="button">Antrag stellen</button>
+        <span class="panel-meta" data-vac-msg role="status" aria-live="polite"></span>
       </div>
     </div>
   </div>
@@ -50,10 +50,10 @@
   <div class="card app-card lg:col-span-8">
     <div class="card-body">
       <div class="panel-header">
-        <h2 class="panel-title">Ausstehende Anträge <span class="badge badge-warning ml-2" id="vac-pending-count" hidden></span></h2>
+        <h2 class="panel-title">Ausstehende Anträge <span class="badge badge-warning ml-2" data-vac-pending-count hidden></span></h2>
       </div>
-      <div id="vac-pending-list">
-        <p class="panel-meta" id="vac-pending-empty">Keine ausstehenden Anträge.</p>
+      <div data-vac-pending-list>
+        <p class="panel-meta" data-vac-pending-empty>Keine ausstehenden Anträge.</p>
       </div>
     </div>
   </div>
@@ -65,10 +65,10 @@
         <h2 class="panel-title">Resturlaub</h2>
         <div class="toolbar">
           <label class="stat-label">Jahr:</label>
-          <select class="select select-bordered select-sm" id="vac-year"></select>
+          <select class="select select-bordered select-sm" data-vac-year></select>
         </div>
       </div>
-      <div id="vac-summary-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-2">
+      <div data-vac-summary-list class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-2">
         <p class="panel-meta col-span-full">Wird geladen…</p>
       </div>
     </div>
@@ -80,12 +80,12 @@
       <div class="panel-header">
         <h2 class="panel-title">Antrags-Historie</h2>
         <div class="toolbar">
-          <select class="select select-bordered select-sm" id="vac-filter-status">
+          <select class="select select-bordered select-sm" data-vac-filter-status>
             <option value="approved">Genehmigt</option>
             <option value="rejected">Abgelehnt</option>
             <option value="">Alle</option>
           </select>
-          <button class="btn btn-ghost btn-sm" id="vac-filter-btn">Anzeigen</button>
+          <button class="btn btn-ghost btn-sm" data-vac-filter-btn>Anzeigen</button>
         </div>
       </div>
       <div class="overflow-x-auto">
@@ -93,273 +93,12 @@
           <thead>
             <tr><th>Mitarbeiter</th><th>Von</th><th>Bis</th><th>Tage</th><th>Status</th><th>Notiz</th></tr>
           </thead>
-          <tbody id="vac-table-body"></tbody>
+          <tbody data-vac-table-body></tbody>
         </table>
       </div>
-      <p class="panel-meta" id="vac-empty" hidden>Keine Einträge vorhanden.</p>
+      <p class="panel-meta" data-vac-empty hidden>Keine Einträge vorhanden.</p>
     </div>
   </div>
 
 </section>
-
-<script>
-(function () {
-  "use strict";
-  const BASE_VAC = "/api/v1/vacations";
-  const BASE_EMP = "/api/v1/employees";
-  const BASE_AUTH = "/api/v1/auth";
-
-  function token() {
-    return (window.maintenanceAuth && window.maintenanceAuth.token)
-      ? window.maintenanceAuth.token()
-      : window.localStorage.getItem("maintenance_access_token");
-  }
-  function authHdr() { const t = token(); return t ? { Authorization: "Bearer " + t } : {}; }
-  async function api(url, opts) {
-    const res = await fetch(url, { headers: { "Content-Type": "application/json", ...authHdr() }, ...opts });
-    if (res.status === 204) return null;
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.message || body.error || "Fehler " + res.status);
-    return (body && body.success && "data" in body) ? body.data : body;
-  }
-  function isAdmin() { return window.maintenanceAuth?.isAdmin ? window.maintenanceAuth.isAdmin() : false; }
-
-  function fmtDate(iso) {
-    if (!iso) return "–";
-    const [y, m, d] = iso.split("-");
-    return d + "." + m + "." + y;
-  }
-
-  // Year selector
-  const yearSel = document.getElementById("vac-year");
-  const thisYear = new Date().getFullYear();
-  for (let y = thisYear - 1; y <= thisYear + 2; y++) {
-    const o = document.createElement("option");
-    o.value = y; o.textContent = y;
-    if (y === thisYear) o.selected = true;
-    yearSel.appendChild(o);
-  }
-
-  // Workday counter
-  function countWorkdays(start, end) {
-    let count = 0, d = new Date(start + "T00:00:00");
-    const e = new Date(end + "T00:00:00");
-    while (d <= e) { if (d.getDay() >= 1 && d.getDay() <= 5) count++; d.setDate(d.getDate() + 1); }
-    return count;
-  }
-  function updateDaysCount() {
-    const s = document.getElementById("vac-start").value;
-    const e = document.getElementById("vac-end").value;
-    const wrap = document.getElementById("vac-days-wrap");
-    const badge = document.getElementById("vac-days-count");
-    if (s && e && e >= s) {
-      badge.textContent = countWorkdays(s, e) + " Arbeitstage";
-      wrap.hidden = false;
-    } else {
-      wrap.hidden = true;
-    }
-  }
-  ["vac-start", "vac-end"].forEach(id =>
-    document.getElementById(id).addEventListener("change", updateDaysCount)
-  );
-
-  // Set min date to today
-  document.getElementById("vac-start").min = new Date().toISOString().slice(0, 10);
-  document.getElementById("vac-end").min = new Date().toISOString().slice(0, 10);
-
-  // Load employees
-  let myEmployeeId = null;
-  async function loadEmployees() {
-    if (!token()) return;
-    try {
-      const res = await fetch(BASE_EMP, { headers: authHdr() });
-      if (!res.ok) return;
-      const body = await res.json();
-      const emps = Array.isArray(body.data || body) ? (body.data || body) : [];
-      const sel = document.getElementById("vac-employee");
-      emps.forEach(e => {
-        const o = document.createElement("option");
-        o.value = e.id;
-        o.textContent = e.name + (e.department ? " (" + e.department + ")" : "");
-        sel.appendChild(o);
-      });
-      // Auto-select own employee for non-admins
-      if (!isAdmin() && myEmployeeId) {
-        sel.value = myEmployeeId;
-        sel.disabled = true;
-      }
-    } catch (_) {}
-  }
-
-  async function loadMyEmployee() {
-    try {
-      const me = await api(BASE_AUTH + "/me");
-      if (me && me.employee_id) myEmployeeId = me.employee_id;
-    } catch (_) {}
-  }
-
-  // Pending requests as cards
-  async function loadPending() {
-    try {
-      let data = await api(BASE_VAC + "?status=pending");
-      if (!Array.isArray(data)) data = [];
-      const list = document.getElementById("vac-pending-list");
-      const empty = document.getElementById("vac-pending-empty");
-      const countBadge = document.getElementById("vac-pending-count");
-      list.innerHTML = "";
-      if (!data.length) {
-        list.appendChild(empty);
-        empty.hidden = false;
-        countBadge.hidden = true;
-        return;
-      }
-      empty.hidden = true;
-      countBadge.textContent = data.length;
-      countBadge.hidden = false;
-      data.forEach(v => {
-        const card = document.createElement("div");
-        card.className = "border border-base-200 rounded-lg p-3 mb-3 flex items-start justify-between gap-3";
-        const info = document.createElement("div");
-        info.innerHTML =
-          "<p class='font-medium text-sm'>" + (v.employee ? v.employee.name : "–") + "</p>" +
-          "<p class='panel-meta'>" + fmtDate(v.start_date) + " – " + fmtDate(v.end_date) +
-          " &middot; <strong>" + v.days_used + " Tage</strong></p>" +
-          (v.notes ? "<p class='panel-meta mt-1'>" + v.notes + "</p>" : "");
-        const actions = document.createElement("div");
-        actions.className = "flex gap-1 shrink-0";
-        const withdrawBtn = document.createElement("button");
-        withdrawBtn.className = "btn btn-ghost btn-xs";
-        withdrawBtn.textContent = "Zurückziehen";
-        withdrawBtn.addEventListener("click", () => withdraw(v.id));
-        actions.appendChild(withdrawBtn);
-        if (isAdmin()) {
-          const approveBtn = document.createElement("button");
-          approveBtn.className = "btn btn-success btn-xs";
-          approveBtn.textContent = "✓ Genehmigen";
-          approveBtn.addEventListener("click", () => decide(v.id, "approve"));
-          const rejectBtn = document.createElement("button");
-          rejectBtn.className = "btn btn-error btn-xs";
-          rejectBtn.textContent = "✗ Ablehnen";
-          rejectBtn.addEventListener("click", () => decide(v.id, "reject"));
-          actions.prepend(rejectBtn);
-          actions.prepend(approveBtn);
-        }
-        card.appendChild(info);
-        card.appendChild(actions);
-        list.appendChild(card);
-      });
-    } catch (err) { console.error(err); }
-  }
-
-  // History table (approved + rejected only)
-  async function loadHistory() {
-    const status = document.getElementById("vac-filter-status").value;
-    try {
-      let data = await api(BASE_VAC + (status ? "?status=" + status : ""));
-      if (!Array.isArray(data)) data = [];
-      // Filter out pending — those appear in the card section
-      data = data.filter(v => v.status !== "pending");
-      const tbody = document.getElementById("vac-table-body");
-      const empty = document.getElementById("vac-empty");
-      tbody.innerHTML = "";
-      empty.hidden = data.length > 0;
-      const statusMap = { approved: "badge-success", rejected: "badge-error" };
-      const statusLbl = { approved: "Genehmigt", rejected: "Abgelehnt" };
-      data.forEach(v => {
-        const tr = document.createElement("tr");
-        const badgeCls = statusMap[v.status] || "badge-neutral";
-        tr.innerHTML =
-          "<td>" + (v.employee ? v.employee.name : v.employee_id) + "</td>" +
-          "<td>" + fmtDate(v.start_date) + "</td>" +
-          "<td>" + fmtDate(v.end_date) + "</td>" +
-          "<td>" + v.days_used + "</td>" +
-          "<td><span class='badge " + badgeCls + "'>" + (statusLbl[v.status] || v.status) + "</span></td>" +
-          "<td>" + (v.notes || "–") + "</td>";
-        tbody.appendChild(tr);
-      });
-    } catch (err) { console.error(err); }
-  }
-
-  // Summary
-  async function loadSummary() {
-    const year = yearSel.value;
-    try {
-      const data = await api(BASE_VAC + "/summary?year=" + year);
-      const wrap = document.getElementById("vac-summary-list");
-      wrap.innerHTML = "";
-      (data || []).forEach(s => {
-        const pct = s.total > 0 ? Math.round((s.used / s.total) * 100) : 0;
-        const color = pct >= 90 ? "progress-error" : pct >= 70 ? "progress-warning" : "progress-success";
-        const card = document.createElement("div");
-        card.className = "border border-base-200 rounded-lg p-3";
-        card.innerHTML =
-          "<div class='flex justify-between items-center mb-1'>" +
-            "<span class='font-medium text-sm'>" + s.name + "</span>" +
-            "<span class='panel-meta'>" + s.remaining + " / " + s.total + " Tage frei</span>" +
-          "</div>" +
-          "<progress class='progress " + color + " w-full' value='" + s.used + "' max='" + s.total + "'></progress>";
-        wrap.appendChild(card);
-      });
-      if (!data || !data.length)
-        wrap.innerHTML = '<p class="panel-meta col-span-full">Keine Mitarbeiterdaten.</p>';
-    } catch (_) {}
-  }
-
-  async function decide(id, action) {
-    const label = action === "approve" ? "genehmigen" : "ablehnen";
-    if (!confirm("Urlaubsantrag " + label + "?")) return;
-    try {
-      await api(BASE_VAC + "/" + id + "/" + action, { method: "POST" });
-      await Promise.all([loadPending(), loadHistory(), loadSummary()]);
-    } catch (err) { alert(err.message); }
-  }
-
-  async function withdraw(id) {
-    if (!confirm("Urlaubsantrag zurückziehen?")) return;
-    try {
-      await api(BASE_VAC + "/" + id, { method: "DELETE" });
-      await Promise.all([loadPending(), loadHistory(), loadSummary()]);
-    } catch (err) { alert(err.message); }
-  }
-
-  document.getElementById("vac-submit-btn").addEventListener("click", async () => {
-    const emp   = document.getElementById("vac-employee").value;
-    const start = document.getElementById("vac-start").value;
-    const end   = document.getElementById("vac-end").value;
-    const msg   = document.getElementById("vac-msg");
-    if (!emp || !start || !end) { msg.textContent = "Bitte alle Pflichtfelder ausfüllen."; return; }
-    if (end < start) { msg.textContent = "Enddatum darf nicht vor dem Startdatum liegen."; return; }
-    const btn = document.getElementById("vac-submit-btn");
-    btn.disabled = true;
-    msg.textContent = "Wird gesendet…";
-    try {
-      await api(BASE_VAC, { method: "POST", body: JSON.stringify({
-        employee_id: parseInt(emp),
-        start_date: start,
-        end_date: end,
-        notes: document.getElementById("vac-notes").value,
-      })});
-      msg.textContent = "✓ Antrag gestellt.";
-      document.getElementById("vac-start").value = "";
-      document.getElementById("vac-end").value = "";
-      document.getElementById("vac-notes").value = "";
-      document.getElementById("vac-days-wrap").hidden = true;
-      await Promise.all([loadPending(), loadSummary()]);
-    } catch (err) { msg.textContent = "Fehler: " + err.message; }
-    finally { btn.disabled = false; }
-  });
-
-  yearSel.addEventListener("change", loadSummary);
-  document.getElementById("vac-filter-btn").addEventListener("click", loadHistory);
-
-  async function init() {
-    await loadMyEmployee();
-    await loadEmployees();
-    await Promise.all([loadPending(), loadHistory(), loadSummary()]);
-  }
-
-  window.addEventListener("maintenance-auth-ready", init);
-  document.addEventListener("DOMContentLoaded", () => { if (token()) init(); });
-})();
-</script>
 {% endblock %}
