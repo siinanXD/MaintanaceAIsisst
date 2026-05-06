@@ -7,6 +7,8 @@ from app.extensions import db
 
 
 class Role(str, Enum):
+    """User roles controlling department access and admin capabilities."""
+
     MASTER_ADMIN = "master_admin"
     IT = "it"
     VERWALTUNG = "verwaltung"
@@ -16,12 +18,16 @@ class Role(str, Enum):
 
 
 class Priority(str, Enum):
+    """Task priority levels ordered from most to least urgent."""
+
     URGENT = "urgent"
     SOON = "soon"
     NORMAL = "normal"
 
 
 class TaskStatus(str, Enum):
+    """Lifecycle states for a maintenance task."""
+
     OPEN = "open"
     IN_PROGRESS = "in_progress"
     DONE = "done"
@@ -29,6 +35,8 @@ class TaskStatus(str, Enum):
 
 
 class Department(db.Model):
+    """Organisational unit that groups users, tasks, and error entries."""
+
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(80), unique=True, nullable=False)
 
@@ -76,6 +84,8 @@ class DashboardPermission(db.Model):
 
 
 class User(db.Model):
+    """Application user with role, department assignment, and dashboard permissions."""
+
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
@@ -141,6 +151,8 @@ class User(db.Model):
 
 
 class Task(db.Model):
+    """Maintenance task with lifecycle tracking from creation to completion."""
+
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(160), nullable=False)
     description = db.Column(db.Text, nullable=False, default="")
@@ -206,6 +218,8 @@ class Task(db.Model):
 
 
 class ErrorEntry(db.Model):
+    """Error catalog entry linking a machine fault to its causes and solution."""
+
     id = db.Column(db.Integer, primary_key=True)
     machine = db.Column(db.String(160), nullable=False)
     error_code = db.Column(db.String(80), nullable=False, index=True)
@@ -221,6 +235,7 @@ class ErrorEntry(db.Model):
     machine_rel = db.relationship("Machine", foreign_keys=[machine_id])
 
     def to_dict(self):
+        """Return a JSON-serializable representation of the error catalog entry."""
         return {
             "id": self.id,
             "machine": self.machine,
@@ -237,6 +252,8 @@ class ErrorEntry(db.Model):
 
 
 class ChatMessage(db.Model):
+    """Persisted AI chat exchange for history and context retrieval."""
+
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     message = db.Column(db.Text, nullable=False)
@@ -306,6 +323,8 @@ class GeneratedDocument(db.Model):
 
 
 class Employee(db.Model):
+    """Personnel record with confidential HR data, shift assignment, and qualifications."""
+
     id = db.Column(db.Integer, primary_key=True)
     personnel_number = db.Column(db.String(80), unique=True, nullable=False)
     name = db.Column(db.String(160), nullable=False)
@@ -378,6 +397,8 @@ class Employee(db.Model):
 
 
 class EmployeeDocument(db.Model):
+    """File attachment stored on disk and associated with an employee record."""
+
     id = db.Column(db.Integer, primary_key=True)
     employee_id = db.Column(db.Integer, db.ForeignKey("employee.id"), nullable=False)
     original_filename = db.Column(db.String(255), nullable=False)
@@ -388,6 +409,7 @@ class EmployeeDocument(db.Model):
     employee = db.relationship("Employee", back_populates="documents")
 
     def to_dict(self):
+        """Return a JSON-serializable representation of the employee document metadata."""
         return {
             "id": self.id,
             "employee_id": self.employee_id,
@@ -399,6 +421,8 @@ class EmployeeDocument(db.Model):
 
 
 class Machine(db.Model):
+    """Production machine with staffing requirements used by shift planning and inventory."""
+
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(160), unique=True, nullable=False)
     produced_item = db.Column(db.String(160), nullable=False, default="")
@@ -408,6 +432,7 @@ class Machine(db.Model):
     materials = db.relationship("InventoryMaterial", back_populates="machine")
 
     def to_dict(self):
+        """Return a JSON-serializable representation of the machine."""
         return {
             "id": self.id,
             "name": self.name,
@@ -418,6 +443,8 @@ class Machine(db.Model):
 
 
 class InventoryMaterial(db.Model):
+    """Spare part or consumable material tracked in inventory and linked to a machine."""
+
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(160), nullable=False)
     unit_cost = db.Column(db.Float, nullable=False, default=0)
@@ -434,6 +461,7 @@ class InventoryMaterial(db.Model):
         return round((self.unit_cost or 0) * (self.quantity or 0), 2)
 
     def to_dict(self):
+        """Return a JSON-serializable representation of the inventory material."""
         return {
             "id": self.id,
             "name": self.name,
@@ -448,6 +476,8 @@ class InventoryMaterial(db.Model):
 
 
 class ShiftPlan(db.Model):
+    """AI-generated shift schedule covering a department for a defined date range."""
+
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(160), nullable=False)
     start_date = db.Column(db.Date, nullable=False)
@@ -470,6 +500,7 @@ class ShiftPlan(db.Model):
 
     @property
     def is_published(self):
+        """Return True when the plan has been published and is visible to workers."""
         return self.status == "published"
 
     def to_dict(self, employee_access_level="confidential"):
@@ -494,6 +525,8 @@ class ShiftPlan(db.Model):
 
 
 class ShiftPlanEntry(db.Model):
+    """Single employee-machine-day assignment within a shift plan."""
+
     __table_args__ = (
         db.UniqueConstraint(
             "plan_id", "employee_id", "work_date",
@@ -593,6 +626,7 @@ class ShiftHandover(db.Model):
     author = db.relationship("User", foreign_keys=[handed_over_by])
 
     def to_dict(self):
+        """Return a JSON-serializable representation of the shift handover record."""
         return {
             "id": self.id,
             "plan_id": self.plan_id,
@@ -629,6 +663,7 @@ class VacationRequest(db.Model):
     approver  = db.relationship("User", foreign_keys=[approved_by])
 
     def to_dict(self):
+        """Return a JSON-serializable representation of the vacation request."""
         return {
             "id": self.id,
             "employee_id": self.employee_id,
