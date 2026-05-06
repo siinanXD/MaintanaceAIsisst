@@ -603,6 +603,66 @@
     let currentAnalysis = null;
     let currentErrors = [];
 
+    const errorEditDialog = document.getElementById("error-edit-dialog");
+    const eedId       = document.getElementById("eed-id");
+    const eedDept     = document.getElementById("eed-department");
+    const eedMachine  = document.getElementById("eed-machine");
+    const eedCode     = document.getElementById("eed-code");
+    const eedTitle    = document.getElementById("eed-title-input");
+    const eedCauses   = document.getElementById("eed-causes");
+    const eedSolution = document.getElementById("eed-solution");
+    const eedSave     = document.getElementById("eed-save");
+    const eedCancel   = document.getElementById("eed-cancel");
+    const eedMsg      = document.getElementById("eed-msg");
+    const errActionTh = document.querySelector("[data-errors-action-th]");
+
+    if (canWrite("errors") && errActionTh) {
+      errActionTh.hidden = false;
+      errActionTh.textContent = "Aktionen";
+    }
+
+    function openErrorEdit(entry) {
+      if (!errorEditDialog) return;
+      eedId.value       = entry.id;
+      eedMachine.value  = entry.machine || "";
+      eedCode.value     = entry.error_code || "";
+      eedTitle.value    = entry.title || "";
+      eedCauses.value   = entry.possible_causes || "";
+      eedSolution.value = entry.solution || "";
+      if (eedDept) {
+        Array.from(eedDept.options).forEach((opt) => {
+          opt.selected = opt.value === (entry.department && entry.department.name);
+        });
+      }
+      if (eedMsg) eedMsg.textContent = "";
+      errorEditDialog.showModal();
+    }
+
+    if (eedCancel) eedCancel.addEventListener("click", () => errorEditDialog.close());
+    if (errorEditDialog) {
+      errorEditDialog.addEventListener("keydown", (e) => { if (e.key === "Escape") errorEditDialog.close(); });
+    }
+    if (eedSave) eedSave.addEventListener("click", async () => {
+      try {
+        setStatusMessage(eedMsg, "Wird gespeichert...");
+        await api("/api/v1/errors/" + eedId.value, {
+          method: "PUT",
+          body: JSON.stringify({
+            machine: eedMachine.value,
+            error_code: eedCode.value,
+            title: eedTitle.value,
+            possible_causes: eedCauses.value,
+            solution: eedSolution.value,
+            department: eedDept ? eedDept.value : undefined
+          })
+        });
+        errorEditDialog.close();
+        await load();
+      } catch (err) {
+        setStatusMessage(eedMsg, err.message, true);
+      }
+    });
+
     function highlightedBlock(label, value, variant) {
       const block = document.createElement("div");
       block.className = "knowledge-block" + (variant ? " " + variant : "");
@@ -666,14 +726,26 @@
         return;
       }
       filteredErrors.forEach((entry) => {
-        list.appendChild(row([
+        const cells = [
           badge(entry.error_code, "badge badge-status is-open"),
           entry.machine,
           entry.title,
           entry.department && entry.department.name,
           highlightedBlock("Ursache", entry.possible_causes, "is-cause"),
           highlightedBlock("Loesung", entry.solution, "is-solution")
-        ]));
+        ];
+        if (canWrite("errors")) {
+          const actions = document.createElement("div");
+          actions.className = "table-actions";
+          actions.appendChild(actionButton("Bearbeiten", () => openErrorEdit(entry)));
+          actions.appendChild(actionButton("Loeschen", async () => {
+            if (!window.confirm("Fehler '" + entry.title + "' wirklich loeschen?")) return;
+            await api("/api/v1/errors/" + entry.id, { method: "DELETE" });
+            await load();
+          }, true));
+          cells.push(actions);
+        }
+        list.appendChild(row(cells));
       });
     }
 
@@ -1015,6 +1087,78 @@
     const message = document.querySelector("[data-employee-message]");
     if (!list || !form || !token()) return;
 
+    const empEditDialog  = document.getElementById("emp-edit-dialog");
+    const empdId         = document.getElementById("empd-id");
+    const empdName       = document.getElementById("empd-name");
+    const empdPnr        = document.getElementById("empd-pnr");
+    const empdBirth      = document.getElementById("empd-birth");
+    const empdCity       = document.getElementById("empd-city");
+    const empdStreet     = document.getElementById("empd-street");
+    const empdPostal     = document.getElementById("empd-postal");
+    const empdDept       = document.getElementById("empd-dept");
+    const empdShiftModel = document.getElementById("empd-shift-model");
+    const empdCurrentShift = document.getElementById("empd-current-shift");
+    const empdTeam       = document.getElementById("empd-team");
+    const empdSalary     = document.getElementById("empd-salary");
+    const empdMachine    = document.getElementById("empd-machine");
+    const empdQuals      = document.getElementById("empd-qualifications");
+    const empdSave       = document.getElementById("empd-save");
+    const empdCancel     = document.getElementById("empd-cancel");
+    const empdMsg        = document.getElementById("empd-msg");
+
+    function openEmployeeEdit(employee) {
+      if (!empEditDialog) return;
+      empdId.value          = employee.id;
+      empdName.value        = employee.name || "";
+      empdPnr.value         = employee.personnel_number || "";
+      empdBirth.value       = employee.birth_date || "";
+      empdCity.value        = employee.city || "";
+      empdStreet.value      = employee.street || "";
+      empdPostal.value      = employee.postal_code || "";
+      empdDept.value        = employee.department || "";
+      empdShiftModel.value  = employee.shift_model || "gleitzeit";
+      empdCurrentShift.value = employee.current_shift || "";
+      empdTeam.value        = employee.team ? String(employee.team) : "";
+      empdSalary.value      = employee.salary_group || "";
+      empdMachine.value     = employee.favorite_machine || "";
+      empdQuals.value       = employee.qualifications || "";
+      if (empdMsg) empdMsg.textContent = "";
+      empEditDialog.showModal();
+    }
+
+    if (empdCancel) empdCancel.addEventListener("click", () => empEditDialog.close());
+    if (empEditDialog) {
+      empEditDialog.addEventListener("keydown", (e) => { if (e.key === "Escape") empEditDialog.close(); });
+    }
+    if (empdSave) empdSave.addEventListener("click", async () => {
+      try {
+        setStatusMessage(empdMsg, "Wird gespeichert...");
+        await api("/api/v1/employees/" + empdId.value, {
+          method: "PUT",
+          body: JSON.stringify({
+            name: empdName.value,
+            personnel_number: empdPnr.value,
+            birth_date: empdBirth.value || null,
+            city: empdCity.value,
+            street: empdStreet.value,
+            postal_code: empdPostal.value,
+            department: empdDept.value,
+            shift_model: empdShiftModel.value,
+            current_shift: empdCurrentShift.value,
+            team: empdTeam.value ? parseInt(empdTeam.value, 10) : null,
+            salary_group: empdSalary.value,
+            favorite_machine: empdMachine.value,
+            qualifications: empdQuals.value
+          })
+        });
+        empEditDialog.close();
+        await load();
+        if (message) message.textContent = "Mitarbeiter aktualisiert.";
+      } catch (err) {
+        setStatusMessage(empdMsg, err.message, true);
+      }
+    });
+
     async function uploadDocument(employeeId, file) {
       const formData = new FormData();
       formData.append("document", file);
@@ -1129,6 +1273,21 @@
         });
         uploadWrap.appendChild(input);
         card.appendChild(uploadWrap);
+
+        const editDeleteRow = document.createElement("div");
+        editDeleteRow.className = "table-actions";
+        editDeleteRow.appendChild(actionButton("Bearbeiten", () => opts.openEdit(employee)));
+        editDeleteRow.appendChild(actionButton("Loeschen", async () => {
+          if (!window.confirm(employee.name + " wirklich loeschen?")) return;
+          try {
+            await api("/api/v1/employees/" + employee.id, { method: "DELETE" });
+            await opts.reload();
+            if (opts.message) opts.message.textContent = "Mitarbeiter geloescht.";
+          } catch (err) {
+            if (opts.message) opts.message.textContent = err.message;
+          }
+        }, true));
+        card.appendChild(editDeleteRow);
       }
 
       return card;
@@ -1151,6 +1310,7 @@
         employeeAccessLevel: employeeAccessLevel(),
         downloadEmployeeDocument,
         uploadDocument,
+        openEdit: openEmployeeEdit,
         message,
         reload: load
       };
@@ -1521,6 +1681,49 @@
     if (!list || !form || !token()) return;
     let activeHistoryMachine = null;
 
+    const machineEditDialog = document.getElementById("machine-edit-dialog");
+    const medId       = document.getElementById("med-id");
+    const medName     = document.getElementById("med-name");
+    const medProduced = document.getElementById("med-produced");
+    const medEmployees = document.getElementById("med-employees");
+    const medSave     = document.getElementById("med-save");
+    const medCancel   = document.getElementById("med-cancel");
+    const medMsg      = document.getElementById("med-msg");
+
+    function openMachineEdit(machine) {
+      if (!machineEditDialog) return;
+      medId.value        = machine.id;
+      medName.value      = machine.name;
+      medProduced.value  = machine.produced_item || "";
+      medEmployees.value = machine.required_employees || 1;
+      if (medMsg) medMsg.textContent = "";
+      machineEditDialog.showModal();
+    }
+
+    if (medCancel) medCancel.addEventListener("click", () => machineEditDialog.close());
+    if (machineEditDialog) {
+      machineEditDialog.addEventListener("keydown", (e) => { if (e.key === "Escape") machineEditDialog.close(); });
+    }
+    if (medSave) medSave.addEventListener("click", async () => {
+      try {
+        setStatusMessage(medMsg, "Wird gespeichert...");
+        await api("/api/v1/machines/" + medId.value, {
+          method: "PUT",
+          body: JSON.stringify({
+            name: medName.value,
+            produced_item: medProduced.value,
+            required_employees: parseInt(medEmployees.value, 10) || 1
+          })
+        });
+        machineEditDialog.close();
+        await load();
+        const machineMsg = document.querySelector("[data-machine-message]");
+        if (machineMsg) machineMsg.textContent = "Maschine aktualisiert.";
+      } catch (err) {
+        setStatusMessage(medMsg, err.message, true);
+      }
+    });
+
     function renderHistoryCounts(counts) {
       if (!historyCounts) return;
       historyCounts.innerHTML = "";
@@ -1626,6 +1829,7 @@
         actions.className = "table-actions";
         actions.appendChild(actionButton("Historie", () => loadMachineHistory(machine)));
         if (canWrite("machines")) {
+          actions.appendChild(actionButton("Bearbeiten", () => openMachineEdit(machine)));
           actions.appendChild(actionButton("Loeschen", async () => {
             if (!window.confirm(machine.name + " wirklich loeschen?")) return;
             await api("/api/v1/machines/" + machine.id, { method: "DELETE" });

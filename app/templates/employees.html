@@ -112,4 +112,81 @@
     </div>
   </article>
 </section>
+
+<!-- Mitarbeiter bearbeiten Dialog -->
+<dialog id="emp-edit-dialog" aria-modal="true" aria-labelledby="empd-title">
+  <div class="card app-card" style="min-width:320px;max-width:560px;max-height:90vh;overflow-y:auto;padding:1.5rem;">
+    <h3 class="panel-title mb-4" id="empd-title">Mitarbeiter bearbeiten</h3>
+    <input type="hidden" id="empd-id">
+    <div class="form-grid">
+      <div class="field">
+        <label for="empd-pnr">Personalnummer</label>
+        <input class="input input-bordered" id="empd-pnr">
+      </div>
+      <div class="field">
+        <label for="empd-name">Name</label>
+        <input class="input input-bordered" id="empd-name" required>
+      </div>
+      <div class="field">
+        <label for="empd-birth">Geburtsdatum</label>
+        <input class="input input-bordered" type="date" id="empd-birth">
+      </div>
+      <div class="field">
+        <label for="empd-city">Wohnort</label>
+        <input class="input input-bordered" id="empd-city">
+      </div>
+      <div class="field">
+        <label for="empd-street">Strasse</label>
+        <input class="input input-bordered" id="empd-street">
+      </div>
+      <div class="field">
+        <label for="empd-postal">Postleitzahl</label>
+        <input class="input input-bordered" id="empd-postal">
+      </div>
+      <div class="field">
+        <label for="empd-dept">Abteilung</label>
+        <input class="input input-bordered" id="empd-dept">
+      </div>
+      <div class="field">
+        <label for="empd-shift-model">Schichtmodell</label>
+        <select class="select select-bordered" id="empd-shift-model">
+          <option value="gleitzeit">Gleitzeit</option>
+          <option value="kontischicht">Kontischicht</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="empd-current-shift">Aktuelle Schicht / Rhythmus</label>
+        <input class="input input-bordered" id="empd-current-shift">
+      </div>
+      <div class="field">
+        <label for="empd-team">Team 1-5</label>
+        <select class="select select-bordered" id="empd-team">
+          <option value="">-</option>
+          <option value="1">Team 1</option>
+          <option value="2">Team 2</option>
+          <option value="3">Team 3</option>
+          <option value="4">Team 4</option>
+          <option value="5">Team 5</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="empd-salary">Gehaltsklasse</label>
+        <input class="input input-bordered" id="empd-salary">
+      </div>
+      <div class="field">
+        <label for="empd-machine">Favoritenmaschine</label>
+        <input class="input input-bordered" id="empd-machine">
+      </div>
+      <div class="field is-full">
+        <label for="empd-qualifications">Qualifikationen</label>
+        <textarea class="textarea textarea-bordered" id="empd-qualifications"></textarea>
+      </div>
+    </div>
+    <div class="toolbar mt-4">
+      <button class="btn btn-primary btn-sm" id="empd-save">Speichern</button>
+      <button class="btn btn-ghost btn-sm" id="empd-cancel">Abbrechen</button>
+    </div>
+    <p class="panel-meta mt-2" id="empd-msg" role="status" aria-live="polite"></p>
+  </div>
+</dialog>
 {% endblock %}

@@ -176,6 +176,7 @@
               <th>Bereich</th>
               <th>Moegliche Ursache</th>
               <th>Loesung</th>
+              <th data-errors-action-th hidden></th>
             </tr>
           </thead>
           <tbody data-error-list></tbody>
@@ -184,4 +185,43 @@
     </div>
   </article>
 </section>
+
+<!-- Fehler bearbeiten Dialog -->
+<dialog id="error-edit-dialog" aria-modal="true" aria-labelledby="eed-title">
+  <div class="card app-card" style="min-width:320px;max-width:500px;padding:1.5rem;">
+    <h3 class="panel-title mb-4" id="eed-title">Fehler bearbeiten</h3>
+    <input type="hidden" id="eed-id">
+    <div class="form-grid">
+      <div class="field">
+        <label for="eed-department">Bereich</label>
+        <select class="select select-bordered" id="eed-department" name="department"></select>
+      </div>
+      <div class="field">
+        <label for="eed-machine">Maschine</label>
+        <input class="input input-bordered" id="eed-machine" required>
+      </div>
+      <div class="field">
+        <label for="eed-code">Fehlercode</label>
+        <input class="input input-bordered" id="eed-code" required>
+      </div>
+      <div class="field is-full">
+        <label for="eed-title-input">Fehler</label>
+        <input class="input input-bordered" id="eed-title-input" required>
+      </div>
+      <div class="field is-full">
+        <label for="eed-causes">Moegliche Ursachen</label>
+        <textarea class="textarea textarea-bordered" id="eed-causes"></textarea>
+      </div>
+      <div class="field is-full">
+        <label for="eed-solution">Loesung</label>
+        <textarea class="textarea textarea-bordered" id="eed-solution"></textarea>
+      </div>
+    </div>
+    <div class="toolbar mt-4">
+      <button class="btn btn-primary btn-sm" id="eed-save">Speichern</button>
+      <button class="btn btn-ghost btn-sm" id="eed-cancel">Abbrechen</button>
+    </div>
+    <p class="panel-meta mt-2" id="eed-msg" role="status" aria-live="polite"></p>
+  </div>
+</dialog>
 {% endblock %}

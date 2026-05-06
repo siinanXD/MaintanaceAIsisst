@@ -89,4 +89,31 @@
     </div>
   </article>
 </section>
+
+<!-- Maschine bearbeiten Dialog -->
+<dialog id="machine-edit-dialog" aria-modal="true" aria-labelledby="med-title">
+  <div class="card app-card" style="min-width:300px;max-width:420px;padding:1.5rem;">
+    <h3 class="panel-title mb-4" id="med-title">Maschine bearbeiten</h3>
+    <input type="hidden" id="med-id">
+    <div class="form-grid">
+      <div class="field">
+        <label for="med-name">Name</label>
+        <input class="input input-bordered" id="med-name" required>
+      </div>
+      <div class="field">
+        <label for="med-produced">Was wird produziert?</label>
+        <input class="input input-bordered" id="med-produced">
+      </div>
+      <div class="field">
+        <label for="med-employees">Mitarbeiter pro Maschine</label>
+        <input class="input input-bordered" type="number" min="1" id="med-employees">
+      </div>
+    </div>
+    <div class="toolbar mt-4">
+      <button class="btn btn-primary btn-sm" id="med-save">Speichern</button>
+      <button class="btn btn-ghost btn-sm" id="med-cancel">Abbrechen</button>
+    </div>
+    <p class="panel-meta mt-2" id="med-msg" role="status" aria-live="polite"></p>
+  </div>
+</dialog>
 {% endblock %}
