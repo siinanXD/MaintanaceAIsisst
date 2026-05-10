@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Maintenance Assistant{% endblock %}</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232563eb'/%3E%3Ctext x='32' y='39' text-anchor='middle' font-family='Arial,sans-serif' font-size='22' font-weight='800' fill='white'%3EMA%3C/text%3E%3C/svg%3E">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}?v=20260502-uirevamp1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}?v=20260510-density2">
   </head>
   <body class="app-body min-h-screen bg-slate-50 text-slate-900 antialiased">
     <div class="app-shell-layout min-h-screen lg:grid lg:grid-cols-[280px_1fr]">
@@ -70,7 +70,7 @@
                 <span>Maintenance</span>
               </a>
             </div>
-            <div class="navbar-center hidden max-w-3xl flex-1 px-4 md:flex">
+            <div class="navbar-center hidden max-w-3xl flex-1 px-4 md:flex lg:hidden">
               <div class="top-nav">
                 <details class="top-nav-group" data-nav-group>
                   <summary>Arbeit</summary>
