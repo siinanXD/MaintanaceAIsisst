@@ -11,45 +11,25 @@
     return Boolean(user && user.role === "master_admin");
   }
 
-  const DASHBOARD_PATHS = {
-    "/": "dashboard",
-    "/tasks": "tasks",
-    "/errors": "errors",
-    "/employees": "employees",
-    "/shiftplans": "shiftplans",
-    "/machines": "machines",
-    "/inventory": "inventory",
-    "/documents": "documents",
-    "/admin/users": "admin_users"
-  };
+  const featureRegistry = window.maintenanceFeatures || { all: [] };
+  const DASHBOARD_PATHS = Object.fromEntries(
+    featureRegistry.all.map((feature) => [feature.route, feature.key])
+  );
+  const DASHBOARD_DESTINATIONS = Object.fromEntries(
+    featureRegistry.all.map((feature) => [feature.key, feature.route])
+  );
+  const DASHBOARD_ORDER = featureRegistry.all.map((feature) => feature.key);
 
-  const DASHBOARD_DESTINATIONS = {
-    dashboard: "/",
-    tasks: "/tasks",
-    errors: "/errors",
-    employees: "/employees",
-    shiftplans: "/shiftplans",
-    machines: "/machines",
-    inventory: "/inventory",
-    documents: "/documents",
-    admin_users: "/admin/users"
-  };
-
-  const DASHBOARD_ORDER = [
-    "dashboard",
-    "tasks",
-    "errors",
-    "employees",
-    "shiftplans",
-    "machines",
-    "inventory",
-    "documents",
-    "admin_users"
-  ];
+  function permissionDashboard(featureOrDashboard) {
+    return featureRegistry.permissionKeyFor
+      ? featureRegistry.permissionKeyFor(featureOrDashboard)
+      : featureOrDashboard;
+  }
 
   function permissionFor(user, dashboard) {
     if (isAdminUser(user)) return { can_view: true, can_write: true, employee_access_level: "confidential" };
-    return (user && user.permissions && user.permissions[dashboard]) || {};
+    const permissionKey = permissionDashboard(dashboard);
+    return (user && user.permissions && user.permissions[permissionKey]) || {};
   }
 
   function canView(user, dashboard) {
@@ -213,8 +193,9 @@
       element.hidden = loggedIn;
     });
 
-    document.querySelectorAll("[data-dashboard-nav]").forEach((element) => {
-      element.hidden = !loggedIn || !canView(user, element.dataset.dashboardNav);
+    document.querySelectorAll("[data-feature-key], [data-dashboard-nav]").forEach((element) => {
+      const featureKey = element.dataset.featureKey || element.dataset.dashboardNav;
+      element.hidden = !loggedIn || !canView(user, featureKey);
     });
 
     document.querySelectorAll("[data-nav-group]").forEach((group) => {

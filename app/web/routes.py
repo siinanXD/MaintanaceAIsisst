@@ -72,9 +72,11 @@ def documents_page():
 
 @web_bp.get("/handover")
 def handover_page():
+    """Render the shift handover page."""
     return render_template("handover.html")
 
 
 @web_bp.get("/vacations")
 def vacations_page():
+    """Render the vacation planning page."""
     return render_template("vacations.html")

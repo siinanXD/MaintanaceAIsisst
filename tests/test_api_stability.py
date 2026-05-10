@@ -1,4 +1,5 @@
 from app.models import Priority, Role
+from app.permissions import DASHBOARD_KEYS
 
 
 def public_route_methods(app):
@@ -44,6 +45,83 @@ def test_new_ai_frontend_routes_exist(app, client):
     assert "/api/v1/inventory/forecast" in script
     assert "/api/v1/shiftplans/calendar" in script
     assert "/api/v1/ai/daily-briefing" in script
+
+
+def test_feature_registry_covers_permissions_and_frontend_assets(client):
+    """Verify the shared frontend feature registry stays aligned with permissions."""
+    registry_response = client.get("/static/core/feature-registry.js")
+    base_response = client.get("/")
+    registry = registry_response.get_data(as_text=True)
+    html = base_response.get_data(as_text=True)
+
+    assert registry_response.status_code == 200
+    assert "window.maintenanceFeatures" in registry
+    assert "core/feature-registry.js" in html
+
+    for dashboard_key in DASHBOARD_KEYS:
+        assert f'permissionKey: "{dashboard_key}"' in registry
+
+    assert 'key: "handover"' in registry
+    assert 'permissionKey: "shiftplans"' in registry
+    assert 'key: "vacations"' in registry
+    assert 'permissionKey: "employees"' in registry
+
+
+def test_loaded_static_assets_exist(client):
+    """Verify the base template references only static assets that Flask can serve."""
+    html = client.get("/").get_data(as_text=True)
+    expected_assets = (
+        "/static/css/output.css",
+        "/static/core/feature-registry.js",
+        "/static/auth.js",
+        "/static/app.js",
+        "/static/chat.js",
+    )
+
+    for asset in expected_assets:
+        assert asset in html
+        assert client.get(asset).status_code == 200
+
+
+def test_web_routes_use_shared_design_shell(client):
+    """Verify all HTML web routes render through the shared app design shell."""
+    routes = (
+        "/",
+        "/login",
+        "/api-docs",
+        "/tasks",
+        "/errors",
+        "/admin/users",
+        "/employees",
+        "/shiftplans",
+        "/machines",
+        "/inventory",
+        "/documents",
+        "/handover",
+        "/vacations",
+    )
+
+    for route in routes:
+        response = client.get(route)
+        html = response.get_data(as_text=True)
+        assert response.status_code == 200
+        assert "app-shell-layout" in html
+        assert "app-sidebar" in html
+        assert "app-main" in html
+        assert "page-hero" in html
+        assert "app-card" in html
+
+
+def test_core_german_ui_labels_are_not_mojibake(client):
+    """Verify important German UI labels render as UTF-8, not mojibake."""
+    html = client.get("/").get_data(as_text=True)
+
+    assert "Schicht\u00fcbergabe" in html
+    assert "Men\u00fc" in html
+    assert "Heute f\u00e4llig" in html
+    assert "\u00fcberf\u00e4llig" in html
+    assert "Schicht\u00c3\u00bcbergabe" not in html
+    assert "faellig" not in html
 
 
 def test_api_not_found_returns_consistent_json(client, make_user, auth_headers):

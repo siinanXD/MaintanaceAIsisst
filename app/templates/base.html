@@ -4,11 +4,12 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Maintenance Assistant{% endblock %}</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232563eb'/%3E%3Ctext x='32' y='39' text-anchor='middle' font-family='Arial,sans-serif' font-size='22' font-weight='800' fill='white'%3EMA%3C/text%3E%3C/svg%3E">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}?v=20260502-uirevamp1">
   </head>
-  <body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
-    <div class="min-h-screen lg:grid lg:grid-cols-[280px_1fr]">
-      <aside class="hidden border-r border-slate-200 bg-white/95 px-5 py-6 shadow-sm lg:flex lg:min-h-screen lg:flex-col lg:gap-8">
+  <body class="app-body min-h-screen bg-slate-50 text-slate-900 antialiased">
+    <div class="app-shell-layout min-h-screen lg:grid lg:grid-cols-[280px_1fr]">
+      <aside class="app-sidebar hidden border-r border-slate-200 bg-white/95 px-5 py-6 shadow-sm lg:flex lg:min-h-screen lg:flex-col lg:gap-8">
         <a class="flex items-center gap-3" href="/">
           <span class="grid h-11 w-11 place-items-center rounded-2xl bg-primary text-base font-black text-primary-content shadow-lg shadow-blue-600/20">MA</span>
           <span>
@@ -39,8 +40,8 @@
               <summary>Planung & Dokumente</summary>
               <ul class="menu gap-1 p-0 text-sm font-medium">
                 <li data-dashboard-nav="shiftplans" hidden><a class="nav-link {% if request.path == '/shiftplans' %}is-active{% endif %}" href="/shiftplans">Schichtplan</a></li>
-                <li data-dashboard-nav="shiftplans" hidden><a class="nav-link {% if request.path == '/handover' %}is-active{% endif %}" href="/handover">Schichtübergabe</a></li>
-                <li data-dashboard-nav="employees" hidden><a class="nav-link {% if request.path == '/vacations' %}is-active{% endif %}" href="/vacations">Urlaubsplanung</a></li>
+                <li data-feature-key="handover" data-dashboard-nav="shiftplans" hidden><a class="nav-link {% if request.path == '/handover' %}is-active{% endif %}" href="/handover">Schichtübergabe</a></li>
+                <li data-feature-key="vacations" data-dashboard-nav="employees" hidden><a class="nav-link {% if request.path == '/vacations' %}is-active{% endif %}" href="/vacations">Urlaubsplanung</a></li>
                 <li data-dashboard-nav="documents" hidden><a class="nav-link {% if request.path == '/documents' %}is-active{% endif %}" href="/documents">Dokumente</a></li>
               </ul>
             </details>
@@ -61,7 +62,7 @@
       </aside>
 
       <div class="min-w-0">
-        <header class="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
+        <header class="app-header sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
           <div class="navbar min-h-16 px-4 sm:px-6 lg:px-8">
             <div class="navbar-start gap-2">
               <a class="flex items-center gap-2 font-bold text-slate-950 lg:hidden" href="/">
@@ -91,8 +92,8 @@
                   <summary>Planung</summary>
                   <div class="top-nav-panel">
                     <a data-dashboard-nav="shiftplans" hidden class="top-nav-link {% if request.path == '/shiftplans' %}is-active{% endif %}" href="/shiftplans">Schichtplan</a>
-                    <a data-dashboard-nav="shiftplans" hidden class="top-nav-link {% if request.path == '/handover' %}is-active{% endif %}" href="/handover">Schichtübergabe</a>
-                    <a data-dashboard-nav="employees" hidden class="top-nav-link {% if request.path == '/vacations' %}is-active{% endif %}" href="/vacations">Urlaubsplanung</a>
+                    <a data-feature-key="handover" data-dashboard-nav="shiftplans" hidden class="top-nav-link {% if request.path == '/handover' %}is-active{% endif %}" href="/handover">Schichtübergabe</a>
+                    <a data-feature-key="vacations" data-dashboard-nav="employees" hidden class="top-nav-link {% if request.path == '/vacations' %}is-active{% endif %}" href="/vacations">Urlaubsplanung</a>
                     <a data-dashboard-nav="documents" hidden class="top-nav-link {% if request.path == '/documents' %}is-active{% endif %}" href="/documents">Dokumente</a>
                   </div>
                 </details>
@@ -115,7 +116,7 @@
           </div>
           <div class="border-t border-slate-100 px-4 py-2 md:hidden">
             <details class="mobile-nav" data-nav-root>
-              <summary>Menue</summary>
+              <summary>Menü</summary>
               <div class="mobile-nav-panel">
                 <details class="nav-group" data-nav-group open>
                   <summary>Arbeit</summary>
@@ -132,8 +133,8 @@
                 <details class="nav-group" data-nav-group>
                   <summary>Planung</summary>
                   <a data-dashboard-nav="shiftplans" hidden class="top-nav-link {% if request.path == '/shiftplans' %}is-active{% endif %}" href="/shiftplans">Schichtplan</a>
-                  <a data-dashboard-nav="shiftplans" hidden class="top-nav-link {% if request.path == '/handover' %}is-active{% endif %}" href="/handover">Schichtübergabe</a>
-                  <a data-dashboard-nav="employees" hidden class="top-nav-link {% if request.path == '/vacations' %}is-active{% endif %}" href="/vacations">Urlaubsplanung</a>
+                  <a data-feature-key="handover" data-dashboard-nav="shiftplans" hidden class="top-nav-link {% if request.path == '/handover' %}is-active{% endif %}" href="/handover">Schichtübergabe</a>
+                  <a data-feature-key="vacations" data-dashboard-nav="employees" hidden class="top-nav-link {% if request.path == '/vacations' %}is-active{% endif %}" href="/vacations">Urlaubsplanung</a>
                   <a data-dashboard-nav="documents" hidden class="top-nav-link {% if request.path == '/documents' %}is-active{% endif %}" href="/documents">Dokumente</a>
                 </details>
                 <details class="nav-group" data-nav-group>
@@ -145,7 +146,7 @@
           </div>
         </header>
 
-        <main class="mx-auto w-full max-w-7xl px-4 pb-32 pt-4 sm:px-6 sm:pb-10 sm:pt-6 lg:px-8 lg:py-8">
+        <main class="app-main mx-auto w-full max-w-7xl px-4 pb-32 pt-4 sm:px-6 sm:pb-10 sm:pt-6 lg:px-8 lg:py-8">
           <div class="sr-only" aria-live="polite" aria-atomic="true" data-global-live-region></div>
           {% block content %}{% endblock %}
         </main>
@@ -175,8 +176,9 @@
       </div>
     </section>
 
-    <script src="{{ url_for('static', filename='auth.js') }}?v=20260430-redesign1"></script>
-    <script src="{{ url_for('static', filename='app.js') }}?v=20260504-usersearch1"></script>
+    <script src="{{ url_for('static', filename='core/feature-registry.js') }}?v=20260510-feature-registry1"></script>
+    <script src="{{ url_for('static', filename='auth.js') }}?v=20260510-feature-registry1"></script>
+    <script src="{{ url_for('static', filename='app.js') }}?v=20260510-feature-registry1"></script>
     <script src="{{ url_for('static', filename='chat.js') }}?v=20260502-codeblock1"></script>
   </body>
 </html>

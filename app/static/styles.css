@@ -1,3 +1,8 @@
+/*
+ * Legacy stylesheet retained for reference only.
+ * The active UI system is generated from app/static/css/input.css into
+ * app/static/css/output.css and is the only stylesheet loaded by base.html.
+ */
 :root {
   color-scheme: dark;
   --bg: #102031;

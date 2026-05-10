@@ -19,38 +19,38 @@
 
 <section class="dashboard-kpi-grid" aria-label="Cockpit Kennzahlen">
   <article class="kpi-card kpi-card-open">
-    <div class="kpi-icon" aria-hidden="true">📋</div>
+    <div class="kpi-icon" aria-hidden="true">OT</div>
     <p class="kpi-label">Offene Tasks</p>
     <p class="kpi-value" data-dashboard-open-count>0</p>
     <p class="kpi-meta">Noch nicht gestartet</p>
   </article>
   <article class="kpi-card kpi-card-progress">
-    <div class="kpi-icon" aria-hidden="true">⚙️</div>
+    <div class="kpi-icon" aria-hidden="true">IA</div>
     <p class="kpi-label">In Arbeit</p>
     <p class="kpi-value" data-dashboard-progress-count>0</p>
     <p class="kpi-meta">Aktuell bearbeitet</p>
   </article>
   <article class="kpi-card kpi-card-done">
-    <div class="kpi-icon" aria-hidden="true">✅</div>
+    <div class="kpi-icon" aria-hidden="true">OK</div>
     <p class="kpi-label">Erledigt</p>
     <p class="kpi-value" data-dashboard-done-count>0</p>
     <p class="kpi-meta">Abgeschlossen</p>
   </article>
   <article class="kpi-card kpi-card-critical">
-    <div class="kpi-icon" aria-hidden="true">🚨</div>
+    <div class="kpi-icon" aria-hidden="true">KR</div>
     <p class="kpi-label">Kritisch</p>
     <p class="kpi-value" data-dashboard-critical-count>0</p>
-    <p class="kpi-meta">Urgent oder ueberfaellig</p>
+    <p class="kpi-meta">Urgent oder überfällig</p>
   </article>
   <article class="kpi-card kpi-card-machine">
-    <div class="kpi-icon" aria-hidden="true">🖥️</div>
+    <div class="kpi-icon" aria-hidden="true">MA</div>
     <p class="kpi-label">Maschinenhinweise</p>
     <p class="kpi-value" data-dashboard-machine-issue-count>0</p>
     <p class="kpi-meta">Fehlerkatalog sichtbar</p>
   </article>
   <article class="kpi-card kpi-card-ai">
-    <div class="kpi-icon" aria-hidden="true">🤖</div>
-    <p class="kpi-label">AI Briefing</p>
+    <div class="kpi-icon" aria-hidden="true">KI</div>
+    <p class="kpi-label">KI Briefing</p>
     <p class="kpi-value" data-dashboard-briefing-count>0</p>
     <p class="kpi-meta">Wichtige Hinweise</p>
   </article>
@@ -71,12 +71,12 @@
 
 <section class="ai-action-grid" aria-label="KI Aktionen">
   <a class="ai-action-card" href="/tasks" data-dashboard-nav="tasks" hidden>
-    <strong>AI Task-Priorisierung</strong>
-    <span>Risiko und Faelligkeit bewerten</span>
+    <strong>KI Task-Priorisierung</strong>
+    <span>Risiko und Fälligkeit bewerten</span>
   </a>
   <a class="ai-action-card" href="/errors" data-dashboard-nav="errors" hidden>
-    <strong>Aehnliche Fehler</strong>
-    <span>Bestehende Loesungen vergleichen</span>
+    <strong>Ähnliche Fehler</strong>
+    <span>Bestehende Lösungen vergleichen</span>
   </a>
   <a class="ai-action-card" href="/machines" data-dashboard-nav="machines" hidden>
     <strong>Maschinen-Assistent</strong>
@@ -88,7 +88,7 @@
   <summary>
     <span>
       <span class="section-kicker">Arbeitsbereich</span>
-      <span class="section-title">Stoerungen erfassen und Tagesaufgaben steuern</span>
+      <span class="section-title">Störungen erfassen und Tagesaufgaben steuern</span>
     </span>
   </summary>
 <section class="dashboard-grid">
@@ -96,16 +96,16 @@
       <div class="card-body">
         <div class="panel-header">
           <div>
-            <h2 class="panel-title">Stoerung erfassen</h2>
-            <p class="panel-meta">Kurz beschreiben, Vorschlag pruefen und als Task speichern</p>
+            <h2 class="panel-title">Störung erfassen</h2>
+            <p class="panel-meta">Kurz beschreiben, Vorschlag prüfen und als Task speichern</p>
           </div>
-          <span class="badge badge-ai">AI</span>
+          <span class="badge badge-ai">KI</span>
         </div>
         <form data-cockpit-suggest-form>
           <div class="form-grid">
             <div class="field is-full">
               <label for="cockpit-suggest-text">Was ist passiert?</label>
-              <textarea class="textarea textarea-bordered" id="cockpit-suggest-text" name="text" placeholder="z. B. Maschine 3 macht laute Geraeusche am Lager."></textarea>
+              <textarea class="textarea textarea-bordered" id="cockpit-suggest-text" name="text" placeholder="z. B. Maschine 3 macht laute Geräusche am Lager."></textarea>
             </div>
           </div>
           <div class="toolbar form-actions">
@@ -124,7 +124,7 @@
               <input class="input input-bordered" id="cockpit-draft-department" name="department" required>
             </div>
             <div class="field">
-              <label for="cockpit-draft-priority">Prioritaet</label>
+              <label for="cockpit-draft-priority">Priorität</label>
               <select class="select select-bordered" id="cockpit-draft-priority" name="priority">
                 <option value="urgent">urgent</option>
                 <option value="soon">soon</option>
@@ -167,7 +167,7 @@
             <div class="cockpit-task-list" data-cockpit-list="urgent"></div>
           </section>
           <section class="cockpit-column is-today" aria-labelledby="cockpit-today-title">
-            <h3 id="cockpit-today-title" class="cockpit-column-title">Heute faellig</h3>
+            <h3 id="cockpit-today-title" class="cockpit-column-title">Heute fällig</h3>
             <div class="cockpit-task-list" data-cockpit-list="today"></div>
           </section>
           <section class="cockpit-column is-progress" aria-labelledby="cockpit-progress-title">
@@ -183,7 +183,7 @@
         <div class="panel-header">
           <div>
             <h2 class="panel-title">Mein Schichtkalender</h2>
-            <p class="panel-meta" data-dashboard-calendar-message>Schichten und freie Tage fuer die naechsten Tage</p>
+            <p class="panel-meta" data-dashboard-calendar-message>Schichten und freie Tage für die nächsten Tage</p>
           </div>
           <div class="toolbar">
             <select class="select select-bordered" data-dashboard-calendar-employee hidden>
@@ -205,7 +205,7 @@
         <h2 class="panel-title" id="task-detail-title" data-task-detail-title>Task</h2>
         <p class="panel-meta" data-task-detail-subtitle>Details und Workflow</p>
       </div>
-      <button class="btn btn-ghost btn-sm" type="button" data-task-detail-close>Schliessen</button>
+      <button class="btn btn-ghost btn-sm" type="button" data-task-detail-close>Schließen</button>
     </div>
     <div class="task-detail-body" data-task-detail-body></div>
     <div class="form-grid mt-6" data-report-options>

@@ -31,6 +31,8 @@
     errors: "Fehlerliste",
     employees: "Mitarbeiter",
     shiftplans: "Schichtplan",
+    handover: "Schichtübergabe",
+    vacations: "Urlaubsplanung",
     machines: "Maschinen",
     inventory: "Lager",
     documents: "Dokumente",
