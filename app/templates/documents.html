@@ -119,7 +119,27 @@
         </div>
         <span class="badge badge-status is-open" data-document-count>0 Dokumente</span>
       </div>
-      <div class="resource-card-grid" data-document-list></div>
+      <div class="list-toolbar">
+        <label class="compact-search-field" for="document-list-search">
+          <span>Dokumente suchen</span>
+          <input class="input input-bordered input-sm" id="document-list-search" data-list-search data-list-search-target="[data-document-list]" placeholder="Titel, Task, Bereich, Maschine">
+        </label>
+      </div>
+      <div class="table-wrap bounded-table-wrap">
+        <table class="table data-table">
+          <thead>
+            <tr>
+              <th>Titel</th>
+              <th>Task</th>
+              <th>Bereich</th>
+              <th>Maschine</th>
+              <th>Erstellt</th>
+              <th>Aktionen</th>
+            </tr>
+          </thead>
+          <tbody data-document-list></tbody>
+        </table>
+      </div>
     </div>
   </article>
 </section>

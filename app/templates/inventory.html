@@ -106,7 +106,13 @@
           <p class="panel-meta">Materialien, Mengen und Gesamtwert je Position</p>
         </div>
       </div>
-      <div class="table-wrap">
+      <div class="list-toolbar">
+        <label class="compact-search-field" for="inventory-list-search">
+          <span>Material suchen</span>
+          <input class="input input-bordered input-sm" id="inventory-list-search" data-list-search data-list-search-target="[data-inventory-list]" placeholder="Name, Maschine, Hersteller">
+        </label>
+      </div>
+      <div class="table-wrap bounded-table-wrap">
         <table class="table data-table">
           <thead>
             <tr>

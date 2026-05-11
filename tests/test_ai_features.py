@@ -4,8 +4,10 @@ from io import BytesIO
 import pytest
 
 from app.extensions import db
-from app.models import GeneratedDocument, Priority, Role
+from app.models import AIAuditEvent, GeneratedDocument, Priority, Role, Task
 from app.services.document_service import document_path
+from app.services.ai_audit_service import create_ai_audit_event
+from app.services.ai_routing import estimate_cost_usd, workflow_profile
 
 
 def test_ai_chat_returns_today_tasks_without_openai(
@@ -44,6 +46,315 @@ def test_ai_chat_rejects_empty_messages(client, make_user, auth_headers):
     assert response.status_code == 400
     assert response.get_json()["error"] == "message_is_required"
     assert response.get_json()["message"] == "message is required"
+
+
+def test_ai_chat_denies_requested_scope_with_admin_hint(
+    client,
+    make_user,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify the global assistant explains missing requested permissions."""
+    user = make_user(username="ai_denied_employee_user")
+    set_dashboard_permission(user["username"], "employees", can_view=False)
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Mitarbeiter sind heute verfuegbar?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "permission_denied"
+    assert payload["diagnostics"]["status"] == "permission_denied"
+    assert "Mitarbeiter" in payload["answer"]
+    assert "Admin" in payload["answer"]
+
+
+def test_ai_chat_answers_machine_scope_without_error_fallback(
+    client,
+    make_user,
+    make_machine,
+    auth_headers,
+):
+    """Verify broad machine questions are handled as assistant requests."""
+    user = make_user(username="ai_machine_scope_user", role=Role.INSTANDHALTUNG)
+    make_machine(name="Anlage Chat", produced_item="Deckel")
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Maschinen sind sichtbar?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "assistant"
+    assert payload["diagnostics"]["status"] == "local_answer"
+    assert payload["data"]["machines"][0]["name"] == "Anlage Chat"
+
+
+def test_ai_chat_employee_context_respects_basic_access(
+    client,
+    make_user,
+    make_employee,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify assistant employee context follows configured access levels."""
+    user = make_user(username="ai_employee_basic_user")
+    make_employee(name="Anna Chat", salary_group="E9")
+    set_dashboard_permission(
+        user["username"],
+        "employees",
+        can_view=True,
+        can_write=False,
+        employee_access_level="basic",
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Mitarbeiterdaten darf ich sehen?"},
+    )
+
+    employee_payload = response.get_json()["data"]["employees"][0]
+    assert response.status_code == 200
+    assert employee_payload["name"] == "Anna Chat"
+    assert "salary_group" not in employee_payload
+    assert "city" not in employee_payload
+
+
+def test_ai_chat_returns_sources_and_audit_metadata(
+    app,
+    client,
+    make_user,
+    make_machine,
+    auth_headers,
+):
+    """Verify chat responses include sources and metadata-only audit records."""
+    user = make_user(username="ai_sources_user", role=Role.INSTANDHALTUNG)
+    make_machine(name="Anlage Quelle", produced_item="Deckel")
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Maschinen sind sichtbar?"},
+    )
+
+    payload = response.get_json()
+    audit_id = payload["diagnostics"]["audit_event_id"]
+    assert response.status_code == 200
+    assert payload["sources"][0]["type"] == "machine"
+    assert payload["diagnostics"]["source_count"] == len(payload["sources"])
+
+    with app.app_context():
+        event = db.session.get(AIAuditEvent, audit_id)
+        assert event is not None
+        assert event.workflow == "assistant"
+        assert event.source_count == len(payload["sources"])
+        assert not hasattr(event, "prompt")
+        assert not hasattr(event, "response")
+
+
+def test_ai_chat_returns_task_action_preview_without_writing(
+    app,
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify the assistant returns read-only task previews for form filling."""
+    user = make_user(username="ai_preview_user", role=Role.INSTANDHALTUNG)
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Task erstellen: Maschine 3 macht laute Geraeusche"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["action_preview"]["type"] == "task_draft"
+    assert payload["action_preview"]["target"] == "tasks"
+    assert payload["action_preview"]["payload"]["status"] == "open"
+    with app.app_context():
+        assert Task.query.count() == 0
+
+
+def test_ai_chat_answers_machine_count_without_action_preview(
+    client,
+    make_user,
+    make_machine,
+    auth_headers,
+):
+    """Verify explicit machine count questions return direct local answers."""
+    user = make_user(username="ai_machine_count_user", role=Role.INSTANDHALTUNG)
+    make_machine(name="Anlage Count 1")
+    make_machine(name="Anlage Count 2")
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "wie vile maschinen?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "machines_count"
+    assert payload["data"]["count"] == 2
+    assert "Gesamt" in payload["answer"]
+    assert "action_preview" not in payload
+
+
+def test_ai_chat_answers_admin_user_count_permission_aware(
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify user count is only answered from Admin Users permission."""
+    admin = make_user(
+        username="ai_user_count_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    user = make_user(username="ai_user_count_normal")
+
+    admin_response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(admin["username"]),
+        json={"message": "wie viele user gibt es"},
+    )
+    user_response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "wie viele user gibt es"},
+    )
+
+    admin_payload = admin_response.get_json()
+    user_payload = user_response.get_json()
+    assert admin_response.status_code == 200
+    assert admin_payload["type"] == "admin_users_count"
+    assert admin_payload["data"]["count"] == 2
+    assert user_response.status_code == 200
+    assert user_payload["type"] == "permission_denied"
+    assert "Admin" in user_payload["answer"]
+
+
+def test_ai_chat_uses_hybrid_general_mode_for_non_app_questions(
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify general questions get short hybrid answers with tracking notice."""
+    user = make_user(username="ai_general_chat_user")
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Was ist die Hauptstadt von Japan?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "general_chat"
+    assert payload["diagnostics"]["workflow"] == "general_chat"
+    assert payload["sources"] == []
+    assert "protokolliert" in payload["answer"]
+    assert "Datenbank" not in payload["answer"]
+
+
+def test_admin_ai_summary_is_admin_only(
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify AI analytics summary is restricted to master admins."""
+    admin = make_user(
+        username="ai_summary_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    user = make_user(username="ai_summary_user")
+
+    forbidden_response = client.get(
+        "/api/v1/admin/ai/summary",
+        headers=auth_headers(user["username"]),
+    )
+    admin_response = client.get(
+        "/api/v1/admin/ai/summary",
+        headers=auth_headers(admin["username"]),
+    )
+
+    assert forbidden_response.status_code == 403
+    assert admin_response.status_code == 200
+    assert set(admin_response.get_json().keys()) >= {
+        "average_latency_ms",
+        "estimated_cost_usd",
+        "events_total",
+        "fallback_count",
+        "feedback",
+        "latest_events",
+        "total_tokens",
+        "workflow_metrics",
+    }
+
+
+def test_ai_workflow_routing_uses_balanced_defaults(app):
+    """Verify workflow routing selects models, temperature and output budgets."""
+    with app.app_context():
+        app.config["OPENAI_MODEL_FAST"] = "fast-test-model"
+        app.config["OPENAI_MODEL_BALANCED"] = "balanced-test-model"
+        app.config["OPENAI_MODEL_QUALITY"] = "quality-test-model"
+
+        task_profile = workflow_profile("task_suggestion")
+        chat_profile = workflow_profile("chat")
+        quality_profile = workflow_profile("quality_analysis")
+
+    assert task_profile.model == "fast-test-model"
+    assert task_profile.tier == "fast"
+    assert task_profile.temperature == 0.1
+    assert chat_profile.model == "balanced-test-model"
+    assert chat_profile.tier == "balanced"
+    assert chat_profile.max_tokens == 750
+    assert quality_profile.model == "quality-test-model"
+    assert quality_profile.tier == "quality"
+
+
+def test_ai_audit_stores_usage_metrics_without_content(app, monkeypatch):
+    """Verify audit events store usage metadata but no prompts or answers."""
+    monkeypatch.setenv("AI_PRICE_TEST_MODEL_INPUT_PER_1M", "1")
+    monkeypatch.setenv("AI_PRICE_TEST_MODEL_OUTPUT_PER_1M", "2")
+
+    with app.app_context():
+        cost = estimate_cost_usd("test-model", 1000, 500)
+        event_id = create_ai_audit_event(
+            None,
+            "assistant",
+            {
+                "status": "openai_used",
+                "provider": "openai",
+                "model": "test-model",
+                "model_tier": "balanced",
+                "temperature": 0.2,
+                "latency_ms": 123,
+                "input_tokens": 1000,
+                "output_tokens": 500,
+                "cached_tokens": 0,
+                "total_tokens": 1500,
+                "estimated_cost_usd": cost,
+            },
+        )
+        event = db.session.get(AIAuditEvent, event_id)
+        assert event.model == "test-model"
+        assert event.model_tier == "balanced"
+        assert event.temperature == 0.2
+        assert event.latency_ms == 123
+        assert event.input_tokens == 1000
+        assert event.output_tokens == 500
+        assert event.estimated_cost_usd == 0.002
+        assert not hasattr(event, "prompt")
+        assert not hasattr(event, "response")
 
 
 def test_ai_feedback_validates_rating_and_required_text(
@@ -195,15 +506,41 @@ def test_dashboard_contains_daily_briefing_and_priority_ui(client):
     """Verify dashboard exposes briefing and task priority UI hooks."""
     response = client.get("/")
     script_response = client.get("/static/app.js")
+    chat_response = client.get("/static/chat.js")
     html = response.get_data(as_text=True)
     script = script_response.get_data(as_text=True)
+    chat_script = chat_response.get_data(as_text=True)
 
     assert response.status_code == 200
     assert script_response.status_code == 200
+    assert chat_response.status_code == 200
     assert 'data-daily-briefing-list' in html
     assert 'data-dashboard-priority-list' in html
+    assert 'data-chat-suggestions' in html
     assert "Briefing konnte nicht geladen werden." in script
     assert "KI-Priorisierung" in script
+    assert "maintenance_ai_action_preview" in script
+    assert "responseData && responseData.answer" in chat_script
+    assert "chatSuggestionsForUser" in chat_script
+    assert "suggestions.hidden = true" in chat_script
+
+
+def test_admin_users_page_contains_ai_analytics_ui(client):
+    """Verify Admin Users exposes AI analytics UI hooks."""
+    page_response = client.get("/admin/users")
+    script_response = client.get("/static/app.js")
+    html = page_response.get_data(as_text=True)
+    script = script_response.get_data(as_text=True)
+
+    assert page_response.status_code == 200
+    assert script_response.status_code == 200
+    assert "data-ai-analytics-card" in html
+    assert "data-ai-latency" in html
+    assert "data-ai-tokens" in html
+    assert "data-ai-cost" in html
+    assert "data-ai-workflows" in html
+    assert "data-ai-error-categories" in html
+    assert "/api/v1/admin/ai/summary" in script
 
 
 def test_document_path_rejects_storage_escape(app):

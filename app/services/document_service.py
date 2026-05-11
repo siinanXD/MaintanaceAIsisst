@@ -105,7 +105,11 @@ def review_document_quality(document):
         return review, None, 200
 
     review = normalize_document_review(provider_review, document)
-    review["diagnostics"] = {"status": "openai_used", "provider": provider.name}
+    review["diagnostics"] = {
+        "status": "openai_used",
+        "provider": provider.name,
+        **getattr(provider, "last_call_metadata", {}),
+    }
     return review, None, 200
 
 
@@ -159,7 +163,11 @@ def review_uploaded_document(file_storage):
         return review, None, 200
 
     review = normalize_uploaded_document_review(provider_review, metadata)
-    review["diagnostics"] = {"status": "openai_used", "provider": provider.name}
+    review["diagnostics"] = {
+        "status": "openai_used",
+        "provider": provider.name,
+        **getattr(provider, "last_call_metadata", {}),
+    }
     return review, None, 200
 
 

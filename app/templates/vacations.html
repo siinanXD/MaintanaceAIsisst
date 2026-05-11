@@ -5,21 +5,60 @@
   <div>
     <p class="page-kicker">Personalplanung</p>
     <h1 class="page-title">Urlaubsplanung</h1>
-    <p class="page-description">Urlaubsanträge stellen, genehmigen und Resturlaub im Blick behalten.</p>
+    <p class="page-description">Antraege stellen, Resturlaub pruefen und offene Entscheidungen bearbeiten.</p>
   </div>
 </section>
 
-<section class="dashboard-grid">
+<section class="dashboard-kpi-grid vacation-kpi-grid">
+  <article class="kpi-card kpi-card-progress">
+    <span class="kpi-icon">!</span>
+    <div>
+      <p class="kpi-label">Ausstehend</p>
+      <strong class="kpi-value" data-vac-pending-count>0</strong>
+      <span class="kpi-delta">Antraege in Pruefung</span>
+    </div>
+  </article>
+  <article class="kpi-card kpi-card-done">
+    <span class="kpi-icon">OK</span>
+    <div>
+      <p class="kpi-label">Verfuegbar</p>
+      <strong class="kpi-value" data-vac-selected-available>-</strong>
+      <span class="kpi-delta">fuer ausgewaehlte Person</span>
+    </div>
+  </article>
+  <article class="kpi-card kpi-card-open">
+    <span class="kpi-icon">#</span>
+    <div>
+      <p class="kpi-label">Genehmigt</p>
+      <strong class="kpi-value" data-vac-used-total>-</strong>
+      <span class="kpi-delta">genutzte Tage im Jahr</span>
+    </div>
+  </article>
+  <article class="kpi-card kpi-card-ai">
+    <span class="kpi-icon">...</span>
+    <div>
+      <p class="kpi-label">Reserviert</p>
+      <strong class="kpi-value" data-vac-pending-total>-</strong>
+      <span class="kpi-delta">durch offene Antraege</span>
+    </div>
+  </article>
+</section>
 
-  <!-- Neuer Antrag -->
+<section class="dashboard-grid vacation-dashboard">
+
   <div class="card app-card lg:col-span-4">
     <div class="card-body">
-      <div class="panel-header"><h2 class="panel-title">Neuer Urlaubsantrag</h2></div>
+      <div class="panel-header">
+        <div>
+          <p class="panel-eyebrow">Self-Service</p>
+          <h2 class="panel-title">Neuer Urlaubsantrag</h2>
+        </div>
+      </div>
       <div class="form-grid">
         <div class="field is-full">
           <label for="vac-employee">Mitarbeiter *</label>
           <select class="select select-bordered" id="vac-employee" data-vac-employee required>
-            <option value="" disabled selected>Bitte wählen…</option>
+            <option value="" disabled selected>Bitte waehlen...</option>
           </select>
         </div>
         <div class="field">
@@ -30,55 +69,64 @@
           <label for="vac-end">Bis *</label>
           <input class="input input-bordered" id="vac-end" data-vac-end type="date" required>
         </div>
+        <div class="vacation-balance-preview is-full" data-vac-balance-preview>
+          Waehle Mitarbeiter und Zeitraum.
+        </div>
         <div class="field is-full" data-vac-days-wrap hidden>
           <span class="panel-meta">Arbeitstage: </span>
-          <span class="badge badge-neutral" data-vac-days-count>–</span>
+          <span class="badge badge-neutral" data-vac-days-count>-</span>
         </div>
         <div class="field is-full">
           <label for="vac-notes">Notiz</label>
-          <input class="input input-bordered" id="vac-notes" data-vac-notes type="text" placeholder="Optional">
+          <input class="input input-bordered" id="vac-notes" data-vac-notes type="text" maxlength="500" placeholder="Optional">
         </div>
       </div>
       <div class="toolbar form-actions">
         <button class="btn btn-primary" data-vac-submit type="button">Antrag stellen</button>
-        <span class="panel-meta" data-vac-msg role="status" aria-live="polite"></span>
       </div>
+      <p class="form-message" data-vac-msg role="status" aria-live="polite"></p>
     </div>
   </div>
 
-  <!-- Ausstehende Anträge -->
   <div class="card app-card lg:col-span-8">
     <div class="card-body">
       <div class="panel-header">
-        <h2 class="panel-title">Ausstehende Anträge <span class="badge badge-warning ml-2" data-vac-pending-count hidden></span></h2>
-      </div>
-      <div data-vac-pending-list>
-        <p class="panel-meta" data-vac-pending-empty>Keine ausstehenden Anträge.</p>
-      </div>
-    </div>
-  </div>
-
-  <!-- Resturlaub -->
-  <div class="card app-card lg:col-span-12">
-    <div class="card-body">
-      <div class="panel-header">
-        <h2 class="panel-title">Resturlaub</h2>
+        <div>
+          <p class="panel-eyebrow">Entscheidungen</p>
+          <h2 class="panel-title">Pending-Queue</h2>
+        </div>
         <div class="toolbar">
-          <label class="stat-label">Jahr:</label>
-          <select class="select select-bordered select-sm" data-vac-year></select>
+          <label class="stat-label" for="vac-year">Jahr</label>
+          <select class="select select-bordered select-sm" id="vac-year" data-vac-year></select>
         </div>
       </div>
-      <div data-vac-summary-list class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-2">
-        <p class="panel-meta col-span-full">Wird geladen…</p>
+      <div class="vacation-pending-list" data-vac-pending-list>
+        <p class="panel-meta" data-vac-pending-empty>Keine ausstehenden Antraege.</p>
       </div>
     </div>
   </div>
 
-  <!-- Antrags-Historie -->
-  <div class="card app-card lg:col-span-12">
+  <div class="card app-card lg:col-span-5">
     <div class="card-body">
       <div class="panel-header">
-        <h2 class="panel-title">Antrags-Historie</h2>
+        <div>
+          <p class="panel-eyebrow">Kontingente</p>
+          <h2 class="panel-title">Resturlaub</h2>
+        </div>
+      </div>
+      <div data-vac-summary-list class="vacation-summary-table-wrap">
+        <p class="panel-meta">Wird geladen...</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card app-card lg:col-span-7">
+    <div class="card-body">
+      <div class="panel-header">
+        <div>
+          <p class="panel-eyebrow">Archiv</p>
+          <h2 class="panel-title">Antrags-Historie</h2>
+        </div>
         <div class="toolbar">
           <select class="select select-bordered select-sm" data-vac-filter-status>
             <option value="approved">Genehmigt</option>
@@ -89,14 +137,20 @@
         </div>
       </div>
       <div class="overflow-x-auto">
-        <table class="table table-sm">
+        <table class="table table-sm vacation-history-table">
           <thead>
-            <tr><th>Mitarbeiter</th><th>Von</th><th>Bis</th><th>Tage</th><th>Status</th><th>Notiz</th></tr>
+            <tr>
+              <th>Mitarbeiter</th>
+              <th>Zeitraum</th>
+              <th>Tage</th>
+              <th>Status</th>
+              <th>Notiz</th>
+            </tr>
           </thead>
           <tbody data-vac-table-body></tbody>
         </table>
       </div>
-      <p class="panel-meta" data-vac-empty hidden>Keine Einträge vorhanden.</p>
+      <p class="panel-meta" data-vac-empty hidden>Keine Eintraege vorhanden.</p>
     </div>
   </div>
 

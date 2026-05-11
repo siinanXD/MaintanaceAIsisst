@@ -10,6 +10,7 @@ from app.permissions import (
 )
 from app.responses import error_response
 from app.security import roles_required
+from app.services.ai_audit_service import ai_analytics_summary
 
 
 admin_bp = Blueprint("admin", __name__)
@@ -54,6 +55,19 @@ def list_users():
 
     users = query.order_by(User.id.asc()).all()
     return jsonify([user.to_dict() for user in users])
+
+
+@admin_bp.get("/ai/summary")
+@roles_required(Role.MASTER_ADMIN)
+def ai_summary():
+    """Return AI audit and feedback analytics for administrators."""
+    try:
+        days = int(request.args.get("days", 7))
+    except (TypeError, ValueError):
+        return error_response("days must be an integer between 1 and 90", 400)
+    if days < 1 or days > 90:
+        return error_response("days must be an integer between 1 and 90", 400)
+    return jsonify(ai_analytics_summary(days))
 
 
 @admin_bp.post("/users")

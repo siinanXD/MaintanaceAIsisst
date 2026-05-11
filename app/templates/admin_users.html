@@ -12,6 +12,81 @@
 </section>
 
 <section class="dashboard-grid">
+  <article class="card app-card mobile-secondary-card lg:col-span-12" data-ai-analytics-card hidden>
+    <div class="card-body">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">AI-Auswertung</h2>
+          <p class="panel-meta">Nutzung, Fallbacks und Feedback der letzten 7 Tage</p>
+        </div>
+        <span class="badge badge-ai">AI</span>
+      </div>
+      <div class="dashboard-kpi-grid">
+        <article class="kpi-card">
+          <span class="kpi-label">Events</span>
+          <strong class="kpi-value" data-ai-events-total>-</strong>
+          <span class="kpi-meta">AI-Workflows</span>
+        </article>
+        <article class="kpi-card">
+          <span class="kpi-label">Fallbacks</span>
+          <strong class="kpi-value" data-ai-fallback-count>-</strong>
+          <span class="kpi-meta">lokal beantwortet</span>
+        </article>
+        <article class="kpi-card">
+          <span class="kpi-label">Feedback</span>
+          <strong class="kpi-value" data-ai-feedback-rate>-</strong>
+          <span class="kpi-meta">hilfreich Quote</span>
+        </article>
+        <article class="kpi-card">
+          <span class="kpi-label">Nicht hilfreich</span>
+          <strong class="kpi-value" data-ai-not-helpful>-</strong>
+          <span class="kpi-meta">Feedback</span>
+        </article>
+        <article class="kpi-card">
+          <span class="kpi-label">Ø Latenz</span>
+          <strong class="kpi-value" data-ai-latency>-</strong>
+          <span class="kpi-meta">Millisekunden</span>
+        </article>
+        <article class="kpi-card">
+          <span class="kpi-label">Tokens</span>
+          <strong class="kpi-value" data-ai-tokens>-</strong>
+          <span class="kpi-meta">gesamt</span>
+        </article>
+        <article class="kpi-card">
+          <span class="kpi-label">Kosten</span>
+          <strong class="kpi-value" data-ai-cost>-</strong>
+          <span class="kpi-meta">geschaetzt</span>
+        </article>
+      </div>
+      <div class="grid gap-4 md:grid-cols-2 mt-4">
+        <div class="surface-panel">
+          <h3 class="panel-title text-base">Haeufige Workflows</h3>
+          <div class="stacked-list" data-ai-workflows></div>
+        </div>
+        <div class="surface-panel">
+          <h3 class="panel-title text-base">Letzte Fehlerkategorien</h3>
+          <div class="stacked-list" data-ai-error-categories></div>
+        </div>
+      </div>
+      <div class="table-wrap mt-4">
+        <table class="table data-table">
+          <thead>
+            <tr>
+              <th>Workflow</th>
+              <th>Status</th>
+              <th>Modell</th>
+              <th>Quellen</th>
+              <th>Latenz</th>
+              <th>Fallback</th>
+              <th>Zeit</th>
+            </tr>
+          </thead>
+          <tbody data-ai-latest-events></tbody>
+        </table>
+      </div>
+    </div>
+  </article>
+
   <article class="card app-card mobile-secondary-card lg:col-span-12" data-permission-editor hidden>
     <div class="card-body">
       <div class="panel-header">

@@ -173,16 +173,22 @@
           <h2 class="panel-title">Taskliste</h2>
           <p class="panel-meta">Admin sieht alles, Bereiche sehen ihre eigenen Tasks</p>
         </div>
-        <div class="task-legend" aria-label="Task Legende">
-          <span class="badge badge-priority is-urgent">Urgent</span>
-          <span class="badge badge-priority is-soon">Soon</span>
-          <span class="badge badge-priority is-normal">Normal</span>
-          <span class="badge badge-status is-open">Offen</span>
-          <span class="badge badge-status is-progress">In Arbeit</span>
-          <span class="badge badge-status is-done">Erledigt</span>
+        <div class="list-toolbar">
+          <label class="compact-search-field" for="task-list-search">
+            <span>Tasks suchen</span>
+            <input class="input input-bordered input-sm" id="task-list-search" data-list-search data-list-search-target="[data-task-list]" placeholder="Titel, Bereich, Status">
+          </label>
+          <div class="task-legend" aria-label="Task Legende">
+            <span class="badge badge-priority is-urgent">Urgent</span>
+            <span class="badge badge-priority is-soon">Soon</span>
+            <span class="badge badge-priority is-normal">Normal</span>
+            <span class="badge badge-status is-open">Offen</span>
+            <span class="badge badge-status is-progress">In Arbeit</span>
+            <span class="badge badge-status is-done">Erledigt</span>
+          </div>
         </div>
       </div>
-      <div class="task-card-grid" data-task-list></div>
+      <div class="task-card-grid bounded-list-scroll" data-task-list></div>
     </div>
   </article>
 </section>

@@ -5,6 +5,7 @@
   const close = document.querySelector(".chat-close");
   const form = document.querySelector("[data-chat-form]");
   const messages = document.querySelector("[data-chat-messages]");
+  const suggestions = document.querySelector("[data-chat-suggestions]");
 
   if (!widget || !toggle || !panel || !form || !messages) {
     return;
@@ -24,12 +25,23 @@
     const status = diagnostics && diagnostics.status;
     const provider = (diagnostics && diagnostics.provider) || "OpenAI";
     const model = diagnostics && diagnostics.model;
+    const sourceCount = diagnostics && diagnostics.source_count;
+    const sourceLabel = sourceCount ? " - " + sourceCount + " Quellen" : "";
+    if (status === "openai_used" && sourceCount) {
+      return provider + (model ? " - " + model : "") + sourceLabel;
+    }
+    if (status === "api_key_missing" && sourceCount) {
+      return "Fallback - OPENAI_API_KEY fehlt in .env" + sourceLabel;
+    }
+    if (status === "openai_error" && sourceCount) {
+      return "Fallback - OpenAI nicht erreichbar" + sourceLabel;
+    }
 
     if (status === "openai_used") {
       return provider + (model ? " · " + model : "");
     }
     if (status === "local_answer") {
-      return "Lokale Antwort";
+      return "Lokale Antwort" + sourceLabel;
     }
     if (status === "api_key_missing") {
       return "Fallback · OPENAI_API_KEY fehlt in .env";
@@ -38,10 +50,13 @@
       return "Fallback · OpenAI nicht erreichbar";
     }
     if (status === "permission_denied") {
-      return "Berechtigung fehlt";
+      return "Berechtigung fehlt" + sourceLabel;
     }
     if (diagnostics && diagnostics.fallback_used) {
-      return "Fallback";
+      return "Fallback" + sourceLabel;
+    }
+    if (sourceCount) {
+      return sourceCount + " Quellen";
     }
     return "";
   }
@@ -162,7 +177,44 @@
     return bubble;
   }
 
-  function updateAssistantMessage(bubble, text, diagnostics) {
+  function renderSources(bubble, sources) {
+    const existing = bubble.querySelector(".chat-sources");
+    if (existing) existing.remove();
+    if (!sources || !sources.length) return;
+    const sourceList = document.createElement("div");
+    sourceList.className = "chat-sources";
+    sources.slice(0, 4).forEach((source) => {
+      const item = document.createElement("a");
+      item.href = source.url || "#";
+      item.textContent = source.module + " #" + source.id + ": " + source.title;
+      item.title = source.reason || "";
+      sourceList.appendChild(item);
+    });
+    bubble.appendChild(sourceList);
+  }
+
+  function applyActionPreview(preview) {
+    if (!preview || !preview.target) return;
+    window.sessionStorage.setItem("maintenance_ai_action_preview", JSON.stringify(preview));
+    window.location.href = preview.url || "/";
+  }
+
+  function renderActionPreview(bubble, preview) {
+    const existing = bubble.querySelector(".chat-action-preview");
+    if (existing) existing.remove();
+    if (!preview || !preview.label) return;
+    const wrapper = document.createElement("div");
+    wrapper.className = "chat-action-preview";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "btn btn-primary btn-sm";
+    button.textContent = preview.label;
+    button.addEventListener("click", () => applyActionPreview(preview));
+    wrapper.appendChild(button);
+    bubble.appendChild(wrapper);
+  }
+
+  function updateAssistantMessage(bubble, text, diagnostics, sources, actionPreview) {
     const body = bubble.querySelector(".chat-message-text");
     const meta = bubble.querySelector(".chat-message-meta");
     if (body) renderFormattedText(body, text);
@@ -179,6 +231,8 @@
     } else if (meta) {
       meta.remove();
     }
+    renderSources(bubble, sources);
+    renderActionPreview(bubble, actionPreview);
   }
 
   async function askAssistant(message) {
@@ -223,9 +277,11 @@
     }
 
     const responseData = await response.json();
-    const data = responseData && responseData.success === true && Object.prototype.hasOwnProperty.call(responseData, "data")
-      ? responseData.data
-      : responseData;
+    const data = responseData && responseData.answer
+      ? responseData
+      : responseData && responseData.success === true && Object.prototype.hasOwnProperty.call(responseData, "data")
+        ? responseData.data
+        : responseData;
     const diagnostics = data.diagnostics || {};
     let answer = data.answer || "Ich habe keine Antwort erhalten.";
 
@@ -238,10 +294,16 @@
     if (diagnostics.fallback_used) {
       answer += "\n- **Quelle:** Lokaler Fallback";
     }
-    return { answer, diagnostics, prompt: message };
+    return {
+      answer,
+      diagnostics,
+      prompt: message,
+      sources: data.sources || [],
+      action_preview: data.action_preview || null
+    };
   }
 
-  async function sendFeedback(prompt, response, rating) {
+  async function sendFeedback(prompt, response, rating, comment) {
     const token = window.localStorage.getItem("maintenance_access_token");
     if (!token) return;
     await fetch("/api/v1/ai/feedback", {
@@ -250,7 +312,7 @@
         "Authorization": "Bearer " + token,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ prompt, response, rating })
+      body: JSON.stringify({ prompt, response, rating, comment: comment || "" })
     });
   }
 
@@ -263,18 +325,21 @@
     const notHelpful = document.createElement("button");
     notHelpful.type = "button";
     notHelpful.textContent = "Nicht hilfreich";
+    const comment = document.createElement("input");
+    comment.className = "input input-bordered";
+    comment.placeholder = "Optionaler Kommentar";
     [helpful, notHelpful].forEach((button) => {
       button.className = "chat-feedback-button";
     });
     helpful.addEventListener("click", async () => {
-      await sendFeedback(prompt, response, "helpful");
+      await sendFeedback(prompt, response, "helpful", comment.value);
       actions.textContent = "Feedback gespeichert.";
     });
     notHelpful.addEventListener("click", async () => {
-      await sendFeedback(prompt, response, "not_helpful");
+      await sendFeedback(prompt, response, "not_helpful", comment.value);
       actions.textContent = "Feedback gespeichert.";
     });
-    actions.append(helpful, notHelpful);
+    actions.append(comment, helpful, notHelpful);
     bubble.appendChild(actions);
   }
 
@@ -284,8 +349,45 @@
     messages.innerHTML = "";
     const initial = document.createElement("div");
     initial.className = "chat-message is-assistant";
-    initial.textContent = "Frag mich nach Fehlercodes, Maschinenstoerungen oder heutigen Tasks.";
+    initial.textContent = "Frag mich nach Tasks, Fehlern, Maschinen, Lager, Dokumenten oder Schichtplanung.";
     messages.appendChild(initial);
+    renderSuggestions();
+  }
+
+  function chatSuggestionsForUser() {
+    const auth = window.maintenanceAuth;
+    if (!auth || !auth.user || !auth.user()) return [];
+    const items = [];
+    if (auth.canView("tasks")) items.push("Welche Tasks sind heute wichtig?");
+    if (auth.canWrite("tasks")) items.push("Task erstellen: Maschine 3 macht Geraeusche");
+    if (auth.canView("errors")) items.push("Was bedeutet Fehler E104?");
+    if (auth.canWrite("errors")) items.push("Fehleranalyse: Sensor meldet kein Signal");
+    if (auth.canView("machines")) items.push("Welche Maschinen brauchen Aufmerksamkeit?");
+    if (auth.canView("inventory")) items.push("Welche Lagerteile sind kritisch?");
+    if (auth.canView("documents")) items.push("Welche Dokumente sollte ich pruefen?");
+    return items.slice(0, 6);
+  }
+
+  function renderSuggestions() {
+    if (!suggestions) return;
+    suggestions.innerHTML = "";
+    const items = chatSuggestionsForUser();
+    suggestions.hidden = items.length === 0;
+    items.forEach((text) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "chat-suggestion";
+      chip.textContent = text;
+      chip.addEventListener("click", () => {
+        suggestions.hidden = true;
+        const input = form.querySelector("input");
+        if (input) {
+          input.value = text;
+          input.focus();
+        }
+      });
+      suggestions.appendChild(chip);
+    });
   }
 
   toggle.addEventListener("click", () => setOpen(!widget.classList.contains("is-open")));
@@ -299,6 +401,7 @@
     if (!message) return;
 
     input.value = "";
+    if (suggestions) suggestions.hidden = true;
     appendMessage(message, "user");
     const loading = appendMessage(
       "Ich sende deine Frage an den Assistenten und pruefe die freigegebenen Daten...",
@@ -307,7 +410,13 @@
 
     try {
       const result = await askAssistant(message);
-      updateAssistantMessage(loading, result.answer, result.diagnostics);
+      updateAssistantMessage(
+        loading,
+        result.answer,
+        result.diagnostics,
+        result.sources,
+        result.action_preview
+      );
       addFeedbackButtons(loading, result.prompt || message, result.answer);
     } catch (error) {
       updateAssistantMessage(
@@ -317,4 +426,8 @@
       );
     }
   });
+
+  window.addEventListener("maintenance-auth-ready", renderSuggestions);
+  window.addEventListener("maintenance-auth-changed", renderSuggestions);
+  renderSuggestions();
 })();

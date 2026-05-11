@@ -1,5 +1,6 @@
 from datetime import date, timedelta
-from app.models import Role
+from app.extensions import db
+from app.models import Employee, Role
 
 
 def test_drag_drop_move_to_empty_cell(client, make_user, make_employee, make_machine, auth_headers):
@@ -196,6 +197,150 @@ def test_vacation_balance_counts_workdays(client, make_user, make_employee, auth
     })
     assert resp.status_code == 201
     assert resp.get_json()["data"]["days_used"] == 5
+
+
+def test_vacation_list_filters_by_status(client, make_user, make_employee, auth_headers):
+    """GET /vacations?status= returns only requests with the requested status."""
+    admin = make_user(username="vac_status_admin", role=Role.MASTER_ADMIN, department_name=None)
+    emp_id = make_employee(personnel_number="P-805", name="Vac Status Emp", department="Produktion")
+    headers = auth_headers(admin["username"])
+
+    approved_resp = client.post("/api/v1/vacations", headers=headers, json={
+        "employee_id": emp_id, "start_date": "2026-11-02", "end_date": "2026-11-02",
+    })
+    pending_resp = client.post("/api/v1/vacations", headers=headers, json={
+        "employee_id": emp_id, "start_date": "2026-11-03", "end_date": "2026-11-03",
+    })
+    approved_id = approved_resp.get_json()["data"]["id"]
+    pending_id = pending_resp.get_json()["data"]["id"]
+    client.post(f"/api/v1/vacations/{approved_id}/approve", headers=headers)
+
+    resp = client.get("/api/v1/vacations?status=approved", headers=headers)
+
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert [item["id"] for item in data] == [approved_id]
+    assert pending_id not in [item["id"] for item in data]
+    assert all(item["status"] == "approved" for item in data)
+
+
+def test_vacation_overlap_is_blocked(client, make_user, make_employee, auth_headers):
+    """An active vacation request cannot overlap an existing pending request."""
+    admin = make_user(username="vac_overlap_admin", role=Role.MASTER_ADMIN, department_name=None)
+    emp_id = make_employee(personnel_number="P-806", name="Vac Overlap Emp", department="Produktion")
+    headers = auth_headers(admin["username"])
+
+    first_resp = client.post("/api/v1/vacations", headers=headers, json={
+        "employee_id": emp_id, "start_date": "2026-11-09", "end_date": "2026-11-13",
+    })
+    overlap_resp = client.post("/api/v1/vacations", headers=headers, json={
+        "employee_id": emp_id, "start_date": "2026-11-11", "end_date": "2026-11-12",
+    })
+
+    assert first_resp.status_code == 201
+    assert overlap_resp.status_code == 409
+
+
+def test_vacation_request_over_available_balance_is_blocked(
+    app,
+    client,
+    make_user,
+    make_employee,
+    auth_headers,
+):
+    """A request above the employee's available balance returns 409."""
+    admin = make_user(username="vac_balance_block_admin", role=Role.MASTER_ADMIN, department_name=None)
+    emp_id = make_employee(personnel_number="P-807", name="Vac Balance Block Emp", department="Produktion")
+    headers = auth_headers(admin["username"])
+    with app.app_context():
+        employee = db.session.get(Employee, emp_id)
+        employee.vacation_days_per_year = 3
+        db.session.commit()
+
+    resp = client.post("/api/v1/vacations", headers=headers, json={
+        "employee_id": emp_id, "start_date": "2026-12-07", "end_date": "2026-12-11",
+    })
+
+    assert resp.status_code == 409
+
+
+def test_vacation_summary_reserves_pending_days(client, make_user, make_employee, auth_headers):
+    """Pending requests reduce available days without changing used days."""
+    admin = make_user(username="vac_pending_summary_admin", role=Role.MASTER_ADMIN, department_name=None)
+    emp_id = make_employee(personnel_number="P-808", name="Vac Pending Summary Emp", department="Produktion")
+    headers = auth_headers(admin["username"])
+
+    create_resp = client.post("/api/v1/vacations", headers=headers, json={
+        "employee_id": emp_id, "start_date": "2026-12-14", "end_date": "2026-12-15",
+    })
+    days_used = create_resp.get_json()["data"]["days_used"]
+
+    summary = client.get("/api/v1/vacations/summary?year=2026", headers=headers).get_json()["data"]
+    emp_bal = next(s for s in summary if s["employee_id"] == emp_id)
+    assert emp_bal["used"] == 0
+    assert emp_bal["pending"] == days_used
+    assert emp_bal["remaining"] == emp_bal["total"]
+    assert emp_bal["available"] == emp_bal["total"] - days_used
+
+
+def test_department_lead_can_decide_own_department_only(
+    client,
+    make_user,
+    make_employee,
+    auth_headers,
+    set_dashboard_permission,
+):
+    """Employees write permission allows deciding only same-department requests."""
+    admin = make_user(username="vac_lead_admin", role=Role.MASTER_ADMIN, department_name=None)
+    lead = make_user(username="vac_prod_lead", role=Role.PRODUKTION, department_name="Produktion")
+    set_dashboard_permission(
+        lead["username"],
+        "employees",
+        can_view=True,
+        can_write=True,
+        employee_access_level="basic",
+    )
+    prod_emp_id = make_employee(personnel_number="P-809", name="Vac Prod Emp", department="Produktion")
+    it_emp_id = make_employee(personnel_number="P-811", name="Vac IT Emp", department="IT")
+    admin_headers = auth_headers(admin["username"])
+    lead_headers = auth_headers(lead["username"])
+
+    prod_resp = client.post("/api/v1/vacations", headers=admin_headers, json={
+        "employee_id": prod_emp_id, "start_date": "2026-12-16", "end_date": "2026-12-16",
+    })
+    it_resp = client.post("/api/v1/vacations", headers=admin_headers, json={
+        "employee_id": it_emp_id, "start_date": "2026-12-17", "end_date": "2026-12-17",
+    })
+
+    approve_prod = client.post(
+        f"/api/v1/vacations/{prod_resp.get_json()['data']['id']}/approve",
+        headers=lead_headers,
+    )
+    approve_it = client.post(
+        f"/api/v1/vacations/{it_resp.get_json()['data']['id']}/approve",
+        headers=lead_headers,
+    )
+
+    assert approve_prod.status_code == 200
+    assert approve_it.status_code == 403
+
+
+def test_master_admin_can_decide_any_department(client, make_user, make_employee, auth_headers):
+    """Master admins can still decide vacation requests from every department."""
+    admin = make_user(username="vac_master_any_admin", role=Role.MASTER_ADMIN, department_name=None)
+    it_emp_id = make_employee(personnel_number="P-812", name="Vac Master IT Emp", department="IT")
+    headers = auth_headers(admin["username"])
+
+    create_resp = client.post("/api/v1/vacations", headers=headers, json={
+        "employee_id": it_emp_id, "start_date": "2026-12-18", "end_date": "2026-12-18",
+    })
+    approve_resp = client.post(
+        f"/api/v1/vacations/{create_resp.get_json()['data']['id']}/approve",
+        headers=headers,
+    )
+
+    assert approve_resp.status_code == 200
+    assert approve_resp.get_json()["data"]["status"] == "approved"
 
 
 def test_vacation_auto_imported_in_shiftplan(client, make_user, make_employee, make_machine, auth_headers):

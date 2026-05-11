@@ -62,7 +62,12 @@ def answer_machine_assistant(machine, user, data):
         }, None, 200
 
     try:
-        answer = provider.answer_question(question, context)
+        answer = _answer_question_with_workflow(
+            provider,
+            question,
+            context,
+            "machine_assistant",
+        )
     except AIServiceError:
         logger.warning(
             "ai_fallback workflow=machine_assistant user_id=%s machine_id=%s",
@@ -80,7 +85,11 @@ def answer_machine_assistant(machine, user, data):
 
     return {
         "answer": answer,
-        "diagnostics": {"status": "openai_used", "provider": provider.name},
+        "diagnostics": {
+            "status": "openai_used",
+            "provider": provider.name,
+            **getattr(provider, "last_call_metadata", {}),
+        },
         "context": {
             "source_counts": history["source_counts"],
             "forecast_items": len(forecast),
@@ -172,12 +181,14 @@ def _machine_summary(machine, timeline, source_counts):
 
     context = _summary_context(machine, timeline, source_counts)
     try:
-        answer = provider.answer_question(
+        answer = _answer_question_with_workflow(
+            provider,
             (
                 "Fasse diese Maschinenhistorie auf Deutsch in maximal "
                 "3 kurzen Saetzen zusammen."
             ),
             context,
+            "machine_summary",
         )
     except AIServiceError:
         logger.warning(
@@ -191,8 +202,22 @@ def _machine_summary(machine, timeline, source_counts):
 
     return {
         "text": answer,
-        "diagnostics": {"status": "openai_used", "provider": provider.name},
+        "diagnostics": {
+            "status": "openai_used",
+            "provider": provider.name,
+            **getattr(provider, "last_call_metadata", {}),
+        },
     }
+
+
+def _answer_question_with_workflow(provider, question, context, workflow):
+    """Call a provider with workflow metadata while keeping old stubs compatible."""
+    try:
+        return provider.answer_question(question, context, workflow=workflow)
+    except TypeError as exc:
+        if "workflow" not in str(exc):
+            raise
+        return provider.answer_question(question, context)
 
 
 def _local_machine_summary(machine, timeline, source_counts):

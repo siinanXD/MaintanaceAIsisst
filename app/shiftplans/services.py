@@ -8,6 +8,8 @@ from openai import OpenAI, OpenAIError
 from app.extensions import db
 from app.models import Employee, Machine, ShiftPlan, ShiftPlanEntry
 from app.permissions import has_employee_access
+from app.services.ai_prompting import build_json_prompt, json_system_prompt
+from app.services.ai_routing import openai_client_options, workflow_profile
 
 
 SHIFT_WINDOWS = {
@@ -604,9 +606,31 @@ def openai_shift_entries(start_date, days, rhythm, preferences, employees, machi
     if not api_key:
         return None
 
-    prompt = {
-        "task": "Erstelle einen deutschen Produktions-Schichtplan als JSON.",
-        "rules": [
+    prompt = build_json_prompt(
+        "Erstelle einen deutschen Produktions-Schichtplan als JSON.",
+        {
+            "notes": "string",
+            "entries": [
+                {
+                    "employee_id": "integer",
+                    "machine_id": "integer|null",
+                    "work_date": "YYYY-MM-DD",
+                    "shift": "Frueh|Spaet|Nacht|Frei|Urlaub",
+                    "start_time": "HH:MM",
+                    "end_time": "HH:MM",
+                    "notes": "string",
+                }
+            ],
+        },
+        payload={
+            "start_date": start_date.isoformat(),
+            "days": days,
+            "rhythm": rhythm,
+            "preferences": preferences,
+            "employees": employee_payload(employees),
+            "machines": [machine.to_dict() for machine in machines],
+        },
+        rules=[
             "Plane nur Mitarbeitende aus der Produktion.",
             (
                 "Beruecksichtige Rhythmus, Praeferenzen, "
@@ -625,30 +649,23 @@ def openai_shift_entries(start_date, days, rhythm, preferences, employees, machi
                 "\"notes\":\"...\"}]}"
             ),
         ],
-        "start_date": start_date.isoformat(),
-        "days": days,
-        "rhythm": rhythm,
-        "preferences": preferences,
-        "employees": employee_payload(employees),
-        "machines": [machine.to_dict() for machine in machines],
-    }
+    )
 
     try:
-        client = OpenAI(api_key=api_key)
+        profile = workflow_profile("shift_planning")
+        client = OpenAI(api_key=api_key, **openai_client_options())
         completion = client.chat.completions.create(
-            model=current_app.config.get("OPENAI_MODEL", "gpt-4o-mini"),
+            model=profile.model,
             messages=[
                 {
                     "role": "system",
-                    "content": (
-                        "Du bist ein vorsichtiger Schichtplaner "
-                        "fuer deutsche Produktion."
-                    ),
+                    "content": json_system_prompt(),
                 },
                 {"role": "user", "content": json.dumps(prompt, ensure_ascii=True)},
             ],
             response_format={"type": "json_object"},
-            temperature=0.2,
+            temperature=profile.temperature,
+            max_tokens=profile.max_tokens,
         )
     except OpenAIError:
         logger.exception("ai_call_failed workflow=shift_planning")

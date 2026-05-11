@@ -85,7 +85,25 @@
         </div>
         <span class="badge badge-status is-open" data-machine-count>0 Maschinen</span>
       </div>
-      <div class="resource-card-grid" data-machine-list></div>
+      <div class="list-toolbar">
+        <label class="compact-search-field" for="machine-list-search">
+          <span>Maschinen suchen</span>
+          <input class="input input-bordered input-sm" id="machine-list-search" data-list-search data-list-search-target="[data-machine-list]" placeholder="Name, Produkt, Personalbedarf">
+        </label>
+      </div>
+      <div class="table-wrap bounded-table-wrap">
+        <table class="table data-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Produkt</th>
+              <th>Mitarbeiter</th>
+              <th>Aktionen</th>
+            </tr>
+          </thead>
+          <tbody data-machine-list></tbody>
+        </table>
+      </div>
     </div>
   </article>
 </section>

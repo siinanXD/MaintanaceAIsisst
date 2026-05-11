@@ -108,7 +108,13 @@
         </div>
         <span class="badge badge-status is-open" data-employee-count>0 Mitarbeitende</span>
       </div>
-      <div class="resource-card-grid" data-employee-list></div>
+      <div class="list-toolbar">
+        <label class="compact-search-field" for="employee-list-search">
+          <span>Mitarbeiter suchen</span>
+          <input class="input input-bordered input-sm" id="employee-list-search" data-list-search data-list-search-target="[data-employee-list]" placeholder="Name, Team, Schicht, Qualifikation">
+        </label>
+      </div>
+      <div class="resource-card-grid bounded-list-scroll" data-employee-list></div>
     </div>
   </article>
 </section>

@@ -4,173 +4,186 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Maintenance Assistant{% endblock %}</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232563eb'/%3E%3Ctext x='32' y='39' text-anchor='middle' font-family='Arial,sans-serif' font-size='22' font-weight='800' fill='white'%3EMA%3C/text%3E%3C/svg%3E">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}?v=20260510-density2">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b7cff'/%3E%3Ctext x='32' y='39' text-anchor='middle' font-family='Arial,sans-serif' font-size='22' font-weight='800' fill='white'%3EMA%3C/text%3E%3C/svg%3E">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}?v=20260511-dashboard-actions1">
   </head>
-  <body class="app-body min-h-screen bg-slate-50 text-slate-900 antialiased">
-    <div class="app-shell-layout min-h-screen lg:grid lg:grid-cols-[280px_1fr]">
-      <aside class="app-sidebar hidden border-r border-slate-200 bg-white/95 px-5 py-6 shadow-sm lg:flex lg:min-h-screen lg:flex-col lg:gap-8">
-        <a class="flex items-center gap-3" href="/">
-          <span class="grid h-11 w-11 place-items-center rounded-2xl bg-primary text-base font-black text-primary-content shadow-lg shadow-blue-600/20">MA</span>
+  <body class="app-body min-h-screen text-slate-900 antialiased">
+    <div class="app-shell-layout min-h-screen lg:grid lg:grid-cols-[268px_minmax(0,1fr)]">
+      <aside class="app-sidebar hidden lg:flex lg:min-h-screen lg:flex-col">
+        <a class="sidebar-brand" href="/">
+          <span class="sidebar-brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" role="img">
+              <path d="M19.4 13.5c.1-.5.1-1 .1-1.5s0-1-.1-1.5l2-1.5-2-3.4-2.4 1a8.2 8.2 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.6A8.2 8.2 0 0 0 7 6.6l-2.4-1-2 3.4 2 1.5c-.1.5-.1 1-.1 1.5s0 1 .1 1.5l-2 1.5 2 3.4 2.4-1a8.2 8.2 0 0 0 2.6 1.5l.4 2.6h4l.4-2.6a8.2 8.2 0 0 0 2.6-1.5l2.4 1 2-3.4-2-1.5ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z"/>
+            </svg>
+          </span>
           <span>
-            <span class="block text-base font-bold text-slate-950">Maintenance Assistant</span>
-            <span class="block text-xs font-medium text-slate-500">Tasks, Wissen, KI-Hilfe</span>
+            <span class="sidebar-brand-title">Maintenance</span>
+            <span class="sidebar-brand-title">Assistant</span>
           </span>
         </a>
 
-        <nav aria-label="Hauptnavigation" class="flex-1">
-          <div class="nav-stack">
-            <details class="nav-group" data-nav-group open>
-              <summary>Arbeit</summary>
-              <ul class="menu gap-1 p-0 text-sm font-medium">
-                <li data-dashboard-nav="dashboard" hidden><a class="nav-link {% if request.path == '/' %}is-active{% endif %}" href="/">Dashboard</a></li>
-                <li data-dashboard-nav="tasks" hidden><a class="nav-link {% if request.path == '/tasks' %}is-active{% endif %}" href="/tasks">Tasks</a></li>
-                <li data-dashboard-nav="errors" hidden><a class="nav-link {% if request.path == '/errors' %}is-active{% endif %}" href="/errors">Fehlerliste</a></li>
-              </ul>
-            </details>
-            <details class="nav-group" data-nav-group {% if request.path in ['/employees', '/machines', '/inventory'] %}open{% endif %}>
-              <summary>Ressourcen</summary>
-              <ul class="menu gap-1 p-0 text-sm font-medium">
-                <li data-dashboard-nav="employees" hidden><a class="nav-link {% if request.path == '/employees' %}is-active{% endif %}" href="/employees">Mitarbeiter</a></li>
-                <li data-dashboard-nav="machines" hidden><a class="nav-link {% if request.path == '/machines' %}is-active{% endif %}" href="/machines">Maschinen</a></li>
-                <li data-dashboard-nav="inventory" hidden><a class="nav-link {% if request.path == '/inventory' %}is-active{% endif %}" href="/inventory">Lager</a></li>
-              </ul>
-            </details>
-            <details class="nav-group" data-nav-group {% if request.path in ['/shiftplans', '/documents', '/handover', '/vacations'] %}open{% endif %}>
-              <summary>Planung & Dokumente</summary>
-              <ul class="menu gap-1 p-0 text-sm font-medium">
-                <li data-dashboard-nav="shiftplans" hidden><a class="nav-link {% if request.path == '/shiftplans' %}is-active{% endif %}" href="/shiftplans">Schichtplan</a></li>
-                <li data-feature-key="handover" data-dashboard-nav="shiftplans" hidden><a class="nav-link {% if request.path == '/handover' %}is-active{% endif %}" href="/handover">Schichtübergabe</a></li>
-                <li data-feature-key="vacations" data-dashboard-nav="employees" hidden><a class="nav-link {% if request.path == '/vacations' %}is-active{% endif %}" href="/vacations">Urlaubsplanung</a></li>
-                <li data-dashboard-nav="documents" hidden><a class="nav-link {% if request.path == '/documents' %}is-active{% endif %}" href="/documents">Dokumente</a></li>
-              </ul>
-            </details>
-            <details class="nav-group" data-nav-group {% if request.path == '/admin/users' %}open{% endif %}>
-              <summary>Administration</summary>
-              <ul class="menu gap-1 p-0 text-sm font-medium">
-                <li data-dashboard-nav="admin_users" hidden><a class="nav-link {% if request.path == '/admin/users' %}is-active{% endif %}" href="/admin/users">Users</a></li>
-              </ul>
-            </details>
-            <div data-auth-login-link><a class="nav-link {% if request.path == '/login' %}is-active{% endif %}" href="/login">Login</a></div>
-          </div>
+        <nav aria-label="Hauptnavigation" class="sidebar-nav">
+          <section class="sidebar-nav-group" data-nav-group open>
+            <h2>Arbeit</h2>
+            <a data-dashboard-nav="dashboard" hidden class="nav-link {% if request.path == '/' %}is-active{% endif %}" href="/">
+              <span class="nav-icon" aria-hidden="true">▦</span>
+              <span>Dashboard</span>
+            </a>
+            <a data-dashboard-nav="tasks" hidden class="nav-link {% if request.path == '/tasks' %}is-active{% endif %}" href="/tasks">
+              <span class="nav-icon" aria-hidden="true">▣</span>
+              <span>Aufgaben</span>
+              <span class="nav-count" data-dashboard-task-count>0</span>
+            </a>
+            <a data-dashboard-nav="errors" hidden class="nav-link {% if request.path == '/errors' %}is-active{% endif %}" href="/errors">
+              <span class="nav-icon" aria-hidden="true">△</span>
+              <span>St&ouml;rungen</span>
+              <span class="nav-count is-alert" data-dashboard-machine-issue-count>0</span>
+            </a>
+            <a data-feature-key="handover" data-dashboard-nav="shiftplans" hidden class="nav-link {% if request.path == '/handover' %}is-active{% endif %}" href="/handover">
+              <span class="nav-icon" aria-hidden="true">↺</span>
+              <span>Schichtübergabe</span>
+            </a>
+          </section>
+
+          <section class="sidebar-nav-group" data-nav-group>
+            <h2>Ressourcen</h2>
+            <a data-dashboard-nav="employees" hidden class="nav-link {% if request.path == '/employees' %}is-active{% endif %}" href="/employees">
+              <span class="nav-icon" aria-hidden="true">♙</span>
+              <span>Mitarbeiter</span>
+            </a>
+            <a data-dashboard-nav="machines" hidden class="nav-link {% if request.path == '/machines' %}is-active{% endif %}" href="/machines">
+              <span class="nav-icon" aria-hidden="true">▤</span>
+              <span>Maschinen</span>
+            </a>
+            <a data-dashboard-nav="inventory" hidden class="nav-link {% if request.path == '/inventory' %}is-active{% endif %}" href="/inventory">
+              <span class="nav-icon" aria-hidden="true">□</span>
+              <span>Inventar</span>
+            </a>
+          </section>
+
+          <section class="sidebar-nav-group" data-nav-group>
+            <h2>Planung &amp; Dokumente</h2>
+            <a data-dashboard-nav="shiftplans" hidden class="nav-link {% if request.path == '/shiftplans' %}is-active{% endif %}" href="/shiftplans">
+              <span class="nav-icon" aria-hidden="true">▥</span>
+              <span>Schichtpl&auml;ne</span>
+            </a>
+            <a data-feature-key="vacations" data-dashboard-nav="employees" hidden class="nav-link {% if request.path == '/vacations' %}is-active{% endif %}" href="/vacations">
+              <span class="nav-icon" aria-hidden="true">☂</span>
+              <span>Urlaube</span>
+            </a>
+            <a data-dashboard-nav="documents" hidden class="nav-link {% if request.path == '/documents' %}is-active{% endif %}" href="/documents">
+              <span class="nav-icon" aria-hidden="true">▭</span>
+              <span>Dokumente</span>
+            </a>
+          </section>
+
+          <section class="sidebar-nav-group" data-nav-group>
+            <h2>Administration</h2>
+            <a data-dashboard-nav="admin_users" hidden class="nav-link {% if request.path == '/admin/users' %}is-active{% endif %}" href="/admin/users">
+              <span class="nav-icon" aria-hidden="true">♙</span>
+              <span>Benutzer</span>
+            </a>
+          </section>
         </nav>
 
-        <div class="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-950">
-          <p class="font-semibold">Wartungscockpit</p>
-          <p class="mt-1 text-xs leading-5 text-blue-700">Priorisieren, starten und sauber dokumentieren.</p>
-        </div>
+        <button class="sidebar-minimize" type="button" aria-label="Menü minimieren">
+          <span aria-hidden="true">←</span>
+          <span>Menü minimieren</span>
+        </button>
       </aside>
 
-      <div class="min-w-0">
-        <header class="app-header sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
-          <div class="navbar min-h-16 px-4 sm:px-6 lg:px-8">
-            <div class="navbar-start gap-2">
-              <a class="flex items-center gap-2 font-bold text-slate-950 lg:hidden" href="/">
-                <span class="grid h-9 w-9 place-items-center rounded-xl bg-primary text-sm text-primary-content">MA</span>
-                <span>Maintenance</span>
-              </a>
-            </div>
-            <div class="navbar-center hidden max-w-3xl flex-1 px-4 md:flex lg:hidden">
-              <div class="top-nav">
-                <details class="top-nav-group" data-nav-group>
-                  <summary>Arbeit</summary>
-                  <div class="top-nav-panel">
-                    <a data-dashboard-nav="dashboard" hidden class="top-nav-link {% if request.path == '/' %}is-active{% endif %}" href="/">Dashboard</a>
-                    <a data-dashboard-nav="tasks" hidden class="top-nav-link {% if request.path == '/tasks' %}is-active{% endif %}" href="/tasks">Tasks</a>
-                    <a data-dashboard-nav="errors" hidden class="top-nav-link {% if request.path == '/errors' %}is-active{% endif %}" href="/errors">Fehler</a>
-                  </div>
-                </details>
-                <details class="top-nav-group" data-nav-group>
-                  <summary>Ressourcen</summary>
-                  <div class="top-nav-panel">
-                    <a data-dashboard-nav="employees" hidden class="top-nav-link {% if request.path == '/employees' %}is-active{% endif %}" href="/employees">Mitarbeiter</a>
-                    <a data-dashboard-nav="machines" hidden class="top-nav-link {% if request.path == '/machines' %}is-active{% endif %}" href="/machines">Maschinen</a>
-                    <a data-dashboard-nav="inventory" hidden class="top-nav-link {% if request.path == '/inventory' %}is-active{% endif %}" href="/inventory">Lager</a>
-                  </div>
-                </details>
-                <details class="top-nav-group" data-nav-group>
-                  <summary>Planung</summary>
-                  <div class="top-nav-panel">
-                    <a data-dashboard-nav="shiftplans" hidden class="top-nav-link {% if request.path == '/shiftplans' %}is-active{% endif %}" href="/shiftplans">Schichtplan</a>
-                    <a data-feature-key="handover" data-dashboard-nav="shiftplans" hidden class="top-nav-link {% if request.path == '/handover' %}is-active{% endif %}" href="/handover">Schichtübergabe</a>
-                    <a data-feature-key="vacations" data-dashboard-nav="employees" hidden class="top-nav-link {% if request.path == '/vacations' %}is-active{% endif %}" href="/vacations">Urlaubsplanung</a>
-                    <a data-dashboard-nav="documents" hidden class="top-nav-link {% if request.path == '/documents' %}is-active{% endif %}" href="/documents">Dokumente</a>
-                  </div>
-                </details>
-                <details class="top-nav-group" data-nav-group>
-                  <summary>Admin</summary>
-                  <div class="top-nav-panel">
-                    <a data-dashboard-nav="admin_users" hidden class="top-nav-link {% if request.path == '/admin/users' %}is-active{% endif %}" href="/admin/users">Users</a>
-                  </div>
-                </details>
-              </div>
-            </div>
-            <div class="navbar-end gap-2">
-              <a data-auth-login-link class="btn btn-primary btn-sm {% if request.path == '/login' %}btn-active{% endif %}" href="/login">Login</a>
-              <div class="items-center gap-2 max-sm:hidden sm:flex" data-auth-session hidden>
-                <span class="badge badge-info badge-outline max-w-36 truncate" data-session-name>Eingeloggt</span>
-                <button class="btn btn-ghost btn-sm" type="button" data-contrast-toggle aria-pressed="false">Hoher Kontrast</button>
-                <button class="btn btn-error btn-sm text-white" type="button" data-logout-button>Logout</button>
-              </div>
-            </div>
-          </div>
-          <div class="border-t border-slate-100 px-4 py-2 md:hidden">
+      <div class="app-content min-w-0">
+        <header class="app-header">
+          <div class="mobile-header lg:hidden">
+            <a class="mobile-brand" href="/">
+              <span class="sidebar-brand-mark" aria-hidden="true">MA</span>
+              <span>Maintenance</span>
+            </a>
             <details class="mobile-nav" data-nav-root>
               <summary>Menü</summary>
-              <div class="mobile-nav-panel">
-                <details class="nav-group" data-nav-group open>
-                  <summary>Arbeit</summary>
-                  <a data-dashboard-nav="dashboard" hidden class="top-nav-link {% if request.path == '/' %}is-active{% endif %}" href="/">Dashboard</a>
-                  <a data-dashboard-nav="tasks" hidden class="top-nav-link {% if request.path == '/tasks' %}is-active{% endif %}" href="/tasks">Tasks</a>
-                  <a data-dashboard-nav="errors" hidden class="top-nav-link {% if request.path == '/errors' %}is-active{% endif %}" href="/errors">Fehler</a>
-                </details>
-                <details class="nav-group" data-nav-group>
-                  <summary>Ressourcen</summary>
-                  <a data-dashboard-nav="employees" hidden class="top-nav-link {% if request.path == '/employees' %}is-active{% endif %}" href="/employees">Mitarbeiter</a>
-                  <a data-dashboard-nav="machines" hidden class="top-nav-link {% if request.path == '/machines' %}is-active{% endif %}" href="/machines">Maschinen</a>
-                  <a data-dashboard-nav="inventory" hidden class="top-nav-link {% if request.path == '/inventory' %}is-active{% endif %}" href="/inventory">Lager</a>
-                </details>
-                <details class="nav-group" data-nav-group>
-                  <summary>Planung</summary>
-                  <a data-dashboard-nav="shiftplans" hidden class="top-nav-link {% if request.path == '/shiftplans' %}is-active{% endif %}" href="/shiftplans">Schichtplan</a>
-                  <a data-feature-key="handover" data-dashboard-nav="shiftplans" hidden class="top-nav-link {% if request.path == '/handover' %}is-active{% endif %}" href="/handover">Schichtübergabe</a>
-                  <a data-feature-key="vacations" data-dashboard-nav="employees" hidden class="top-nav-link {% if request.path == '/vacations' %}is-active{% endif %}" href="/vacations">Urlaubsplanung</a>
-                  <a data-dashboard-nav="documents" hidden class="top-nav-link {% if request.path == '/documents' %}is-active{% endif %}" href="/documents">Dokumente</a>
-                </details>
-                <details class="nav-group" data-nav-group>
-                  <summary>Admin</summary>
-                  <a data-dashboard-nav="admin_users" hidden class="top-nav-link {% if request.path == '/admin/users' %}is-active{% endif %}" href="/admin/users">Users</a>
-                </details>
+              <div class="mobile-nav-panel" data-nav-group>
+                <a data-dashboard-nav="dashboard" hidden class="top-nav-link {% if request.path == '/' %}is-active{% endif %}" href="/">Dashboard</a>
+                <a data-dashboard-nav="tasks" hidden class="top-nav-link {% if request.path == '/tasks' %}is-active{% endif %}" href="/tasks">Aufgaben</a>
+                <a data-dashboard-nav="errors" hidden class="top-nav-link {% if request.path == '/errors' %}is-active{% endif %}" href="/errors">St&ouml;rungen</a>
+                <a data-dashboard-nav="employees" hidden class="top-nav-link {% if request.path == '/employees' %}is-active{% endif %}" href="/employees">Mitarbeiter</a>
+                <a data-dashboard-nav="machines" hidden class="top-nav-link {% if request.path == '/machines' %}is-active{% endif %}" href="/machines">Maschinen</a>
+                <a data-dashboard-nav="inventory" hidden class="top-nav-link {% if request.path == '/inventory' %}is-active{% endif %}" href="/inventory">Inventar</a>
+                <a data-dashboard-nav="shiftplans" hidden class="top-nav-link {% if request.path == '/shiftplans' %}is-active{% endif %}" href="/shiftplans">Schichtpl&auml;ne</a>
+                <a data-feature-key="handover" data-dashboard-nav="shiftplans" hidden class="top-nav-link {% if request.path == '/handover' %}is-active{% endif %}" href="/handover">Schicht&uuml;bergabe</a>
+                <a data-feature-key="vacations" data-dashboard-nav="employees" hidden class="top-nav-link {% if request.path == '/vacations' %}is-active{% endif %}" href="/vacations">Urlaube</a>
+                <a data-dashboard-nav="documents" hidden class="top-nav-link {% if request.path == '/documents' %}is-active{% endif %}" href="/documents">Dokumente</a>
+                <a data-dashboard-nav="admin_users" hidden class="top-nav-link {% if request.path == '/admin/users' %}is-active{% endif %}" href="/admin/users">Benutzer</a>
               </div>
             </details>
+          </div>
+
+          <div class="desktop-topbar">
+            <h1>{% block header_title %}Maintenance Assistant{% endblock %}</h1>
+            <div class="topbar-actions">
+              <button class="topbar-select" type="button" aria-label="Werk ausw&auml;hlen" data-topbar-work>
+                <span aria-hidden="true">▥</span>
+                <span>Werk 1</span>
+                <span aria-hidden="true">⌄</span>
+              </button>
+              <button class="topbar-select" type="button" aria-label="Aktuelles Datum" data-topbar-date>
+                <span aria-hidden="true">□</span>
+                <span data-current-date>--.--.----</span>
+                <span aria-hidden="true">⌄</span>
+              </button>
+              <button class="topbar-select shift-select" type="button" aria-label="Aktuell laufende Schicht" data-current-shift>
+                <span class="status-dot" aria-hidden="true"></span>
+                <span>
+                  <strong data-current-shift-label>Schicht</strong>
+                  <small data-current-shift-time>--:-- - --:--</small>
+                </span>
+                <span aria-hidden="true">⌄</span>
+              </button>
+              <button class="notification-button" type="button" aria-label="Benachrichtigungen" data-topbar-notifications>
+                <span aria-hidden="true">♢</span>
+                <span class="notification-badge">5</span>
+              </button>
+              <div class="user-menu" data-auth-session hidden>
+                <span class="user-avatar" aria-hidden="true">TW</span>
+                <span>
+                  <strong data-session-name>Thomas Weber</strong>
+                  <small>Instandhaltungsleiter</small>
+                </span>
+                <button class="btn btn-ghost btn-sm" type="button" data-contrast-toggle aria-pressed="false">Kontrast</button>
+                <button class="btn btn-ghost btn-sm" type="button" data-logout-button>Logout</button>
+              </div>
+              <a data-auth-login-link class="btn btn-primary btn-sm {% if request.path == '/login' %}btn-active{% endif %}" href="/login">Login</a>
+            </div>
           </div>
         </header>
 
-        <main class="app-main mx-auto w-full max-w-7xl px-4 pb-32 pt-4 sm:px-6 sm:pb-10 sm:pt-6 lg:px-8 lg:py-8">
+        <main class="app-main">
           <div class="sr-only" aria-live="polite" aria-atomic="true" data-global-live-region></div>
           {% block content %}{% endblock %}
         </main>
       </div>
     </div>
 
-    <section class="chat-widget" aria-label="KI-Chat">
-      <button class="chat-toggle" type="button" aria-expanded="false" aria-controls="chat-panel">KI</button>
+    <section class="chat-widget" aria-label="AI Chat">
+      <button class="chat-toggle" type="button" aria-expanded="false" aria-controls="chat-panel">
+        <span aria-hidden="true">✦</span>
+      </button>
       <div class="chat-panel" id="chat-panel" aria-hidden="true">
         <div class="chat-panel-header">
           <div>
-            <p class="chat-panel-kicker">Assistent</p>
-            <h2 class="chat-panel-title">KI direkt fragen</h2>
+            <p class="chat-panel-kicker">AI Assistant</p>
+            <h2 class="chat-panel-title">Fragen stellen...</h2>
           </div>
           <button class="chat-clear" type="button" aria-label="Chat leeren" title="Chat leeren">↺</button>
           <button class="chat-close" type="button" aria-label="Chat schliessen">x</button>
         </div>
         <div class="chat-panel-body" data-chat-messages aria-live="polite">
           <div class="chat-message is-assistant">
-            Frag mich nach Fehlercodes, Maschinenstoerungen oder heutigen Tasks.
+            Frag mich nach Fehlercodes, Maschinenstoerungen oder heutigen Aufgaben.
           </div>
         </div>
+        <div class="chat-suggestions" data-chat-suggestions></div>
         <form class="chat-panel-form" data-chat-form>
-          <input class="input input-bordered w-full" name="message" autocomplete="off" placeholder="z. B. Maschine 3 zeigt E104">
+          <input class="input input-bordered w-full" name="message" autocomplete="off" placeholder="z. B. Presse 3 verliert Hydraulik">
           <button class="btn btn-primary" type="submit">Senden</button>
         </form>
       </div>
@@ -178,7 +191,7 @@
 
     <script src="{{ url_for('static', filename='core/feature-registry.js') }}?v=20260510-feature-registry1"></script>
     <script src="{{ url_for('static', filename='auth.js') }}?v=20260510-feature-registry1"></script>
-    <script src="{{ url_for('static', filename='app.js') }}?v=20260510-feature-registry1"></script>
-    <script src="{{ url_for('static', filename='chat.js') }}?v=20260502-codeblock1"></script>
+    <script src="{{ url_for('static', filename='app.js') }}?v=20260511-dashboard-actions1"></script>
+    <script src="{{ url_for('static', filename='chat.js') }}?v=20260511-chat-suggestions-counts1"></script>
   </body>
 </html>

@@ -7,6 +7,22 @@ from datetime import date
 from flask import current_app
 from openai import OpenAI, OpenAIError
 
+from app.services.ai_prompting import (
+    build_json_prompt,
+    build_general_messages,
+    build_text_messages,
+    json_system_prompt,
+    text_system_prompt,
+)
+from app.services.ai_routing import (
+    call_timer,
+    completion_metadata,
+    elapsed_ms,
+    local_metadata,
+    openai_client_options,
+    workflow_profile,
+)
+
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +49,12 @@ class BaseAIProvider(ABC):
         """Return generated maintenance report text."""
 
     @abstractmethod
-    def answer_question(self, question, context):
+    def answer_question(self, question, context, workflow="chat"):
         """Return a natural-language answer for a question and context."""
+
+    @abstractmethod
+    def answer_general_question(self, question):
+        """Return a short answer for a general hybrid-mode question."""
 
     @abstractmethod
     def prioritize_tasks(self, tasks, context=None):
@@ -68,6 +88,7 @@ class MockAIProvider(BaseAIProvider):
 
     def suggest_task(self, text, user_context=None):
         """Return a deterministic task suggestion from free text."""
+        self.last_call_metadata = local_metadata(self.name, "task_suggestion")
         department = _department_from_text(text, user_context)
         priority = "urgent" if _contains_any(text, ["not-halt", "stillstand"]) else "soon"
         machine = _extract_machine(text)
@@ -87,6 +108,7 @@ class MockAIProvider(BaseAIProvider):
 
     def analyze_error(self, text, user_context=None):
         """Return a deterministic error analysis from free text."""
+        self.last_call_metadata = local_metadata(self.name, "error_analysis")
         machine = _extract_machine(text)
         return {
             "machine": machine,
@@ -102,13 +124,15 @@ class MockAIProvider(BaseAIProvider):
 
     def generate_document_text(self, data):
         """Return a deterministic maintenance report text."""
+        self.last_call_metadata = local_metadata(self.name, "document_text")
         return (
             f"Wartungsbericht fuer Task {data.get('task_id')}: "
             f"{data.get('title')}. Ergebnis: {data.get('result') or 'erledigt'}."
         )
 
-    def answer_question(self, question, context):
+    def answer_question(self, question, context, workflow="chat"):
         """Return a cautious local answer for a question and context."""
+        self.last_call_metadata = local_metadata(self.name, workflow)
         if not context.strip():
             return (
                 "## Ergebnis\n"
@@ -118,16 +142,28 @@ class MockAIProvider(BaseAIProvider):
         return (
             "## Ergebnis\n"
             "- **Status:** Freigegebene Daten geprueft\n"
-            "- **Hinweis:** Frage bitte konkreter nach Task, Fehler oder Mitarbeiterdaten"
+            "- **Hinweis:** Frage bitte konkreter nach Tasks, Fehlern, "
+            "Maschinen, Lager, Dokumenten oder Mitarbeitern"
+        )
+
+    def answer_general_question(self, question):
+        """Return a deterministic local answer for general hybrid mode."""
+        self.last_call_metadata = local_metadata(self.name, "general_chat")
+        return (
+            "## Allgemeine Antwort\n"
+            "- **Status:** Allgemeine AI-Antwort ist lokal nicht verfuegbar\n"
+            "- **Naechster Schritt:** OpenAI API-Key und Verbindung pruefen"
         )
 
     def prioritize_tasks(self, tasks, context=None):
         """Return deterministic task priorities without external services."""
+        self.last_call_metadata = local_metadata(self.name, "task_prioritization")
         priorities = [_score_task_priority(task) for task in tasks]
         return {"priorities": priorities}
 
     def review_document(self, html_text, metadata=None):
         """Return a simple placeholder document review for local mode."""
+        self.last_call_metadata = local_metadata(self.name, "document_review")
         return {
             "quality_score": 0,
             "status": "incomplete",
@@ -147,16 +183,16 @@ class OpenAIProvider(BaseAIProvider):
 
     def __init__(self, api_key, model):
         """Initialize the OpenAI provider."""
-        self.client = OpenAI(api_key=api_key)
+        self.client = OpenAI(api_key=api_key, **openai_client_options())
+        self.legacy_model = model
         self.model = model
+        self.last_call_metadata = {}
 
     def suggest_task(self, text, user_context=None):
         """Return a structured task suggestion for free text."""
-        prompt = {
-            "task": "Generate a German maintenance task suggestion as JSON.",
-            "input": text,
-            "user_context": user_context or {},
-            "schema": {
+        prompt = build_json_prompt(
+            "Erstelle einen professionellen deutschen Wartungs-Task-Vorschlag.",
+            {
                 "title": "string",
                 "description": "string",
                 "department": "string",
@@ -165,16 +201,22 @@ class OpenAIProvider(BaseAIProvider):
                 "possible_cause": "string",
                 "recommended_action": "string",
             },
-        }
-        return self._json_completion(prompt)
+            payload={
+                "input": text,
+                "user_context": user_context or {},
+            },
+            rules=[
+                "Der Vorschlag ist ein read-only Entwurf.",
+                "Schreibe keine Daten und behaupte keine Speicherung.",
+            ],
+        )
+        return self._json_completion(prompt, "task_suggestion")
 
     def analyze_error(self, text, user_context=None):
         """Return a structured error analysis for free text."""
-        prompt = {
-            "task": "Analyze a German machine fault and return JSON.",
-            "input": text,
-            "user_context": user_context or {},
-            "schema": {
+        prompt = build_json_prompt(
+            "Analysiere eine deutsche Maschinenstoerung als strukturierten Entwurf.",
+            {
                 "machine": "string",
                 "title": "string",
                 "description": "string",
@@ -182,55 +224,49 @@ class OpenAIProvider(BaseAIProvider):
                 "solution": "string",
                 "department": "string",
             },
-        }
-        return self._json_completion(prompt)
+            payload={
+                "input": text,
+                "user_context": user_context or {},
+            },
+            rules=[
+                "Formuliere fachlich vorsichtig.",
+                "Der Eintrag wird nicht gespeichert.",
+            ],
+        )
+        return self._json_completion(prompt, "error_analysis")
 
     def generate_document_text(self, data):
         """Return generated maintenance report text."""
         messages = [
             {
                 "role": "system",
-                "content": "Du formulierst kurze, sachliche Wartungsberichte.",
+                "content": text_system_prompt(
+                    "Formuliere kurze, sachliche Wartungsberichte aus den "
+                    "bereitgestellten Taskdaten."
+                ),
             },
             {
                 "role": "user",
                 "content": json.dumps(data, ensure_ascii=True),
             },
         ]
-        return self._text_completion(messages)
+        return self._text_completion(messages, "document_text")
 
-    def answer_question(self, question, context):
+    def answer_question(self, question, context, workflow="chat"):
         """Return a natural-language answer for a question and context."""
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "Du bist ein Wartungsassistent. Antworte nur anhand des "
-                    "bereitgestellten Kontextes. Antworte auf Deutsch, kurz "
-                    "und uebersichtlich. Nutze maximal eine kurze Markdown-"
-                    "Ueberschrift und 3 bis 5 Bulletpoints. Markiere wichtige "
-                    "Labels fett, zum Beispiel **Status:**. Nenne nur relevante "
-                    "Daten und keine langen Erklaerungen. Keine Tabellen, keine "
-                    "Einleitung, keine Wiederholung der Frage."
-                ),
-            },
-            {
-                "role": "user",
-                "content": f"Kontext:\n{context}\n\nFrage:\n{question}",
-            },
-        ]
-        return self._text_completion(messages)
+        messages = build_text_messages(question, context)
+        return self._text_completion(messages, workflow)
+
+    def answer_general_question(self, question):
+        """Return a short natural-language answer for general hybrid mode."""
+        messages = build_general_messages(question)
+        return self._text_completion(messages, "general_chat")
 
     def prioritize_tasks(self, tasks, context=None):
         """Return AI-generated task priorities as structured JSON."""
-        prompt = {
-            "task": (
-                "Priorisiere sichtbare Wartungsaufgaben auf Deutsch. Nutze nur "
-                "die bereitgestellten Tasks und keine Mitarbeiterdaten."
-            ),
-            "tasks": tasks,
-            "context": context or {},
-            "schema": {
+        prompt = build_json_prompt(
+            "Priorisiere sichtbare Wartungsaufgaben nach Risiko und Faelligkeit.",
+            {
                 "priorities": [
                     {
                         "task_id": "integer",
@@ -241,37 +277,45 @@ class OpenAIProvider(BaseAIProvider):
                     }
                 ]
             },
-        }
-        return self._json_completion(prompt)
+            payload={
+                "tasks": tasks,
+                "context": context or {},
+            },
+            rules=[
+                "Nutze nur die bereitgestellten Tasks.",
+                "Nutze keine Mitarbeiterdaten.",
+                "Jeder task_id-Wert muss aus der Eingabe stammen.",
+            ],
+        )
+        return self._json_completion(prompt, "task_prioritization")
 
     def error_assistant_query(self, query, matches):
         """Return AI-enhanced causes and fixes for a fault description."""
-        prompt = {
-            "task": (
-                "Given a machine fault description and matching catalog entries, "
-                "return concise German causes and fix instructions as JSON."
-            ),
-            "query": query,
-            "catalog_matches": [m["entry"] for m in matches[:3]],
-            "schema": {
-                "causes": ["string — one German cause per item"],
-                "fixes": ["string — one German fix instruction per item"],
-                "summary": "string — one-sentence German summary of the fault",
+        prompt = build_json_prompt(
+            "Leite aus Fehlerbeschreibung und Katalogtreffern Ursachen und "
+            "Pruefschritte ab.",
+            {
+                "causes": ["string - one German cause per item"],
+                "fixes": ["string - one German fix instruction per item"],
+                "summary": "string - one-sentence German summary of the fault",
             },
-        }
-        return self._json_completion(prompt)
+            payload={
+                "query": query,
+                "catalog_matches": [m["entry"] for m in matches[:3]],
+            },
+            rules=[
+                "Bevorzuge Katalogdaten gegenueber Vermutungen.",
+                "Kennzeichne Unsicherheit durch vorsichtige Formulierungen.",
+            ],
+        )
+        return self._json_completion(prompt, "error_assistant")
 
     def review_document(self, html_text, metadata=None):
         """Return an AI-generated maintenance document quality review."""
-        prompt = {
-            "task": (
-                "Pruefe einen deutschen Wartungsbericht als JSON. Bewerte, "
-                "ob Maschine, Ursache, durchgefuehrte Massnahme, Ergebnis "
-                "und Notizen vollstaendig und konkret sind."
-            ),
-            "metadata": metadata or {},
-            "html_text": html_text[:12000],
-            "schema": {
+        prompt = build_json_prompt(
+            "Pruefe einen deutschen Wartungsbericht auf Vollstaendigkeit und "
+            "konkrete Nachvollziehbarkeit.",
+            {
                 "quality_score": "integer 0-100",
                 "status": "good|needs_review|incomplete",
                 "findings": [
@@ -283,24 +327,37 @@ class OpenAIProvider(BaseAIProvider):
                 ],
                 "recommendations": ["short German recommendation"],
             },
-        }
-        return self._json_completion(prompt)
+            payload={
+                "metadata": metadata or {},
+                "html_text": html_text[:12000],
+            },
+            rules=[
+                "Bewerte Maschine, Ursache, durchgefuehrte Massnahme, "
+                "Ergebnis und Notizen.",
+                "Gib konkrete, kurze Empfehlungen.",
+            ],
+        )
+        return self._json_completion(prompt, "document_review")
 
-    def _json_completion(self, prompt):
+    def _json_completion(self, prompt, workflow):
         """Call OpenAI and parse a JSON object response."""
+        profile = workflow_profile(workflow, self.legacy_model)
+        self.model = profile.model
         logger.info(
-            "ai_call provider=%s model=%s mode=json task=%s",
+            "ai_call provider=%s model=%s tier=%s mode=json task=%s",
             self.name,
-            self.model,
+            profile.model,
+            profile.tier,
             prompt.get("task", "unknown"),
         )
         try:
+            started_at = call_timer()
             completion = self.client.chat.completions.create(
-                model=self.model,
+                model=profile.model,
                 messages=[
                     {
                         "role": "system",
-                        "content": "Return only valid JSON without markdown.",
+                        "content": json_system_prompt(),
                     },
                     {
                         "role": "user",
@@ -308,7 +365,14 @@ class OpenAIProvider(BaseAIProvider):
                     },
                 ],
                 response_format={"type": "json_object"},
-                temperature=0.2,
+                temperature=profile.temperature,
+                max_tokens=profile.max_tokens,
+            )
+            self.last_call_metadata = completion_metadata(
+                self.name,
+                profile,
+                completion,
+                elapsed_ms(started_at),
             )
             return json.loads(completion.choices[0].message.content)
         except (OpenAIError, TypeError, json.JSONDecodeError) as exc:
@@ -319,19 +383,30 @@ class OpenAIProvider(BaseAIProvider):
             )
             raise AIServiceError("AI provider failed to return valid JSON") from exc
 
-    def _text_completion(self, messages):
+    def _text_completion(self, messages, workflow):
         """Call OpenAI and return text content."""
+        profile = workflow_profile(workflow, self.legacy_model)
+        self.model = profile.model
         logger.info(
-            "ai_call provider=%s model=%s mode=text message_count=%s",
+            "ai_call provider=%s model=%s tier=%s mode=text message_count=%s",
             self.name,
-            self.model,
+            profile.model,
+            profile.tier,
             len(messages),
         )
         try:
+            started_at = call_timer()
             completion = self.client.chat.completions.create(
-                model=self.model,
+                model=profile.model,
                 messages=messages,
-                temperature=0.2,
+                temperature=profile.temperature,
+                max_tokens=profile.max_tokens,
+            )
+            self.last_call_metadata = completion_metadata(
+                self.name,
+                profile,
+                completion,
+                elapsed_ms(started_at),
             )
             return completion.choices[0].message.content
         except OpenAIError as exc:
@@ -347,7 +422,7 @@ def get_ai_provider():
     """Return the configured AI provider with mock fallback."""
     provider_name = current_app.config.get("AI_PROVIDER", "openai").lower()
     api_key = current_app.config.get("OPENAI_API_KEY", "")
-    model = current_app.config.get("OPENAI_MODEL", "gpt-4o-mini")
+    model = current_app.config.get("OPENAI_MODEL", "gpt-5.4-mini")
     if provider_name == "mock":
         return MockAIProvider()
     if not api_key:
