@@ -1,9 +1,11 @@
 """Tests for GET /api/documents filters and machine_id auto-resolution."""
 
+import os
 from datetime import UTC, datetime, timedelta
+from io import BytesIO
 
 from app.extensions import db
-from app.models import GeneratedDocument, Role
+from app.models import DocumentApprovalEvent, DocumentVersion, GeneratedDocument, Role
 
 # ---------------------------------------------------------------------------
 # GET /api/documents — list + filters
@@ -346,3 +348,194 @@ def test_employee_creation_leaves_favorite_machine_id_null_for_unknown_name(
     )
     assert response.status_code == 201
     assert response.get_json().get("favorite_machine_id") is None
+
+
+def test_document_pdf_summary_versions_and_approval_flow(
+    client,
+    app,
+    make_user,
+    make_task,
+    make_document,
+    auth_headers,
+):
+    """Verify generated reports support PDF, summaries, versions, and approvals."""
+    admin = make_user(
+        username="doc_workflow_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    task_id = make_task("Bericht pruefen", creator_username=admin["username"])
+    document_id = make_document(task_id=task_id, created_by=admin["id"])
+    headers = auth_headers(admin["username"])
+
+    pdf_response = client.get(f"/api/v1/documents/{document_id}/download.pdf", headers=headers)
+    versions_response = client.get(f"/api/v1/documents/{document_id}/versions", headers=headers)
+    summary_response = client.post(
+        f"/api/v1/documents/{document_id}/summarize",
+        headers=headers,
+    )
+    submit_response = client.post(
+        f"/api/v1/documents/{document_id}/submit-review",
+        headers=headers,
+        json={"comment": "bereit"},
+    )
+    approve_response = client.post(
+        f"/api/v1/documents/{document_id}/approve",
+        headers=headers,
+        json={"comment": "freigegeben"},
+    )
+
+    with app.app_context():
+        event_actions = [event.action for event in DocumentApprovalEvent.query.all()]
+        version_count = DocumentVersion.query.filter_by(document_id=document_id).count()
+
+    assert pdf_response.status_code == 200
+    assert pdf_response.mimetype == "application/pdf"
+    assert pdf_response.data.startswith(b"%PDF")
+    assert len(pdf_response.data) > 100
+    assert versions_response.status_code == 200
+    assert versions_response.get_json()["data"][0]["version_number"] == 1
+    assert summary_response.status_code == 200
+    assert summary_response.get_json()["data"]["summary_status"] == "local_answer"
+    assert submit_response.get_json()["data"]["status"] == "in_review"
+    assert approve_response.get_json()["data"]["status"] == "approved"
+    assert approve_response.get_json()["data"]["approval_comment"] == "freigegeben"
+    assert event_actions == ["submit_review", "approve"]
+    assert version_count == 1
+
+
+def test_document_pdf_missing_file_returns_404(
+    client,
+    app,
+    make_user,
+    make_task,
+    make_document,
+    auth_headers,
+):
+    """Verify PDF export reports missing files clearly."""
+    admin = make_user(
+        username="doc_pdf_missing_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    task_id = make_task("Fehlende Datei", creator_username=admin["username"])
+    document_id = make_document(
+        task_id=task_id,
+        created_by=admin["id"],
+        relative_path="missing/report.html",
+    )
+    with app.app_context():
+        document = db.session.get(GeneratedDocument, document_id)
+        document_path = app.config["DOCUMENTS_FOLDER"] + "/" + document.relative_path
+        os.remove(document_path)
+    headers = auth_headers(admin["username"])
+
+    response = client.get(f"/api/v1/documents/{document_id}/download.pdf", headers=headers)
+
+    assert response.status_code == 404
+
+
+def test_manual_upload_analyze_summarize_download_and_delete(
+    client,
+    make_user,
+    make_machine,
+    auth_headers,
+):
+    """Verify machine manual lifecycle with local text analysis."""
+    admin = make_user(
+        username="manual_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    machine_id = make_machine(name="Manual Maschine")
+    headers = auth_headers(admin["username"])
+
+    upload_response = client.post(
+        "/api/v1/documents/manuals",
+        headers=headers,
+        data={
+            "machine_id": str(machine_id),
+            "department": "Instandhaltung",
+            "file": (
+                BytesIO(
+                    b"Wartung taeglich pruefen.\n"
+                    b"Warnung: Not-Aus testen.\n"
+                    b"Ersatzteil Filter A.\n"
+                    b"Fehlercode E-10 Sensor pruefen."
+                ),
+                "manual.txt",
+            ),
+        },
+        content_type="multipart/form-data",
+    )
+    manual = upload_response.get_json()["data"]
+    list_response = client.get("/api/v1/documents/manuals?q=manual", headers=headers)
+    download_response = client.get(manual["download_url"], headers=headers)
+    analyze_response = client.post(
+        f"/api/v1/documents/manuals/{manual['id']}/analyze",
+        headers=headers,
+    )
+    summarize_response = client.post(
+        f"/api/v1/documents/manuals/{manual['id']}/summarize",
+        headers=headers,
+    )
+    delete_response = client.delete(
+        f"/api/v1/documents/manuals/{manual['id']}",
+        headers=headers,
+    )
+
+    assert upload_response.status_code == 201
+    assert manual["machine_id"] == machine_id
+    assert list_response.status_code == 200
+    assert list_response.get_json()[0]["id"] == manual["id"]
+    assert download_response.status_code == 200
+    assert b"Wartung taeglich" in download_response.data
+    assert analyze_response.status_code == 200
+    assert "Wartungsintervalle" in analyze_response.get_json()["data"]["analysis"]
+    assert summarize_response.status_code == 200
+    assert summarize_response.get_json()["data"]["summary_status"] == "local_answer"
+    assert delete_response.status_code == 204
+
+
+def test_manual_upload_validation_and_permissions(
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify manual upload validates permissions, file type, and machine id."""
+    admin = make_user(
+        username="manual_validation_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    user = make_user(username="manual_no_write")
+
+    forbidden_response = client.post(
+        "/api/v1/documents/manuals",
+        headers=auth_headers(user["username"]),
+        data={"file": (BytesIO(b"x"), "manual.txt")},
+        content_type="multipart/form-data",
+    )
+    bad_type_response = client.post(
+        "/api/v1/documents/manuals",
+        headers=auth_headers(admin["username"]),
+        data={"file": (BytesIO(b"x"), "manual.exe")},
+        content_type="multipart/form-data",
+    )
+    bad_machine_response = client.post(
+        "/api/v1/documents/manuals",
+        headers=auth_headers(admin["username"]),
+        data={"machine_id": "9999", "file": (BytesIO(b"x"), "manual.txt")},
+        content_type="multipart/form-data",
+    )
+    empty_response = client.post(
+        "/api/v1/documents/manuals",
+        headers=auth_headers(admin["username"]),
+        data={"file": (BytesIO(b""), "manual.txt")},
+        content_type="multipart/form-data",
+    )
+
+    assert forbidden_response.status_code == 403
+    assert bad_type_response.status_code == 400
+    assert bad_machine_response.status_code == 400
+    assert empty_response.status_code == 400

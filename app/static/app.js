@@ -4228,6 +4228,15 @@
     const reviewStatus = document.querySelector("[data-document-review-status]");
     const reviewFindings = document.querySelector("[data-document-review-findings]");
     const reviewRecommendations = document.querySelector("[data-document-review-recommendations]");
+    const summaryPanel = document.querySelector("[data-document-summary-panel]");
+    const summaryTitle = document.querySelector("[data-document-summary-title]");
+    const summaryStatus = document.querySelector("[data-document-summary-status]");
+    const summaryText = document.querySelector("[data-document-summary-text]");
+    const manualForm = document.querySelector("[data-manual-upload-form]");
+    const manualList = document.querySelector("[data-manual-list]");
+    const manualCount = document.querySelector("[data-manual-count]");
+    const manualMessage = document.querySelector("[data-manual-message]");
+    const manualMachineSelect = document.querySelector("[data-manual-machine-select]");
     if (!list || !form || !token()) return;
 
     function reviewStatusLabel(status) {
@@ -4275,6 +4284,112 @@
       await downloadFile(documentItem.download_url, "maintenance_report_task_" + documentItem.task_id + ".html");
     }
 
+    async function downloadDocumentPdf(documentItem) {
+      await downloadFile(
+        "/api/v1/documents/" + documentItem.id + "/download.pdf",
+        "maintenance_report_task_" + documentItem.task_id + ".pdf"
+      );
+    }
+
+    function renderSummary(title, status, text) {
+      if (!summaryPanel || !summaryText) return;
+      summaryPanel.hidden = false;
+      if (summaryTitle) summaryTitle.textContent = title;
+      if (summaryStatus) summaryStatus.textContent = status || "-";
+      summaryText.textContent = text || "Keine Zusammenfassung vorhanden.";
+      summaryPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    async function summarizeDocument(documentItem) {
+      const result = await api("/api/v1/documents/" + documentItem.id + "/summarize", {
+        method: "POST"
+      });
+      renderSummary(result.title, result.summary_status, result.summary);
+    }
+
+    async function showVersions(documentItem) {
+      const result = await api("/api/v1/documents/" + documentItem.id + "/versions");
+      const versions = listData(result).map((version) => (
+        "v" + version.version_number + " - " + new Date(version.created_at).toLocaleString("de-DE")
+      ));
+      window.alert(versions.length ? versions.join("\n") : "Keine Versionen vorhanden.");
+    }
+
+    async function changeDocumentStatus(documentItem, action) {
+      const comment = window.prompt("Kommentar fuer " + action + ":", "") || "";
+      await api("/api/v1/documents/" + documentItem.id + "/" + action, {
+        method: "POST",
+        body: JSON.stringify({ comment })
+      });
+      await load();
+    }
+
+    function statusText(value) {
+      if (value === "in_review") return "In Review";
+      if (value === "approved") return "Freigegeben";
+      if (value === "rejected") return "Abgelehnt";
+      return "Entwurf";
+    }
+
+    async function loadManualMachines() {
+      if (!manualMachineSelect) return;
+      try {
+        const machines = await api("/api/v1/machines");
+        machines.forEach((machine) => {
+          const option = document.createElement("option");
+          option.value = String(machine.id);
+          option.textContent = machine.name;
+          manualMachineSelect.appendChild(option);
+        });
+      } catch (error) {
+        if (manualMessage) manualMessage.textContent = "Maschinen konnten nicht geladen werden.";
+      }
+    }
+
+    async function loadManuals() {
+      if (!manualList) return [];
+      const manuals = await api("/api/v1/documents/manuals");
+      manualList.innerHTML = "";
+      if (manualCount) manualCount.textContent = manuals.length + " Handbuecher";
+      if (!manuals.length) {
+        manualList.innerHTML = '<tr><td colspan="6">Keine Handbuecher vorhanden.</td></tr>';
+        return manuals;
+      }
+      manuals.forEach((manual) => {
+        const actions = document.createElement("div");
+        actions.className = "table-actions";
+        actions.appendChild(actionButton("Download", async () => {
+          await downloadFile(manual.download_url, manual.original_filename);
+        }));
+        actions.appendChild(actionButton("Analysieren", async () => {
+          const result = await api("/api/v1/documents/manuals/" + manual.id + "/analyze", { method: "POST" });
+          renderSummary(result.title, result.analysis_status, result.analysis);
+          await loadManuals();
+        }));
+        actions.appendChild(actionButton("Zusammenfassen", async () => {
+          const result = await api("/api/v1/documents/manuals/" + manual.id + "/summarize", { method: "POST" });
+          renderSummary(result.title, result.summary_status, result.summary);
+          await loadManuals();
+        }));
+        if (canWrite("documents")) {
+          actions.appendChild(actionButton("Loeschen", async () => {
+            if (!window.confirm(manual.title + " wirklich loeschen?")) return;
+            await api("/api/v1/documents/manuals/" + manual.id, { method: "DELETE" });
+            await loadManuals();
+          }, true));
+        }
+        manualList.appendChild(row([
+          manual.title,
+          manual.machine ? manual.machine.name : "-",
+          manual.department || "-",
+          manual.analysis_status,
+          manual.summary_status,
+          actions
+        ]));
+      });
+      return manuals;
+    }
+
     async function load() {
       const params = new URLSearchParams();
       new FormData(form).forEach((value, key) => {
@@ -4286,7 +4401,7 @@
       list.innerHTML = "";
       if (documentCount) documentCount.textContent = documents.length + " Dokumente";
       if (!documents.length) {
-        list.innerHTML = '<tr><td colspan="6">Keine Dokumente gefunden.</td></tr>';
+        list.innerHTML = '<tr><td colspan="8">Keine Dokumente gefunden.</td></tr>';
         return documents;
       }
       documents.forEach((documentItem) => {
@@ -4295,14 +4410,36 @@
         actions.appendChild(actionButton("Pruefen", async () => {
           await reviewDocument(documentItem);
         }));
-        actions.appendChild(actionButton("Download", async () => {
+        actions.appendChild(actionButton("HTML", async () => {
           await downloadDocument(documentItem);
         }));
+        actions.appendChild(actionButton("PDF", async () => {
+          await downloadDocumentPdf(documentItem);
+        }));
+        actions.appendChild(actionButton("Summary", async () => {
+          await summarizeDocument(documentItem);
+        }));
+        actions.appendChild(actionButton("Versionen", async () => {
+          await showVersions(documentItem);
+        }));
+        if (canWrite("documents")) {
+          actions.appendChild(actionButton("Review", async () => {
+            await changeDocumentStatus(documentItem, "submit-review");
+          }));
+          actions.appendChild(actionButton("Freigeben", async () => {
+            await changeDocumentStatus(documentItem, "approve");
+          }));
+          actions.appendChild(actionButton("Ablehnen", async () => {
+            await changeDocumentStatus(documentItem, "reject");
+          }, true));
+        }
         list.appendChild(row([
           documentItem.title,
           String(documentItem.task_id),
           documentItem.department,
           documentItem.machine,
+          statusText(documentItem.status),
+          documentItem.version ? "v" + documentItem.version : "-",
           new Date(documentItem.created_at).toLocaleString("de-DE"),
           actions
         ]));
@@ -4322,6 +4459,28 @@
       });
     }
 
+    if (manualForm) {
+      manualForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (manualMessage) manualMessage.textContent = "Handbuch wird hochgeladen...";
+        const response = await fetch("/api/v1/documents/manuals", {
+          method: "POST",
+          headers: { "Authorization": "Bearer " + token() },
+          body: new FormData(manualForm)
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          if (manualMessage) manualMessage.textContent = (payload && payload.message) || "Upload fehlgeschlagen.";
+          return;
+        }
+        manualForm.reset();
+        if (manualMessage) manualMessage.textContent = "Handbuch hochgeladen.";
+        await loadManuals();
+      });
+    }
+
+    await loadManualMachines();
+    await loadManuals();
     const documents = await load();
     const documentPreview = consumeAiActionPreview("documents");
     if (documentPreview && documentPreview.payload) {

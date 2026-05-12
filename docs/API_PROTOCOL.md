@@ -918,14 +918,58 @@ Content-Type: application/json
 ## Dokumente
 
 ```http
-GET /api/documents
-GET /api/documents?task_id=1&department=Instandhaltung&machine=Maschine
-GET /api/documents/1
-POST /api/documents/1/review
-GET /api/documents/1/download
+GET /api/v1/documents
+GET /api/v1/documents?task_id=1&department=Instandhaltung&machine=Maschine
+POST /api/v1/documents/1/review
+GET /api/v1/documents/1/download
+GET /api/v1/documents/1/download.pdf
+GET /api/v1/documents/1/versions
+POST /api/v1/documents/1/summarize
+POST /api/v1/documents/1/submit-review
+POST /api/v1/documents/1/approve
+POST /api/v1/documents/1/reject
 ```
 
-Dokumente benoetigen `documents.view`. Berichte werden lokal als HTML unter `documents/YYYY/MM/task_<id>/maintenance_report.html` gespeichert.
+Dokumente benoetigen `documents.view`. Statusaenderungen, Handbuch-Uploads
+und Freigaben benoetigen `documents.write`. Berichte werden lokal als HTML
+unter `documents/YYYY/MM/task_<id>/maintenance_report.html` gespeichert. Jede
+neu erzeugte Berichtsversion bleibt als `DocumentVersion` nachvollziehbar.
+
+### PDF-Export und Versionen
+
+```http
+GET /api/v1/documents/1/download.pdf
+Authorization: Bearer <access_token>
+```
+
+Response `200` liefert `application/pdf`. Der PDF-Export nutzt denselben
+Sichtbarkeitscheck wie der HTML-Download und gibt `404` zurueck, wenn die
+Berichtsdatei nicht mehr auf dem Datentraeger liegt.
+
+```http
+GET /api/v1/documents/1/versions
+Authorization: Bearer <access_token>
+```
+
+Response `200`:
+
+```json
+{
+  "success": true,
+  "message": "Document versions loaded",
+  "data": [
+    {
+      "id": 1,
+      "document_id": 1,
+      "version_number": 1,
+      "original_filename": "maintenance_report.html",
+      "content_type": "text/html",
+      "file_size": 4096,
+      "created_at": "2026-05-12T10:00:00"
+    }
+  ]
+}
+```
 
 ### Dokument pruefen
 
@@ -962,6 +1006,69 @@ Response `200`:
 ```
 
 Die Pruefung speichert keine Ergebnisse. Ohne OpenAI-Key nutzt die API einen lokalen Fallback.
+
+### Zusammenfassung und Freigabe
+
+```http
+POST /api/v1/documents/1/summarize
+POST /api/v1/documents/1/submit-review
+POST /api/v1/documents/1/approve
+POST /api/v1/documents/1/reject
+```
+
+`summarize` speichert eine Kurzfassung am Dokument. Ohne erreichbaren
+OpenAI-Provider wird eine lokale Extrakt-Zusammenfassung erzeugt.
+
+Der Freigabeprozess ist einstufig:
+
+| Status | Bedeutung |
+| --- | --- |
+| `draft` | Entwurf oder neue Version |
+| `in_review` | Zur Pruefung eingereicht |
+| `approved` | Freigegeben mit Nutzer, Kommentar und Zeitstempel |
+| `rejected` | Abgelehnt mit Nutzer, Kommentar und Zeitstempel |
+
+Kommentar-Felder sind optional:
+
+```json
+{
+  "comment": "Freigegeben fuer die Ablage."
+}
+```
+
+### Maschinenhandbuecher
+
+```http
+POST /api/v1/documents/manuals
+GET /api/v1/documents/manuals?machine_id=1&q=Sensor
+GET /api/v1/documents/manuals/1/download
+POST /api/v1/documents/manuals/1/analyze
+POST /api/v1/documents/manuals/1/summarize
+DELETE /api/v1/documents/manuals/1
+```
+
+Upload ist `multipart/form-data` und erlaubt `.pdf`, `.txt`, `.html` und
+`.htm`. PDF-Text wird mit optional installiertem `pypdf` extrahiert; gescannte
+PDFs ohne Textschicht liefern eine klare Analyse-/Extraktionsmeldung statt OCR.
+
+Beispiel-Upload:
+
+```http
+POST /api/v1/documents/manuals
+Authorization: Bearer <access_token>
+Content-Type: multipart/form-data
+
+file=<manual.pdf>
+machine_id=1
+department=Instandhaltung
+```
+
+Analysepunkte fuer Handbuecher:
+
+```text
+Maschinenbezug, Wartungsintervalle, Sicherheitshinweise, Ersatzteile,
+Fehlercodes, offene Risiken
+```
 
 ## Wissenssuche
 

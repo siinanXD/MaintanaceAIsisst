@@ -2,7 +2,14 @@
 
 from app.domain_models.ai import AIAuditEvent, AIFeedback, ChatMessage
 from app.domain_models.common import Priority, Role, TaskStatus, utc_now
-from app.domain_models.documents import EmployeeDocument, GeneratedDocument
+from app.domain_models.documents import (
+    DocumentApprovalEvent,
+    DocumentVersion,
+    EmployeeDocument,
+    GeneratedDocument,
+    MachineManual,
+    MachineManualVersion,
+)
 from app.domain_models.errors import ErrorEntry
 from app.domain_models.machines import InventoryMaterial, Machine, MaintenancePlan
 from app.domain_models.notifications import NotificationDelivery
@@ -25,12 +32,16 @@ __all__ = [
     "ChatMessage",
     "DashboardPermission",
     "Department",
+    "DocumentApprovalEvent",
+    "DocumentVersion",
     "Employee",
     "EmployeeDocument",
     "ErrorEntry",
     "GeneratedDocument",
     "InventoryMaterial",
     "Machine",
+    "MachineManual",
+    "MachineManualVersion",
     "MaintenancePlan",
     "NotificationDelivery",
     "Priority",

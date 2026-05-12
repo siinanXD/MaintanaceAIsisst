@@ -28,6 +28,17 @@ def test_openapi_json_documents_core_endpoints(client):
     assert "/api/v1/admin/backups/{backup_id}/restore" in paths
     assert "/api/v1/admin/notifications/deliveries" in paths
     assert "/api/v1/admin/notifications/test-email" in paths
+    assert "/api/v1/documents/{document_id}/download.pdf" in paths
+    assert "/api/v1/documents/{document_id}/summarize" in paths
+    assert "/api/v1/documents/{document_id}/submit-review" in paths
+    assert "/api/v1/documents/{document_id}/approve" in paths
+    assert "/api/v1/documents/{document_id}/reject" in paths
+    assert "/api/v1/documents/{document_id}/versions" in paths
+    assert "/api/v1/documents/manuals" in paths
+    assert "/api/v1/documents/manuals/{manual_id}/download" in paths
+    assert "/api/v1/documents/manuals/{manual_id}/analyze" in paths
+    assert "/api/v1/documents/manuals/{manual_id}/summarize" in paths
+    assert "/api/v1/documents/manuals/{manual_id}" in paths
 
 
 def test_openapi_examples_are_present(client):
@@ -49,6 +60,11 @@ def test_openapi_examples_are_present(client):
     assert spec["components"]["schemas"]["BackupMetadata"]["properties"]["download_url"]["example"]
     assert spec["components"]["schemas"]["NotificationDelivery"]["properties"]["status"]["example"]
     assert spec["components"]["schemas"]["MailStatus"]["properties"]["dry_run"]["example"] is True
+    assert spec["components"]["schemas"]["GeneratedDocument"]["properties"]["pdf_url"]["example"]
+    assert spec["components"]["schemas"]["DocumentVersion"]["properties"]["version_number"][
+        "example"
+    ]
+    assert spec["components"]["schemas"]["MachineManual"]["properties"]["download_url"]["example"]
 
 
 def test_swagger_ui_route_loads(client):

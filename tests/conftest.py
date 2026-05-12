@@ -43,6 +43,7 @@ def app(tmp_path):
         OPENAI_MODEL = "test-model"
         UPLOAD_FOLDER = str(tmp_path / "uploads")
         DOCUMENTS_FOLDER = str(tmp_path / "documents")
+        MANUALS_FOLDER = str(tmp_path / "manuals")
         BACKUP_FOLDER = str(tmp_path / "backups")
         LOG_DIR = str(tmp_path / "logs")
         MAIL_DRY_RUN = True

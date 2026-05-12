@@ -82,6 +82,40 @@
     </form>
   </article>
 
+  <article class="card app-card lg:col-span-12" data-manual-upload-card>
+    <form data-manual-upload-form>
+      <div class="card-body">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">Maschinenhandbuch hochladen</h2>
+            <p class="panel-meta">PDF, TXT oder HTML sicher speichern und analysieren</p>
+          </div>
+          <span class="badge badge-ai">Handbuch</span>
+        </div>
+        <div class="form-grid">
+          <div class="field">
+            <label for="manual-file">Datei</label>
+            <input class="input input-bordered" id="manual-file" name="file" type="file" accept=".pdf,.txt,.html,.htm,application/pdf,text/plain,text/html">
+          </div>
+          <div class="field">
+            <label for="manual-machine">Maschine</label>
+            <select class="select select-bordered" id="manual-machine" name="machine_id" data-manual-machine-select>
+              <option value="">Keine Maschine</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="manual-department">Bereich</label>
+            <input class="input input-bordered" id="manual-department" name="department">
+          </div>
+        </div>
+        <div class="toolbar form-actions">
+          <button class="btn btn-primary" type="submit">Handbuch hochladen</button>
+          <span class="panel-meta" data-manual-message></span>
+        </div>
+      </div>
+    </form>
+  </article>
+
   <article class="card app-card lg:col-span-12" data-document-review-panel hidden>
     <div class="card-body">
       <div class="panel-header">
@@ -110,6 +144,19 @@
     </div>
   </article>
 
+  <article class="card app-card lg:col-span-12" data-document-summary-panel hidden>
+    <div class="card-body">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Zusammenfassung</h2>
+          <p class="panel-meta" data-document-summary-title>Dokument zusammenfassen</p>
+        </div>
+        <span class="badge badge-status is-open" data-document-summary-status>-</span>
+      </div>
+      <pre class="panel-meta whitespace-pre-wrap" data-document-summary-text></pre>
+    </div>
+  </article>
+
   <article class="card app-card mobile-primary-card lg:col-span-12">
     <div class="card-body">
       <div class="panel-header">
@@ -133,11 +180,40 @@
               <th>Task</th>
               <th>Bereich</th>
               <th>Maschine</th>
+              <th>Status</th>
+              <th>Version</th>
               <th>Erstellt</th>
               <th>Aktionen</th>
             </tr>
           </thead>
           <tbody data-document-list></tbody>
+        </table>
+      </div>
+    </div>
+  </article>
+
+  <article class="card app-card mobile-primary-card lg:col-span-12">
+    <div class="card-body">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Maschinenhandbuecher</h2>
+          <p class="panel-meta">Gespeicherte Handbuecher mit Analyse- und Summary-Status</p>
+        </div>
+        <span class="badge badge-status is-open" data-manual-count>0 Handbuecher</span>
+      </div>
+      <div class="table-wrap bounded-table-wrap">
+        <table class="table data-table">
+          <thead>
+            <tr>
+              <th>Titel</th>
+              <th>Maschine</th>
+              <th>Bereich</th>
+              <th>Analyse</th>
+              <th>Summary</th>
+              <th>Aktionen</th>
+            </tr>
+          </thead>
+          <tbody data-manual-list></tbody>
         </table>
       </div>
     </div>

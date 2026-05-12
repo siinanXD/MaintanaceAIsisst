@@ -74,6 +74,7 @@ def create_app(config_class=Config):
     Path("data").mkdir(parents=True, exist_ok=True)
     Path(app.config["UPLOAD_FOLDER"]).mkdir(parents=True, exist_ok=True)
     Path(app.config["DOCUMENTS_FOLDER"]).mkdir(parents=True, exist_ok=True)
+    Path(app.config["MANUALS_FOLDER"]).mkdir(parents=True, exist_ok=True)
     Path(app.config["BACKUP_FOLDER"]).mkdir(parents=True, exist_ok=True)
 
     db.init_app(app)

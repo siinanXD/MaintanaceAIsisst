@@ -30,6 +30,8 @@ A modular Flask application for industrial maintenance teams. Manages tasks, err
 - AI-assisted task suggestions from free text, with priority scoring
 - Similar-error detection to avoid duplicate catalog entries
 - Automatic HTML maintenance reports on task completion
+- Server-side PDF export, versioning, approval workflow, and summaries for reports
+- Machine manual upload, text extraction, analysis, and searchable metadata
 
 **AI Integration** (OpenAI optional, local fallback included)
 - Daily briefing summarizing tasks, inventory, errors, and documents
@@ -118,6 +120,8 @@ AI_PROVIDER=openai          # or "mock" for local-only mode
 OPENAI_API_KEY=             # leave empty to use local fallback
 OPENAI_MODEL=gpt-4o-mini
 BACKUP_FOLDER=backups
+DOCUMENTS_FOLDER=documents
+MANUALS_FOLDER=manuals
 MAIL_ENABLED=false
 MAIL_HOST=
 MAIL_PORT=587
@@ -135,6 +139,8 @@ For production deployments set `AUTO_CREATE_DATABASE=false` and run
 initial admin when `ADMIN_USERNAME`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` are set.
 For mail, keep `MAIL_DRY_RUN=true` until SMTP credentials are verified. Dry-run
 creates delivery records but does not open an SMTP connection.
+Documents and manuals are stored below `DOCUMENTS_FOLDER` and `MANUALS_FOLDER`.
+Keep both folders on persistent storage in production.
 
 ### Scheduled Notifications
 
