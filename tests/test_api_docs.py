@@ -20,6 +20,12 @@ def test_openapi_json_documents_core_endpoints(client):
     assert "/api/v1/ai/daily-briefing" in paths
     assert "/api/v1/machines/{machine_id}/assistant" in paths
     assert "/api/v1/inventory/forecast" in paths
+    assert "/api/v1/admin/permissions/schema" in paths
+    assert "/api/v1/admin/users/{user_id}/permissions" in paths
+    assert "/api/v1/admin/audit-log" in paths
+    assert "/api/v1/admin/backups" in paths
+    assert "/api/v1/admin/backups/{backup_id}/download" in paths
+    assert "/api/v1/admin/backups/{backup_id}/restore" in paths
 
 
 def test_openapi_examples_are_present(client):
@@ -36,6 +42,9 @@ def test_openapi_examples_are_present(client):
     assert task_example["title"]
     assert task_example["priority"] == "urgent"
     assert briefing_example["sections"]
+    assert spec["components"]["schemas"]["ErrorResponse"]["properties"]["message"]["example"]
+    assert spec["components"]["schemas"]["PaginatedAuditLog"]["properties"]["pagination"]
+    assert spec["components"]["schemas"]["BackupMetadata"]["properties"]["download_url"]["example"]
 
 
 def test_swagger_ui_route_loads(client):

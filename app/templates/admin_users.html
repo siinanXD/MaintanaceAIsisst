@@ -93,6 +93,7 @@
         <div>
           <h2 class="panel-title">Dashboard-Rechte</h2>
           <p class="panel-meta" data-permission-editor-title>User auswaehlen</p>
+          <p class="panel-meta" data-permission-defaults></p>
         </div>
       </div>
       <form data-permission-form>
@@ -114,6 +115,62 @@
           <span class="panel-meta" data-permission-message></span>
         </div>
       </form>
+    </div>
+  </article>
+
+  <article class="card app-card mobile-secondary-card lg:col-span-6" data-audit-log-card>
+    <div class="card-body">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Audit-Log</h2>
+          <p class="panel-meta">Sicherheitskritische Admin-Aenderungen</p>
+        </div>
+        <button class="btn btn-outline btn-sm" type="button" data-audit-refresh>Aktualisieren</button>
+      </div>
+      <div class="toolbar mb-4">
+        <input class="input input-bordered w-full" type="search"
+               placeholder="Aktion, Ressource oder Nutzer suchen..."
+               data-audit-search autocomplete="off">
+      </div>
+      <div class="table-wrap">
+        <table class="table data-table">
+          <thead>
+            <tr>
+              <th>Zeit</th>
+              <th>Aktion</th>
+              <th>Ressource</th>
+              <th>Akteur</th>
+            </tr>
+          </thead>
+          <tbody data-audit-log-list></tbody>
+        </table>
+      </div>
+    </div>
+  </article>
+
+  <article class="card app-card mobile-secondary-card lg:col-span-6" data-backup-card>
+    <div class="card-body">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Backups</h2>
+          <p class="panel-meta">Datenbank, Uploads, Dokumente und Logs</p>
+        </div>
+        <button class="btn btn-primary btn-sm" type="button" data-backup-create>Backup erstellen</button>
+      </div>
+      <p class="panel-meta mb-3" data-backup-message></p>
+      <div class="table-wrap">
+        <table class="table data-table">
+          <thead>
+            <tr>
+              <th>Datei</th>
+              <th>Groesse</th>
+              <th>Zeit</th>
+              <th>Aktionen</th>
+            </tr>
+          </thead>
+          <tbody data-backup-list></tbody>
+        </table>
+      </div>
     </div>
   </article>
 

@@ -14,6 +14,7 @@ from app.security import (
     employee_access_required,
     roles_required,
 )
+from app.services.audit_service import create_audit_log
 from app.shiftplans.services import (
     calendar_entries_for_user,
     generate_shift_plan,
@@ -40,9 +41,15 @@ def list_shiftplans():
 @dashboard_permission_required("shiftplans", "write")
 def publish_shiftplan(plan_id):
     """Toggle a shift plan between draft and published."""
-    if current_user().role != Role.MASTER_ADMIN:
+    user = current_user()
+    if user.role != Role.MASTER_ADMIN:
         return error_response("Nur Administratoren koennen Plaene veroeffentlichen", 403)
     plan = db.get_or_404(ShiftPlan, plan_id)
+    before = {
+        "id": plan.id,
+        "status": plan.status,
+        "published_at": plan.published_at.isoformat() if plan.published_at else None,
+    }
     if plan.is_published:
         plan.status = "draft"
         plan.published_at = None
@@ -52,12 +59,25 @@ def publish_shiftplan(plan_id):
     db.session.add(
         ShiftPlanChangeLog(
             plan_id=plan.id,
-            user_id=current_user().id,
+            user_id=user.id,
             action="publish" if plan.is_published else "unpublish",
         )
     )
     db.session.commit()
-    access_level = employee_access_level(current_user())
+    create_audit_log(
+        user,
+        "shiftplan.publish" if plan.is_published else "shiftplan.unpublish",
+        "shiftplan",
+        plan.id,
+        before=before,
+        after={
+            "id": plan.id,
+            "status": plan.status,
+            "published_at": plan.published_at.isoformat() if plan.published_at else None,
+        },
+        commit=True,
+    )
+    access_level = employee_access_level(user)
     return success_response(plan.to_dict(access_level), message="Status aktualisiert")
 
 

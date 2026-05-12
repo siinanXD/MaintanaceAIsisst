@@ -43,6 +43,8 @@ def app(tmp_path):
         OPENAI_MODEL = "test-model"
         UPLOAD_FOLDER = str(tmp_path / "uploads")
         DOCUMENTS_FOLDER = str(tmp_path / "documents")
+        BACKUP_FOLDER = str(tmp_path / "backups")
+        LOG_DIR = str(tmp_path / "logs")
 
     application = create_app(TestingConfig)
 

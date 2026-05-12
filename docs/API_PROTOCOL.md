@@ -6,7 +6,7 @@ Dieses Dokument beschreibt die bestehenden API-Routen fuer den Maintenance Assis
 
 ```http
 Base URL: https://deine-domain.de
-API Prefix: /api
+API Prefix: /api/v1
 Content-Type: application/json
 Authorization: Bearer <access_token>
 ```
@@ -19,6 +19,8 @@ Base URL: http://127.0.0.1:5050
 
 Die interaktive Swagger UI ist lokal unter `/swagger/` verfuegbar. Die
 OpenAPI-Spezifikation kann direkt unter `/api/swagger.json` gelesen werden.
+`/api/v1` ist die stabile Version; Breaking Changes werden erst unter einem
+neuen Prefix wie `/api/v2` eingefuehrt.
 
 ## Sicherheit
 
@@ -45,7 +47,7 @@ Zusaetzlich zur Rolle gibt es Dashboard-Rechte pro User. Der Admin kann fuer jed
 Dashboard-Keys:
 
 ```text
-dashboard, tasks, errors, employees, shiftplans, machines, inventory, admin_users
+dashboard, tasks, errors, employees, shiftplans, machines, inventory, documents, admin_users
 ```
 
 `admin_users` bleibt effektiv `master_admin` vorbehalten. Normale Rollen sehen und bearbeiten Tasks und Fehlerkatalogeintraege weiterhin nur im eigenen Bereich.
@@ -208,12 +210,24 @@ Response `200`:
 
 ## Admin-Rechteverwaltung
 
+### Rechte-Schema fuer den Editor lesen
+
+Nur `master_admin`.
+
+```http
+GET /api/v1/admin/permissions/schema
+Authorization: Bearer <access_token>
+```
+
+Response `200` enthaelt Dashboard-Gruppen, Labels, Mitarbeiterdaten-Labels und
+Rollen-Defaults fuer den UI-Editor.
+
 ### Rechte eines Users lesen
 
 Nur `master_admin`.
 
 ```http
-GET /api/admin/users/2/permissions
+GET /api/v1/admin/users/2/permissions
 Authorization: Bearer <access_token>
 ```
 
@@ -239,7 +253,7 @@ Response `200`:
 Nur `master_admin`.
 
 ```http
-PUT /api/admin/users/2/permissions
+PUT /api/v1/admin/users/2/permissions
 Authorization: Bearer <access_token>
 Content-Type: application/json
 ```
@@ -264,6 +278,54 @@ Request:
 ```
 
 Ungueltige Dashboard-Keys oder Mitarbeiterdatenstufen liefern `400`.
+
+## Admin-Audit und Backups
+
+Alle Endpunkte in diesem Abschnitt sind `master_admin`-only.
+
+```http
+GET /api/v1/admin/audit-log?q=permissions.update&limit=50&offset=0
+Authorization: Bearer <access_token>
+```
+
+Response `200`:
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "actor": {"id": 1, "username": "master.admin"},
+      "action": "permissions.update",
+      "resource_type": "user",
+      "resource_id": "2",
+      "before": {},
+      "after": {},
+      "created_at": "2026-05-12T12:00:00+00:00"
+    }
+  ],
+  "pagination": {"limit": 50, "offset": 0, "total": 1}
+}
+```
+
+Backups:
+
+```http
+POST /api/v1/admin/backups
+GET /api/v1/admin/backups
+GET /api/v1/admin/backups/<backup_id>/download
+POST /api/v1/admin/backups/<backup_id>/restore
+```
+
+Restore verlangt immer eine explizite Bestaetigung:
+
+```json
+{"confirm": true}
+```
+
+Das Backup-ZIP enthaelt ein Manifest, die SQLite-Datenbank, Uploads,
+Dokumente und Logs, soweit die konfigurierten Ordner existieren.
 
 ## Departments
 

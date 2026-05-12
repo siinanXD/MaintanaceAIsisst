@@ -31,8 +31,6 @@
     errors: "Fehlerliste",
     employees: "Mitarbeiter",
     shiftplans: "Schichtplan",
-    handover: "Schichtübergabe",
-    vacations: "Urlaubsplanung",
     machines: "Maschinen",
     inventory: "Lager",
     documents: "Dokumente",
@@ -1249,6 +1247,7 @@
     if (!list || !token()) return;
     const editor = document.querySelector("[data-permission-editor]");
     const editorTitle = document.querySelector("[data-permission-editor-title]");
+    const permissionDefaults = document.querySelector("[data-permission-defaults]");
     const permissionList = document.querySelector("[data-permission-list]");
     const permissionForm = document.querySelector("[data-permission-form]");
     const permissionMessage = document.querySelector("[data-permission-message]");
@@ -1268,8 +1267,15 @@
     const aiLatestEvents = document.querySelector("[data-ai-latest-events]");
     const aiWorkflows = document.querySelector("[data-ai-workflows]");
     const aiErrorCategories = document.querySelector("[data-ai-error-categories]");
+    const auditLogList = document.querySelector("[data-audit-log-list]");
+    const auditSearch = document.querySelector("[data-audit-search]");
+    const auditRefresh = document.querySelector("[data-audit-refresh]");
+    const backupList = document.querySelector("[data-backup-list]");
+    const backupCreate = document.querySelector("[data-backup-create]");
+    const backupMessage = document.querySelector("[data-backup-message]");
     let selectedUser = null;
     let employees = [];
+    let permissionSchema = null;
 
     function employeeSelect(item) {
       const select = document.createElement("select");
@@ -1375,6 +1381,110 @@
       });
     }
 
+    async function loadPermissionSchema() {
+      try {
+        permissionSchema = await api("/api/v1/admin/permissions/schema");
+      } catch (error) {
+        permissionSchema = null;
+      }
+    }
+
+    function schemaDashboards() {
+      if (permissionSchema && Array.isArray(permissionSchema.dashboards)) {
+        return permissionSchema.dashboards.map((dashboard) => dashboard.key);
+      }
+      return DASHBOARD_KEYS;
+    }
+
+    function dashboardLabel(dashboard) {
+      const match = permissionSchema && Array.isArray(permissionSchema.dashboards)
+        ? permissionSchema.dashboards.find((item) => item.key === dashboard)
+        : null;
+      return match ? match.label : (DASHBOARD_LABELS[dashboard] || dashboard);
+    }
+
+    function employeeAccessLabel(level) {
+      const match = permissionSchema && Array.isArray(permissionSchema.employee_access_levels)
+        ? permissionSchema.employee_access_levels.find((item) => item.key === level)
+        : null;
+      return match ? match.label : level;
+    }
+
+    function roleDefaultPermission(role, dashboard) {
+      const defaults = permissionSchema && permissionSchema.role_defaults
+        ? permissionSchema.role_defaults[role] || {}
+        : {};
+      return defaults[dashboard] || {
+        can_view: false,
+        can_write: false,
+        employee_access_level: "none"
+      };
+    }
+
+    function permissionSummary(permission) {
+      const parts = [];
+      if (permission.can_view) parts.push("Anzeigen");
+      if (permission.can_write) parts.push("Bearbeiten");
+      if (permission.employee_access_level && permission.employee_access_level !== "none") {
+        parts.push(employeeAccessLabel(permission.employee_access_level));
+      }
+      return parts.length ? parts.join(", ") : "Keine Rechte";
+    }
+
+    function permissionChanged(left, right) {
+      return Boolean(left.can_view) !== Boolean(right.can_view)
+        || Boolean(left.can_write) !== Boolean(right.can_write)
+        || (left.employee_access_level || "none") !== (right.employee_access_level || "none");
+    }
+
+    function collectPermissionPayload() {
+      const payload = { permissions: {} };
+      schemaDashboards().forEach((dashboard) => {
+        payload.permissions[dashboard] = {
+          can_view: false,
+          can_write: false,
+          employee_access_level: "none"
+        };
+      });
+      permissionForm.querySelectorAll("[data-dashboard]").forEach((input) => {
+        const dashboard = input.dataset.dashboard;
+        const action = input.dataset.permissionAction;
+        if (!payload.permissions[dashboard]) return;
+        if (action === "employee_access_level") {
+          payload.permissions[dashboard].employee_access_level = input.value;
+        } else {
+          payload.permissions[dashboard][action] = input.checked;
+        }
+      });
+      if (payload.permissions.admin_users) {
+        payload.permissions.admin_users.can_view = selectedUser.role === "master_admin";
+        payload.permissions.admin_users.can_write = selectedUser.role === "master_admin";
+      }
+      return payload;
+    }
+
+    function permissionChangeSummary(payload) {
+      const changes = [];
+      schemaDashboards().forEach((dashboard) => {
+        const before = (selectedUser.permissions && selectedUser.permissions[dashboard]) || {
+          can_view: false,
+          can_write: false,
+          employee_access_level: "none"
+        };
+        const after = payload.permissions[dashboard] || {
+          can_view: false,
+          can_write: false,
+          employee_access_level: "none"
+        };
+        if (!permissionChanged(before, after)) return;
+        changes.push(
+          dashboardLabel(dashboard) + ": " + permissionSummary(before)
+            + " -> " + permissionSummary(after)
+        );
+      });
+      return changes;
+    }
+
     function checkboxCell(dashboard, action, checked, disabled) {
       const input = document.createElement("input");
       input.type = "checkbox";
@@ -1391,10 +1501,13 @@
       select.disabled = Boolean(disabled);
       select.dataset.dashboard = dashboard;
       select.dataset.permissionAction = "employee_access_level";
-      EMPLOYEE_ACCESS_LEVELS.forEach((level) => {
+      const accessLevels = permissionSchema && Array.isArray(permissionSchema.employee_access_levels)
+        ? permissionSchema.employee_access_levels.map((level) => level.key)
+        : EMPLOYEE_ACCESS_LEVELS;
+      accessLevels.forEach((level) => {
         const option = document.createElement("option");
         option.value = level;
-        option.textContent = level;
+        option.textContent = employeeAccessLabel(level);
         select.appendChild(option);
       });
       select.value = selected || "none";
@@ -1408,31 +1521,55 @@
       if (editorTitle) {
         editorTitle.textContent = item.username + " - Rechte je Dashboard";
       }
+      if (permissionDefaults) {
+        permissionDefaults.textContent = "Rollen-Default: " + item.role
+          + " | Abweichungen werden vor dem Speichern angezeigt.";
+      }
       if (permissionMessage) permissionMessage.textContent = "";
       permissionList.innerHTML = "";
 
-      DASHBOARD_KEYS.forEach((dashboard) => {
-        const permission = (item.permissions && item.permissions[dashboard]) || {};
-        const isAdminUsersDashboard = dashboard === "admin_users";
-        const isMasterAdmin = item.role === "master_admin";
-        permissionList.appendChild(row([
-          DASHBOARD_LABELS[dashboard],
-          checkboxCell(
-            dashboard,
-            "can_view",
-            isAdminUsersDashboard ? isMasterAdmin : permission.can_view,
-            isAdminUsersDashboard
-          ),
-          checkboxCell(
-            dashboard,
-            "can_write",
-            isAdminUsersDashboard ? isMasterAdmin : permission.can_write,
-            isAdminUsersDashboard
-          ),
-          dashboard === "employees"
-            ? accessLevelSelect(dashboard, permission.employee_access_level)
-            : "-"
-        ]));
+      const groups = permissionSchema && Array.isArray(permissionSchema.groups)
+        ? permissionSchema.groups
+        : [{ label: "Rechte", dashboards: schemaDashboards() }];
+      groups.forEach((group) => {
+        const groupRow = document.createElement("tr");
+        const groupCell = document.createElement("td");
+        groupCell.colSpan = 4;
+        groupCell.className = "panel-meta";
+        groupCell.textContent = group.label;
+        groupRow.appendChild(groupCell);
+        permissionList.appendChild(groupRow);
+        group.dashboards.forEach((dashboard) => {
+          const permission = (item.permissions && item.permissions[dashboard]) || {};
+          const defaultPermission = roleDefaultPermission(item.role, dashboard);
+          const isAdminUsersDashboard = dashboard === "admin_users";
+          const isMasterAdmin = item.role === "master_admin";
+          const label = document.createElement("div");
+          const name = document.createElement("strong");
+          name.textContent = dashboardLabel(dashboard);
+          const defaultHint = document.createElement("p");
+          defaultHint.className = "panel-meta";
+          defaultHint.textContent = "Default: " + permissionSummary(defaultPermission);
+          label.append(name, defaultHint);
+          permissionList.appendChild(row([
+            label,
+            checkboxCell(
+              dashboard,
+              "can_view",
+              isAdminUsersDashboard ? isMasterAdmin : permission.can_view,
+              isAdminUsersDashboard
+            ),
+            checkboxCell(
+              dashboard,
+              "can_write",
+              isAdminUsersDashboard ? isMasterAdmin : permission.can_write,
+              isAdminUsersDashboard
+            ),
+            dashboard === "employees"
+              ? accessLevelSelect(dashboard, permission.employee_access_level)
+              : "-"
+          ]));
+        });
       });
     }
 
@@ -1440,25 +1577,12 @@
       permissionForm.addEventListener("submit", async (event) => {
         event.preventDefault();
         if (!selectedUser) return;
-        const payload = { permissions: {} };
-        DASHBOARD_KEYS.forEach((dashboard) => {
-          payload.permissions[dashboard] = {
-            can_view: false,
-            can_write: false,
-            employee_access_level: "none"
-          };
-        });
-        permissionForm.querySelectorAll("[data-dashboard]").forEach((input) => {
-          const dashboard = input.dataset.dashboard;
-          const action = input.dataset.permissionAction;
-          if (action === "employee_access_level") {
-            payload.permissions[dashboard].employee_access_level = input.value;
-          } else {
-            payload.permissions[dashboard][action] = input.checked;
-          }
-        });
-        payload.permissions.admin_users.can_view = selectedUser.role === "master_admin";
-        payload.permissions.admin_users.can_write = selectedUser.role === "master_admin";
+        const payload = collectPermissionPayload();
+        const changes = permissionChangeSummary(payload);
+        if (changes.length) {
+          const confirmed = window.confirm("Diese Rechte speichern?\n\n" + changes.join("\n"));
+          if (!confirmed) return;
+        }
         try {
           const updated = await api("/api/v1/admin/users/" + selectedUser.id + "/permissions", {
             method: "PUT",
@@ -1470,11 +1594,89 @@
           }
           selectedUser = updated;
           await load();
+          await loadAuditLog();
           if (permissionMessage) permissionMessage.textContent = "Rechte gespeichert.";
         } catch (error) {
           if (permissionMessage) permissionMessage.textContent = error.message;
         }
       });
+    }
+
+    async function loadAuditLog() {
+      if (!auditLogList) return;
+      const params = new URLSearchParams();
+      params.set("limit", "25");
+      if (auditSearch && auditSearch.value.trim()) {
+        params.set("q", auditSearch.value.trim());
+      }
+      try {
+        const result = await api("/api/v1/admin/audit-log?" + params.toString());
+        const entries = listData(result);
+        auditLogList.innerHTML = "";
+        if (!entries.length) {
+          auditLogList.innerHTML = '<tr><td colspan="4">Keine Audit-Eintraege vorhanden.</td></tr>';
+          return;
+        }
+        entries.forEach((entry) => {
+          auditLogList.appendChild(row([
+            formatDate(entry.created_at),
+            entry.action,
+            entry.resource_type + (entry.resource_id ? " #" + entry.resource_id : ""),
+            (entry.actor && entry.actor.username) || "-"
+          ]));
+        });
+      } catch (error) {
+        auditLogList.innerHTML = '<tr><td colspan="4">Audit-Log konnte nicht geladen werden.</td></tr>';
+      }
+    }
+
+    function formatBytes(value) {
+      const bytes = Number(value || 0);
+      if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + " MB";
+      if (bytes >= 1024) return (bytes / 1024).toFixed(1) + " KB";
+      return bytes + " B";
+    }
+
+    async function loadBackups() {
+      if (!backupList) return;
+      try {
+        const result = await api("/api/v1/admin/backups");
+        const backups = listData(result);
+        backupList.innerHTML = "";
+        if (!backups.length) {
+          backupList.innerHTML = '<tr><td colspan="4">Noch keine Backups vorhanden.</td></tr>';
+          return;
+        }
+        backups.forEach((item) => {
+          const actions = document.createElement("div");
+          actions.className = "table-actions";
+          actions.appendChild(actionButton("Download", async () => {
+            await downloadFile(item.download_url, item.filename);
+          }));
+          actions.appendChild(actionButton("Restore", async () => {
+            const confirmed = window.confirm(
+              "Backup wiederherstellen?\nVor dem Restore wird automatisch ein Sicherheitsbackup erstellt."
+            );
+            if (!confirmed) return;
+            if (backupMessage) backupMessage.textContent = "Restore laeuft...";
+            await api("/api/v1/admin/backups/" + item.id + "/restore", {
+              method: "POST",
+              body: JSON.stringify({ confirm: true })
+            });
+            if (backupMessage) backupMessage.textContent = "Backup wiederhergestellt.";
+            await loadBackups();
+            await loadAuditLog();
+          }));
+          backupList.appendChild(row([
+            item.filename,
+            formatBytes(item.size_bytes),
+            formatDate(item.created_at),
+            actions
+          ]));
+        });
+      } catch (error) {
+        backupList.innerHTML = '<tr><td colspan="4">Backups konnten nicht geladen werden.</td></tr>';
+      }
     }
 
     async function load() {
@@ -1570,10 +1772,33 @@
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(load, 300);
     }
+    let auditDebounceTimer = null;
+    function scheduleAuditLoad() {
+      clearTimeout(auditDebounceTimer);
+      auditDebounceTimer = setTimeout(loadAuditLog, 300);
+    }
     if (filterQ) filterQ.addEventListener("input", scheduleLoad);
     if (filterRole) filterRole.addEventListener("change", load);
     if (filterStatus) filterStatus.addEventListener("change", load);
+    if (auditSearch) auditSearch.addEventListener("input", scheduleAuditLoad);
+    if (auditRefresh) auditRefresh.addEventListener("click", loadAuditLog);
+    if (backupCreate) {
+      backupCreate.addEventListener("click", async () => {
+        if (backupMessage) backupMessage.textContent = "Backup wird erstellt...";
+        try {
+          await api("/api/v1/admin/backups", { method: "POST" });
+          if (backupMessage) backupMessage.textContent = "Backup erstellt.";
+          await loadBackups();
+          await loadAuditLog();
+        } catch (error) {
+          if (backupMessage) backupMessage.textContent = error.message;
+        }
+      });
+    }
+    await loadPermissionSchema();
     await loadAiAnalytics();
+    await loadAuditLog();
+    await loadBackups();
   }
 
   async function initEmployees() {

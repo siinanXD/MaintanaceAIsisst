@@ -1,7 +1,10 @@
 """Tests for administration and department management endpoints."""
 
+import io
+import zipfile
+
 from app.extensions import db
-from app.models import Department, Role, User
+from app.models import AuditLogEntry, Department, Role, User
 
 
 def test_admin_user_lifecycle_and_filters(client, make_user, make_employee, auth_headers):
@@ -77,6 +80,78 @@ def test_admin_user_lifecycle_and_filters(client, make_user, make_employee, auth
 
     with client.application.app_context():
         assert db.session.get(User, created_user["id"]) is None
+        actions = {entry.action for entry in AuditLogEntry.query.all()}
+
+    assert {
+        "user.create",
+        "user.update",
+        "user.lock",
+        "user.unlock",
+        "user.reset_password",
+        "user.delete",
+    }.issubset(actions)
+
+
+def test_audit_log_is_master_admin_only_and_searchable(client, make_user, auth_headers):
+    """Verify security audit entries are searchable and protected."""
+    admin = make_user(
+        username="audit_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    user = make_user(username="audit_regular")
+    admin_headers = auth_headers(admin["username"])
+    user_headers = auth_headers(user["username"])
+
+    client.post(
+        f"/api/v1/admin/users/{user['id']}/lock",
+        headers=admin_headers,
+    )
+    forbidden_response = client.get("/api/v1/admin/audit-log", headers=user_headers)
+    response = client.get(
+        "/api/v1/admin/audit-log?q=user.lock&limit=10",
+        headers=admin_headers,
+    )
+    payload = response.get_json()
+
+    assert forbidden_response.status_code == 403
+    assert response.status_code == 200
+    assert payload["pagination"]["total"] >= 1
+    assert payload["data"][0]["action"] == "user.lock"
+
+
+def test_backup_create_download_and_restore_validation(
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify backup ZIPs include a manifest and restore requires confirmation."""
+    admin = make_user(
+        username="backup_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    headers = auth_headers(admin["username"])
+
+    create_response = client.post("/api/v1/admin/backups", headers=headers)
+    backup = create_response.get_json()["data"]
+    list_response = client.get("/api/v1/admin/backups", headers=headers)
+    download_response = client.get(backup["download_url"], headers=headers)
+    missing_confirm_response = client.post(
+        f"/api/v1/admin/backups/{backup['id']}/restore",
+        headers=headers,
+        json={"confirm": False},
+    )
+
+    with zipfile.ZipFile(io.BytesIO(download_response.data)) as archive:
+        manifest = archive.read("manifest.json").decode("utf-8")
+
+    assert create_response.status_code == 201
+    assert list_response.status_code == 200
+    assert backup["id"] in [item["id"] for item in list_response.get_json()["data"]]
+    assert download_response.status_code == 200
+    assert "version" in manifest
+    assert missing_confirm_response.status_code == 400
 
 
 def test_admin_user_validation_rejects_conflicts_and_bad_payloads(

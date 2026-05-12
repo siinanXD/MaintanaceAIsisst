@@ -14,7 +14,9 @@ OPENAPI_SPEC = {
         "version": "1.0.0",
         "description": (
             "Backend API for authentication, task workflows, error catalog, "
-            "AI assistance and inventory forecasting."
+            "AI assistance, inventory forecasting and administration. "
+            "The stable public API lives under /api/v1; breaking changes use "
+            "a new major prefix such as /api/v2."
         ),
     },
     "servers": [
@@ -33,6 +35,7 @@ OPENAPI_SPEC = {
         {"name": "Employees", "description": "Employee records and document management"},
         {"name": "ShiftPlans", "description": "AI-generated shift plans and calendar"},
         {"name": "Documents", "description": "Generated maintenance reports and quality reviews"},
+        {"name": "Admin", "description": "Users, permissions, audit log and backups"},
         {"name": "Health", "description": "Service health probes"},
     ],
     "components": {
@@ -87,6 +90,99 @@ OPENAPI_SPEC = {
                     "data": {"type": "array", "items": {"$ref": "#/components/schemas/Employee"}},
                     "pagination": {"$ref": "#/components/schemas/Pagination"},
                     "message": {"type": "string", "example": "OK"},
+                },
+            },
+            "SuccessResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {"type": "boolean", "example": True},
+                    "message": {"type": "string", "example": "OK"},
+                    "data": {"type": "object"},
+                },
+            },
+            "PermissionValue": {
+                "type": "object",
+                "properties": {
+                    "can_view": {"type": "boolean", "example": True},
+                    "can_write": {"type": "boolean", "example": False},
+                    "employee_access_level": {
+                        "type": "string",
+                        "enum": ["none", "basic", "shift", "confidential"],
+                        "example": "basic",
+                    },
+                },
+            },
+            "PermissionSchema": {
+                "type": "object",
+                "properties": {
+                    "dashboards": {
+                        "type": "array",
+                        "items": {"type": "object"},
+                        "example": [{"key": "tasks", "label": "Tasks"}],
+                    },
+                    "groups": {
+                        "type": "array",
+                        "items": {"type": "object"},
+                        "example": [{"key": "work", "label": "Arbeit", "dashboards": ["tasks"]}],
+                    },
+                    "employee_access_levels": {
+                        "type": "array",
+                        "items": {"type": "object"},
+                    },
+                    "role_defaults": {"type": "object"},
+                },
+            },
+            "AuditLogEntry": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer", "example": 17},
+                    "actor": {"$ref": "#/components/schemas/User"},
+                    "action": {"type": "string", "example": "permissions.update"},
+                    "resource_type": {"type": "string", "example": "user"},
+                    "resource_id": {"type": "string", "example": "12"},
+                    "before": {"type": "object"},
+                    "after": {"type": "object"},
+                    "ip_address": {"type": "string", "example": "127.0.0.1"},
+                    "user_agent": {"type": "string", "example": "Mozilla/5.0"},
+                    "created_at": {"type": "string", "format": "date-time"},
+                },
+            },
+            "PaginatedAuditLog": {
+                "type": "object",
+                "properties": {
+                    "success": {"type": "boolean", "example": True},
+                    "data": {
+                        "type": "array",
+                        "items": {"$ref": "#/components/schemas/AuditLogEntry"},
+                    },
+                    "pagination": {
+                        "type": "object",
+                        "properties": {
+                            "limit": {"type": "integer", "example": 50},
+                            "offset": {"type": "integer", "example": 0},
+                            "total": {"type": "integer", "example": 1},
+                        },
+                    },
+                    "message": {"type": "string", "example": "Audit log loaded"},
+                },
+            },
+            "BackupMetadata": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string", "example": "maintenance_backup_20260512_120000.zip"},
+                    "filename": {
+                        "type": "string",
+                        "example": "maintenance_backup_20260512_120000.zip",
+                    },
+                    "size_bytes": {"type": "integer", "example": 20480},
+                    "created_at": {"type": "string", "format": "date-time"},
+                    "download_url": {
+                        "type": "string",
+                        "example": (
+                            "/api/v1/admin/backups/"
+                            "maintenance_backup_20260512_120000.zip/download"
+                        ),
+                    },
                 },
             },
             "Department": {
@@ -513,6 +609,332 @@ OPENAPI_SPEC = {
                     "400": {"$ref": "#/components/responses/ValidationError"},
                     "401": {"$ref": "#/components/responses/Unauthorized"},
                     "403": {"$ref": "#/components/responses/Forbidden"},
+                },
+            }
+        },
+        "/api/v1/admin/permissions/schema": {
+            "get": {
+                "tags": ["Admin"],
+                "summary": "Read permission editor schema",
+                "description": (
+                    "Returns dashboard groups, labels, employee access labels " "and role defaults."
+                ),
+                "security": [{"bearerAuth": []}],
+                "responses": {
+                    "200": {
+                        "description": "Permission schema",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/PermissionSchema"},
+                                "example": {
+                                    "dashboards": [{"key": "tasks", "label": "Tasks"}],
+                                    "groups": [
+                                        {
+                                            "key": "work",
+                                            "label": "Arbeit",
+                                            "dashboards": ["tasks"],
+                                        }
+                                    ],
+                                    "employee_access_levels": [
+                                        {"key": "basic", "label": "Basisdaten"}
+                                    ],
+                                    "role_defaults": {
+                                        "produktion": {
+                                            "tasks": {
+                                                "can_view": True,
+                                                "can_write": True,
+                                                "employee_access_level": "none",
+                                            }
+                                        }
+                                    },
+                                },
+                            }
+                        },
+                    },
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                },
+            }
+        },
+        "/api/v1/admin/users/{user_id}/permissions": {
+            "get": {
+                "tags": ["Admin"],
+                "summary": "Read user permissions",
+                "security": [{"bearerAuth": []}],
+                "parameters": [
+                    {
+                        "name": "user_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "integer"},
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Permissions by dashboard",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {
+                                        "$ref": "#/components/schemas/PermissionValue"
+                                    },
+                                },
+                                "example": {
+                                    "tasks": {
+                                        "can_view": True,
+                                        "can_write": True,
+                                        "employee_access_level": "none",
+                                    }
+                                },
+                            }
+                        },
+                    },
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                    "404": {"$ref": "#/components/responses/ValidationError"},
+                },
+            },
+            "put": {
+                "tags": ["Admin"],
+                "summary": "Replace user permissions",
+                "description": "Keeps admin user management locked to master admins.",
+                "security": [{"bearerAuth": []}],
+                "parameters": [
+                    {
+                        "name": "user_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "integer"},
+                    }
+                ],
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "permissions": {
+                                        "type": "object",
+                                        "additionalProperties": {
+                                            "$ref": "#/components/schemas/PermissionValue"
+                                        },
+                                    }
+                                },
+                            },
+                            "example": {
+                                "permissions": {
+                                    "tasks": {
+                                        "can_view": True,
+                                        "can_write": True,
+                                        "employee_access_level": "none",
+                                    }
+                                }
+                            },
+                        }
+                    },
+                },
+                "responses": {
+                    "200": {
+                        "description": "Updated user",
+                        "content": {
+                            "application/json": {"schema": {"$ref": "#/components/schemas/User"}}
+                        },
+                    },
+                    "400": {"$ref": "#/components/responses/ValidationError"},
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                    "404": {"$ref": "#/components/responses/ValidationError"},
+                },
+            },
+        },
+        "/api/v1/admin/audit-log": {
+            "get": {
+                "tags": ["Admin"],
+                "summary": "Search security audit log",
+                "security": [{"bearerAuth": []}],
+                "parameters": [
+                    {"name": "q", "in": "query", "schema": {"type": "string"}},
+                    {"name": "actor_id", "in": "query", "schema": {"type": "integer"}},
+                    {"name": "action", "in": "query", "schema": {"type": "string"}},
+                    {"name": "resource_type", "in": "query", "schema": {"type": "string"}},
+                    {
+                        "name": "date_from",
+                        "in": "query",
+                        "schema": {"type": "string", "format": "date-time"},
+                    },
+                    {
+                        "name": "date_to",
+                        "in": "query",
+                        "schema": {"type": "string", "format": "date-time"},
+                    },
+                    {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 50}},
+                    {"name": "offset", "in": "query", "schema": {"type": "integer", "default": 0}},
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated audit events",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/PaginatedAuditLog"},
+                                "example": {
+                                    "success": True,
+                                    "data": [
+                                        {
+                                            "id": 1,
+                                            "action": "permissions.update",
+                                            "resource_type": "user",
+                                            "resource_id": "2",
+                                            "actor": {"id": 1, "username": "master.admin"},
+                                            "before": {},
+                                            "after": {},
+                                            "created_at": "2026-05-12T12:00:00+00:00",
+                                        }
+                                    ],
+                                    "pagination": {"limit": 50, "offset": 0, "total": 1},
+                                    "message": "Audit log loaded",
+                                },
+                            }
+                        },
+                    },
+                    "400": {"$ref": "#/components/responses/ValidationError"},
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                },
+            }
+        },
+        "/api/v1/admin/backups": {
+            "get": {
+                "tags": ["Admin"],
+                "summary": "List backup archives",
+                "security": [{"bearerAuth": []}],
+                "responses": {
+                    "200": {
+                        "description": "Available backups",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {"type": "boolean"},
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/BackupMetadata"
+                                            },
+                                        },
+                                        "message": {"type": "string"},
+                                    },
+                                },
+                                "example": {
+                                    "success": True,
+                                    "data": [],
+                                    "message": "Backups loaded",
+                                },
+                            }
+                        },
+                    },
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                },
+            },
+            "post": {
+                "tags": ["Admin"],
+                "summary": "Create backup archive",
+                "security": [{"bearerAuth": []}],
+                "responses": {
+                    "201": {
+                        "description": "Backup created",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/SuccessResponse"},
+                                "example": {
+                                    "success": True,
+                                    "data": {
+                                        "id": "maintenance_backup_20260512_120000.zip",
+                                        "filename": "maintenance_backup_20260512_120000.zip",
+                                    },
+                                    "message": "Backup created",
+                                },
+                            }
+                        },
+                    },
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                },
+            },
+        },
+        "/api/v1/admin/backups/{backup_id}/download": {
+            "get": {
+                "tags": ["Admin"],
+                "summary": "Download one backup archive",
+                "security": [{"bearerAuth": []}],
+                "parameters": [
+                    {
+                        "name": "backup_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "string"},
+                    }
+                ],
+                "responses": {
+                    "200": {"description": "ZIP archive"},
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                    "404": {"$ref": "#/components/responses/ValidationError"},
+                },
+            }
+        },
+        "/api/v1/admin/backups/{backup_id}/restore": {
+            "post": {
+                "tags": ["Admin"],
+                "summary": "Restore one backup archive",
+                "description": (
+                    "Requires confirm=true and creates a safety backup before " "replacing files."
+                ),
+                "security": [{"bearerAuth": []}],
+                "parameters": [
+                    {
+                        "name": "backup_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "string"},
+                    }
+                ],
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["confirm"],
+                                "properties": {"confirm": {"type": "boolean", "example": True}},
+                            },
+                            "example": {"confirm": True},
+                        }
+                    },
+                },
+                "responses": {
+                    "200": {
+                        "description": "Backup restored",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/SuccessResponse"},
+                                "example": {
+                                    "success": True,
+                                    "data": {
+                                        "restored_backup": "maintenance_backup_20260512_120000.zip"
+                                    },
+                                    "message": "Backup restored",
+                                },
+                            }
+                        },
+                    },
+                    "400": {"$ref": "#/components/responses/ValidationError"},
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                    "404": {"$ref": "#/components/responses/ValidationError"},
                 },
             }
         },

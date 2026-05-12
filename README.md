@@ -21,6 +21,7 @@ A modular Flask application for industrial maintenance teams. Manages tasks, err
 **Auth & Access Control**
 - JWT authentication with role-based navigation
 - Per-dashboard read/write permissions configurable by admins
+- Security audit log for user, permission, backup, restore, and shift plan changes
 - Employee data access tiers: none · basic · shift · confidential
 
 **Tasks & Errors**
@@ -47,6 +48,7 @@ A modular Flask application for industrial maintenance teams. Manages tasks, err
 - Inventory management with spare-parts forecast
 - Swagger UI + OpenAPI JSON auto-generated from code
 - Docker Compose setup with Gunicorn and persistent volumes
+- ZIP backup/restore for SQLite data, uploads, documents, logs, and manifests
 
 ## Tech Stack
 
@@ -72,7 +74,15 @@ python seed.py
 python run.py --host 127.0.0.1 --port 5050
 ```
 
-Open `http://127.0.0.1:5050`. Demo credentials after `seed.py`:
+Seed profiles are separated:
+
+```bash
+python seed.py demo        # realistic demo data and demo users
+python seed.py test        # minimal reproducible smoke-test users
+python seed.py production  # departments and optional admin bootstrap from env
+```
+
+Open `http://127.0.0.1:5050`. Demo credentials after `python seed.py demo`:
 
 | Username | Password | Role |
 |----------|----------|------|
@@ -88,6 +98,10 @@ docker compose up --build
 ```
 
 App runs at `http://127.0.0.1:5050`. Health check: `GET /health`.
+Production containers should set `AUTO_CREATE_DATABASE=false` and run
+`flask --app run:app db upgrade` during release before starting Gunicorn.
+Persistent volumes are configured for data, documents, uploads, logs, and
+backups. Secrets must come from `.env`, never from the image.
 
 ## Configuration
 
@@ -101,11 +115,14 @@ AUTO_CREATE_DATABASE=true  # set false in production and run migrations
 AI_PROVIDER=openai          # or "mock" for local-only mode
 OPENAI_API_KEY=             # leave empty to use local fallback
 OPENAI_MODEL=gpt-4o-mini
+BACKUP_FOLDER=backups
 ```
 
 `.env` is excluded from version control. Never commit real secrets.
 For production deployments set `AUTO_CREATE_DATABASE=false` and run
 `flask --app run:app db upgrade` during release.
+`python seed.py production` never creates demo passwords. It only creates an
+initial admin when `ADMIN_USERNAME`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` are set.
 
 ## Project Structure
 
@@ -166,6 +183,9 @@ All protected endpoints require:
 ```http
 Authorization: Bearer <access_token>
 ```
+
+Versioning policy: `/api/v1` is stable. Breaking API changes should be added
+under a new major prefix such as `/api/v2`.
 
 See [`docs/API_PROTOCOL.md`](docs/API_PROTOCOL.md) for the full endpoint reference.
 

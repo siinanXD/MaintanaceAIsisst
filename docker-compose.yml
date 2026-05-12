@@ -11,6 +11,7 @@ services:
       DATABASE_URL: sqlite:////app/data/maintenance.db
       UPLOAD_FOLDER: /app/data/uploads
       DOCUMENTS_FOLDER: /app/documents
+      BACKUP_FOLDER: /app/backups
       LOG_DIR: /app/logs
     ports:
       - "5050:5050"
@@ -18,13 +19,14 @@ services:
       - maintenance_data:/app/data
       - maintenance_documents:/app/documents
       - maintenance_logs:/app/logs
+      - maintenance_backups:/app/backups
     restart: unless-stopped
     healthcheck:
       test:
         - CMD
         - python
         - -c
-        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5050/', timeout=3).read()"
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5050/health', timeout=3).read()"
       interval: 30s
       timeout: 5s
       retries: 3
@@ -34,3 +36,4 @@ volumes:
   maintenance_data:
   maintenance_documents:
   maintenance_logs:
+  maintenance_backups:

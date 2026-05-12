@@ -15,6 +15,41 @@ DASHBOARD_KEYS = (
     "admin_users",
 )
 
+DASHBOARD_GROUPS = (
+    {
+        "key": "work",
+        "label": "Arbeit",
+        "dashboards": ("dashboard", "tasks", "errors"),
+    },
+    {
+        "key": "resources",
+        "label": "Ressourcen",
+        "dashboards": ("employees", "machines", "inventory"),
+    },
+    {
+        "key": "planning_documents",
+        "label": "Planung & Dokumente",
+        "dashboards": ("shiftplans", "documents"),
+    },
+    {
+        "key": "administration",
+        "label": "Administration",
+        "dashboards": ("admin_users",),
+    },
+)
+
+DASHBOARD_LABELS = {
+    "dashboard": "Dashboard",
+    "tasks": "Tasks",
+    "errors": "Fehlerliste",
+    "employees": "Mitarbeiter",
+    "shiftplans": "Schichtplan",
+    "machines": "Maschinen",
+    "inventory": "Lager",
+    "documents": "Dokumente",
+    "admin_users": "Users",
+}
+
 EMPLOYEE_ACCESS_LEVELS = ("none", "basic", "shift", "confidential")
 
 EMPLOYEE_ACCESS_RANK = {
@@ -22,6 +57,13 @@ EMPLOYEE_ACCESS_RANK = {
     "basic": 1,
     "shift": 2,
     "confidential": 3,
+}
+
+EMPLOYEE_ACCESS_LABELS = {
+    "none": "Keine Mitarbeiterdaten",
+    "basic": "Basisdaten",
+    "shift": "Schicht- und Qualifikationsdaten",
+    "confidential": "Vertrauliche Personaldaten",
 }
 
 ROLE_DEFAULT_PERMISSIONS = {
@@ -100,6 +142,50 @@ def default_permissions_for_role(role):
 def default_employee_access_for_role(role):
     """Return the default employee access level for a role."""
     return ROLE_DEFAULT_EMPLOYEE_ACCESS.get(role, "none")
+
+
+def permission_schema():
+    """Return labels, groups and role defaults for the permission editor."""
+    return {
+        "dashboards": [
+            {
+                "key": dashboard,
+                "label": DASHBOARD_LABELS[dashboard],
+                "supports_employee_access": dashboard == "employees",
+            }
+            for dashboard in DASHBOARD_KEYS
+        ],
+        "groups": [
+            {
+                "key": group["key"],
+                "label": group["label"],
+                "dashboards": list(group["dashboards"]),
+            }
+            for group in DASHBOARD_GROUPS
+        ],
+        "employee_access_levels": [
+            {
+                "key": level,
+                "label": EMPLOYEE_ACCESS_LABELS[level],
+            }
+            for level in EMPLOYEE_ACCESS_LEVELS
+        ],
+        "role_defaults": {
+            role.value: {
+                dashboard: {
+                    "can_view": rights[0],
+                    "can_write": rights[1],
+                    "employee_access_level": (
+                        default_employee_access_for_role(role)
+                        if dashboard == "employees"
+                        else "none"
+                    ),
+                }
+                for dashboard, rights in defaults.items()
+            }
+            for role, defaults in ROLE_DEFAULT_PERMISSIONS.items()
+        },
+    }
 
 
 def permission_by_dashboard(user):

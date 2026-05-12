@@ -85,6 +85,7 @@ class Config:
     AI_ENABLE_STREAMING = env_bool("AI_ENABLE_STREAMING", default=True)
     UPLOAD_FOLDER = os.getenv("UPLOAD_FOLDER", str(BASE_DIR / "data" / "uploads"))
     DOCUMENTS_FOLDER = os.getenv("DOCUMENTS_FOLDER", str(BASE_DIR / "documents"))
+    BACKUP_FOLDER = os.getenv("BACKUP_FOLDER", str(BASE_DIR / "backups"))
     LOG_DIR = os.getenv("LOG_DIR", str(BASE_DIR / "logs"))
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
     SLOW_REQUEST_THRESHOLD_MS = env_int("SLOW_REQUEST_THRESHOLD_MS", 500)

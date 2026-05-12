@@ -1,11 +1,12 @@
 """Admin API routes for user and audit management."""
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, send_file
 
 from app.auth.services import find_department, parse_role
 from app.extensions import db
 from app.models import Employee, Role, User
 from app.permissions import (
+    permission_schema,
     replace_user_permissions,
     serialize_permissions,
     upsert_default_permissions,
@@ -13,6 +14,13 @@ from app.permissions import (
 from app.responses import error_response
 from app.security import roles_required
 from app.services.ai_audit_service import ai_analytics_summary
+from app.services.audit_service import audit_log_query, create_audit_log
+from app.services.backup_service import (
+    backup_path_for,
+    create_backup,
+    list_backups,
+    restore_backup,
+)
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -68,6 +76,45 @@ def find_employee(employee_id):
     return employee
 
 
+def user_audit_payload(user):
+    """Return a safe user snapshot for admin audit logs."""
+    if not user:
+        return {}
+    return {
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "role": user.role.value,
+        "department_id": user.department_id,
+        "employee_id": user.employee_id,
+        "is_active": user.is_active,
+        "permissions": serialize_permissions(user),
+    }
+
+
+def paginated_audit_response(query):
+    """Return a paginated audit log response."""
+    try:
+        limit = min(max(1, int(request.args.get("limit", 50))), 200)
+        offset = max(0, int(request.args.get("offset", 0)))
+    except (TypeError, ValueError):
+        return error_response("limit and offset must be integers", 400)
+    total = query.count()
+    entries = query.offset(offset).limit(limit).all()
+    return jsonify(
+        {
+            "success": True,
+            "data": [entry.to_dict() for entry in entries],
+            "pagination": {
+                "limit": limit,
+                "offset": offset,
+                "total": total,
+            },
+            "message": "Audit log loaded",
+        }
+    )
+
+
 @admin_bp.get("/users")
 @roles_required(Role.MASTER_ADMIN)
 def list_users():
@@ -93,6 +140,78 @@ def list_users():
     return jsonify([user.to_dict() for user in users])
 
 
+@admin_bp.get("/permissions/schema")
+@roles_required(Role.MASTER_ADMIN)
+def permissions_schema():
+    """Return labels, groups and role defaults for the permission editor."""
+    return jsonify(permission_schema())
+
+
+@admin_bp.get("/audit-log")
+@roles_required(Role.MASTER_ADMIN)
+def audit_log():
+    """Return global security audit entries for administrators."""
+    try:
+        query = audit_log_query(request.args)
+    except ValueError as exc:
+        return error_response(str(exc), 400)
+    return paginated_audit_response(query)
+
+
+@admin_bp.get("/backups")
+@roles_required(Role.MASTER_ADMIN)
+def backups():
+    """Return available backup archives."""
+    return jsonify({"success": True, "data": list_backups(), "message": "Backups loaded"})
+
+
+@admin_bp.post("/backups")
+@roles_required(Role.MASTER_ADMIN)
+def create_backup_route():
+    """Create a backup archive and audit the action."""
+    user = current_admin_user()
+    metadata = create_backup(actor=user, reason="api")
+    create_audit_log(
+        user,
+        "backup.create",
+        "backup",
+        metadata["id"],
+        after={"backup": metadata},
+        commit=True,
+    )
+    return jsonify({"success": True, "data": metadata, "message": "Backup created"}), 201
+
+
+@admin_bp.get("/backups/<path:backup_id>/download")
+@roles_required(Role.MASTER_ADMIN)
+def download_backup(backup_id):
+    """Download a backup archive."""
+    path = backup_path_for(backup_id)
+    if not path:
+        return error_response("Backup not found", 404)
+    return send_file(path, mimetype="application/zip", as_attachment=True, download_name=path.name)
+
+
+@admin_bp.post("/backups/<path:backup_id>/restore")
+@roles_required(Role.MASTER_ADMIN)
+def restore_backup_route(backup_id):
+    """Restore a backup archive after explicit confirmation."""
+    user = current_admin_user()
+    data = request.get_json(silent=True) or {}
+    create_audit_log(
+        user,
+        "backup.restore",
+        "backup",
+        backup_id,
+        after={"requested_backup": backup_id, "confirmed": bool(data.get("confirm"))},
+        commit=True,
+    )
+    result, error, status = restore_backup(backup_id, actor=user, confirm=bool(data.get("confirm")))
+    if error:
+        return error_response(error["error"], status)
+    return jsonify({"success": True, "data": result, "message": "Backup restored"}), status
+
+
 @admin_bp.get("/ai/summary")
 @roles_required(Role.MASTER_ADMIN)
 def ai_summary():
@@ -106,10 +225,18 @@ def ai_summary():
     return jsonify(ai_analytics_summary(days))
 
 
+def current_admin_user():
+    """Return the current authenticated master admin."""
+    from app.security import current_user
+
+    return current_user()
+
+
 @admin_bp.post("/users")
 @roles_required(Role.MASTER_ADMIN)
 def create_user():
     """Create a user and assign default permissions for the selected role."""
+    actor = current_admin_user()
     data = request.get_json(silent=True) or {}
     required = ["username", "email", "password", "role"]
     missing = [field for field in required if not data.get(field)]
@@ -145,6 +272,14 @@ def create_user():
     db.session.flush()
     upsert_default_permissions(user)
     db.session.commit()
+    create_audit_log(
+        actor,
+        "user.create",
+        "user",
+        user.id,
+        after=user_audit_payload(user),
+        commit=True,
+    )
     return jsonify(user.to_dict()), 201
 
 
@@ -152,7 +287,9 @@ def create_user():
 @roles_required(Role.MASTER_ADMIN)
 def update_user(user_id):
     """Update a user account and fill missing default permissions."""
+    actor = current_admin_user()
     user = db.get_or_404(User, user_id)
+    before = user_audit_payload(user)
     data = request.get_json(silent=True) or {}
 
     username = data.get("username", user.username)
@@ -195,6 +332,15 @@ def update_user(user_id):
 
     upsert_default_permissions(user)
     db.session.commit()
+    create_audit_log(
+        actor,
+        "user.update",
+        "user",
+        user.id,
+        before=before,
+        after=user_audit_payload(user),
+        commit=True,
+    )
     return jsonify(user.to_dict())
 
 
@@ -210,13 +356,24 @@ def get_user_permissions(user_id):
 @roles_required(Role.MASTER_ADMIN)
 def update_user_permissions(user_id):
     """Replace dashboard permissions for a user."""
+    actor = current_admin_user()
     user = db.get_or_404(User, user_id)
+    before = user_audit_payload(user)
     data = request.get_json(silent=True) or {}
     try:
         replace_user_permissions(user, data)
     except ValueError as exc:
         return error_response(str(exc), 400)
     db.session.commit()
+    create_audit_log(
+        actor,
+        "permissions.update",
+        "user",
+        user.id,
+        before=before,
+        after=user_audit_payload(user),
+        commit=True,
+    )
     return jsonify(user.to_dict())
 
 
@@ -224,12 +381,22 @@ def update_user_permissions(user_id):
 @roles_required(Role.MASTER_ADMIN)
 def reset_password(user_id):
     """Reset a user's password."""
+    actor = current_admin_user()
     user = db.get_or_404(User, user_id)
     password = (request.get_json(silent=True) or {}).get("password")
     if not password:
         return error_response("password is required", 400)
     user.set_password(password)
     db.session.commit()
+    create_audit_log(
+        actor,
+        "user.reset_password",
+        "user",
+        user.id,
+        before={"id": user.id, "username": user.username},
+        after={"password_reset": True},
+        commit=True,
+    )
     return jsonify({"message": "Password reset successful"})
 
 
@@ -237,9 +404,20 @@ def reset_password(user_id):
 @roles_required(Role.MASTER_ADMIN)
 def lock_user(user_id):
     """Lock a user account."""
+    actor = current_admin_user()
     user = db.get_or_404(User, user_id)
+    before = user_audit_payload(user)
     user.is_active = False
     db.session.commit()
+    create_audit_log(
+        actor,
+        "user.lock",
+        "user",
+        user.id,
+        before=before,
+        after=user_audit_payload(user),
+        commit=True,
+    )
     return jsonify(user.to_dict())
 
 
@@ -247,9 +425,20 @@ def lock_user(user_id):
 @roles_required(Role.MASTER_ADMIN)
 def unlock_user(user_id):
     """Unlock a user account."""
+    actor = current_admin_user()
     user = db.get_or_404(User, user_id)
+    before = user_audit_payload(user)
     user.is_active = True
     db.session.commit()
+    create_audit_log(
+        actor,
+        "user.unlock",
+        "user",
+        user.id,
+        before=before,
+        after=user_audit_payload(user),
+        commit=True,
+    )
     return jsonify(user.to_dict())
 
 
@@ -257,7 +446,17 @@ def unlock_user(user_id):
 @roles_required(Role.MASTER_ADMIN)
 def delete_user(user_id):
     """Delete a user account."""
+    actor = current_admin_user()
     user = db.get_or_404(User, user_id)
+    before = user_audit_payload(user)
     db.session.delete(user)
     db.session.commit()
+    create_audit_log(
+        actor,
+        "user.delete",
+        "user",
+        user_id,
+        before=before,
+        commit=True,
+    )
     return "", 204

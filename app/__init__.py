@@ -6,6 +6,7 @@ from flask import Flask
 from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.exceptions import HTTPException
 
+from app.admin.commands import register_admin_commands
 from app.admin.routes import admin_bp
 from app.ai.routes import ai_bp
 from app.auth.routes import auth_bp
@@ -72,6 +73,7 @@ def create_app(config_class=Config):
     Path("data").mkdir(parents=True, exist_ok=True)
     Path(app.config["UPLOAD_FOLDER"]).mkdir(parents=True, exist_ok=True)
     Path(app.config["DOCUMENTS_FOLDER"]).mkdir(parents=True, exist_ok=True)
+    Path(app.config["BACKUP_FOLDER"]).mkdir(parents=True, exist_ok=True)
 
     db.init_app(app)
     migrate.init_app(app, db)
@@ -102,6 +104,7 @@ def create_app(config_class=Config):
     app.register_blueprint(public_health_bp)
     app.register_blueprint(web_bp)
     configure_api_documentation(app)
+    register_admin_commands(app)
     register_error_handlers(app)
 
     if app.config.get("AUTO_CREATE_DATABASE") or app.config.get("TESTING"):

@@ -7,6 +7,7 @@ from app.models import Role, User
 from app.permissions import (
     get_employee_access_level,
     has_permission,
+    permission_schema,
     serialize_permissions,
     validate_dashboard_key,
 )
@@ -79,6 +80,27 @@ def test_non_admin_cannot_receive_effective_admin_user_permission(
     assert permissions["admin_users"]["can_view"] is False
     assert permissions["admin_users"]["can_write"] is False
     assert permissions["employees"]["employee_access_level"] == "basic"
+
+
+def test_permission_schema_documents_groups_and_labels(client, make_user, auth_headers):
+    """Verify the permission editor schema exposes groups, labels and defaults."""
+    admin = make_user(
+        username="admin_permission_schema",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+
+    response = client.get(
+        "/api/v1/admin/permissions/schema",
+        headers=auth_headers(admin["username"]),
+    )
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert any(group["key"] == "work" for group in payload["groups"])
+    assert any(level["label"] == "Basisdaten" for level in payload["employee_access_levels"])
+    assert payload["role_defaults"]["produktion"]["tasks"]["can_write"] is True
+    assert permission_schema()["dashboards"]
 
 
 def test_update_user_permissions_validates_payload(

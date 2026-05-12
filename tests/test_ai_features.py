@@ -745,7 +745,13 @@ def test_admin_users_page_contains_ai_analytics_ui(client):
     assert "data-ai-cost" in html
     assert "data-ai-workflows" in html
     assert "data-ai-error-categories" in html
+    assert "data-audit-log-list" in html
+    assert "data-backup-list" in html
+    assert "data-permission-defaults" in html
     assert "/api/v1/admin/ai/summary" in script
+    assert "/api/v1/admin/audit-log" in script
+    assert "/api/v1/admin/backups" in script
+    assert "/api/v1/admin/permissions/schema" in script
 
 
 def test_document_path_rejects_storage_escape(app):
