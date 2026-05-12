@@ -1,7 +1,19 @@
 """Tests for employee and shift planning workflows."""
 
+from datetime import date
+from io import BytesIO
+from zipfile import ZipFile
+
 from app.extensions import db
-from app.models import Role, User
+from app.models import (
+    EmployeeMachineQualification,
+    Notification,
+    Role,
+    ShiftPlan,
+    ShiftPlanEntry,
+    User,
+    VacationRequest,
+)
 
 
 def test_employee_create_rejects_missing_duplicate_and_invalid_values(
@@ -270,9 +282,330 @@ def test_shiftplan_generate_returns_warnings_and_coverage(
     warning_types = {warning["type"] for warning in payload["warnings"]}
     assert response.status_code == 201
     # With fair distribution, duplicate_assignment no longer occurs (by design).
-    # qualification warnings are expected when an employee has no listed qualifications.
-    assert "qualification" in warning_types
+    # Missing structured machine qualifications are expected for unqualified workers.
+    assert "missing_qualification" in warning_types
     assert payload["coverage_summary"]["assigned_slots"] >= 1
+
+
+def test_employee_machine_qualification_matrix_and_update(
+    client,
+    make_user,
+    make_employee,
+    make_machine,
+    auth_headers,
+):
+    """Verify structured employee-machine qualifications can be listed and replaced."""
+    admin = make_user(
+        username="qualification_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    employee_id = make_employee(
+        personnel_number="P-480",
+        name="Qualified Person",
+        department="Produktion",
+    )
+    machine_id = make_machine(name="Qualification Anlage", required_employees=1)
+    headers = auth_headers(admin["username"])
+
+    update_response = client.put(
+        f"/api/v1/employees/{employee_id}/qualifications",
+        headers=headers,
+        json={
+            "qualifications": [
+                {
+                    "machine_id": machine_id,
+                    "level": "expert",
+                    "valid_until": "2026-12-31",
+                    "notes": "Freigegeben durch Schichtleitung",
+                }
+            ]
+        },
+    )
+    matrix_response = client.get("/api/v1/employees/qualifications", headers=headers)
+
+    assert update_response.status_code == 200
+    assert update_response.get_json()["qualifications"][0]["level"] == "expert"
+    assert matrix_response.status_code == 200
+    assert matrix_response.get_json()["qualifications"][0]["machine_id"] == machine_id
+
+
+def test_shiftplan_conflicts_detect_missing_qualification_and_vacation(
+    client,
+    app,
+    make_user,
+    make_employee,
+    make_machine,
+    auth_headers,
+):
+    """Verify conflict endpoint reports vacation and qualification conflicts."""
+    admin = make_user(
+        username="shiftplan_conflict_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    employee_id = make_employee(
+        personnel_number="P-490",
+        name="Conflict Person",
+        department="Produktion",
+    )
+    machine_id = make_machine(name="Conflict Anlage", required_employees=1)
+    with app.app_context():
+        user = User.query.filter_by(username=admin["username"]).one()
+        plan = ShiftPlan(
+            title="Konfliktplan",
+            start_date=date(2026, 6, 1),
+            days=1,
+            rhythm="2-Schicht",
+            department="Produktion",
+            created_by=user.id,
+        )
+        db.session.add(plan)
+        db.session.flush()
+        db.session.add(
+            ShiftPlanEntry(
+                plan_id=plan.id,
+                employee_id=employee_id,
+                machine_id=machine_id,
+                work_date=date(2026, 6, 1),
+                shift="Frueh",
+                start_time="06:00",
+                end_time="14:00",
+            )
+        )
+        db.session.add(
+            VacationRequest(
+                employee_id=employee_id,
+                start_date=date(2026, 6, 1),
+                end_date=date(2026, 6, 1),
+                days_used=1,
+                status="approved",
+                requested_by=user.id,
+                approved_by=user.id,
+            )
+        )
+        db.session.commit()
+        plan_id = plan.id
+
+    response = client.get(
+        f"/api/v1/shiftplans/{plan_id}/conflicts",
+        headers=auth_headers(admin["username"]),
+    )
+
+    payload = response.get_json()["data"]
+    conflict_types = {conflict["type"] for conflict in payload["conflicts"]}
+    assert response.status_code == 200
+    assert "vacation_conflict" in conflict_types
+    assert "missing_qualification" in conflict_types
+
+
+def test_shiftplan_conflicts_ignore_pending_vacation_and_valid_qualification(
+    client,
+    app,
+    make_user,
+    make_employee,
+    make_machine,
+    auth_headers,
+):
+    """Verify pending vacations do not block and valid qualifications prevent conflicts."""
+    admin = make_user(
+        username="shiftplan_clean_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    employee_id = make_employee(
+        personnel_number="P-491",
+        name="Clean Person",
+        department="Produktion",
+    )
+    machine_id = make_machine(name="Clean Anlage", required_employees=1)
+    with app.app_context():
+        user = User.query.filter_by(username=admin["username"]).one()
+        plan = ShiftPlan(
+            title="Sauberer Plan",
+            start_date=date(2026, 6, 2),
+            days=1,
+            rhythm="2-Schicht",
+            department="Produktion",
+            created_by=user.id,
+        )
+        db.session.add(plan)
+        db.session.flush()
+        db.session.add(
+            EmployeeMachineQualification(
+                employee_id=employee_id,
+                machine_id=machine_id,
+                level="trained",
+            )
+        )
+        db.session.add(
+            ShiftPlanEntry(
+                plan_id=plan.id,
+                employee_id=employee_id,
+                machine_id=machine_id,
+                work_date=date(2026, 6, 2),
+                shift="Frueh",
+                start_time="06:00",
+                end_time="14:00",
+            )
+        )
+        db.session.add(
+            VacationRequest(
+                employee_id=employee_id,
+                start_date=date(2026, 6, 2),
+                end_date=date(2026, 6, 2),
+                days_used=1,
+                status="pending",
+                requested_by=user.id,
+            )
+        )
+        db.session.commit()
+        plan_id = plan.id
+
+    response = client.get(
+        f"/api/v1/shiftplans/{plan_id}/conflicts",
+        headers=auth_headers(admin["username"]),
+    )
+
+    conflict_types = {conflict["type"] for conflict in response.get_json()["data"]["conflicts"]}
+    assert response.status_code == 200
+    assert "vacation_conflict" not in conflict_types
+    assert "missing_qualification" not in conflict_types
+
+
+def test_shiftplan_validate_endpoint_and_xlsx_export(
+    client,
+    make_user,
+    make_employee,
+    make_machine,
+    auth_headers,
+):
+    """Verify ad-hoc validation and XLSX export are available."""
+    admin = make_user(
+        username="shiftplan_export_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    employee_id = make_employee(
+        personnel_number="P-492",
+        name="Export Person",
+        department="Produktion",
+    )
+    make_machine(name="Export Anlage", required_employees=1)
+    headers = auth_headers(admin["username"])
+
+    create_response = client.post(
+        "/api/v1/shiftplans/generate",
+        headers=headers,
+        json={
+            "title": "Exportplan",
+            "start_date": "2026-06-03",
+            "days": 1,
+            "rhythm": "2-Schicht",
+            "department": "Produktion",
+        },
+    )
+    plan_id = create_response.get_json()["id"]
+    validate_response = client.post(
+        "/api/v1/shiftplans/validate",
+        headers=headers,
+        json={
+            "entries": [
+                {
+                    "employee_id": employee_id,
+                    "work_date": "2026-06-03",
+                    "shift": "Frueh",
+                    "start_time": "06:00",
+                    "end_time": "14:00",
+                },
+                {
+                    "employee_id": employee_id,
+                    "work_date": "2026-06-03",
+                    "shift": "Spaet",
+                    "start_time": "14:00",
+                    "end_time": "22:00",
+                },
+            ]
+        },
+    )
+    export_response = client.get(
+        f"/api/v1/shiftplans/{plan_id}/export.xlsx",
+        headers=headers,
+    )
+
+    assert validate_response.status_code == 200
+    assert any(
+        conflict["type"] == "duplicate_assignment"
+        for conflict in validate_response.get_json()["data"]["conflicts"]
+    )
+    assert export_response.status_code == 200
+    assert export_response.mimetype.endswith("spreadsheetml.sheet")
+    with ZipFile(BytesIO(export_response.data)) as workbook:
+        assert "xl/worksheets/sheet1.xml" in workbook.namelist()
+        assert "xl/worksheets/sheet2.xml" in workbook.namelist()
+
+
+def test_shiftplan_publish_creates_in_app_notification(
+    client,
+    app,
+    make_user,
+    make_employee,
+    make_machine,
+    auth_headers,
+):
+    """Verify publishing a plan creates user-facing in-app notifications."""
+    admin = make_user(
+        username="shiftplan_notify_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    worker = make_user(
+        username="shiftplan_notify_worker",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+    employee_id = make_employee(
+        personnel_number="P-493",
+        name="Notify Person",
+        department="Produktion",
+    )
+    make_machine(name="Notify Anlage", required_employees=1)
+    with app.app_context():
+        stored_worker = db.session.get(User, worker["id"])
+        stored_worker.employee_id = employee_id
+        db.session.commit()
+
+    create_response = client.post(
+        "/api/v1/shiftplans/generate",
+        headers=auth_headers(admin["username"]),
+        json={
+            "title": "Benachrichtigungsplan",
+            "start_date": "2026-06-04",
+            "days": 1,
+            "rhythm": "2-Schicht",
+            "department": "Produktion",
+        },
+    )
+    plan_id = create_response.get_json()["id"]
+    publish_response = client.patch(
+        f"/api/v1/shiftplans/{plan_id}/publish",
+        headers=auth_headers(admin["username"]),
+    )
+    notification_response = client.get(
+        "/api/v1/notifications",
+        headers=auth_headers(worker["username"]),
+    )
+    read_response = client.patch(
+        "/api/v1/notifications/read-all",
+        headers=auth_headers(worker["username"]),
+    )
+
+    assert publish_response.status_code == 200
+    assert notification_response.status_code == 200
+    assert notification_response.get_json()["data"]["unread_count"] >= 1
+    assert read_response.status_code == 200
+    with app.app_context():
+        assert Notification.query.filter_by(recipient_user_id=worker["id"]).count() >= 1
 
 
 def test_admin_user_can_link_employee(

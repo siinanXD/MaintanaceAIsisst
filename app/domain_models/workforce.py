@@ -34,6 +34,12 @@ class Employee(db.Model):
     vacation_requests = db.relationship(
         "VacationRequest", back_populates="employee", cascade="all, delete-orphan"
     )
+    machine_qualifications = db.relationship(
+        "EmployeeMachineQualification",
+        back_populates="employee",
+        cascade="all, delete-orphan",
+        order_by="EmployeeMachineQualification.machine_id.asc()",
+    )
 
     def to_dict(self, access_level="confidential"):
         """Return employee data filtered by the requested access level."""
@@ -57,6 +63,9 @@ class Employee(db.Model):
                 "favorite_machine_obj": (
                     self.favorite_machine_rel.to_dict() if self.favorite_machine_rel else None
                 ),
+                "machine_qualifications": [
+                    qualification.to_dict() for qualification in self.machine_qualifications
+                ],
             }
         )
         if access_level == "shift":
@@ -74,6 +83,54 @@ class Employee(db.Model):
             }
         )
         return base_data
+
+
+class EmployeeMachineQualification(db.Model):
+    """Structured machine qualification for shift planning decisions."""
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "employee_id",
+            "machine_id",
+            name="uq_employee_machine_qualification",
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.Integer, db.ForeignKey("employee.id"), nullable=False)
+    machine_id = db.Column(db.Integer, db.ForeignKey("machine.id"), nullable=False)
+    level = db.Column(db.String(40), nullable=False, default="trained")
+    valid_until = db.Column(db.Date, nullable=True)
+    notes = db.Column(db.Text, nullable=False, default="")
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    updated_at = db.Column(
+        db.DateTime,
+        default=utc_now,
+        onupdate=utc_now,
+        nullable=False,
+    )
+
+    employee = db.relationship("Employee", back_populates="machine_qualifications")
+    machine = db.relationship("Machine")
+
+    def is_valid_for(self, work_date):
+        """Return whether the qualification is valid on the given date."""
+        return not self.valid_until or self.valid_until >= work_date
+
+    def to_dict(self):
+        """Return a JSON-serializable machine qualification."""
+        return {
+            "id": self.id,
+            "employee_id": self.employee_id,
+            "employee": self.employee.to_dict("basic") if self.employee else None,
+            "machine_id": self.machine_id,
+            "machine": self.machine.to_dict() if self.machine else None,
+            "level": self.level,
+            "valid_until": self.valid_until.isoformat() if self.valid_until else None,
+            "notes": self.notes,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+        }
 
 
 class ShiftPlan(db.Model):

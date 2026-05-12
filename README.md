@@ -41,8 +41,12 @@ A modular Flask application for industrial maintenance teams. Manages tasks, err
 
 **Workforce & Production**
 - Employee management with qualifications and preferred machine
+- Structured employee-machine qualification matrix for shift planning
 - Machine management with production content and staffing requirements
 - Drag-and-drop shift planner with publish workflow and audit log
+- Shift conflict checks for vacation, double planning, qualification, coverage and ArbZG rules
+- XLSX shift plan export and print-optimized PDF workflow
+- Persistent in-app notifications with a real unread topbar badge
 - Shift handover protocol (digital logbook)
 - Vacation request workflow with manager approval and calendar view
 

@@ -12,6 +12,10 @@ from app.security import (
     employee_access_level,
     employee_access_required,
 )
+from app.services.qualification_service import (
+    qualification_matrix,
+    update_employee_qualifications,
+)
 
 employees_bp = Blueprint("employees", __name__)
 
@@ -29,6 +33,14 @@ def list_employees():
     access_level = employee_access_level(current_user())
     query = Employee.query.order_by(Employee.name.asc())
     return paginate_query(query, lambda e: e.to_dict(access_level))
+
+
+@employees_bp.get("/qualifications")
+@dashboard_permission_required("employees", "view")
+@employee_access_required("shift")
+def list_qualifications():
+    """Return the structured employee-machine qualification matrix."""
+    return jsonify(qualification_matrix())
 
 
 @employees_bp.post("")
@@ -54,6 +66,21 @@ def update_employee(employee_id):
     if error:
         return service_error_response(error, status)
     return jsonify(updated.to_dict())
+
+
+@employees_bp.put("/<int:employee_id>/qualifications")
+@dashboard_permission_required("employees", "write")
+@employee_access_required("shift")
+def update_qualifications(employee_id):
+    """Replace structured machine qualifications for one employee."""
+    employee = db.get_or_404(Employee, employee_id)
+    payload, error, status = update_employee_qualifications(
+        employee,
+        request.get_json(silent=True) or {},
+    )
+    if error:
+        return service_error_response(error, status)
+    return jsonify(payload), status
 
 
 @employees_bp.delete("/<int:employee_id>")

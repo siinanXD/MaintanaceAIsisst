@@ -1,8 +1,9 @@
 """Shift planning API routes."""
 
 from datetime import UTC, datetime
+from io import BytesIO
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, send_file
 
 from app.extensions import db
 from app.models import Role, ShiftPlan, ShiftPlanChangeLog, ShiftPlanEntry
@@ -15,10 +16,14 @@ from app.security import (
     roles_required,
 )
 from app.services.audit_service import create_audit_log
+from app.services.in_app_notification_service import notify_shiftplan_change
 from app.shiftplans.services import (
     calendar_entries_for_user,
+    conflicts_for_plan,
+    export_shiftplan_xlsx,
     generate_shift_plan,
     hours_between,
+    validate_shiftplan_payload,
 )
 
 shiftplans_bp = Blueprint("shiftplans", __name__)
@@ -35,6 +40,14 @@ def list_shiftplans():
     plans = query.all()
     access_level = employee_access_level(user)
     return jsonify([plan.to_dict(access_level) for plan in plans])
+
+
+def visible_plan_or_404(plan_id, user):
+    """Return a plan when the current user may see it."""
+    plan = db.get_or_404(ShiftPlan, plan_id)
+    if user.role != Role.MASTER_ADMIN and not plan.is_published:
+        return None
+    return plan
 
 
 @shiftplans_bp.patch("/<int:plan_id>/publish")
@@ -62,6 +75,11 @@ def publish_shiftplan(plan_id):
             user_id=user.id,
             action="publish" if plan.is_published else "unpublish",
         )
+    )
+    notify_shiftplan_change(
+        plan,
+        user,
+        "publish" if plan.is_published else "unpublish",
     )
     db.session.commit()
     create_audit_log(
@@ -97,6 +115,43 @@ def shiftplan_calendar():
     return jsonify(payload), status
 
 
+@shiftplans_bp.get("/<int:plan_id>/conflicts")
+@dashboard_permission_required("shiftplans", "view")
+def plan_conflicts(plan_id):
+    """Return structured conflicts for a persisted shift plan."""
+    plan = visible_plan_or_404(plan_id, current_user())
+    if not plan:
+        return error_response("Forbidden", 403)
+    return success_response(conflicts_for_plan(plan), message="Konflikte geladen")
+
+
+@shiftplans_bp.post("/validate")
+@dashboard_permission_required("shiftplans", "view")
+def validate_shiftplan():
+    """Validate an existing or ad-hoc shift plan payload."""
+    payload, error, status = validate_shiftplan_payload(request.get_json(silent=True) or {})
+    if error:
+        return service_error_response(error, status)
+    return success_response(payload, status, "Schichtplan validiert")
+
+
+@shiftplans_bp.get("/<int:plan_id>/export.xlsx")
+@dashboard_permission_required("shiftplans", "view")
+def export_shiftplan(plan_id):
+    """Download a shift plan as an XLSX workbook."""
+    plan = visible_plan_or_404(plan_id, current_user())
+    if not plan:
+        return error_response("Forbidden", 403)
+    workbook_bytes = export_shiftplan_xlsx(plan)
+    filename = f"schichtplan_{plan.id}.xlsx"
+    return send_file(
+        BytesIO(workbook_bytes),
+        mimetype=("application/vnd.openxmlformats-officedocument." "spreadsheetml.sheet"),
+        as_attachment=True,
+        download_name=filename,
+    )
+
+
 @shiftplans_bp.post("/generate")
 @dashboard_permission_required("shiftplans", "write")
 @employee_access_required("shift")
@@ -111,6 +166,7 @@ def generate():
     access_level = employee_access_level(current_user())
     payload = plan.to_dict(access_level)
     payload["warnings"] = getattr(plan, "warnings", [])
+    payload["conflicts"] = getattr(plan, "warnings", [])
     payload["coverage_summary"] = getattr(plan, "coverage_summary", {})
     return jsonify(payload), status
 
@@ -173,8 +229,12 @@ def update_entry(entry_id):
             )
         )
 
+    plan = db.session.get(ShiftPlan, entry.plan_id)
+    notify_shiftplan_change(plan, user, "update", entry=entry)
     db.session.commit()
-    return success_response(entry.to_dict(), message="Eintrag aktualisiert")
+    payload = plan.to_dict(employee_access_level(user))
+    payload["conflicts"] = conflicts_for_plan(plan)
+    return success_response(payload, message="Eintrag aktualisiert")
 
 
 @shiftplans_bp.patch("/entries/<int:entry_id>/move")
@@ -254,6 +314,18 @@ def move_entry(entry_id):
                 new_value=str(old_emp_a),
             )
         )
+        notify_shiftplan_change(
+            db.session.get(ShiftPlan, entry.plan_id),
+            user,
+            "swap",
+            entry=entry,
+        )
+        notify_shiftplan_change(
+            db.session.get(ShiftPlan, existing.plan_id),
+            user,
+            "swap",
+            entry=existing,
+        )
     else:
         # Check if the entry's employee already has an entry on the target date (different shift)
         conflict = ShiftPlanEntry.query.filter(
@@ -280,10 +352,18 @@ def move_entry(entry_id):
                 new_value=f"{target_date.isoformat()} {target_shift}",
             )
         )
+        notify_shiftplan_change(
+            db.session.get(ShiftPlan, entry.plan_id),
+            user,
+            "move",
+            entry=entry,
+        )
 
     db.session.commit()
     plan = db.session.get(ShiftPlan, entry.plan_id)
-    return success_response(plan.to_dict(employee_access_level(user)), message="Eintrag verschoben")
+    payload = plan.to_dict(employee_access_level(user))
+    payload["conflicts"] = conflicts_for_plan(plan)
+    return success_response(payload, message="Eintrag verschoben")
 
 
 @shiftplans_bp.delete("/entries/<int:entry_id>")
@@ -302,6 +382,8 @@ def delete_entry(entry_id):
             old_value=f"{entry.shift} {entry.work_date.isoformat()}",
         )
     )
+    plan = db.session.get(ShiftPlan, entry.plan_id)
+    notify_shiftplan_change(plan, current_user(), "delete", entry=entry)
     db.session.delete(entry)
     db.session.commit()
     return "", 204

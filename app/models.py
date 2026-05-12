@@ -12,12 +12,13 @@ from app.domain_models.documents import (
 )
 from app.domain_models.errors import ErrorEntry
 from app.domain_models.machines import InventoryMaterial, Machine, MaintenancePlan
-from app.domain_models.notifications import NotificationDelivery
+from app.domain_models.notifications import Notification, NotificationDelivery
 from app.domain_models.organization import AuditLogEntry, DashboardPermission, Department
 from app.domain_models.tasks import Task
 from app.domain_models.users import TokenBlocklist, User
 from app.domain_models.workforce import (
     Employee,
+    EmployeeMachineQualification,
     ShiftHandover,
     ShiftPlan,
     ShiftPlanChangeLog,
@@ -36,6 +37,7 @@ __all__ = [
     "DocumentVersion",
     "Employee",
     "EmployeeDocument",
+    "EmployeeMachineQualification",
     "ErrorEntry",
     "GeneratedDocument",
     "InventoryMaterial",
@@ -44,6 +46,7 @@ __all__ = [
     "MachineManualVersion",
     "MaintenancePlan",
     "NotificationDelivery",
+    "Notification",
     "Priority",
     "Role",
     "ShiftHandover",

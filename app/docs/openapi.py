@@ -34,6 +34,7 @@ OPENAPI_SPEC = {
         {"name": "Inventory", "description": "Inventory and spare-part forecasts"},
         {"name": "Employees", "description": "Employee records and document management"},
         {"name": "ShiftPlans", "description": "AI-generated shift plans and calendar"},
+        {"name": "Notifications", "description": "User-facing in-app notifications"},
         {"name": "Documents", "description": "Generated maintenance reports and quality reviews"},
         {"name": "Admin", "description": "Users, permissions, audit log and backups"},
         {"name": "Health", "description": "Service health probes"},
@@ -449,6 +450,72 @@ OPENAPI_SPEC = {
                     "qualifications": {"type": "string", "example": "Elektriker"},
                     "favorite_machine": {"type": "string", "example": "CNC-Fraese 01"},
                     "favorite_machine_id": {"type": "integer", "nullable": True},
+                },
+            },
+            "EmployeeMachineQualification": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer", "example": 9},
+                    "employee_id": {"type": "integer", "example": 12},
+                    "machine_id": {"type": "integer", "example": 1},
+                    "level": {
+                        "type": "string",
+                        "enum": ["basic", "trained", "expert", "trainer"],
+                        "example": "trained",
+                    },
+                    "valid_until": {
+                        "type": "string",
+                        "format": "date",
+                        "nullable": True,
+                        "example": "2026-12-31",
+                    },
+                    "notes": {"type": "string", "example": "Freigabe durch Teamleitung"},
+                },
+            },
+            "ShiftPlanConflict": {
+                "type": "object",
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "duplicate_assignment",
+                            "vacation_conflict",
+                            "missing_qualification",
+                            "coverage",
+                            "rest_time",
+                            "weekly_hours",
+                            "consecutive_days",
+                        ],
+                        "example": "missing_qualification",
+                    },
+                    "severity": {"type": "string", "example": "critical"},
+                    "message": {
+                        "type": "string",
+                        "example": "Mitarbeiter hat keine Maschinenfreigabe.",
+                    },
+                    "employee_id": {"type": "integer", "nullable": True, "example": 12},
+                    "machine_id": {"type": "integer", "nullable": True, "example": 1},
+                    "work_date": {
+                        "type": "string",
+                        "format": "date",
+                        "nullable": True,
+                        "example": "2026-05-05",
+                    },
+                },
+            },
+            "Notification": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer", "example": 3},
+                    "notification_type": {
+                        "type": "string",
+                        "example": "shiftplan_publish",
+                    },
+                    "title": {"type": "string", "example": "Schichtplan veroeffentlicht"},
+                    "body": {"type": "string", "example": "Plan KW 19 wurde veroeffentlicht."},
+                    "link_url": {"type": "string", "example": "/shiftplans"},
+                    "is_read": {"type": "boolean", "example": False},
+                    "created_at": {"type": "string", "format": "date-time"},
                 },
             },
             "ShiftPlanEntry": {
@@ -1590,6 +1657,85 @@ OPENAPI_SPEC = {
                 },
             }
         },
+        "/api/v1/notifications": {
+            "get": {
+                "tags": ["Notifications"],
+                "summary": "List current user's in-app notifications",
+                "security": [{"bearerAuth": []}],
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": False,
+                        "schema": {"type": "integer", "default": 50},
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Recent notifications and unread count",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "success": True,
+                                    "data": {
+                                        "unread_count": 2,
+                                        "items": [
+                                            {
+                                                "id": 3,
+                                                "title": "Schichtplan veroeffentlicht",
+                                                "is_read": False,
+                                            }
+                                        ],
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                },
+            }
+        },
+        "/api/v1/notifications/{id}/read": {
+            "patch": {
+                "tags": ["Notifications"],
+                "summary": "Mark one notification as read",
+                "security": [{"bearerAuth": []}],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "integer"},
+                    }
+                ],
+                "responses": {
+                    "200": {"description": "Notification marked read"},
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "404": {"$ref": "#/components/responses/ValidationError"},
+                },
+            }
+        },
+        "/api/v1/notifications/read-all": {
+            "patch": {
+                "tags": ["Notifications"],
+                "summary": "Mark all current user's notifications as read",
+                "security": [{"bearerAuth": []}],
+                "responses": {
+                    "200": {
+                        "description": "Unread notifications marked read",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "success": True,
+                                    "data": {"updated": 2},
+                                }
+                            }
+                        },
+                    },
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                },
+            }
+        },
         "/health": {
             "get": {
                 "tags": ["Health"],
@@ -1731,6 +1877,84 @@ OPENAPI_SPEC = {
                 },
             },
         },
+        "/api/v1/employees/qualifications": {
+            "get": {
+                "tags": ["Employees"],
+                "summary": "List the structured employee-machine qualification matrix",
+                "security": [{"bearerAuth": []}],
+                "responses": {
+                    "200": {
+                        "description": "Employees, machines, qualification rows and levels",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "employees": [{"id": 12, "name": "Hans Mueller"}],
+                                    "machines": [{"id": 1, "name": "CNC-Fraese 01"}],
+                                    "qualifications": [
+                                        {
+                                            "employee_id": 12,
+                                            "machine_id": 1,
+                                            "level": "trained",
+                                        }
+                                    ],
+                                    "levels": ["basic", "expert", "trained", "trainer"],
+                                }
+                            }
+                        },
+                    },
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                },
+            }
+        },
+        "/api/v1/employees/{employee_id}/qualifications": {
+            "put": {
+                "tags": ["Employees"],
+                "summary": "Replace structured machine qualifications for one employee",
+                "security": [{"bearerAuth": []}],
+                "parameters": [
+                    {
+                        "name": "employee_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "integer"},
+                    }
+                ],
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "example": {
+                                "qualifications": [
+                                    {
+                                        "machine_id": 1,
+                                        "level": "expert",
+                                        "valid_until": "2026-12-31",
+                                        "notes": "Freigabe erneuert",
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                },
+                "responses": {
+                    "200": {
+                        "description": "Updated employee qualification rows",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/EmployeeMachineQualification"
+                                }
+                            }
+                        },
+                    },
+                    "400": {"$ref": "#/components/responses/ValidationError"},
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                    "404": {"$ref": "#/components/responses/ValidationError"},
+                },
+            }
+        },
         "/api/v1/shiftplans": {
             "get": {
                 "tags": ["ShiftPlans"],
@@ -1793,6 +2017,126 @@ OPENAPI_SPEC = {
                     "400": {"$ref": "#/components/responses/ValidationError"},
                     "401": {"$ref": "#/components/responses/Unauthorized"},
                     "403": {"$ref": "#/components/responses/Forbidden"},
+                },
+            }
+        },
+        "/api/v1/shiftplans/{plan_id}/conflicts": {
+            "get": {
+                "tags": ["ShiftPlans"],
+                "summary": "List shift plan conflicts",
+                "security": [{"bearerAuth": []}],
+                "parameters": [
+                    {
+                        "name": "plan_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "integer"},
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Conflict list with summary and coverage",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "success": True,
+                                    "data": {
+                                        "plan_id": 5,
+                                        "conflicts": [
+                                            {
+                                                "type": "missing_qualification",
+                                                "severity": "critical",
+                                                "message": "Freigabe fehlt.",
+                                            }
+                                        ],
+                                        "summary": {"total": 1, "critical": 1},
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                    "404": {"$ref": "#/components/responses/ValidationError"},
+                },
+            }
+        },
+        "/api/v1/shiftplans/validate": {
+            "post": {
+                "tags": ["ShiftPlans"],
+                "summary": "Validate an ad-hoc or existing shift plan",
+                "security": [{"bearerAuth": []}],
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "example": {
+                                "entries": [
+                                    {
+                                        "employee_id": 12,
+                                        "machine_id": 1,
+                                        "work_date": "2026-05-05",
+                                        "shift": "Frueh",
+                                        "start_time": "06:00",
+                                        "end_time": "14:00",
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                },
+                "responses": {
+                    "200": {
+                        "description": "Validation result",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "conflicts": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": (
+                                                    "#/components/schemas/" "ShiftPlanConflict"
+                                                )
+                                            },
+                                        }
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "400": {"$ref": "#/components/responses/ValidationError"},
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                },
+            }
+        },
+        "/api/v1/shiftplans/{plan_id}/export.xlsx": {
+            "get": {
+                "tags": ["ShiftPlans"],
+                "summary": "Export a shift plan as XLSX",
+                "security": [{"bearerAuth": []}],
+                "parameters": [
+                    {
+                        "name": "plan_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "integer"},
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "XLSX workbook",
+                        "content": {
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                                "schema": {"type": "string", "format": "binary"}
+                            }
+                        },
+                    },
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                    "404": {"$ref": "#/components/responses/ValidationError"},
                 },
             }
         },

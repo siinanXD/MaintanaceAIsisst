@@ -28,6 +28,14 @@ def test_openapi_json_documents_core_endpoints(client):
     assert "/api/v1/admin/backups/{backup_id}/restore" in paths
     assert "/api/v1/admin/notifications/deliveries" in paths
     assert "/api/v1/admin/notifications/test-email" in paths
+    assert "/api/v1/employees/qualifications" in paths
+    assert "/api/v1/employees/{employee_id}/qualifications" in paths
+    assert "/api/v1/shiftplans/{plan_id}/conflicts" in paths
+    assert "/api/v1/shiftplans/validate" in paths
+    assert "/api/v1/shiftplans/{plan_id}/export.xlsx" in paths
+    assert "/api/v1/notifications" in paths
+    assert "/api/v1/notifications/{id}/read" in paths
+    assert "/api/v1/notifications/read-all" in paths
     assert "/api/v1/documents/{document_id}/download.pdf" in paths
     assert "/api/v1/documents/{document_id}/summarize" in paths
     assert "/api/v1/documents/{document_id}/submit-review" in paths
@@ -61,6 +69,11 @@ def test_openapi_examples_are_present(client):
     assert spec["components"]["schemas"]["NotificationDelivery"]["properties"]["status"]["example"]
     assert spec["components"]["schemas"]["MailStatus"]["properties"]["dry_run"]["example"] is True
     assert spec["components"]["schemas"]["GeneratedDocument"]["properties"]["pdf_url"]["example"]
+    assert spec["components"]["schemas"]["EmployeeMachineQualification"]["properties"]["level"][
+        "example"
+    ]
+    assert spec["components"]["schemas"]["ShiftPlanConflict"]["properties"]["type"]["example"]
+    assert spec["components"]["schemas"]["Notification"]["properties"]["title"]["example"]
     assert spec["components"]["schemas"]["DocumentVersion"]["properties"]["version_number"][
         "example"
     ]

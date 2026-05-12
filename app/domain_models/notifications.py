@@ -49,3 +49,33 @@ def _loads_json_object(value):
     except (TypeError, json.JSONDecodeError):
         return {}
     return result if isinstance(result, dict) else {}
+
+
+class Notification(db.Model):
+    """User-facing in-app notification shown in the topbar and notification list."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    recipient_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    notification_type = db.Column(db.String(80), nullable=False, index=True)
+    title = db.Column(db.String(180), nullable=False)
+    body = db.Column(db.Text, nullable=False, default="")
+    link_url = db.Column(db.String(500), nullable=False, default="")
+    is_read = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    read_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False, index=True)
+
+    recipient = db.relationship("User", foreign_keys=[recipient_user_id])
+
+    def to_dict(self):
+        """Return a JSON-serializable in-app notification."""
+        return {
+            "id": self.id,
+            "recipient_user_id": self.recipient_user_id,
+            "notification_type": self.notification_type,
+            "title": self.title,
+            "body": self.body,
+            "link_url": self.link_url,
+            "is_read": self.is_read,
+            "read_at": self.read_at.isoformat() if self.read_at else None,
+            "created_at": self.created_at.isoformat(),
+        }

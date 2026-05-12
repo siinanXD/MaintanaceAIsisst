@@ -87,7 +87,7 @@
         <div class="toolbar">
           <button class="btn btn-success btn-sm no-print" id="sp-publish-btn" hidden data-hr-only aria-label="Plan veröffentlichen">✓ Veröffentlichen</button>
           <button class="btn btn-ghost btn-sm no-print" id="sp-print-btn" hidden aria-label="Plan drucken">🖨 Drucken</button>
-          <button class="btn btn-ghost btn-sm no-print" id="sp-csv-btn" hidden aria-label="Als CSV exportieren">⬇ CSV</button>
+          <button class="btn btn-ghost btn-sm no-print" id="sp-csv-btn" hidden aria-label="Als Excel exportieren">⬇ XLSX</button>
         </div>
       </div>
 
@@ -348,6 +348,7 @@
     currentPlan = plan;
     renderGrid(plan);
     renderStats(plan);
+    loadConflicts(plan.id);
     const admin = isAdmin();
     deleteWrap.hidden = !admin;
     if (changelogEl) changelogEl.hidden = !admin;
@@ -579,6 +580,15 @@
     warningsEl.hidden = false;
   }
 
+  async function loadConflicts(planId) {
+    try {
+      const payload = await api(BASE + "/" + planId + "/conflicts");
+      showWarnings(payload.conflicts || []);
+    } catch (_) {
+      showWarnings(currentPlan && currentPlan.warnings);
+    }
+  }
+
   // ── Changelog ─────────────────────────────────────────────────────────────
   async function loadChangelog(planId) {
     if (!isAdmin()) return;
@@ -672,6 +682,16 @@
   publishBtn.addEventListener("click", async () => {
     if (!currentPlan) return;
     const willPublish = currentPlan.status !== "published";
+    if (willPublish) {
+      try {
+        const validation = await api(BASE + "/" + currentPlan.id + "/conflicts");
+        const critical = validation.summary ? validation.summary.critical : 0;
+        if (critical > 0 && !confirm("Der Plan hat " + critical + " kritische Konflikte. Trotzdem veroeffentlichen?")) {
+          showWarnings(validation.conflicts || []);
+          return;
+        }
+      } catch (_) {}
+    }
     const msg = willPublish
       ? "Plan \"" + currentPlan.title + "\" veröffentlichen? Mitarbeiter können ihn dann sehen."
       : "Plan zurück auf Entwurf setzen? Er wird für Mitarbeiter ausgeblendet.";
@@ -689,19 +709,9 @@
 
   csvBtn.addEventListener("click", () => {
     if (!currentPlan) return;
-    const rows = [["Mitarbeiter","Datum","Schicht","Beginn","Ende","Maschine","Notiz"]];
-    currentPlan.entries.forEach((e) => {
-      rows.push([
-        e.employee ? e.employee.name : "",
-        e.work_date, e.shift, e.start_time, e.end_time,
-        e.machine  ? e.machine.name  : "",
-        e.notes,
-      ]);
-    });
-    const csv = rows.map((r) => r.map((v) => '"' + String(v||"").replace(/"/g,'""') + '"').join(",")).join("\n");
     const a = document.createElement("a");
-    a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
-    a.download = (currentPlan.title||"schichtplan") + ".csv";
+    a.href = BASE + "/" + currentPlan.id + "/export.xlsx";
+    a.download = (currentPlan.title||"schichtplan") + ".xlsx";
     a.click();
   });
 

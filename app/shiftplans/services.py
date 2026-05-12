@@ -3,12 +3,22 @@
 import json
 import logging
 from datetime import date, datetime, timedelta
+from io import BytesIO
+from xml.sax.saxutils import escape
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from flask import current_app
 from openai import OpenAI, OpenAIError
 
 from app.extensions import db
-from app.models import Employee, Machine, ShiftPlan, ShiftPlanEntry
+from app.models import (
+    Employee,
+    EmployeeMachineQualification,
+    Machine,
+    ShiftPlan,
+    ShiftPlanEntry,
+    VacationRequest,
+)
 from app.permissions import has_employee_access
 from app.services.ai_prompting import build_json_prompt, json_system_prompt
 from app.services.ai_routing import openai_client_options, workflow_profile
@@ -409,22 +419,82 @@ def validate_entries(entries, employees, machines, start_date, days):
 
 
 def analyze_shift_plan(entries, employees, machines):
-    """Return warnings and coverage information for generated shift entries."""
-    warnings = []
-    employee_by_id = {employee.id: employee for employee in employees}
-    machine_by_id = {machine.id: machine for machine in machines}
+    """Return conflicts and coverage information for generated shift entries."""
     coverage_summary = {
         "required_slots": 0,
         "assigned_slots": 0,
         "undercovered": 0,
         "machines": {},
     }
+    conflicts = detect_shift_plan_conflicts(
+        entries,
+        employees,
+        machines,
+        coverage_summary=coverage_summary,
+    )
+    return conflicts[:50], coverage_summary
 
-    warnings.extend(detect_duplicate_assignments(entries, employee_by_id))
-    warnings.extend(detect_rest_time_conflicts(entries, employee_by_id))
-    warnings.extend(detect_qualification_warnings(entries, employee_by_id, machine_by_id))
-    warnings.extend(update_coverage_summary(entries, machines, coverage_summary))
-    return warnings[:50], coverage_summary
+
+def detect_shift_plan_conflicts(entries, employees, machines, coverage_summary=None):
+    """Return structured conflicts for shift plan entries."""
+    normalized_entries = normalize_conflict_entries(entries)
+    employee_by_id = {employee.id: employee for employee in employees}
+    machine_by_id = {machine.id: machine for machine in machines}
+    conflicts = []
+    conflicts.extend(detect_duplicate_assignments(normalized_entries, employee_by_id))
+    conflicts.extend(detect_vacation_conflicts(normalized_entries, employee_by_id))
+    conflicts.extend(
+        detect_missing_machine_qualifications(
+            normalized_entries,
+            employee_by_id,
+            machine_by_id,
+        )
+    )
+    conflicts.extend(detect_rest_time_conflicts(normalized_entries, employee_by_id))
+    conflicts.extend(detect_weekly_hours_conflicts(normalized_entries, employee_by_id))
+    conflicts.extend(detect_consecutive_day_conflicts(normalized_entries, employee_by_id))
+    conflicts.extend(
+        update_coverage_summary(
+            normalized_entries,
+            machines,
+            coverage_summary
+            or {
+                "required_slots": 0,
+                "assigned_slots": 0,
+                "undercovered": 0,
+                "machines": {},
+            },
+        )
+    )
+    return conflicts
+
+
+def normalize_conflict_entries(entries):
+    """Return dict-based entries for conflict detection."""
+    normalized = []
+    for entry in entries:
+        if isinstance(entry, ShiftPlanEntry):
+            normalized.append(
+                {
+                    "id": entry.id,
+                    "employee_id": entry.employee_id,
+                    "machine_id": entry.machine_id,
+                    "work_date": entry.work_date,
+                    "shift": entry.shift,
+                    "start_time": entry.start_time,
+                    "end_time": entry.end_time,
+                    "notes": entry.notes,
+                }
+            )
+            continue
+        item = dict(entry)
+        if isinstance(item.get("work_date"), str):
+            try:
+                item["work_date"] = date.fromisoformat(item["work_date"])
+            except ValueError:
+                pass
+        normalized.append(item)
+    return normalized
 
 
 def detect_duplicate_assignments(entries, employee_by_id):
@@ -437,26 +507,72 @@ def detect_duplicate_assignments(entries, employee_by_id):
         key = (
             entry["employee_id"],
             entry["work_date"],
-            entry["start_time"],
-            entry["end_time"],
         )
-        seen.setdefault(key, 0)
-        seen[key] += 1
-    for key, count in seen.items():
-        if count <= 1:
+        seen.setdefault(key, []).append(entry)
+    for key, key_entries in seen.items():
+        if len(key_entries) <= 1:
             continue
         employee = employee_by_id.get(key[0])
         warnings.append(
             {
                 "type": "duplicate_assignment",
                 "severity": "critical",
+                "employee_id": key[0],
+                "work_date": key[1].isoformat(),
+                "entry_ids": [entry.get("id") for entry in key_entries if entry.get("id")],
                 "message": (
                     f"{employee.name if employee else 'Mitarbeiter'} ist am "
-                    f"{key[1].isoformat()} {key[2]}-{key[3]} mehrfach geplant."
+                    f"{key[1].isoformat()} mehrfach geplant."
                 ),
             }
         )
     return warnings
+
+
+def detect_vacation_conflicts(entries, employee_by_id):
+    """Return conflicts for work entries during approved vacations."""
+    employee_ids = {entry.get("employee_id") for entry in entries if entry.get("employee_id")}
+    dates = [
+        entry.get("work_date") for entry in entries if isinstance(entry.get("work_date"), date)
+    ]
+    if not employee_ids or not dates:
+        return []
+    approved_vacations = VacationRequest.query.filter(
+        VacationRequest.employee_id.in_(employee_ids),
+        VacationRequest.status == "approved",
+        VacationRequest.start_date <= max(dates),
+        VacationRequest.end_date >= min(dates),
+    ).all()
+    vacation_days = {}
+    for vacation in approved_vacations:
+        current = vacation.start_date
+        while current <= vacation.end_date:
+            vacation_days[(vacation.employee_id, current)] = vacation
+            current += timedelta(days=1)
+
+    conflicts = []
+    for entry in entries:
+        if not is_work_entry(entry):
+            continue
+        vacation = vacation_days.get((entry.get("employee_id"), entry.get("work_date")))
+        if not vacation:
+            continue
+        employee = employee_by_id.get(entry.get("employee_id"))
+        conflicts.append(
+            {
+                "type": "vacation_conflict",
+                "severity": "critical",
+                "employee_id": entry.get("employee_id"),
+                "entry_id": entry.get("id"),
+                "vacation_request_id": vacation.id,
+                "work_date": entry["work_date"].isoformat(),
+                "message": (
+                    f"{employee.name if employee else 'Mitarbeiter'} ist am "
+                    f"{entry['work_date'].isoformat()} trotz genehmigtem Urlaub geplant."
+                ),
+            }
+        )
+    return conflicts
 
 
 def detect_rest_time_conflicts(entries, employee_by_id):
@@ -464,7 +580,7 @@ def detect_rest_time_conflicts(entries, employee_by_id):
     warnings = []
     by_employee = {}
     for entry in entries:
-        if not entry.get("start_time") or not entry.get("end_time"):
+        if not is_work_entry(entry):
             continue
         by_employee.setdefault(entry["employee_id"], []).append(entry)
     for employee_id, employee_entries in by_employee.items():
@@ -490,7 +606,10 @@ def detect_rest_time_conflicts(entries, employee_by_id):
                     warnings.append(
                         {
                             "type": "rest_time",
-                            "severity": "warning",
+                            "severity": "critical",
+                            "employee_id": employee_id,
+                            "entry_id": entry.get("id"),
+                            "work_date": entry["work_date"].isoformat(),
                             "message": (
                                 f"{employee.name if employee else 'Mitarbeiter'} "
                                 f"hat nur {round(rest_hours, 1)}h Ruhezeit."
@@ -501,38 +620,110 @@ def detect_rest_time_conflicts(entries, employee_by_id):
     return warnings
 
 
-def detect_qualification_warnings(entries, employee_by_id, machine_by_id):
-    """Return warnings when machine preference or qualification is missing."""
-    warnings = []
+def detect_missing_machine_qualifications(entries, employee_by_id, machine_by_id):
+    """Return conflicts when structured machine qualification is missing."""
+    conflicts = []
+    employee_ids = {entry.get("employee_id") for entry in entries if entry.get("employee_id")}
+    machine_ids = {entry.get("machine_id") for entry in entries if entry.get("machine_id")}
+    qualifications = EmployeeMachineQualification.query.filter(
+        EmployeeMachineQualification.employee_id.in_(employee_ids or {0}),
+        EmployeeMachineQualification.machine_id.in_(machine_ids or {0}),
+    ).all()
+    qualification_map = {
+        (qualification.employee_id, qualification.machine_id): qualification
+        for qualification in qualifications
+    }
     for entry in entries:
         machine_id = entry.get("machine_id")
-        if not machine_id:
+        if not machine_id or not is_work_entry(entry):
             continue
         employee = employee_by_id.get(entry["employee_id"])
         machine = machine_by_id.get(machine_id)
         if not employee or not machine:
             continue
-        skill_text = " ".join(
-            [
-                employee.qualifications or "",
-                employee.favorite_machine or "",
-            ]
-        ).lower()
-        if machine.name.lower() in skill_text:
+        qualification = qualification_map.get((employee.id, machine_id))
+        if qualification and qualification.is_valid_for(entry["work_date"]):
             continue
-        if machine.produced_item and machine.produced_item.lower() in skill_text:
-            continue
-        warnings.append(
+        conflicts.append(
             {
-                "type": "qualification",
-                "severity": "info",
+                "type": "missing_qualification",
+                "severity": "critical",
+                "employee_id": employee.id,
+                "machine_id": machine_id,
+                "entry_id": entry.get("id"),
+                "work_date": entry["work_date"].isoformat(),
                 "message": (
-                    f"{employee.name} hat keine erkennbare Qualifikation "
-                    f"oder Favoritenangabe fuer {machine.name}."
+                    f"{employee.name} hat keine gueltige Maschinenfreigabe " f"fuer {machine.name}."
                 ),
             }
         )
-    return warnings[:20]
+    return conflicts[:50]
+
+
+def detect_weekly_hours_conflicts(entries, employee_by_id):
+    """Return conflicts for weekly working hours above 48 hours."""
+    weekly_hours = {}
+    for entry in entries:
+        if not is_work_entry(entry):
+            continue
+        week_key = (entry["employee_id"], entry["work_date"].isocalendar()[:2])
+        weekly_hours[week_key] = weekly_hours.get(week_key, 0) + hours_between(
+            entry["start_time"],
+            entry["end_time"],
+        )
+    conflicts = []
+    for (employee_id, week_key), hours in weekly_hours.items():
+        if hours <= 48:
+            continue
+        employee = employee_by_id.get(employee_id)
+        conflicts.append(
+            {
+                "type": "weekly_hours",
+                "severity": "warning",
+                "employee_id": employee_id,
+                "calendar_week": week_key[1],
+                "hours": round(hours, 2),
+                "message": (
+                    f"{employee.name if employee else 'Mitarbeiter'} ist in KW "
+                    f"{week_key[1]} mit {hours:.1f}h geplant."
+                ),
+            }
+        )
+    return conflicts
+
+
+def detect_consecutive_day_conflicts(entries, employee_by_id):
+    """Return conflicts for more than six consecutive working days."""
+    by_employee = {}
+    for entry in entries:
+        if is_work_entry(entry):
+            by_employee.setdefault(entry["employee_id"], set()).add(entry["work_date"])
+    conflicts = []
+    for employee_id, work_dates in by_employee.items():
+        consecutive = 0
+        previous_date = None
+        for work_date in sorted(work_dates):
+            if previous_date and (work_date - previous_date).days == 1:
+                consecutive += 1
+            else:
+                consecutive = 1
+            if consecutive > 6:
+                employee = employee_by_id.get(employee_id)
+                conflicts.append(
+                    {
+                        "type": "consecutive_days",
+                        "severity": "warning",
+                        "employee_id": employee_id,
+                        "work_date": work_date.isoformat(),
+                        "days": consecutive,
+                        "message": (
+                            f"{employee.name if employee else 'Mitarbeiter'} ist "
+                            f"{consecutive} Tage in Folge geplant."
+                        ),
+                    }
+                )
+            previous_date = work_date
+    return conflicts
 
 
 def detect_vacation_assignment_warnings(entries, vacation_entries, employee_by_id):
@@ -563,8 +754,14 @@ def update_coverage_summary(entries, machines, coverage_summary):
     """Update coverage summary and return undercoverage warnings."""
     warnings = []
     assigned = {}
+    work_dates = sorted(
+        {entry["work_date"] for entry in entries if isinstance(entry.get("work_date"), date)}
+    )
+    work_shifts = sorted(
+        {entry["shift"] for entry in entries if is_work_entry(entry)} or {"Frueh", "Spaet"}
+    )
     for entry in entries:
-        if not entry.get("machine_id"):
+        if not entry.get("machine_id") or not is_work_entry(entry):
             continue
         key = (entry["machine_id"], entry["work_date"], entry["shift"])
         assigned[key] = assigned.get(key, 0) + 1
@@ -572,23 +769,29 @@ def update_coverage_summary(entries, machines, coverage_summary):
     for machine in machines:
         machine_required = 0
         machine_assigned = 0
-        for key, count in assigned.items():
-            if key[0] != machine.id:
-                continue
-            machine_required += machine.required_employees
-            machine_assigned += count
-            if count < machine.required_employees:
-                coverage_summary["undercovered"] += 1
-                warnings.append(
-                    {
-                        "type": "coverage",
-                        "severity": "critical",
-                        "message": (
-                            f"{machine.name} ist am {key[1].isoformat()} "
-                            f"in {key[2]} unterbesetzt."
-                        ),
-                    }
-                )
+        for work_date in work_dates:
+            for shift in work_shifts:
+                key = (machine.id, work_date, shift)
+                count = assigned.get(key, 0)
+                machine_required += machine.required_employees
+                machine_assigned += count
+                if count < machine.required_employees:
+                    coverage_summary["undercovered"] += 1
+                    warnings.append(
+                        {
+                            "type": "coverage",
+                            "severity": "critical",
+                            "machine_id": machine.id,
+                            "work_date": key[1].isoformat(),
+                            "shift": key[2],
+                            "required": machine.required_employees,
+                            "assigned": count,
+                            "message": (
+                                f"{machine.name} ist am {key[1].isoformat()} "
+                                f"in {key[2]} unterbesetzt."
+                            ),
+                        }
+                    )
         coverage_summary["machines"][machine.name] = {
             "required_slots": machine_required,
             "assigned_slots": machine_assigned,
@@ -596,6 +799,14 @@ def update_coverage_summary(entries, machines, coverage_summary):
         coverage_summary["required_slots"] += machine_required
         coverage_summary["assigned_slots"] += machine_assigned
     return warnings
+
+
+def is_work_entry(entry):
+    """Return whether an entry represents planned work."""
+    shift = normalize_shift_name(entry.get("shift"))
+    return bool(
+        shift not in {"Urlaub", "Frei", ""} and entry.get("start_time") and entry.get("end_time")
+    )
 
 
 def normalize_shift_name(value):
@@ -822,6 +1033,340 @@ def generate_shift_plan(data, user=None):
     plan.warnings = warnings
     plan.coverage_summary = coverage_summary
     return plan, None, 201
+
+
+def conflicts_for_plan(plan):
+    """Return structured conflicts and coverage summary for a persisted plan."""
+    employees = employees_for_entries(plan.entries)
+    machines = Machine.query.order_by(Machine.name.asc()).all()
+    coverage_summary = {
+        "required_slots": 0,
+        "assigned_slots": 0,
+        "undercovered": 0,
+        "machines": {},
+    }
+    conflicts = detect_shift_plan_conflicts(
+        list(plan.entries),
+        employees,
+        machines,
+        coverage_summary=coverage_summary,
+    )
+    return {
+        "plan_id": plan.id,
+        "conflicts": conflicts,
+        "summary": conflict_summary(conflicts),
+        "coverage_summary": coverage_summary,
+    }
+
+
+def validate_shiftplan_payload(data):
+    """Validate an ad-hoc shift plan payload or an existing plan id."""
+    if data.get("plan_id"):
+        plan = db.session.get(ShiftPlan, int(data["plan_id"]))
+        if not plan:
+            return None, {"error": "Schichtplan nicht gefunden"}, 404
+        return conflicts_for_plan(plan), None, 200
+
+    raw_entries = data.get("entries") or []
+    if not isinstance(raw_entries, list):
+        return None, {"error": "entries must be a list"}, 400
+
+    entries = []
+    for raw_entry in raw_entries:
+        entry, error = normalize_validation_entry(raw_entry)
+        if error:
+            return None, {"error": error}, 400
+        entries.append(entry)
+
+    employees = employees_for_entries(entries)
+    machines = Machine.query.order_by(Machine.name.asc()).all()
+    coverage_summary = {
+        "required_slots": 0,
+        "assigned_slots": 0,
+        "undercovered": 0,
+        "machines": {},
+    }
+    conflicts = detect_shift_plan_conflicts(
+        entries,
+        employees,
+        machines,
+        coverage_summary=coverage_summary,
+    )
+    return (
+        {
+            "plan_id": None,
+            "conflicts": conflicts,
+            "summary": conflict_summary(conflicts),
+            "coverage_summary": coverage_summary,
+        },
+        None,
+        200,
+    )
+
+
+def normalize_validation_entry(raw_entry):
+    """Validate one ad-hoc validation entry."""
+    if not isinstance(raw_entry, dict):
+        return None, "entries must contain objects"
+    try:
+        return (
+            {
+                "id": raw_entry.get("id"),
+                "employee_id": int(raw_entry["employee_id"]),
+                "machine_id": (
+                    int(raw_entry["machine_id"]) if raw_entry.get("machine_id") else None
+                ),
+                "work_date": parse_date(raw_entry["work_date"]),
+                "shift": normalize_shift_name(raw_entry.get("shift") or "Schicht"),
+                "start_time": str(raw_entry.get("start_time") or "")[:5],
+                "end_time": str(raw_entry.get("end_time") or "")[:5],
+                "notes": str(raw_entry.get("notes") or "")[:500],
+            },
+            None,
+        )
+    except (KeyError, TypeError, ValueError):
+        return None, "entries require employee_id, work_date and valid values"
+
+
+def employees_for_entries(entries):
+    """Return employee records referenced by entries."""
+    employee_ids = sorted(
+        {entry_employee_id(entry) for entry in entries if entry_employee_id(entry)}
+    )
+    if not employee_ids:
+        return []
+    return Employee.query.filter(Employee.id.in_(employee_ids)).all()
+
+
+def entry_employee_id(entry):
+    """Return the employee id from a model or dict entry."""
+    return entry.employee_id if isinstance(entry, ShiftPlanEntry) else entry.get("employee_id")
+
+
+def conflict_summary(conflicts):
+    """Return grouped conflict counts."""
+    summary = {"total": len(conflicts), "critical": 0, "warning": 0, "by_type": {}}
+    for conflict in conflicts:
+        severity = conflict.get("severity")
+        if severity in summary:
+            summary[severity] += 1
+        conflict_type = conflict.get("type") or "unknown"
+        summary["by_type"][conflict_type] = summary["by_type"].get(conflict_type, 0) + 1
+    return summary
+
+
+def export_shiftplan_xlsx(plan):
+    """Return an XLSX workbook for a shift plan."""
+    conflicts_payload = conflicts_for_plan(plan)
+    try:
+        return export_shiftplan_with_openpyxl(plan, conflicts_payload)
+    except ImportError:
+        return export_shiftplan_with_stdlib(plan, conflicts_payload)
+
+
+def export_shiftplan_with_openpyxl(plan, conflicts_payload):
+    """Return XLSX bytes using openpyxl when the dependency is installed."""
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    overview = workbook.active
+    overview.title = "Plan"
+    append_rows(
+        overview.append,
+        plan_metadata_rows(plan)
+        + [[""]]
+        + [["Datum", "Schicht", "Beginn", "Ende", "Mitarbeiter", "Maschine", "Notiz"]]
+        + plan_entry_rows(plan),
+    )
+    conflicts = workbook.create_sheet("Konflikte")
+    append_rows(
+        conflicts.append,
+        [["Typ", "Schwere", "Datum", "Mitarbeiter", "Maschine", "Meldung"]]
+        + conflict_rows(conflicts_payload["conflicts"]),
+    )
+    summary = workbook.create_sheet("Auswertung")
+    append_rows(summary.append, summary_rows(conflicts_payload))
+    stream = BytesIO()
+    workbook.save(stream)
+    return stream.getvalue()
+
+
+def append_rows(append, rows):
+    """Append rows through a sheet append callable."""
+    for row in rows:
+        append(row)
+
+
+def export_shiftplan_with_stdlib(plan, conflicts_payload):
+    """Return a minimal XLSX workbook using only the standard library."""
+    sheets = [
+        (
+            "Plan",
+            plan_metadata_rows(plan)
+            + [[""]]
+            + [["Datum", "Schicht", "Beginn", "Ende", "Mitarbeiter", "Maschine", "Notiz"]]
+            + plan_entry_rows(plan),
+        ),
+        (
+            "Konflikte",
+            [["Typ", "Schwere", "Datum", "Mitarbeiter", "Maschine", "Meldung"]]
+            + conflict_rows(conflicts_payload["conflicts"]),
+        ),
+        ("Auswertung", summary_rows(conflicts_payload)),
+    ]
+    stream = BytesIO()
+    with ZipFile(stream, "w", ZIP_DEFLATED) as workbook:
+        workbook.writestr("[Content_Types].xml", xlsx_content_types(len(sheets)))
+        workbook.writestr("_rels/.rels", xlsx_root_rels())
+        workbook.writestr("xl/workbook.xml", xlsx_workbook(sheets))
+        workbook.writestr("xl/_rels/workbook.xml.rels", xlsx_workbook_rels(sheets))
+        for index, (_, rows) in enumerate(sheets, start=1):
+            workbook.writestr(f"xl/worksheets/sheet{index}.xml", xlsx_sheet(rows))
+    return stream.getvalue()
+
+
+def plan_metadata_rows(plan):
+    """Return workbook metadata rows for a shift plan."""
+    return [
+        ["Titel", plan.title],
+        ["Abteilung", plan.department],
+        ["Startdatum", plan.start_date.isoformat()],
+        ["Tage", plan.days],
+        ["Rhythmus", plan.rhythm],
+        ["Status", plan.status],
+    ]
+
+
+def plan_entry_rows(plan):
+    """Return workbook rows for shift plan entries."""
+    return [
+        [
+            entry.work_date.isoformat(),
+            entry.shift,
+            entry.start_time,
+            entry.end_time,
+            entry.employee.name if entry.employee else "",
+            entry.machine.name if entry.machine else "",
+            entry.notes,
+        ]
+        for entry in sorted(plan.entries, key=lambda item: (item.work_date, item.shift, item.id))
+    ]
+
+
+def conflict_rows(conflicts):
+    """Return workbook rows for conflicts."""
+    return [
+        [
+            conflict.get("type", ""),
+            conflict.get("severity", ""),
+            conflict.get("work_date", ""),
+            conflict.get("employee_id", ""),
+            conflict.get("machine_id", ""),
+            conflict.get("message", ""),
+        ]
+        for conflict in conflicts
+    ]
+
+
+def summary_rows(conflicts_payload):
+    """Return workbook rows for conflict and coverage summary."""
+    summary = conflicts_payload["summary"]
+    rows = [
+        ["Konflikte gesamt", summary["total"]],
+        ["Kritisch", summary["critical"]],
+        ["Warnungen", summary["warning"]],
+        [""],
+        ["Typ", "Anzahl"],
+    ]
+    rows.extend([key, value] for key, value in sorted(summary["by_type"].items()))
+    return rows
+
+
+def xlsx_content_types(sheet_count):
+    """Return XLSX content type metadata."""
+    sheet_overrides = "".join(
+        f'<Override PartName="/xl/worksheets/sheet{index}.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.'
+        'spreadsheetml.worksheet+xml"/>'
+        for index in range(1, sheet_count + 1)
+    )
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-'
+        'package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/xl/workbook.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+        f"{sheet_overrides}</Types>"
+    )
+
+
+def xlsx_root_rels():
+    """Return XLSX root relationship metadata."""
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" '
+        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" '
+        'Target="xl/workbook.xml"/></Relationships>'
+    )
+
+
+def xlsx_workbook(sheets):
+    """Return XLSX workbook metadata for sheets."""
+    sheet_tags = "".join(
+        f'<sheet name="{escape(name)}" sheetId="{index}" r:id="rId{index}"/>'
+        for index, (name, _) in enumerate(sheets, start=1)
+    )
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        f"<sheets>{sheet_tags}</sheets></workbook>"
+    )
+
+
+def xlsx_workbook_rels(sheets):
+    """Return XLSX workbook relationship metadata."""
+    rels = "".join(
+        f'<Relationship Id="rId{index}" '
+        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" '
+        f'Target="worksheets/sheet{index}.xml"/>'
+        for index, _ in enumerate(sheets, start=1)
+    )
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        f"{rels}</Relationships>"
+    )
+
+
+def xlsx_sheet(rows):
+    """Return one XLSX worksheet XML document."""
+    row_tags = []
+    for row_index, row in enumerate(rows, start=1):
+        cells = []
+        for column_index, value in enumerate(row, start=1):
+            cell_ref = f"{xlsx_column_name(column_index)}{row_index}"
+            cells.append(
+                f'<c r="{cell_ref}" t="inlineStr"><is><t>{escape(str(value or ""))}</t></is></c>'
+            )
+        row_tags.append(f'<row r="{row_index}">{"".join(cells)}</row>')
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        f'<sheetData>{"".join(row_tags)}</sheetData></worksheet>'
+    )
+
+
+def xlsx_column_name(index):
+    """Return an Excel column name for a one-based index."""
+    name = ""
+    while index:
+        index, remainder = divmod(index - 1, 26)
+        name = chr(65 + remainder) + name
+    return name
 
 
 def calendar_entries_for_user(user, employee_id=None, start_date=None, days=14, plan_id=None):

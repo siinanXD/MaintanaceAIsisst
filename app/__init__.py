@@ -24,6 +24,7 @@ from app.health.routes import health_bp, public_health_bp
 from app.inventory.routes import inventory_bp
 from app.machines.routes import machines_bp
 from app.notifications.commands import register_notification_commands
+from app.notifications.routes import notifications_bp
 from app.permissions import ensure_all_user_default_permissions
 from app.responses import error_response
 from app.search.routes import search_bp
@@ -98,6 +99,7 @@ def create_app(config_class=Config):
     app.register_blueprint(shiftplans_bp, url_prefix="/api/v1/shiftplans")
     app.register_blueprint(handover_bp, url_prefix="/api/v1/handover")
     app.register_blueprint(vacations_bp, url_prefix="/api/v1/vacations")
+    app.register_blueprint(notifications_bp, url_prefix="/api/v1/notifications")
 
     # Cross-cutting: AI, search, health, frontend
     app.register_blueprint(ai_bp, url_prefix="/api/v1/ai")

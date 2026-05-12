@@ -355,6 +355,19 @@ flask --app run:app notifications send-ai-alerts
 flask --app run:app notifications send-daily-briefings
 ```
 
+## In-App-Benachrichtigungen
+
+Persoenliche Benachrichtigungen werden im Topbar-Badge angezeigt.
+
+```http
+GET /api/v1/notifications
+PATCH /api/v1/notifications/1/read
+PATCH /api/v1/notifications/read-all
+```
+
+Plan-Publish, Unpublish, Entry-Update, Move, Swap und Delete erzeugen
+Benachrichtigungen fuer betroffene verknuepfte Mitarbeiter und Plan-Admins.
+
 ## Departments
 
 ### Departments auflisten
@@ -1135,6 +1148,33 @@ Request:
 }
 ```
 
+### Maschinenqualifikationen
+
+Das Freitextfeld `qualifications` bleibt fuer Notizen erhalten. Fuer die
+Schichtplanung entscheidet die strukturierte Maschinenfreigabe:
+
+```http
+GET /api/v1/employees/qualifications
+PUT /api/v1/employees/1/qualifications
+```
+
+Request:
+
+```json
+{
+  "qualifications": [
+    {
+      "machine_id": 1,
+      "level": "trained",
+      "valid_until": "2026-12-31",
+      "notes": "Freigabe durch Teamleitung"
+    }
+  ]
+}
+```
+
+Erlaubte Level: `basic`, `trained`, `expert`, `trainer`.
+
 ### Maschinen-Historie
 
 ```http
@@ -1307,6 +1347,9 @@ Schichtplan-Endpunkte benoetigen `shiftplans.view` oder `shiftplans.write`. Die 
 ```http
 GET /api/shiftplans
 POST /api/shiftplans/generate
+GET /api/v1/shiftplans/1/conflicts
+POST /api/v1/shiftplans/validate
+GET /api/v1/shiftplans/1/export.xlsx
 DELETE /api/shiftplans/1
 ```
 
@@ -1322,8 +1365,25 @@ Request:
 }
 ```
 
-Die Generierung beruecksichtigt Produktionsmitarbeiter, Rhythmus, Praeferenzen, Qualifikationen, Favoritenmaschine und Maschinenbedarf. Ohne OpenAI-Key oder bei OpenAI-Fehlern wird ein lokaler Fallback genutzt.
-Die Antwort enthaelt zusaetzlich `warnings` und `coverage_summary`, damit Doppelbelegung, Qualifikationshinweise, Ruhezeit und Maschinenabdeckung sichtbar werden.
+Die Generierung beruecksichtigt Produktionsmitarbeiter, Rhythmus,
+Praeferenzen, genehmigte Urlaube, strukturierte Maschinenfreigaben und
+Maschinenbedarf. Ohne OpenAI-Key oder bei OpenAI-Fehlern wird ein lokaler
+Fallback genutzt.
+
+Die Antwort enthaelt zusaetzlich `warnings`, `conflicts` und
+`coverage_summary`, damit Doppelbelegung, Urlaubskonflikte, fehlende
+Qualifikation, Ruhezeit, Wochenstunden, aufeinanderfolgende Arbeitstage und
+Maschinenabdeckung sichtbar werden.
+
+Konflikttypen:
+
+```text
+duplicate_assignment, vacation_conflict, missing_qualification, coverage,
+rest_time, weekly_hours, consecutive_days
+```
+
+Der XLSX-Export enthaelt Plan-Metadaten, Eintraege, Konflikte und Auswertung.
+Die PDF-Ausgabe erfolgt ueber die optimierte Druckansicht des Browsers.
 
 ## cURL-Beispiele
 

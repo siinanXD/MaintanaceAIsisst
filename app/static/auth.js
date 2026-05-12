@@ -193,6 +193,12 @@
       element.hidden = loggedIn;
     });
 
+    if (loggedIn) {
+      refreshNotificationBadge();
+    } else {
+      updateNotificationBadge(0);
+    }
+
     document.querySelectorAll("[data-feature-key], [data-dashboard-nav]").forEach((element) => {
       const featureKey = element.dataset.featureKey || element.dataset.dashboardNav;
       element.hidden = !loggedIn || !canView(user, featureKey);
@@ -250,6 +256,11 @@
       applyContrastPreference();
     }
 
+    const notificationButton = event.target.closest("[data-topbar-notifications]");
+    if (notificationButton && hasToken()) {
+      markNotificationsRead();
+    }
+
     const link = event.target.closest("a[href]");
     if (link && !hasToken()) {
       const linkUrl = new URL(link.href, window.location.origin);
@@ -260,6 +271,56 @@
       }
     }
   });
+
+  let notificationsInFlight;
+
+  function updateNotificationBadge(count) {
+    document.querySelectorAll("[data-notification-badge]").forEach((badge) => {
+      const unreadCount = Number(count || 0);
+      badge.textContent = String(unreadCount);
+      badge.hidden = unreadCount <= 0;
+    });
+  }
+
+  async function refreshNotificationBadge() {
+    if (notificationsInFlight) return notificationsInFlight;
+    const authToken = window.localStorage.getItem(TOKEN_KEY);
+    if (!authToken) {
+      updateNotificationBadge(0);
+      return null;
+    }
+    notificationsInFlight = fetch("/api/v1/notifications?limit=5", {
+      headers: { "Authorization": "Bearer " + authToken }
+    })
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload) => {
+        const data = payload && payload.success ? payload.data : payload;
+        updateNotificationBadge(data && data.unread_count);
+        return data;
+      })
+      .catch(() => {
+        updateNotificationBadge(0);
+        return null;
+      })
+      .finally(() => {
+        notificationsInFlight = null;
+      });
+    return notificationsInFlight;
+  }
+
+  async function markNotificationsRead() {
+    const authToken = window.localStorage.getItem(TOKEN_KEY);
+    if (!authToken) return;
+    try {
+      await fetch("/api/v1/notifications/read-all", {
+        method: "PATCH",
+        headers: { "Authorization": "Bearer " + authToken }
+      });
+      updateNotificationBadge(0);
+    } catch (error) {
+      refreshNotificationBadge();
+    }
+  }
 
   window.addEventListener("storage", () => {
     updateAuthUi();
@@ -276,6 +337,7 @@
     destinationForUserOrNext,
     refreshUser,
     refreshUserInBackground,
+    refreshNotificationBadge,
     ensureReady: ensureAuthReady,
     isAdmin: () => isAdminUser(currentUser()),
     canView: (dashboard) => canView(currentUser(), dashboard),
