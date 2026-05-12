@@ -6,6 +6,9 @@
   const form = document.querySelector("[data-chat-form]");
   const messages = document.querySelector("[data-chat-messages]");
   const suggestions = document.querySelector("[data-chat-suggestions]");
+  const historyPanel = document.querySelector("[data-chat-history-panel]");
+  const historySearch = document.querySelector("[data-chat-history-search]");
+  const historyList = document.querySelector("[data-chat-history-list]");
 
   if (!widget || !toggle || !panel || !form || !messages) {
     return;
@@ -18,13 +21,14 @@
     if (open) {
       const input = form.querySelector("input");
       if (input) input.focus();
+      loadChatHistory();
     }
   }
 
   function openAIErrorLabel(diagnostics) {
     const error = diagnostics && diagnostics.error;
-    if (error === "model_not_found") {
-      return "Fallback - OpenAI-Modell nicht freigeschaltet";
+    if (error === "model_not_allowed" || error === "model_not_found") {
+      return "Fallback - OpenAI-Modell nicht erlaubt";
     }
     if (error === "rate_limit") {
       return "Fallback - OpenAI-Rate-Limit erreicht";
@@ -32,7 +36,10 @@
     if (error === "authentication_error") {
       return "Fallback - OpenAI-Key abgelehnt";
     }
-    if (error === "connection_error" || error === "timeout") {
+    if (error === "timeout") {
+      return "Fallback - OpenAI-Timeout";
+    }
+    if (error === "connection_error") {
       return "Fallback - OpenAI-Verbindung fehlgeschlagen";
     }
     if (error === "permission_denied") {
@@ -214,6 +221,44 @@
       sourceList.appendChild(item);
     });
     bubble.appendChild(sourceList);
+  }
+
+  function renderChatHistory(items) {
+    if (!historyList) return;
+    historyList.innerHTML = "";
+    (items || []).forEach((item) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "chat-history-item";
+      const question = document.createElement("strong");
+      question.textContent = item.message || "";
+      const meta = document.createElement("small");
+      meta.textContent = (item.response_type || "assistant") + " - " + (item.created_at || "");
+      button.append(question, meta);
+      button.addEventListener("click", () => {
+        appendMessage(item.message, "user");
+        const bubble = appendMessage(item.response, "assistant", item.diagnostics || {});
+        renderSources(bubble, item.sources || []);
+      });
+      historyList.appendChild(button);
+    });
+  }
+
+  async function loadChatHistory() {
+    if (!historyPanel || !historyList) return;
+    const token = window.localStorage.getItem("maintenance_access_token");
+    if (!token) {
+      renderChatHistory([]);
+      return;
+    }
+    const query = historySearch ? historySearch.value.trim() : "";
+    const response = await fetch("/api/v1/ai/chat/history?limit=12&q=" + encodeURIComponent(query), {
+      headers: { "Authorization": "Bearer " + token }
+    });
+    if (!response.ok) return;
+    const payload = await response.json();
+    const data = payload && payload.data ? payload.data : payload;
+    renderChatHistory(data.items || []);
   }
 
   function applyActionPreview(preview) {
@@ -454,5 +499,11 @@
 
   window.addEventListener("maintenance-auth-ready", renderSuggestions);
   window.addEventListener("maintenance-auth-changed", renderSuggestions);
+  if (historySearch) {
+    historySearch.addEventListener("input", () => {
+      window.clearTimeout(historySearch._timer);
+      historySearch._timer = window.setTimeout(loadChatHistory, 250);
+    });
+  }
   renderSuggestions();
 })();

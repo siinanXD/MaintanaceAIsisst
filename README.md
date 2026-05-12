@@ -38,6 +38,9 @@ A modular Flask application for industrial maintenance teams. Manages tasks, err
 - Machine assistant answering questions from the asset history
 - Document quality review for maintenance reports
 - Shift plan generation respecting ArbZG work-time rules
+- Transparent OpenAI diagnostics for rate limits, invalid keys, blocked models, timeouts, and connection errors
+- Searchable chat history for users and master-admin-wide AI audit views
+- Local RAG v1 knowledge base for TXT/HTML/PDF maintenance documents
 
 **Workforce & Production**
 - Employee management with qualifications and preferred machine
@@ -51,7 +54,7 @@ A modular Flask application for industrial maintenance teams. Manages tasks, err
 - Vacation request workflow with manager approval and calendar view
 
 **Infrastructure**
-- Knowledge search across tasks, errors, and document metadata
+- Knowledge search across tasks, errors, document metadata, and indexed AI knowledge chunks
 - Inventory management with spare-parts forecast
 - Swagger UI + OpenAPI JSON auto-generated from code
 - Docker Compose setup with Gunicorn and persistent volumes
@@ -66,7 +69,7 @@ A modular Flask application for industrial maintenance teams. Manages tasks, err
 | Database | SQLite (dev) — swap via `DATABASE_URL` |
 | AI | OpenAI API with local rule-based fallback |
 | Frontend | Jinja2 templates, Tailwind CSS, vanilla JS |
-| Tests | pytest (155 tests, no external services required) |
+| Tests | pytest (192 tests, no external services required) |
 | CI | GitHub Actions — lint, compile, test, Docker build |
 
 ## Getting Started
@@ -123,6 +126,7 @@ AUTO_CREATE_DATABASE=true  # set false in production and run migrations
 AI_PROVIDER=openai          # or "mock" for local-only mode
 OPENAI_API_KEY=             # leave empty to use local fallback
 OPENAI_MODEL=gpt-4o-mini
+KNOWLEDGE_FOLDER=knowledge
 BACKUP_FOLDER=backups
 DOCUMENTS_FOLDER=documents
 MANUALS_FOLDER=manuals

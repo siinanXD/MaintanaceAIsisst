@@ -6,7 +6,7 @@ from io import BytesIO
 import pytest
 
 from app.extensions import db
-from app.models import AIAuditEvent, GeneratedDocument, Priority, Role, Task
+from app.models import AIAuditEvent, GeneratedDocument, KnowledgeDocument, Priority, Role, Task
 from app.services.ai_audit_service import create_ai_audit_event
 from app.services.ai_routing import estimate_cost_usd, workflow_profile
 from app.services.ai_service import AIServiceError
@@ -484,6 +484,178 @@ def test_admin_ai_summary_is_admin_only(
     }
 
 
+def test_ai_chat_history_is_user_scoped_and_admin_searchable(
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify users see their own chat history and admins can search all chats."""
+    admin = make_user(
+        username="ai_history_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    user = make_user(username="ai_history_user")
+    other = make_user(username="ai_history_other")
+
+    client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Was ist ein User?"},
+    )
+    client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(other["username"]),
+        json={"message": "Was ist Hydraulik?"},
+    )
+
+    own_response = client.get(
+        "/api/v1/ai/chat/history?q=User",
+        headers=auth_headers(user["username"]),
+    )
+    forbidden_response = client.get(
+        "/api/v1/admin/ai/chats",
+        headers=auth_headers(user["username"]),
+    )
+    admin_response = client.get(
+        "/api/v1/admin/ai/chats?q=Hydraulik",
+        headers=auth_headers(admin["username"]),
+    )
+
+    own_items = own_response.get_json()["data"]["items"]
+    admin_items = admin_response.get_json()["data"]["items"]
+    assert own_response.status_code == 200
+    assert len(own_items) == 1
+    assert own_items[0]["user_id"] == user["id"]
+    assert own_items[0]["response_type"] == "general_chat"
+    assert forbidden_response.status_code == 403
+    assert admin_response.status_code == 200
+    assert len(admin_items) == 1
+    assert admin_items[0]["user"]["username"] == other["username"]
+
+
+def test_admin_ai_events_are_filterable(
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify admin AI event search filters metadata without prompts."""
+    admin = make_user(
+        username="ai_events_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    user = make_user(username="ai_events_user")
+    with client.application.app_context():
+        event_id = create_ai_audit_event(
+            type("UserRef", (), {"id": user["id"]})(),
+            "general_chat",
+            {
+                "status": "openai_error",
+                "error": "rate_limit",
+                "total_tokens": 10,
+            },
+        )
+        db.session.commit()
+
+    response = client.get(
+        "/api/v1/admin/ai/events?error=rate_limit",
+        headers=auth_headers(admin["username"]),
+    )
+
+    payload = response.get_json()["data"]
+    assert response.status_code == 200
+    assert payload["items"][0]["id"] == event_id
+    assert payload["items"][0]["error_category"] == "rate_limit"
+    assert "prompt" not in payload["items"][0]
+
+
+def test_knowledge_upload_and_chat_retrieval_respect_permissions(
+    client,
+    make_user,
+    auth_headers,
+    set_dashboard_permission,
+):
+    """Verify local RAG chunks are indexed and returned as chat sources."""
+    admin = make_user(
+        username="knowledge_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    user = make_user(
+        username="knowledge_user",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+    blocked = make_user(
+        username="knowledge_blocked",
+        role=Role.PRODUKTION,
+        department_name="Instandhaltung",
+    )
+    set_dashboard_permission(user["username"], "documents", can_view=True)
+    set_dashboard_permission(blocked["username"], "documents", can_view=True)
+
+    forbidden_response = client.get(
+        "/api/v1/admin/ai/knowledge",
+        headers=auth_headers(user["username"]),
+    )
+    upload_response = client.post(
+        "/api/v1/admin/ai/knowledge/upload",
+        headers=auth_headers(admin["username"]),
+        data={
+            "department": "Produktion",
+            "file": (BytesIO(b"Hydraulikfilter X900 taeglich pruefen."), "manual.txt"),
+        },
+        content_type="multipart/form-data",
+    )
+    chat_response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Wie funktioniert Hydraulikfilter X900?"},
+    )
+    blocked_chat_response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(blocked["username"]),
+        json={"message": "Wie funktioniert Hydraulikfilter X900?"},
+    )
+
+    assert forbidden_response.status_code == 403
+    assert upload_response.status_code == 201
+    assert upload_response.get_json()["data"]["status"] == "indexed"
+    assert any(source["type"] == "knowledge" for source in chat_response.get_json()["sources"])
+    assert not any(
+        source["type"] == "knowledge" for source in blocked_chat_response.get_json()["sources"]
+    )
+    with client.application.app_context():
+        document = db.session.get(KnowledgeDocument, upload_response.get_json()["data"]["id"])
+        assert document.chunk_count == 1
+
+
+def test_knowledge_reindex_registers_generated_documents(
+    client,
+    make_user,
+    make_task,
+    make_document,
+    auth_headers,
+):
+    """Verify reindex adds generated documents to the local knowledge base."""
+    admin = make_user(
+        username="knowledge_reindex_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    task_id = make_task("Wartung X900", creator_username=admin["username"])
+    make_document(task_id=task_id, created_by=admin["id"], department="Produktion")
+
+    response = client.post(
+        "/api/v1/admin/ai/knowledge/reindex",
+        headers=auth_headers(admin["username"]),
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["data"]["documents"] >= 1
+
+
 def test_ai_workflow_routing_uses_balanced_defaults(app):
     """Verify workflow routing selects models, temperature and output budgets."""
     with app.app_context():
@@ -716,6 +888,7 @@ def test_dashboard_contains_daily_briefing_and_priority_ui(client):
     assert "data-daily-briefing-list" in html
     assert "data-dashboard-priority-list" in html
     assert "data-chat-suggestions" in html
+    assert "data-chat-history-search" in html
     assert "Briefing konnte nicht geladen werden." in script
     assert "KI-Priorisierung" in script
     assert "maintenance_ai_action_preview" in script
@@ -726,6 +899,8 @@ def test_dashboard_contains_daily_briefing_and_priority_ui(client):
     assert "openAIErrorLabel" in chat_script
     assert "model_not_found" in chat_script
     assert "OpenAI-Rate-Limit erreicht" in chat_script
+    assert "model_not_allowed" in chat_script
+    assert "/api/v1/ai/chat/history" in chat_script
     assert "chatSuggestionsForUser" in chat_script
     assert "suggestions.hidden = true" in chat_script
 
@@ -752,6 +927,20 @@ def test_admin_users_page_contains_ai_analytics_ui(client):
     assert "/api/v1/admin/audit-log" in script
     assert "/api/v1/admin/backups" in script
     assert "/api/v1/admin/permissions/schema" in script
+
+
+def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
+    """Verify the dedicated AI admin page exposes management UI hooks."""
+    page_response = client.get("/admin/ai")
+    html = page_response.get_data(as_text=True)
+
+    assert page_response.status_code == 200
+    assert "data-admin-ai-page" in html
+    assert "data-ai-chat-search" in html
+    assert "data-ai-knowledge-upload" in html
+    assert "/api/v1/admin/ai/events" in html
+    assert "/api/v1/admin/ai/chats" in html
+    assert "/api/v1/admin/ai/knowledge/upload" in html
 
 
 def test_document_path_rejects_storage_escape(app):

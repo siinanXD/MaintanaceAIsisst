@@ -18,6 +18,13 @@ def test_openapi_json_documents_core_endpoints(client):
     assert "/api/v1/errors/search" in paths
     assert "/api/v1/errors/similar" in paths
     assert "/api/v1/ai/daily-briefing" in paths
+    assert "/api/v1/ai/chat/history" in paths
+    assert "/api/v1/admin/ai/chats" in paths
+    assert "/api/v1/admin/ai/events" in paths
+    assert "/api/v1/admin/ai/knowledge/upload" in paths
+    assert "/api/v1/admin/ai/knowledge" in paths
+    assert "/api/v1/admin/ai/knowledge/reindex" in paths
+    assert "/api/v1/admin/ai/knowledge/{id}" in paths
     assert "/api/v1/machines/{machine_id}/assistant" in paths
     assert "/api/v1/inventory/forecast" in paths
     assert "/api/v1/admin/permissions/schema" in paths
@@ -78,6 +85,11 @@ def test_openapi_examples_are_present(client):
         "example"
     ]
     assert spec["components"]["schemas"]["MachineManual"]["properties"]["download_url"]["example"]
+    assert spec["components"]["schemas"]["ChatHistoryEntry"]["properties"]["response_type"][
+        "example"
+    ]
+    assert spec["components"]["schemas"]["AIAuditEvent"]["properties"]["error_category"]["example"]
+    assert spec["components"]["schemas"]["KnowledgeDocument"]["properties"]["status"]["example"]
 
 
 def test_swagger_ui_route_loads(client):

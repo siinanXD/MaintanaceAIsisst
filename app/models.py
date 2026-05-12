@@ -1,6 +1,12 @@
 """Compatibility exports for SQLAlchemy domain models."""
 
-from app.domain_models.ai import AIAuditEvent, AIFeedback, ChatMessage
+from app.domain_models.ai import (
+    AIAuditEvent,
+    AIFeedback,
+    ChatMessage,
+    KnowledgeChunk,
+    KnowledgeDocument,
+)
 from app.domain_models.common import Priority, Role, TaskStatus, utc_now
 from app.domain_models.documents import (
     DocumentApprovalEvent,
@@ -41,6 +47,8 @@ __all__ = [
     "ErrorEntry",
     "GeneratedDocument",
     "InventoryMaterial",
+    "KnowledgeChunk",
+    "KnowledgeDocument",
     "Machine",
     "MachineManual",
     "MachineManualVersion",

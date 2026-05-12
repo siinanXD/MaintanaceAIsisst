@@ -851,6 +851,52 @@ Moegliche Diagnosewerte:
 
 `diagnostics` enthaelt zusaetzlich `provider` und `model`, aber niemals den API-Key. Die Chat-Bubble zeigt diese Werte als kleine Statuszeile pro Antwort.
 
+OpenAI-Fehler werden in `diagnostics.error` getrennt ausgewiesen:
+
+| Fehler | Bedeutung |
+| --- | --- |
+| `rate_limit` | Provider-Limit erreicht |
+| `model_not_allowed` | Konfiguriertes Modell ist nicht freigeschaltet |
+| `authentication_error` | API-Key wurde abgelehnt |
+| `connection_error` | Netzwerk oder Provider-Verbindung fehlgeschlagen |
+| `timeout` | Provider-Anfrage hat das Timeout erreicht |
+| `openai_error` | Sonstiger Providerfehler |
+
+Normale allgemeine Fragen werden als `type: general_chat` gespeichert und
+enthalten sichtbar den Hinweis, dass Chat-Historie und AI-Nutzungsmetadaten
+protokolliert werden.
+
+### Chat-Historie
+
+```http
+GET /api/v1/ai/chat/history?q=Hydraulik&limit=30&offset=0
+Authorization: Bearer <access_token>
+```
+
+Normale Nutzer erhalten nur ihre eigene Historie. Master Admins koennen alle
+Chats ueber die Admin-API durchsuchen:
+
+```http
+GET /api/v1/admin/ai/chats?q=Hydraulik&user_id=3&limit=50&offset=0
+Authorization: Bearer <master-admin-token>
+```
+
+### Admin-AI-Events und Knowledge
+
+```http
+GET /api/v1/admin/ai/events?workflow=general_chat&error=rate_limit&days=7
+GET /api/v1/admin/ai/summary?days=7
+POST /api/v1/admin/ai/knowledge/upload
+GET /api/v1/admin/ai/knowledge?q=manual&status=indexed
+POST /api/v1/admin/ai/knowledge/reindex
+DELETE /api/v1/admin/ai/knowledge/1
+```
+
+Die Knowledge-API ist Master-Admin-only. Uploads erlauben `.pdf`, `.txt`,
+`.html` und `.htm`. Der RAG-v1-Index speichert lokale Text-Chunks und nutzt
+Token-Ueberschneidung, keine externen Embeddings. Treffer erscheinen im Chat
+als `sources` mit `type: "knowledge"`.
+
 ### Taegliches Briefing
 
 ```http

@@ -8,6 +8,7 @@ from app.extensions import db
 from app.models import AIFeedback, Role
 from app.responses import error_response, service_error_response, success_response
 from app.security import current_user, has_dashboard_permission, roles_required
+from app.services.ai_history_service import paginated_chat_history
 from app.services.error_assistant_service import run_error_assistant
 
 ai_bp = Blueprint("ai", __name__)
@@ -25,9 +26,20 @@ def chat():
 
     user = current_user()
     result = answer_chat(message, user)
-    save_chat_message(user, message, result["answer"])
+    save_chat_message(user, message, result)
 
     return success_response(result, message="AI response generated")
+
+
+@ai_bp.get("/chat/history")
+@jwt_required()
+def chat_history():
+    """Return the current user's searchable AI chat history."""
+    try:
+        result = paginated_chat_history(current_user(), request.args)
+    except ValueError as exc:
+        return error_response(str(exc), 400)
+    return success_response(result, message="Chat history loaded")
 
 
 @ai_bp.get("/status")

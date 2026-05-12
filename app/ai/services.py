@@ -10,7 +10,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from app.inventory.services import forecast_inventory_risks
 from app.models import (
-    ChatMessage,
     Employee,
     ErrorEntry,
     GeneratedDocument,
@@ -23,6 +22,7 @@ from app.models import (
 )
 from app.security import employee_access_level, has_dashboard_permission
 from app.services.ai_audit_service import ai_analytics_summary, create_ai_audit_event
+from app.services.ai_history_service import save_chat_exchange
 from app.services.ai_prompting import (
     permission_denied_answer,
     permission_denied_context,
@@ -32,6 +32,7 @@ from app.services.ai_routing import local_metadata, workflow_profile
 from app.services.ai_service import AIServiceError, MockAIProvider, get_ai_provider
 from app.services.document_service import visible_documents_query
 from app.services.error_service import search_errors
+from app.services.knowledge_service import knowledge_sources_for_chat
 from app.services.task_service import visible_tasks_query
 
 LAST_OPENAI_ERROR = None
@@ -928,7 +929,7 @@ def local_general_chat_answer(reason):
             "- **Status:** OpenAI ist nicht konfiguriert\n"
             "- **Naechster Schritt:** OPENAI_API_KEY in der .env setzen und Server neu starten"
         )
-    if reason == "model_not_found":
+    if reason in {"model_not_found", "model_not_allowed"}:
         return (
             "## Allgemeine Antwort\n"
             "- **Status:** Das konfigurierte OpenAI-Modell ist nicht freigeschaltet\n"
@@ -959,7 +960,7 @@ def local_general_chat_answer(reason):
     )
 
 
-def openai_general_answer(message):
+def openai_general_answer(message, context=""):
     """Generate a short general AI answer for hybrid mode."""
     global LAST_OPENAI_ERROR
     provider = get_ai_provider()
@@ -975,14 +976,17 @@ def openai_general_answer(message):
         )
 
     try:
-        answer = provider.answer_general_question(message)
+        if context:
+            answer = provider.answer_question(message, context, workflow="general_chat")
+        else:
+            answer = provider.answer_general_question(message)
     except AIServiceError as exc:
         LAST_OPENAI_ERROR = redacted_openai_error(exc)
         logger.exception(
             "ai_call_failed workflow=general_chat provider=%s",
             provider.name,
         )
-        fallback = local_general_chat_answer("openai_error")
+        fallback = local_general_chat_answer(LAST_OPENAI_ERROR)
         return with_general_tracking_notice(fallback), ai_diagnostics(
             "openai_error",
             fallback_used=True,
@@ -1130,7 +1134,8 @@ def answer_chat(message, user):
     requested_scopes = detect_requested_scopes(message)
     allowed_scopes = allowed_ai_scopes(user)
     if should_use_general_hybrid_mode(message, requested_scopes):
-        answer, diagnostics = openai_general_answer(message)
+        knowledge_context, knowledge_sources = knowledge_sources_for_chat(message, user)
+        answer, diagnostics = openai_general_answer(message, knowledge_context)
         return attach_audit_metadata(
             user,
             {
@@ -1138,7 +1143,7 @@ def answer_chat(message, user):
                 "answer": answer,
                 "diagnostics": diagnostics,
                 "data": {},
-                "sources": [],
+                "sources": knowledge_sources,
             },
             requested_scopes,
             allowed_scopes,
@@ -1216,7 +1221,11 @@ def answer_chat(message, user):
     if count_result:
         return count_result
 
-    retrieval = retrieve_ai_context(message, user, requested_scopes)
+    retrieval = with_knowledge_context(
+        retrieve_ai_context(message, user, requested_scopes),
+        message,
+        user,
+    )
     answer, diagnostics = openai_assistant_answer(message, retrieval["context"])
     if not answer:
         logger.warning("ai_fallback workflow=chat type=assistant")
@@ -1254,8 +1263,8 @@ def answer_chat(message, user):
 
 def save_chat_message(user, message, response):
     """Persist a chat message and its assistant response in the database."""
-    chat = ChatMessage(user_id=user.id, message=message, response=response)
-
+    result = response if isinstance(response, dict) else {"answer": response}
+    chat = save_chat_exchange(user, message, result)
     db.session.add(chat)
 
     try:
@@ -1263,3 +1272,17 @@ def save_chat_message(user, message, response):
     except SQLAlchemyError:
         db.session.rollback()
         logger.exception("ai_chat_save_failed user_id=%s", user.id)
+
+
+def with_knowledge_context(retrieval, message, user):
+    """Append local knowledge chunks to an AI retrieval payload."""
+    knowledge_context, knowledge_sources = knowledge_sources_for_chat(message, user)
+    if not knowledge_sources:
+        return retrieval
+    if retrieval.get("context"):
+        retrieval["context"] = f"{retrieval['context']}\n\n{knowledge_context}"
+    else:
+        retrieval["context"] = knowledge_context
+    retrieval["sources"] = (retrieval.get("sources") or []) + knowledge_sources
+    retrieval["data"].setdefault("knowledge", knowledge_sources)
+    return retrieval

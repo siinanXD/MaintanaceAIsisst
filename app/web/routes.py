@@ -41,6 +41,12 @@ def admin_users_page():
     return render_template("admin_users.html")
 
 
+@web_bp.get("/admin/ai")
+def admin_ai_page():
+    """Render the AI administration and knowledge page."""
+    return render_template("admin_ai.html")
+
+
 @web_bp.get("/employees")
 def employees_page():
     """Render the employee page."""

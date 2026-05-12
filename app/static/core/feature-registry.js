@@ -88,6 +88,14 @@
       group: "Administration",
       initializer: "initUsers",
     },
+    {
+      key: "admin_ai",
+      permissionKey: "admin_users",
+      label: "AI Admin",
+      route: "/admin/ai",
+      group: "Administration",
+      initializer: "initAdminAi",
+    },
   ];
 
   const byKey = Object.fromEntries(FEATURES.map((feature) => [feature.key, feature]));

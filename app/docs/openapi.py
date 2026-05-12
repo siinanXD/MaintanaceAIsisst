@@ -2811,6 +2811,106 @@ OPENAPI_SPEC = {
     },
 }
 
+OPENAPI_SPEC["components"]["schemas"].update(
+    {
+        "ChatHistoryEntry": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "integer", "example": 12},
+                "user_id": {"type": "integer", "example": 3},
+                "message": {"type": "string", "example": "Was ist ein User?"},
+                "response": {"type": "string", "example": "Ein User ist ein Benutzerkonto."},
+                "response_type": {"type": "string", "example": "general_chat"},
+                "source_count": {"type": "integer", "example": 1},
+                "audit_event_id": {"type": "integer", "example": 44},
+                "created_at": {"type": "string", "format": "date-time"},
+            },
+        },
+        "AIAuditEvent": {
+            "type": "object",
+            "properties": {
+                "workflow": {"type": "string", "example": "general_chat"},
+                "status": {"type": "string", "example": "openai_error"},
+                "error_category": {"type": "string", "example": "rate_limit"},
+                "total_tokens": {"type": "integer", "example": 842},
+                "estimated_cost_usd": {"type": "number", "example": 0.0012},
+            },
+        },
+        "KnowledgeDocument": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "integer", "example": 5},
+                "source_type": {"type": "string", "example": "upload"},
+                "title": {"type": "string", "example": "CNC Manual"},
+                "status": {"type": "string", "example": "indexed"},
+                "chunk_count": {"type": "integer", "example": 18},
+                "department": {"type": "string", "example": "Produktion"},
+            },
+        },
+    }
+)
+
+OPENAPI_SPEC["paths"].update(
+    {
+        "/api/v1/ai/chat/history": {
+            "get": {
+                "tags": ["AI"],
+                "summary": "Search own AI chat history",
+                "security": [{"bearerAuth": []}],
+                "responses": {"200": {"description": "Chat history loaded"}},
+            }
+        },
+        "/api/v1/admin/ai/chats": {
+            "get": {
+                "tags": ["Admin"],
+                "summary": "Search all AI chats as master admin",
+                "security": [{"bearerAuth": []}],
+                "responses": {"200": {"description": "AI chats loaded"}},
+            }
+        },
+        "/api/v1/admin/ai/events": {
+            "get": {
+                "tags": ["Admin"],
+                "summary": "Search metadata-only AI audit events",
+                "security": [{"bearerAuth": []}],
+                "responses": {"200": {"description": "AI events loaded"}},
+            }
+        },
+        "/api/v1/admin/ai/knowledge/upload": {
+            "post": {
+                "tags": ["Admin"],
+                "summary": "Upload and index a knowledge document",
+                "security": [{"bearerAuth": []}],
+                "responses": {"201": {"description": "Knowledge document uploaded"}},
+            }
+        },
+        "/api/v1/admin/ai/knowledge": {
+            "get": {
+                "tags": ["Admin"],
+                "summary": "List knowledge documents",
+                "security": [{"bearerAuth": []}],
+                "responses": {"200": {"description": "Knowledge documents loaded"}},
+            }
+        },
+        "/api/v1/admin/ai/knowledge/reindex": {
+            "post": {
+                "tags": ["Admin"],
+                "summary": "Rebuild local knowledge chunks",
+                "security": [{"bearerAuth": []}],
+                "responses": {"200": {"description": "Knowledge reindexed"}},
+            }
+        },
+        "/api/v1/admin/ai/knowledge/{id}": {
+            "delete": {
+                "tags": ["Admin"],
+                "summary": "Delete a knowledge document",
+                "security": [{"bearerAuth": []}],
+                "responses": {"200": {"description": "Knowledge document deleted"}},
+            }
+        },
+    }
+)
+
 
 def hide_route_from_generated_spec(_rule):
     """Keep flasgger from mixing route docstrings into the curated spec."""

@@ -1,25 +1,34 @@
 """Admin API routes for user and audit management."""
 
+from datetime import UTC, datetime, timedelta
+
 from flask import Blueprint, jsonify, request, send_file
 
 from app.auth.services import find_department, parse_role
 from app.extensions import db
-from app.models import Employee, Role, User
+from app.models import AIAuditEvent, Employee, KnowledgeDocument, Role, User
 from app.permissions import (
     permission_schema,
     replace_user_permissions,
     serialize_permissions,
     upsert_default_permissions,
 )
-from app.responses import error_response
+from app.responses import error_response, service_error_response, success_response
 from app.security import roles_required
 from app.services.ai_audit_service import ai_analytics_summary
+from app.services.ai_history_service import paginated_chat_history, parse_limit_offset
 from app.services.audit_service import audit_log_query, create_audit_log
 from app.services.backup_service import (
     backup_path_for,
     create_backup,
     list_backups,
     restore_backup,
+)
+from app.services.knowledge_service import (
+    delete_knowledge_document,
+    list_knowledge_documents,
+    reindex_all_knowledge,
+    upload_knowledge_document,
 )
 from app.services.mail_service import mail_config_status
 from app.services.notification_service import delivery_query, send_test_email
@@ -277,6 +286,113 @@ def ai_summary():
     if days < 1 or days > 90:
         return error_response("days must be an integer between 1 and 90", 400)
     return jsonify(ai_analytics_summary(days))
+
+
+@admin_bp.get("/ai/chats")
+@roles_required(Role.MASTER_ADMIN)
+def ai_chats():
+    """Return searchable AI chat contents for master administrators."""
+    try:
+        result = paginated_chat_history(current_admin_user(), request.args, include_all=True)
+    except ValueError as exc:
+        return error_response(str(exc), 400)
+    return success_response(result, message="AI chats loaded")
+
+
+@admin_bp.get("/ai/events")
+@roles_required(Role.MASTER_ADMIN)
+def ai_events():
+    """Return filtered metadata-only AI audit events."""
+    try:
+        query = filtered_ai_event_query(request.args)
+        limit, offset = parse_limit_offset(request.args, default_limit=50)
+    except ValueError as exc:
+        return error_response(str(exc), 400)
+    total = query.count()
+    events = query.offset(offset).limit(limit).all()
+    return success_response(
+        {
+            "items": [event.to_dict() for event in events],
+            "pagination": {"limit": limit, "offset": offset, "total": total},
+        },
+        message="AI events loaded",
+    )
+
+
+@admin_bp.post("/ai/knowledge/upload")
+@roles_required(Role.MASTER_ADMIN)
+def upload_ai_knowledge():
+    """Upload and index a local knowledge document."""
+    result, error, status = upload_knowledge_document(
+        request.files.get("file"),
+        current_admin_user(),
+        department=request.form.get("department", ""),
+    )
+    if error:
+        return service_error_response(error, status)
+    return success_response(result, status, "Knowledge document uploaded")
+
+
+@admin_bp.get("/ai/knowledge")
+@roles_required(Role.MASTER_ADMIN)
+def ai_knowledge():
+    """Return filtered local knowledge documents."""
+    try:
+        limit, offset = parse_limit_offset(request.args, default_limit=50)
+    except ValueError as exc:
+        return error_response(str(exc), 400)
+    query = list_knowledge_documents(request.args)
+    total = query.count()
+    documents = query.offset(offset).limit(limit).all()
+    return success_response(
+        {
+            "items": [document.to_dict() for document in documents],
+            "pagination": {"limit": limit, "offset": offset, "total": total},
+        },
+        message="Knowledge documents loaded",
+    )
+
+
+@admin_bp.post("/ai/knowledge/reindex")
+@roles_required(Role.MASTER_ADMIN)
+def reindex_ai_knowledge():
+    """Rebuild the local knowledge index."""
+    return success_response(reindex_all_knowledge(), message="Knowledge reindexed")
+
+
+@admin_bp.delete("/ai/knowledge/<int:document_id>")
+@roles_required(Role.MASTER_ADMIN)
+def delete_ai_knowledge(document_id):
+    """Delete a knowledge document and its chunks."""
+    document = db.get_or_404(KnowledgeDocument, document_id)
+    delete_knowledge_document(document)
+    return success_response({"id": document_id}, message="Knowledge document deleted")
+
+
+def filtered_ai_event_query(args):
+    """Return an AI audit event query filtered from request arguments."""
+    query = AIAuditEvent.query
+    workflow = str(args.get("workflow") or "").strip()
+    status = str(args.get("status") or "").strip()
+    error = str(args.get("error") or "").strip()
+    if workflow:
+        query = query.filter(AIAuditEvent.workflow == workflow)
+    if status:
+        query = query.filter(AIAuditEvent.status == status)
+    if error:
+        query = query.filter(AIAuditEvent.error_category == error)
+    days = args.get("days")
+    if days not in (None, ""):
+        try:
+            days_value = int(days)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("days must be an integer between 1 and 90") from exc
+        if days_value < 1 or days_value > 90:
+            raise ValueError("days must be an integer between 1 and 90")
+        query = query.filter(
+            AIAuditEvent.created_at >= datetime.now(UTC) - timedelta(days=days_value)
+        )
+    return query.order_by(AIAuditEvent.created_at.desc(), AIAuditEvent.id.desc())
 
 
 def current_admin_user():

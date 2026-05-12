@@ -50,7 +50,7 @@ def openai_error_code(error):
         or "does not have access to model" in error_text
         or "model" in error_text
     ):
-        return "model_not_found"
+        return "model_not_allowed"
     if isinstance(error, PermissionDeniedError):
         return "permission_denied"
     if isinstance(error, NotFoundError):

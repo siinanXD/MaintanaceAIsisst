@@ -83,6 +83,10 @@
               <span class="nav-icon" aria-hidden="true">♙</span>
               <span>Benutzer</span>
             </a>
+            <a data-feature-key="admin_ai" data-dashboard-nav="admin_users" hidden class="nav-link {% if request.path == '/admin/ai' %}is-active{% endif %}" href="/admin/ai">
+              <span class="nav-icon" aria-hidden="true">AI</span>
+              <span>AI Admin</span>
+            </a>
           </section>
         </nav>
 
@@ -113,6 +117,7 @@
                 <a data-feature-key="vacations" data-dashboard-nav="employees" hidden class="top-nav-link {% if request.path == '/vacations' %}is-active{% endif %}" href="/vacations">Urlaube</a>
                 <a data-dashboard-nav="documents" hidden class="top-nav-link {% if request.path == '/documents' %}is-active{% endif %}" href="/documents">Dokumente</a>
                 <a data-dashboard-nav="admin_users" hidden class="top-nav-link {% if request.path == '/admin/users' %}is-active{% endif %}" href="/admin/users">Benutzer</a>
+                <a data-feature-key="admin_ai" data-dashboard-nav="admin_users" hidden class="top-nav-link {% if request.path == '/admin/ai' %}is-active{% endif %}" href="/admin/ai">AI Admin</a>
               </div>
             </details>
           </div>
@@ -180,6 +185,10 @@
           <div class="chat-message is-assistant">
             Frag mich nach Fehlercodes, Maschinenstoerungen oder heutigen Aufgaben.
           </div>
+        </div>
+        <div class="chat-history-panel" data-chat-history-panel>
+          <input class="input input-bordered w-full" data-chat-history-search autocomplete="off" placeholder="Historie durchsuchen">
+          <div class="chat-history-list" data-chat-history-list></div>
         </div>
         <div class="chat-suggestions" data-chat-suggestions></div>
         <form class="chat-panel-form" data-chat-form>
