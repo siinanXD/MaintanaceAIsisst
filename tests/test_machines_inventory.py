@@ -2,7 +2,8 @@
 
 from datetime import date, timedelta
 
-from app.models import Priority, Role
+from app.extensions import db
+from app.models import MaintenancePlan, Priority, Role, Task
 from app.services.ai_service import AIServiceError
 
 
@@ -43,6 +44,132 @@ def test_machine_create_rejects_duplicates_and_invalid_staffing(
     assert create_response.get_json()["required_employees"] == 2
     assert duplicate_response.status_code == 409
     assert invalid_response.status_code == 400
+
+
+def test_maintenance_plan_creates_and_generates_due_task(
+    client,
+    make_user,
+    make_machine,
+    auth_headers,
+):
+    """Verify due recurring maintenance plans generate open tasks."""
+    admin = make_user(
+        username="maintenance_plan_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    machine_id = make_machine(name="Presse 1")
+    headers = auth_headers(admin["username"])
+    today = date.today().isoformat()
+
+    missing_response = client.post(
+        "/api/v1/machines/maintenance-plans",
+        headers=headers,
+        json={"interval_days": 7, "next_due_date": today, "department": "Produktion"},
+    )
+    create_response = client.post(
+        "/api/v1/machines/maintenance-plans",
+        headers=headers,
+        json={
+            "title": "Hydraulik pruefen",
+            "description": "Oelstand, Leckagen und Druck pruefen.",
+            "interval_days": 7,
+            "next_due_date": today,
+            "priority": Priority.SOON.value,
+            "machine_id": machine_id,
+            "department": "Produktion",
+        },
+    )
+    plan_id = create_response.get_json()["data"]["id"]
+    list_response = client.get("/api/v1/machines/maintenance-plans", headers=headers)
+    generate_response = client.post(
+        "/api/v1/machines/maintenance-plans/generate-due",
+        headers=headers,
+    )
+
+    generated = generate_response.get_json()["data"]
+    with client.application.app_context():
+        plan = db.session.get(MaintenancePlan, plan_id)
+        task = db.session.get(Task, generated["items"][0]["task"]["id"])
+
+    assert missing_response.status_code == 400
+    assert create_response.status_code == 201
+    assert create_response.get_json()["data"]["machine_id"] == machine_id
+    assert list_response.status_code == 200
+    assert [plan["id"] for plan in list_response.get_json()["data"]] == [plan_id]
+    assert generate_response.status_code == 200
+    assert generated["generated_count"] == 1
+    assert task.title == "Wartung: Presse 1: Hydraulik pruefen"
+    assert task.status.value == "open"
+    assert plan.last_generated_task_id == task.id
+    assert plan.next_due_date > date.today()
+
+
+def test_maintenance_plan_update_delete_and_inactive_generation(
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify maintenance plans can be updated, skipped when inactive, and deleted."""
+    admin = make_user(
+        username="maintenance_plan_update_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    headers = auth_headers(admin["username"])
+    create_response = client.post(
+        "/api/v1/machines/maintenance-plans",
+        headers=headers,
+        json={
+            "title": "Filter wechseln",
+            "interval_days": 30,
+            "next_due_date": date.today().isoformat(),
+            "department": "Produktion",
+        },
+    )
+    plan_id = create_response.get_json()["data"]["id"]
+
+    update_response = client.put(
+        f"/api/v1/machines/maintenance-plans/{plan_id}",
+        headers=headers,
+        json={"interval_days": 14, "is_active": False},
+    )
+    generate_response = client.post(
+        "/api/v1/machines/maintenance-plans/generate-due",
+        headers=headers,
+    )
+    delete_response = client.delete(
+        f"/api/v1/machines/maintenance-plans/{plan_id}",
+        headers=headers,
+    )
+
+    assert create_response.status_code == 201
+    assert update_response.status_code == 200
+    assert update_response.get_json()["data"]["interval_days"] == 14
+    assert update_response.get_json()["data"]["is_active"] is False
+    assert generate_response.status_code == 200
+    assert generate_response.get_json()["data"]["generated_count"] == 0
+    assert delete_response.status_code == 204
+
+
+def test_maintenance_task_generation_requires_task_write_permission(
+    client,
+    make_user,
+    auth_headers,
+    set_dashboard_permission,
+):
+    """Verify plan generation requires task write permission in addition to machine write."""
+    user = make_user(username="maintenance_plan_machine_only")
+    set_dashboard_permission(user["username"], "machines", can_view=True, can_write=True)
+    set_dashboard_permission(user["username"], "tasks", can_view=True, can_write=False)
+
+    response = client.post(
+        "/api/v1/machines/maintenance-plans/generate-due",
+        headers=auth_headers(user["username"]),
+    )
+
+    assert response.status_code == 403
+    assert response.get_json()["message"] == "tasks write permission is required"
 
 
 def test_non_admin_without_machine_write_permission_is_forbidden(
