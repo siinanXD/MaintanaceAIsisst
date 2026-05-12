@@ -7,11 +7,10 @@ from dataclasses import asdict, dataclass
 
 from flask import current_app
 
-
 DEFAULT_MODELS = {
-    "fast": "gpt-5.4-nano",
-    "balanced": "gpt-5.4-mini",
-    "quality": "gpt-5.4",
+    "fast": "gpt-4o-mini",
+    "balanced": "gpt-4o-mini",
+    "quality": "gpt-5-mini",
 }
 
 WORKFLOW_PROFILES = {
@@ -199,9 +198,7 @@ def _completion_usage(completion):
             _get_value(usage, "output_tokens", 0),
         )
     )
-    total_tokens = _int_value(
-        _get_value(usage, "total_tokens", input_tokens + output_tokens)
-    )
+    total_tokens = _int_value(_get_value(usage, "total_tokens", input_tokens + output_tokens))
     details = _get_value(
         usage,
         "prompt_tokens_details",

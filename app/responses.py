@@ -1,4 +1,7 @@
-from flask import jsonify, request as _request
+"""Consistent API response helpers."""
+
+from flask import jsonify
+from flask import request as _request
 
 
 def error_code_from_message(message):
@@ -76,14 +79,16 @@ def paginate_query(query, serializer):
 
     total = query.count()
     items = query.offset((page - 1) * limit).limit(limit).all()
-    return jsonify({
-        "success": True,
-        "data": [serializer(item) for item in items],
-        "pagination": {
-            "page": page,
-            "limit": limit,
-            "total": total,
-            "pages": max(1, (total + limit - 1) // limit),
-        },
-        "message": "OK",
-    })
+    return jsonify(
+        {
+            "success": True,
+            "data": [serializer(item) for item in items],
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total": total,
+                "pages": max(1, (total + limit - 1) // limit),
+            },
+            "message": "OK",
+        }
+    )

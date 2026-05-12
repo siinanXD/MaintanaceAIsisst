@@ -1,3 +1,5 @@
+"""Department API routes."""
+
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required
 
@@ -5,7 +7,6 @@ from app.departments.services import create_department, ensure_default_departmen
 from app.models import Department, Role
 from app.responses import service_error_response
 from app.security import roles_required
-
 
 departments_bp = Blueprint("departments", __name__)
 

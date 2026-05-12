@@ -1,3 +1,5 @@
+"""Tests for permission helpers."""
+
 import pytest
 
 from app.extensions import db

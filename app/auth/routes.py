@@ -1,5 +1,7 @@
+"""Authentication API routes."""
+
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import get_jwt, jwt_required
@@ -10,7 +12,6 @@ from app.extensions import db
 from app.models import Role, TokenBlocklist
 from app.responses import error_response, service_error_response
 from app.security import current_user, roles_required
-
 
 auth_bp = Blueprint("auth", __name__)
 logger = logging.getLogger(__name__)
@@ -58,7 +59,7 @@ def login():
 def logout():
     """Revoke the current JWT so it can no longer be used."""
     jti = get_jwt()["jti"]
-    db.session.add(TokenBlocklist(jti=jti, revoked_at=datetime.now(timezone.utc)))
+    db.session.add(TokenBlocklist(jti=jti, revoked_at=datetime.now(UTC)))
     db.session.commit()
     logger.info("logout_success user_id=%s jti=%s", current_user() and current_user().id, jti)
     return jsonify({"message": "Logged out"}), 200

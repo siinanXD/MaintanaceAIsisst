@@ -1,3 +1,5 @@
+"""Tests for task workflows."""
+
 from datetime import date, timedelta
 
 from app.models import Priority, Role, TaskStatus
@@ -388,6 +390,6 @@ def test_task_page_contains_priority_ui(client):
 
     assert response.status_code == 200
     assert script_response.status_code == 200
-    assert 'data-task-priority-list' in html
-    assert 'data-task-priority-refresh' in html
+    assert "data-task-priority-list" in html
+    assert "data-task-priority-refresh" in html
     assert "Priorisierung konnte nicht geladen werden." in script

@@ -1,32 +1,34 @@
+"""Application factory and blueprint registration."""
+
 from pathlib import Path
 
 from flask import Flask
 from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.exceptions import HTTPException
 
+from app.admin.routes import admin_bp
+from app.ai.routes import ai_bp
 from app.auth.routes import auth_bp
-from app.config import Config
+from app.config import Config, validate_runtime_config
 from app.core.logging import configure_logging
-from app.docs.openapi import configure_api_documentation
-from app.departments.services import ensure_default_departments
 from app.departments.routes import departments_bp
+from app.departments.services import ensure_default_departments
+from app.docs.openapi import configure_api_documentation
 from app.documents.routes import documents_bp
-from app.errors.routes import errors_bp
 from app.employees.routes import employees_bp
+from app.errors.routes import errors_bp
 from app.extensions import db, jwt, migrate
+from app.handover.routes import handover_bp
 from app.health.routes import health_bp, public_health_bp
 from app.inventory.routes import inventory_bp
 from app.machines.routes import machines_bp
-from app.tasks.routes import tasks_bp
-from app.ai.routes import ai_bp
-from app.admin.routes import admin_bp
-from app.shiftplans.routes import shiftplans_bp
-from app.search.routes import search_bp
-from app.web.routes import web_bp
-from app.handover.routes import handover_bp
-from app.vacations.routes import vacations_bp
 from app.permissions import ensure_all_user_default_permissions
 from app.responses import error_response
+from app.search.routes import search_bp
+from app.shiftplans.routes import shiftplans_bp
+from app.tasks.routes import tasks_bp
+from app.vacations.routes import vacations_bp
+from app.web.routes import web_bp
 
 
 def register_error_handlers(app):
@@ -63,6 +65,7 @@ def create_app(config_class=Config):
     """Create and configure the Flask application."""
     app = Flask(__name__)
     app.config.from_object(config_class)
+    validate_runtime_config(app.config)
     configure_logging(app)
 
     Path(app.instance_path).mkdir(parents=True, exist_ok=True)
@@ -101,9 +104,10 @@ def create_app(config_class=Config):
     configure_api_documentation(app)
     register_error_handlers(app)
 
-    with app.app_context():
-        db.create_all()
-        ensure_default_departments()
-        ensure_all_user_default_permissions()
+    if app.config.get("AUTO_CREATE_DATABASE") or app.config.get("TESTING"):
+        with app.app_context():
+            db.create_all()
+            ensure_default_departments()
+            ensure_all_user_default_permissions()
 
     return app

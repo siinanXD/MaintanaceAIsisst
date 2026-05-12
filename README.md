@@ -56,7 +56,7 @@ A modular Flask application for industrial maintenance teams. Manages tasks, err
 | Database | SQLite (dev) — swap via `DATABASE_URL` |
 | AI | OpenAI API with local rule-based fallback |
 | Frontend | Jinja2 templates, Tailwind CSS, vanilla JS |
-| Tests | pytest (133 tests, no external services required) |
+| Tests | pytest (155 tests, no external services required) |
 | CI | GitHub Actions — lint, compile, test, Docker build |
 
 ## Getting Started
@@ -97,12 +97,15 @@ Copy `.env.example` to `.env` and set these values:
 SECRET_KEY=change-this-in-production
 JWT_SECRET_KEY=change-this-in-production
 DATABASE_URL=sqlite:///data/maintenance.db
+AUTO_CREATE_DATABASE=true  # set false in production and run migrations
 AI_PROVIDER=openai          # or "mock" for local-only mode
 OPENAI_API_KEY=             # leave empty to use local fallback
 OPENAI_MODEL=gpt-4o-mini
 ```
 
 `.env` is excluded from version control. Never commit real secrets.
+For production deployments set `AUTO_CREATE_DATABASE=false` and run
+`flask --app run:app db upgrade` during release.
 
 ## Project Structure
 
@@ -169,7 +172,7 @@ See [`docs/API_PROTOCOL.md`](docs/API_PROTOCOL.md) for the full endpoint referen
 ## Running Tests
 
 ```bash
-pytest                    # run all 133 tests
+pytest                    # run all 155 tests
 pytest tests/test_auth.py # single file
 pytest -q --tb=short      # compact output
 ```

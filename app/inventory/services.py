@@ -1,3 +1,5 @@
+"""Inventory service helpers."""
+
 import re
 import unicodedata
 
@@ -45,11 +47,15 @@ def forecast_inventory_risks(data, user):
             )
 
     items.sort(key=lambda item: (_risk_rank(item["risk_level"]), item["quantity"]))
-    return {
-        "items": items,
-        "unmatched_tasks": unmatched_tasks,
-        "summary": _forecast_summary(items),
-    }, None, 200
+    return (
+        {
+            "items": items,
+            "unmatched_tasks": unmatched_tasks,
+            "summary": _forecast_summary(items),
+        },
+        None,
+        200,
+    )
 
 
 def parse_low_stock_threshold(value):
@@ -126,9 +132,7 @@ def _machine_match_reason(machine, normalized_task_text, task_tokens):
 
     machine_tokens = set(_normalize_match_text(machine.name).split())
     meaningful_tokens = {
-        token
-        for token in machine_tokens
-        if len(token) >= 3 and not token.isdigit()
+        token for token in machine_tokens if len(token) >= 3 and not token.isdigit()
     }
     numeric_tokens = {token for token in machine_tokens if token.isdigit()}
     shared_tokens = meaningful_tokens & task_tokens
@@ -142,10 +146,7 @@ def _machine_match_reason(machine, normalized_task_text, task_tokens):
 
 def _is_high_priority(priority):
     """Return whether a task priority should be reported as unmatched."""
-    return (
-        priority.get("risk_level") in {"high", "critical"}
-        or priority.get("score", 0) >= 65
-    )
+    return priority.get("risk_level") in {"high", "critical"} or priority.get("score", 0) >= 65
 
 
 def _inventory_risk_level(material, priority, threshold):

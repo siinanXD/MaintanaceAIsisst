@@ -1,1 +1,1 @@
-
+"""Error catalog package."""

@@ -1,3 +1,5 @@
+"""Tests for AI feature endpoints and services."""
+
 from datetime import date, timedelta
 from io import BytesIO
 
@@ -5,9 +7,10 @@ import pytest
 
 from app.extensions import db
 from app.models import AIAuditEvent, GeneratedDocument, Priority, Role, Task
-from app.services.document_service import document_path
 from app.services.ai_audit_service import create_ai_audit_event
 from app.services.ai_routing import estimate_cost_usd, workflow_profile
+from app.services.ai_service import AIServiceError
+from app.services.document_service import document_path
 
 
 def test_ai_chat_returns_today_tasks_without_openai(
@@ -264,6 +267,187 @@ def test_ai_chat_uses_hybrid_general_mode_for_non_app_questions(
     assert "Datenbank" not in payload["answer"]
 
 
+def test_ai_chat_treats_concept_questions_as_general_chat(
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify generic concept questions are not blocked as protected app data."""
+    user = make_user(username="ai_concept_chat_user")
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Was ist ein User?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "general_chat"
+    assert payload["diagnostics"]["workflow"] == "general_chat"
+    assert payload["sources"] == []
+    assert "Keine Berechtigung" not in payload["answer"]
+
+
+def test_ai_chat_general_question_uses_openai_answer_with_tracking_notice(
+    client,
+    make_user,
+    auth_headers,
+    monkeypatch,
+):
+    """Verify successful general chat returns the provider answer plus tracking notice."""
+
+    class SuccessfulGeneralProvider:
+        """Fake provider for deterministic general chat tests."""
+
+        name = "openai"
+        last_call_metadata = {
+            "provider": "openai",
+            "workflow": "general_chat",
+            "model": "test-general-model",
+        }
+
+        def answer_general_question(self, question):
+            """Return a deterministic provider answer."""
+            return "## Antwort\n- **Kurz:** Tokio"
+
+    user = make_user(username="ai_openai_general_user")
+    monkeypatch.setattr(
+        "app.ai.services.get_ai_provider",
+        lambda: SuccessfulGeneralProvider(),
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Was ist die Hauptstadt von Japan?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "general_chat"
+    assert payload["diagnostics"]["status"] == "openai_used"
+    assert payload["answer"].count("protokolliert") == 1
+    assert "Tokio" in payload["answer"]
+    assert "Lokaler Fallback" not in payload["answer"]
+
+
+def test_ai_chat_general_fallback_explains_missing_openai_key(
+    app,
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify general chat reacts clearly when OpenAI is selected without a key."""
+    user = make_user(username="ai_missing_key_chat_user")
+    app.config["AI_PROVIDER"] = "openai"
+    app.config["OPENAI_API_KEY"] = ""
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Was ist die Hauptstadt von Japan?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "general_chat"
+    assert payload["diagnostics"]["status"] == "api_key_missing"
+    assert payload["diagnostics"]["fallback_used"] is True
+    assert "OPENAI_API_KEY" in payload["answer"]
+    assert payload["answer"].count("protokolliert") == 1
+    assert "Lokaler Fallback" not in payload["answer"]
+    assert "Quelle:" not in payload["answer"]
+
+
+def test_ai_chat_general_openai_error_returns_short_tracked_message(
+    client,
+    make_user,
+    auth_headers,
+    monkeypatch,
+):
+    """Verify provider failures do not create duplicate visible fallback text."""
+
+    class FailingGeneralProvider:
+        """Fake provider that simulates an OpenAI text failure."""
+
+        name = "openai"
+        last_call_metadata = {
+            "provider": "openai",
+            "workflow": "general_chat",
+            "model": "test-general-model",
+        }
+
+        def answer_general_question(self, question):
+            """Raise the provider error expected by the chat service."""
+            raise AIServiceError("provider failed")
+
+    user = make_user(username="ai_openai_error_general_user")
+    monkeypatch.setattr(
+        "app.ai.services.get_ai_provider",
+        lambda: FailingGeneralProvider(),
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Wie ist das Wetter heute?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "general_chat"
+    assert payload["diagnostics"]["status"] == "openai_error"
+    assert payload["diagnostics"]["fallback_used"] is True
+    assert payload["answer"].count("protokolliert") == 1
+    assert "OpenAI ist gerade nicht erreichbar" in payload["answer"]
+    assert "Lokaler Fallback" not in payload["answer"]
+    assert "Quelle:" not in payload["answer"]
+
+
+def test_ai_chat_general_model_error_is_diagnosed(
+    client,
+    make_user,
+    auth_headers,
+    monkeypatch,
+):
+    """Verify unavailable models are exposed as a precise safe diagnostic."""
+
+    class ModelErrorProvider:
+        """Fake provider that simulates a model access error."""
+
+        name = "openai"
+        last_call_metadata = {
+            "provider": "openai",
+            "workflow": "general_chat",
+            "model": "blocked-model",
+        }
+
+        def answer_general_question(self, question):
+            """Raise a model diagnostic error."""
+            raise AIServiceError("provider failed", error_code="model_not_found")
+
+    user = make_user(username="ai_model_error_general_user")
+    monkeypatch.setattr(
+        "app.ai.services.get_ai_provider",
+        lambda: ModelErrorProvider(),
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Was ist ein User?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "general_chat"
+    assert payload["diagnostics"]["status"] == "openai_error"
+    assert payload["diagnostics"]["error"] == "model_not_found"
+    assert "Modell" in payload["answer"]
+    assert payload["answer"].count("protokolliert") == 1
+
+
 def test_admin_ai_summary_is_admin_only(
     client,
     make_user,
@@ -319,6 +503,21 @@ def test_ai_workflow_routing_uses_balanced_defaults(app):
     assert chat_profile.max_tokens == 750
     assert quality_profile.model == "quality-test-model"
     assert quality_profile.tier == "quality"
+
+
+def test_ai_workflow_routing_falls_back_to_configured_model(app):
+    """Verify missing tier overrides use the configured base model."""
+    with app.app_context():
+        for key in ("OPENAI_MODEL_FAST", "OPENAI_MODEL_BALANCED", "OPENAI_MODEL_QUALITY"):
+            app.config.pop(key, None)
+
+        task_profile = workflow_profile("task_suggestion")
+        chat_profile = workflow_profile("chat")
+        quality_profile = workflow_profile("quality_analysis")
+
+    assert task_profile.model == "test-model"
+    assert chat_profile.model == "test-model"
+    assert quality_profile.model == "test-model"
 
 
 def test_ai_audit_stores_usage_metrics_without_content(app, monkeypatch):
@@ -514,13 +713,19 @@ def test_dashboard_contains_daily_briefing_and_priority_ui(client):
     assert response.status_code == 200
     assert script_response.status_code == 200
     assert chat_response.status_code == 200
-    assert 'data-daily-briefing-list' in html
-    assert 'data-dashboard-priority-list' in html
-    assert 'data-chat-suggestions' in html
+    assert "data-daily-briefing-list" in html
+    assert "data-dashboard-priority-list" in html
+    assert "data-chat-suggestions" in html
     assert "Briefing konnte nicht geladen werden." in script
     assert "KI-Priorisierung" in script
     assert "maintenance_ai_action_preview" in script
     assert "responseData && responseData.answer" in chat_script
+    assert 'data.type === "general_chat"' in chat_script
+    assert '!isGeneralChat && diagnostics.status === "api_key_missing"' in chat_script
+    assert "!isGeneralChat && diagnostics.fallback_used" in chat_script
+    assert "openAIErrorLabel" in chat_script
+    assert "model_not_found" in chat_script
+    assert "OpenAI-Rate-Limit erreicht" in chat_script
     assert "chatSuggestionsForUser" in chat_script
     assert "suggestions.hidden = true" in chat_script
 
@@ -874,8 +1079,8 @@ def test_documents_page_contains_review_ui(client):
     script = script_response.get_data(as_text=True)
 
     assert page_response.status_code == 200
-    assert 'data-document-review-panel' in html
-    assert 'data-document-review-findings' in html
+    assert "data-document-review-panel" in html
+    assert "data-document-review-findings" in html
     assert 'actionButton("Pruefen"' in script
 
 
@@ -954,8 +1159,7 @@ def _write_report(app, document_id, rows):
     with app.app_context():
         document = db.session.get(GeneratedDocument, document_id)
         table_rows = "\n".join(
-            f"<tr><th>{label}</th><td>{value}</td></tr>"
-            for label, value in rows.items()
+            f"<tr><th>{label}</th><td>{value}</td></tr>" for label, value in rows.items()
         )
         document_path(document).write_text(
             f"<html><body><table>{table_rows}</table></body></html>",

@@ -1,3 +1,5 @@
+"""Admin API routes for user and audit management."""
+
 from flask import Blueprint, jsonify, request
 
 from app.auth.services import find_department, parse_role
@@ -12,8 +14,44 @@ from app.responses import error_response
 from app.security import roles_required
 from app.services.ai_audit_service import ai_analytics_summary
 
-
 admin_bp = Blueprint("admin", __name__)
+
+
+def parse_optional_bool(value, default=True):
+    """Parse optional JSON booleans and common string values."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "off"}:
+            return False
+    raise ValueError("is_active must be a boolean")
+
+
+def find_user_conflict(username=None, email=None, exclude_user_id=None):
+    """Return an existing user with the same username or email, if any."""
+    filters = []
+    if username:
+        filters.append(User.username == username)
+    if email:
+        filters.append(User.email == email)
+    if not filters:
+        return None
+
+    query = User.query.filter(db.or_(*filters))
+    if exclude_user_id is not None:
+        query = query.filter(User.id != exclude_user_id)
+    return query.first()
+
+
+def validate_user_department(role, department):
+    """Raise when a non-admin user has no department assignment."""
+    if role != Role.MASTER_ADMIN and not department:
+        raise ValueError("department_id or department is required")
 
 
 def find_employee(employee_id):
@@ -22,8 +60,8 @@ def find_employee(employee_id):
         return None
     try:
         parsed_employee_id = int(employee_id)
-    except (TypeError, ValueError):
-        raise ValueError("employee_id must be a valid employee id")
+    except (TypeError, ValueError) as exc:
+        raise ValueError("employee_id must be a valid employee id") from exc
     employee = db.session.get(Employee, parsed_employee_id)
     if not employee:
         raise ValueError("employee_id does not reference an existing employee")
@@ -40,9 +78,7 @@ def list_users():
 
     query = User.query
     if q:
-        query = query.filter(
-            db.or_(User.username.ilike(f"%{q}%"), User.email.ilike(f"%{q}%"))
-        )
+        query = query.filter(db.or_(User.username.ilike(f"%{q}%"), User.email.ilike(f"%{q}%")))
     if role_param:
         try:
             query = query.filter(User.role == Role(role_param))
@@ -80,10 +116,7 @@ def create_user():
     if missing:
         return error_response(f"Missing fields: {', '.join(missing)}", 400)
 
-    existing_user = User.query.filter(
-        (User.username == data["username"]) | (User.email == data["email"])
-    ).first()
-    if existing_user:
+    if find_user_conflict(data["username"], data["email"]):
         return error_response("Username or email already exists", 409)
 
     try:
@@ -92,20 +125,21 @@ def create_user():
         return error_response(str(exc), 400)
 
     department = find_department(data.get("department_id"), data.get("department"))
-    if role != Role.MASTER_ADMIN and not department:
-        return error_response("department_id or department is required", 400)
+    try:
+        validate_user_department(role, department)
+        is_active = parse_optional_bool(data.get("is_active"), default=True)
+        employee = find_employee(data.get("employee_id"))
+    except ValueError as exc:
+        return error_response(str(exc), 400)
 
     user = User(
         username=data["username"],
         email=data["email"],
         role=role,
         department=department,
-        is_active=bool(data.get("is_active", True)),
+        is_active=is_active,
     )
-    try:
-        user.employee = find_employee(data.get("employee_id"))
-    except ValueError as exc:
-        return error_response(str(exc), 400)
+    user.employee = employee
     user.set_password(data["password"])
     db.session.add(user)
     db.session.flush()
@@ -118,27 +152,46 @@ def create_user():
 @roles_required(Role.MASTER_ADMIN)
 def update_user(user_id):
     """Update a user account and fill missing default permissions."""
-    user = User.query.get_or_404(user_id)
+    user = db.get_or_404(User, user_id)
     data = request.get_json(silent=True) or {}
 
-    if "username" in data:
-        user.username = data["username"]
-    if "email" in data:
-        user.email = data["email"]
+    username = data.get("username", user.username)
+    email = data.get("email", user.email)
+    if find_user_conflict(username, email, exclude_user_id=user.id):
+        return error_response("Username or email already exists", 409)
+
+    role = user.role
     if "role" in data:
         try:
-            user.role = parse_role(data["role"])
+            role = parse_role(data["role"])
         except ValueError as exc:
             return error_response(str(exc), 400)
+    department = user.department
     if "department_id" in data or "department" in data:
-        user.department = find_department(data.get("department_id"), data.get("department"))
+        department = find_department(data.get("department_id"), data.get("department"))
+    is_active = user.is_active
+    if "is_active" in data:
+        try:
+            is_active = parse_optional_bool(data["is_active"])
+        except ValueError as exc:
+            return error_response(str(exc), 400)
+    employee = user.employee
     if "employee_id" in data:
         try:
-            user.employee = find_employee(data.get("employee_id"))
+            employee = find_employee(data.get("employee_id"))
         except ValueError as exc:
             return error_response(str(exc), 400)
-    if "is_active" in data:
-        user.is_active = bool(data["is_active"])
+    try:
+        validate_user_department(role, department)
+    except ValueError as exc:
+        return error_response(str(exc), 400)
+
+    user.username = username
+    user.email = email
+    user.role = role
+    user.department = department
+    user.employee = employee
+    user.is_active = is_active
 
     upsert_default_permissions(user)
     db.session.commit()
@@ -149,7 +202,7 @@ def update_user(user_id):
 @roles_required(Role.MASTER_ADMIN)
 def get_user_permissions(user_id):
     """Return effective dashboard permissions for a user."""
-    user = User.query.get_or_404(user_id)
+    user = db.get_or_404(User, user_id)
     return jsonify(serialize_permissions(user))
 
 
@@ -157,7 +210,7 @@ def get_user_permissions(user_id):
 @roles_required(Role.MASTER_ADMIN)
 def update_user_permissions(user_id):
     """Replace dashboard permissions for a user."""
-    user = User.query.get_or_404(user_id)
+    user = db.get_or_404(User, user_id)
     data = request.get_json(silent=True) or {}
     try:
         replace_user_permissions(user, data)
@@ -171,7 +224,7 @@ def update_user_permissions(user_id):
 @roles_required(Role.MASTER_ADMIN)
 def reset_password(user_id):
     """Reset a user's password."""
-    user = User.query.get_or_404(user_id)
+    user = db.get_or_404(User, user_id)
     password = (request.get_json(silent=True) or {}).get("password")
     if not password:
         return error_response("password is required", 400)
@@ -184,7 +237,7 @@ def reset_password(user_id):
 @roles_required(Role.MASTER_ADMIN)
 def lock_user(user_id):
     """Lock a user account."""
-    user = User.query.get_or_404(user_id)
+    user = db.get_or_404(User, user_id)
     user.is_active = False
     db.session.commit()
     return jsonify(user.to_dict())
@@ -194,7 +247,7 @@ def lock_user(user_id):
 @roles_required(Role.MASTER_ADMIN)
 def unlock_user(user_id):
     """Unlock a user account."""
-    user = User.query.get_or_404(user_id)
+    user = db.get_or_404(User, user_id)
     user.is_active = True
     db.session.commit()
     return jsonify(user.to_dict())
@@ -204,7 +257,7 @@ def unlock_user(user_id):
 @roles_required(Role.MASTER_ADMIN)
 def delete_user(user_id):
     """Delete a user account."""
-    user = User.query.get_or_404(user_id)
+    user = db.get_or_404(User, user_id)
     db.session.delete(user)
     db.session.commit()
     return "", 204

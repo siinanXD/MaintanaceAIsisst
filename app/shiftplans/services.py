@@ -1,3 +1,5 @@
+"""Shift planning generation and validation services."""
+
 import json
 import logging
 from datetime import date, datetime, timedelta
@@ -10,7 +12,6 @@ from app.models import Employee, Machine, ShiftPlan, ShiftPlanEntry
 from app.permissions import has_employee_access
 from app.services.ai_prompting import build_json_prompt, json_system_prompt
 from app.services.ai_routing import openai_client_options, workflow_profile
-
 
 SHIFT_WINDOWS = {
     "Frueh": ("06:00", "14:00"),
@@ -54,8 +55,7 @@ def parse_days(value):
 def department_employees(department):
     """Return employees assigned to a given department for shift planning."""
     return (
-        Employee.query
-        .filter(Employee.department.ilike(f"%{department}%"))
+        Employee.query.filter(Employee.department.ilike(f"%{department}%"))
         .order_by(Employee.team.asc(), Employee.name.asc())
         .all()
     )
@@ -140,7 +140,11 @@ def local_shift_entries(start_date, days, rhythm, employees, machines, unavailab
                 start_time, end_time = SHIFT_WINDOWS[shift]
                 for _ in range(required):
                     employee = _pick_fairest_employee(
-                        employees, shift_count, work_date, unavailable, assigned_today,
+                        employees,
+                        shift_count,
+                        work_date,
+                        unavailable,
+                        assigned_today,
                     )
                     if not employee:
                         warnings.append(
@@ -177,8 +181,7 @@ def _pick_fairest_employee(employees, shift_count, work_date, unavailable, assig
     """Return the available employee with the fewest shifts assigned so far."""
     blocked = unavailable.get(work_date, set())
     candidates = [
-        emp for emp in employees
-        if emp.id not in blocked and emp.id not in assigned_today
+        emp for emp in employees if emp.id not in blocked and emp.id not in assigned_today
     ]
     if not candidates:
         return None
@@ -317,14 +320,16 @@ def validate_arbzg(entries):
             week_key = work_date.isocalendar()[:2]
             weekly_hours[week_key] = weekly_hours.get(week_key, 0) + duration
             if weekly_hours[week_key] > 48:
-                warnings.append({
-                    "type": "arbzg_weekly_hours",
-                    "severity": "warning",
-                    "message": (
-                        f"Mitarbeiter {emp_id}: {weekly_hours[week_key]:.0f}h in KW "
-                        f"{week_key[1]} — Richtwert 48h/Woche ueberschritten (ArbZG §3)."
-                    ),
-                })
+                warnings.append(
+                    {
+                        "type": "arbzg_weekly_hours",
+                        "severity": "warning",
+                        "message": (
+                            f"Mitarbeiter {emp_id}: {weekly_hours[week_key]:.0f}h in KW "
+                            f"{week_key[1]} — Richtwert 48h/Woche ueberschritten (ArbZG §3)."
+                        ),
+                    }
+                )
 
             # SOFT: 6 consecutive working days (ArbZG §9 — Ausnahmen per Tarifvertrag moeglich)
             if prev_date is not None and (work_date - prev_date).days == 1:
@@ -332,14 +337,16 @@ def validate_arbzg(entries):
             else:
                 consecutive = 1
             if consecutive > 6:
-                warnings.append({
-                    "type": "arbzg_consecutive_days",
-                    "severity": "warning",
-                    "message": (
-                        f"Mitarbeiter {emp_id}: {consecutive} aufeinanderfolgende "
-                        f"Arbeitstage bis {work_date.isoformat()} (Empfehlung: max. 6)."
-                    ),
-                })
+                warnings.append(
+                    {
+                        "type": "arbzg_consecutive_days",
+                        "severity": "warning",
+                        "message": (
+                            f"Mitarbeiter {emp_id}: {consecutive} aufeinanderfolgende "
+                            f"Arbeitstage bis {work_date.isoformat()} (Empfehlung: max. 6)."
+                        ),
+                    }
+                )
 
             prev_end_dt = end_dt
             prev_date = work_date
@@ -530,10 +537,7 @@ def detect_qualification_warnings(entries, employee_by_id, machine_by_id):
 
 def detect_vacation_assignment_warnings(entries, vacation_entries, employee_by_id):
     """Return warnings when a vacation day still contains working entries."""
-    vacation_days = {
-        (entry["employee_id"], entry["work_date"])
-        for entry in vacation_entries
-    }
+    vacation_days = {(entry["employee_id"], entry["work_date"]) for entry in vacation_entries}
     warnings = []
     for entry in entries:
         if normalize_shift_name(entry.get("shift")) == "Urlaub":
@@ -632,21 +636,18 @@ def openai_shift_entries(start_date, days, rhythm, preferences, employees, machi
         },
         rules=[
             "Plane nur Mitarbeitende aus der Produktion.",
-            (
-                "Beruecksichtige Rhythmus, Praeferenzen, "
-                "Qualifikationen und Lieblingsmaschine."
-            ),
+            ("Beruecksichtige Rhythmus, Praeferenzen, " "Qualifikationen und Lieblingsmaschine."),
             "Nutze pro Maschine die benoetigte Mitarbeiterzahl.",
             (
                 "Arbeitszeitgesetz: maximal 8 Stunden pro Schicht und "
                 "mindestens 11 Stunden Ruhezeit zwischen Schichten."
             ),
             (
-                "Antwortformat: {\"notes\":\"...\", \"entries\":["
-                "{\"employee_id\":1,\"machine_id\":1,"
-                "\"work_date\":\"YYYY-MM-DD\",\"shift\":\"Frueh\","
-                "\"start_time\":\"06:00\",\"end_time\":\"14:00\","
-                "\"notes\":\"...\"}]}"
+                'Antwortformat: {"notes":"...", "entries":['
+                '{"employee_id":1,"machine_id":1,'
+                '"work_date":"YYYY-MM-DD","shift":"Frueh",'
+                '"start_time":"06:00","end_time":"14:00",'
+                '"notes":"..."}]}'
             ),
         ],
     )
@@ -683,6 +684,7 @@ def generate_shift_plan(data, user=None):
     Args:
         data: Parsed JSON request body.
         user: The User object of the requesting user (for audit trail).
+
     """
     department = (data.get("department") or "").strip()
     if not department:
@@ -714,29 +716,36 @@ def generate_shift_plan(data, user=None):
     # Auto-import approved vacation requests for this period
     try:
         from app.models import VacationRequest
+
         employee_ids = [e.id for e in employees]
         period_end = start_date + timedelta(days=days - 1)
         approved_vrs = VacationRequest.query.filter(
             VacationRequest.employee_id.in_(employee_ids),
             VacationRequest.status == "approved",
             VacationRequest.start_date <= period_end,
-            VacationRequest.end_date   >= start_date,
+            VacationRequest.end_date >= start_date,
         ).all()
         for vr in approved_vrs:
             d = max(vr.start_date, start_date)
             while d <= min(vr.end_date, period_end):
                 if d.weekday() < 5:
                     key = (vr.employee_id, d)
-                    if key not in {(e["employee_id"], e["work_date"]) for e in vacation_entries if isinstance(e["work_date"], type(d))}:
-                        vacation_entries.append({
-                            "employee_id": vr.employee_id,
-                            "machine_id": None,
-                            "work_date": d,
-                            "shift": "Urlaub",
-                            "start_time": "",
-                            "end_time": "",
-                            "notes": f"Genehmigter Urlaub (Antrag #{vr.id})",
-                        })
+                    if key not in {
+                        (e["employee_id"], e["work_date"])
+                        for e in vacation_entries
+                        if isinstance(e["work_date"], type(d))
+                    }:
+                        vacation_entries.append(
+                            {
+                                "employee_id": vr.employee_id,
+                                "machine_id": None,
+                                "work_date": d,
+                                "shift": "Urlaub",
+                                "start_time": "",
+                                "end_time": "",
+                                "notes": f"Genehmigter Urlaub (Antrag #{vr.id})",
+                            }
+                        )
                         unavailable.setdefault(d, set()).add(vr.employee_id)
                 d += timedelta(days=1)
     except Exception:
@@ -791,9 +800,7 @@ def generate_shift_plan(data, user=None):
     employee_by_id = {employee.id: employee for employee in employees}
     warnings.extend(planning_warnings)
     warnings.extend(arbzg_warnings)
-    warnings.extend(
-        detect_vacation_assignment_warnings(entries, vacation_entries, employee_by_id)
-    )
+    warnings.extend(detect_vacation_assignment_warnings(entries, vacation_entries, employee_by_id))
 
     plan = ShiftPlan(
         title=title,
@@ -828,13 +835,17 @@ def calendar_entries_for_user(user, employee_id=None, start_date=None, days=14, 
 
     if not target_employee_id:
         if not user.employee_id:
-            return {
-                "employee": None,
-                "start_date": parsed_start_date.isoformat(),
-                "days": parsed_days,
-                "entries": [],
-                "message": "Kein Mitarbeiter mit diesem Benutzer verknuepft.",
-            }, None, 200
+            return (
+                {
+                    "employee": None,
+                    "start_date": parsed_start_date.isoformat(),
+                    "days": parsed_days,
+                    "entries": [],
+                    "message": "Kein Mitarbeiter mit diesem Benutzer verknuepft.",
+                },
+                None,
+                200,
+            )
         target_employee_id = user.employee_id
 
     if not can_read_calendar_for_employee(user, target_employee_id):
@@ -861,10 +872,7 @@ def calendar_entries_for_user(user, employee_id=None, start_date=None, days=14, 
         ShiftPlanEntry.start_time.asc(),
         ShiftPlanEntry.id.asc(),
     ).all()
-    payload_entries = [
-        calendar_entry_payload(entry)
-        for entry in entries
-    ]
+    payload_entries = [calendar_entry_payload(entry) for entry in entries]
     occupied_dates = {entry.work_date for entry in entries}
     for day_offset in range(parsed_days):
         current_date = parsed_start_date + timedelta(days=day_offset)
@@ -873,12 +881,16 @@ def calendar_entries_for_user(user, employee_id=None, start_date=None, days=14, 
         payload_entries.append(free_day_payload(current_date))
 
     payload_entries.sort(key=lambda item: (item["work_date"], item["start_time"]))
-    return {
-        "employee": employee.to_dict("basic"),
-        "start_date": parsed_start_date.isoformat(),
-        "days": parsed_days,
-        "entries": payload_entries,
-    }, None, 200
+    return (
+        {
+            "employee": employee.to_dict("basic"),
+            "start_date": parsed_start_date.isoformat(),
+            "days": parsed_days,
+            "entries": payload_entries,
+        },
+        None,
+        200,
+    )
 
 
 def can_read_calendar_for_employee(user, employee_id):

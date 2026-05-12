@@ -1,3 +1,5 @@
+"""Tests for logging helpers."""
+
 import logging
 
 from app.core.logging import safe_identifier

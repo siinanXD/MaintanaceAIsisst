@@ -1,3 +1,5 @@
+"""Logging setup and request logging hooks."""
+
 import hashlib
 import logging
 import time
@@ -5,7 +7,6 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from flask import g, request
-
 
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s %(message)s"
 LOG_DATE_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
@@ -56,9 +57,7 @@ def configure_logging(app):
 def _replace_app_handlers(logger, handlers):
     """Replace previously configured maintenance handlers without duplicates."""
     old_maintenance_handlers = [
-        handler
-        for handler in logger.handlers
-        if getattr(handler, "_maintenance_handler", False)
+        handler for handler in logger.handlers if getattr(handler, "_maintenance_handler", False)
     ]
     existing_handlers = [
         handler

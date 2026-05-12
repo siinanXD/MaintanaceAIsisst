@@ -1,13 +1,13 @@
-"""add ai audit events
+"""Add AI audit events.
 
 Revision ID: 9b2d7e8f4a31
 Revises: 1645029b9eea
 Create Date: 2026-05-11 00:00:00.000000
 
 """
-from alembic import op
-import sqlalchemy as sa
 
+import sqlalchemy as sa
+from alembic import op
 
 revision = "9b2d7e8f4a31"
 down_revision = "1645029b9eea"

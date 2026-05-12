@@ -1,5 +1,7 @@
+"""Document generation, parsing, and review services."""
+
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from html import escape
 from html.parser import HTMLParser
 from pathlib import Path
@@ -9,7 +11,6 @@ from flask import current_app
 from app.extensions import db
 from app.models import GeneratedDocument, Machine, Role
 from app.services.ai_service import AIServiceError, get_ai_provider
-
 
 ALLOWED_CHECK_EXTENSIONS = {".html", ".htm", ".txt"}
 
@@ -121,9 +122,13 @@ def review_uploaded_document(file_storage):
     filename = Path(file_storage.filename).name
     extension = Path(filename).suffix.lower()
     if extension not in ALLOWED_CHECK_EXTENSIONS:
-        return None, {
-            "error": "file type not supported; use html, htm or txt",
-        }, 400
+        return (
+            None,
+            {
+                "error": "file type not supported; use html, htm or txt",
+            },
+            400,
+        )
 
     try:
         raw_content = file_storage.read()
@@ -258,21 +263,6 @@ def normalize_uploaded_document_review(provider_review, metadata):
     }
 
 
-def normalize_uploaded_document_review(provider_review, metadata):
-    """Normalize a provider review for uploaded documents."""
-    provider_review = provider_review or {}
-    score = clamp_score(provider_review.get("quality_score"))
-    return {
-        "document": metadata,
-        "quality_score": score,
-        "status": valid_review_status(provider_review.get("status"), score),
-        "findings": normalize_findings(provider_review.get("findings")),
-        "recommendations": normalize_recommendations(
-            provider_review.get("recommendations"),
-        ),
-    }
-
-
 def parse_report_fields(html_text):
     """Extract report table fields from generated HTML."""
     parser = ReportTableParser()
@@ -307,19 +297,6 @@ def canonical_report_field(value):
     """Return the canonical report field name for a user-facing label."""
     key = " ".join(str(value or "").strip().lower().split())
     return REPORT_FIELD_ALIASES.get(key)
-
-
-def fields_from_plain_text(text):
-    """Extract known document fields from line-oriented plain text."""
-    fields = {}
-    for line in str(text or "").splitlines():
-        if ":" not in line:
-            continue
-        key, value = line.split(":", 1)
-        normalized_key = " ".join(key.strip().split())
-        if normalized_key in REVIEW_REQUIRED_FIELDS:
-            fields[normalized_key] = value.strip()
-    return fields
 
 
 def review_field(field_name, value):
@@ -468,7 +445,7 @@ class ReportTableParser(HTMLParser):
 def generate_maintenance_report(task, user, payload=None):
     """Generate and persist an HTML maintenance report for a completed task."""
     payload = payload or {}
-    created_at = datetime.now(timezone.utc)
+    created_at = datetime.now(UTC)
     relative_dir = Path(
         str(created_at.year),
         f"{created_at.month:02d}",

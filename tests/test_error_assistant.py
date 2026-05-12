@@ -1,5 +1,4 @@
-"""
-Tests for POST /api/v1/ai/error-assistant.
+"""Tests for POST /api/v1/ai/error-assistant.
 
 Covers: auth guard, input validation, response shape, local search,
 error-code extraction, department scoping, limit parameter, and
@@ -7,7 +6,6 @@ empty-catalog behaviour.
 """
 
 from app.models import Role
-
 
 # ---------------------------------------------------------------------------
 # Auth
@@ -131,9 +129,7 @@ def test_error_assistant_empty_catalog(client, make_user, auth_headers):
 # ---------------------------------------------------------------------------
 
 
-def test_error_assistant_finds_matching_entry(
-    client, make_user, make_error_entry, auth_headers
-):
+def test_error_assistant_finds_matching_entry(client, make_user, make_error_entry, auth_headers):
     """A query matching catalog content must return causes and fixes from that entry."""
     user = make_user(
         username="ea_match_user",
@@ -165,9 +161,7 @@ def test_error_assistant_finds_matching_entry(
     assert any("schmieren" in f or "austauschen" in f for f in data["fixes"])
 
 
-def test_error_assistant_extracts_error_code(
-    client, make_user, make_error_entry, auth_headers
-):
+def test_error_assistant_extracts_error_code(client, make_user, make_error_entry, auth_headers):
     """Error codes like F007 must be extracted and reflected in diagnostics."""
     user = make_user(
         username="ea_code_user",
@@ -195,9 +189,7 @@ def test_error_assistant_extracts_error_code(
     assert data["diagnostics"]["match_count"] > 0
 
 
-def test_error_assistant_extracts_machine_name(
-    client, make_user, make_error_entry, auth_headers
-):
+def test_error_assistant_extracts_machine_name(client, make_user, make_error_entry, auth_headers):
     """Machine references like 'Anlage 7' must be extracted and used in search."""
     user = make_user(username="ea_machine_user")
     make_error_entry(
@@ -225,9 +217,7 @@ def test_error_assistant_extracts_machine_name(
 # ---------------------------------------------------------------------------
 
 
-def test_error_assistant_respects_limit(
-    client, make_user, make_error_entry, auth_headers
-):
+def test_error_assistant_respects_limit(client, make_user, make_error_entry, auth_headers):
     """The limit parameter must cap the number of returned matches."""
     user = make_user(
         username="ea_limit_user",
@@ -260,9 +250,7 @@ def test_error_assistant_respects_limit(
 # ---------------------------------------------------------------------------
 
 
-def test_error_assistant_scopes_to_department(
-    client, make_user, make_error_entry, auth_headers
-):
+def test_error_assistant_scopes_to_department(client, make_user, make_error_entry, auth_headers):
     """Users must not see error catalog entries from another department."""
     # Create the IT department by registering an IT user first
     make_user(username="ea_it_owner", role=Role.IT, department_name="IT")

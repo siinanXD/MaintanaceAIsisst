@@ -1,3 +1,5 @@
+"""Task API routes."""
+
 from datetime import date
 
 from flask import Blueprint, jsonify, request
@@ -20,7 +22,6 @@ from app.services.task_service import (
     visible_tasks_query,
 )
 from app.services.workflow_service import complete_task_workflow
-
 
 tasks_bp = Blueprint("tasks", __name__)
 
@@ -103,7 +104,7 @@ def today_tasks():
 @dashboard_permission_required("tasks", "view")
 def get_task(task_id):
     """Return a visible task by id."""
-    task = Task.query.get_or_404(task_id)
+    task = db.get_or_404(Task, task_id)
     if not same_department_or_admin(task):
         return error_response("Forbidden", 403)
     return jsonify(task.to_dict())
@@ -113,7 +114,7 @@ def get_task(task_id):
 @dashboard_permission_required("tasks", "write")
 def edit_task(task_id):
     """Update a visible task."""
-    task = Task.query.get_or_404(task_id)
+    task = db.get_or_404(Task, task_id)
     if not same_department_or_admin(task):
         return error_response("Forbidden", 403)
     updated, error, status = update_task(task, request.get_json(silent=True) or {}, current_user())
@@ -165,7 +166,7 @@ def complete_task_endpoint(task_id):
 @dashboard_permission_required("tasks", "write")
 def delete_task_endpoint(task_id):
     """Delete a visible task."""
-    task = Task.query.get_or_404(task_id)
+    task = db.get_or_404(Task, task_id)
     if not same_department_or_admin(task):
         return error_response("Forbidden", 403)
     _, error, status = delete_task(task)

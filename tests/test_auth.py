@@ -1,3 +1,5 @@
+"""Tests for authentication workflows."""
+
 from app.models import Role
 
 

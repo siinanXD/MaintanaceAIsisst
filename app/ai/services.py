@@ -1,13 +1,14 @@
+"""AI orchestration services for permission-aware workflows."""
+
 import logging
 import re
 from datetime import date, timedelta
-from sqlalchemy.exc import SQLAlchemyError
 
 from flask import current_app
+from sqlalchemy.exc import SQLAlchemyError
 
-from app.services.error_service import search_errors
-from app.inventory.services import forecast_inventory_risks
 from app.extensions import db
+from app.inventory.services import forecast_inventory_risks
 from app.models import (
     ChatMessage,
     Employee,
@@ -21,17 +22,17 @@ from app.models import (
     User,
 )
 from app.security import employee_access_level, has_dashboard_permission
+from app.services.ai_audit_service import ai_analytics_summary, create_ai_audit_event
 from app.services.ai_prompting import (
     permission_denied_answer,
     permission_denied_context,
 )
-from app.services.document_service import visible_documents_query
-from app.services.ai_audit_service import ai_analytics_summary, create_ai_audit_event
 from app.services.ai_retrieval import allowed_ai_scopes, retrieve_ai_context
 from app.services.ai_routing import local_metadata, workflow_profile
 from app.services.ai_service import AIServiceError, MockAIProvider, get_ai_provider
+from app.services.document_service import visible_documents_query
+from app.services.error_service import search_errors
 from app.services.task_service import visible_tasks_query
-
 
 LAST_OPENAI_ERROR = None
 OPENAI_PROVIDER = "OpenAI"
@@ -85,6 +86,48 @@ COUNT_WORDS = [
     "many",
 ]
 
+GENERAL_KNOWLEDGE_PREFIXES = (
+    "was ist",
+    "was bedeutet",
+    "wie funktioniert",
+    "warum",
+    "wer ist",
+    "erklaere",
+    "erkläre",
+    "what is",
+    "how does",
+    "why",
+)
+
+APP_DATA_INTENT_PHRASES = (
+    "bei uns",
+    "im system",
+    "in der app",
+    "in unserer datenbank",
+    "meine",
+    "mein",
+    "unsere",
+    "unser",
+    "sichtbar",
+    "vorhanden",
+    "angelegt",
+    "offen",
+    "heute",
+    "morgen",
+    "anstehend",
+    "zeige",
+    "liste",
+    "auflisten",
+    "anzeigen",
+    "gibt es",
+    "erstellen",
+    "anlegen",
+    "loeschen",
+    "löschen",
+    "aendern",
+    "ändern",
+)
+
 
 def looks_like_today_tasks_question(message):
     """Check whether a message asks for today's visible tasks."""
@@ -127,9 +170,8 @@ def looks_like_employee_count_question(message):
     """Check whether a message asks for the number of employees."""
     text = message.lower()
     employee_words = ["mitarbeiter", "personal", "employees"]
-    return (
-        any(word in text for word in COUNT_WORDS)
-        and any(word in text for word in employee_words)
+    return any(word in text for word in COUNT_WORDS) and any(
+        word in text for word in employee_words
     )
 
 
@@ -145,6 +187,18 @@ def looks_like_error_question(message):
     return bool(re.search(r"\b[A-Z]?\d{2,5}\b", message.upper())) or any(
         word in text for word in SCOPE_KEYWORDS["errors"]
     )
+
+
+def looks_like_general_knowledge_question(message):
+    """Return whether a scoped keyword is used as a general knowledge question."""
+    text = " ".join(str(message or "").lower().split())
+    if not any(text.startswith(prefix) for prefix in GENERAL_KNOWLEDGE_PREFIXES):
+        return False
+    if looks_like_count_question(text) or looks_like_today_tasks_question(text):
+        return False
+    if re.search(r"\b[A-Z]?\d{2,5}\b", str(message or "").upper()):
+        return False
+    return not any(phrase in text for phrase in APP_DATA_INTENT_PHRASES)
 
 
 def detect_requested_scopes(message):
@@ -249,12 +303,7 @@ def build_task_context(user):
     if not has_dashboard_permission(user, "tasks", "view"):
         return permission_denied_context("Tasks", "tasks")
 
-    tasks = (
-        visible_tasks_query(user)
-        .order_by(Task.due_date.asc(), Task.id.desc())
-        .limit(20)
-        .all()
-    )
+    tasks = visible_tasks_query(user).order_by(Task.due_date.asc(), Task.id.desc()).limit(20).all()
     if not tasks:
         return "Keine sichtbaren Tasks vorhanden."
     lines = []
@@ -360,10 +409,14 @@ def build_inventory_context(user):
     if not has_dashboard_permission(user, "inventory", "view"):
         return permission_denied_context("Lager", "inventory"), []
 
-    materials = InventoryMaterial.query.order_by(
-        InventoryMaterial.quantity.asc(),
-        InventoryMaterial.name.asc(),
-    ).limit(30).all()
+    materials = (
+        InventoryMaterial.query.order_by(
+            InventoryMaterial.quantity.asc(),
+            InventoryMaterial.name.asc(),
+        )
+        .limit(30)
+        .all()
+    )
     if not materials:
         return "Keine sichtbaren Lagerdaten vorhanden.", []
 
@@ -389,10 +442,7 @@ def build_document_context(user):
         return permission_denied_context("Dokumente", "documents"), []
 
     documents = (
-        visible_documents_query(user)
-        .order_by(GeneratedDocument.created_at.desc())
-        .limit(20)
-        .all()
+        visible_documents_query(user).order_by(GeneratedDocument.created_at.desc()).limit(20).all()
     )
     if not documents:
         return "Keine sichtbaren Dokumente vorhanden.", []
@@ -442,44 +492,13 @@ def build_shiftplan_context(user):
     return "\n".join(lines), [plan.to_dict(access_level) for plan in plans]
 
 
-def build_permission_aware_context(user, preferred_entries):
-    """Build all assistant context sections without exposing denied data."""
-    employee_context, employee_data = build_employee_context(user)
-    machine_context, machine_data = build_machine_context(user)
-    inventory_context, inventory_data = build_inventory_context(user)
-    document_context, document_data = build_document_context(user)
-    shiftplan_context, shiftplan_data = build_shiftplan_context(user)
-    context = (
-        f"Fehlerkatalog:\n{build_catalog_context(user, preferred_entries)}\n\n"
-        f"Tasks:\n{build_task_context(user)}\n\n"
-        f"Maschinen:\n{machine_context}\n\n"
-        f"Lager:\n{inventory_context}\n\n"
-        f"Dokumente:\n{document_context}\n\n"
-        f"Schichtplanung:\n{shiftplan_context}\n\n"
-        f"Mitarbeiterdaten:\n{employee_context}"
-    )
-    data = {
-        "errors": [entry.to_dict() for entry in preferred_entries],
-        "employees": employee_data,
-        "machines": machine_data,
-        "inventory": inventory_data,
-        "documents": document_data,
-        "shiftplans": shiftplan_data,
-    }
-    return context, data
-
-
 def format_employee_count(user):
     """Return a local answer for employee count questions."""
     if not can_read_employee_context(user):
         return permission_denied_answer("Mitarbeiter"), []
 
     count = Employee.query.count()
-    answer = (
-        "## Mitarbeiter\n"
-        f"- **Gesamt:** {count}\n"
-        "- **Quelle:** Mitarbeiterdatenbank"
-    )
+    answer = "## Mitarbeiter\n" f"- **Gesamt:** {count}\n" "- **Quelle:** Mitarbeiterdatenbank"
     return answer, {"count": count}
 
 
@@ -491,23 +510,25 @@ def format_module_count(user, scope):
         if not has_dashboard_permission(user, "admin_users", "view"):
             return permission_denied_answer("Admin Users", "admin_users"), []
         count = User.query.count()
-        return (
-            "## Admin Users\n"
-            f"- **Gesamt:** {count}\n"
-            "- **Quelle:** Nutzerverwaltung"
-        ), {"count": count}
+        return ("## Admin Users\n" f"- **Gesamt:** {count}\n" "- **Quelle:** Nutzerverwaltung"), {
+            "count": count
+        }
     if not has_dashboard_permission(user, scope, "view"):
         return permission_denied_answer(DASHBOARD_SCOPE_LABELS[scope], scope), []
 
     count_query_map = {
         "tasks": visible_tasks_query(user),
-        "errors": ErrorEntry.query if user.is_admin else ErrorEntry.query.filter(
+        "errors": ErrorEntry.query
+        if user.is_admin
+        else ErrorEntry.query.filter(
             ErrorEntry.department_id == user.department_id,
         ),
         "machines": Machine.query,
         "inventory": InventoryMaterial.query,
         "documents": visible_documents_query(user),
-        "shiftplans": ShiftPlan.query if user.is_admin else ShiftPlan.query.filter(
+        "shiftplans": ShiftPlan.query
+        if user.is_admin
+        else ShiftPlan.query.filter(
             ShiftPlan.status == "published",
         ),
     }
@@ -516,11 +537,7 @@ def format_module_count(user, scope):
         return None, None
     count = query.count()
     label = DASHBOARD_SCOPE_LABELS[scope]
-    answer = (
-        f"## {label}\n"
-        f"- **Gesamt:** {count}\n"
-        f"- **Quelle:** {label}"
-    )
+    answer = f"## {label}\n" f"- **Gesamt:** {count}\n" f"- **Quelle:** {label}"
     return answer, {"count": count}
 
 
@@ -549,17 +566,24 @@ def answer_count_question(message, user, requested_scopes, allowed_scopes):
     if answer is None:
         return None
     status = "local_answer" if data else "permission_denied"
-    return attach_audit_metadata(user, {
-        "type": f"{scope}_count" if data else "permission_denied",
-        "answer": answer,
-        "diagnostics": ai_diagnostics(status),
-        "data": data or [],
-        "sources": [],
-    }, requested_scopes or {scope}, allowed_scopes)
+    return attach_audit_metadata(
+        user,
+        {
+            "type": f"{scope}_count" if data else "permission_denied",
+            "answer": answer,
+            "diagnostics": ai_diagnostics(status),
+            "data": data or [],
+            "sources": [],
+        },
+        requested_scopes or {scope},
+        allowed_scopes,
+    )
 
 
 def should_use_general_hybrid_mode(message, requested_scopes):
     """Return whether the message should be answered as a general AI question."""
+    if looks_like_general_knowledge_question(message):
+        return True
     if requested_scopes:
         return False
     if looks_like_count_question(message):
@@ -653,10 +677,20 @@ def attach_audit_metadata(
     return result
 
 
+def redacted_status_error(error):
+    """Return an admin-safe AI status error label without secret-related wording."""
+    if not error:
+        return None
+    if error == "api_key_missing":
+        return "configuration_missing"
+    return str(error)
+
+
 def ai_status():
     """Return redacted OpenAI configuration status for admins."""
     api_key_configured = bool(current_app.config.get("OPENAI_API_KEY"))
     provider = current_app.config.get("AI_PROVIDER", "openai")
+    last_error = redacted_status_error(LAST_OPENAI_ERROR)
     return {
         "api_key_configured": api_key_configured,
         "model": workflow_profile("chat").model,
@@ -667,8 +701,8 @@ def ai_status():
         },
         "provider": provider,
         "streaming_enabled": bool(current_app.config.get("AI_ENABLE_STREAMING", True)),
-        "ready": api_key_configured and LAST_OPENAI_ERROR is None,
-        "last_error": LAST_OPENAI_ERROR,
+        "ready": api_key_configured and last_error is None,
+        "last_error": last_error,
         "analytics": ai_analytics_summary(7),
     }
 
@@ -678,9 +712,8 @@ def daily_briefing(user):
     sections = []
     if has_dashboard_permission(user, "tasks", "view"):
         sections.append(task_briefing_section(user))
-    if (
-        has_dashboard_permission(user, "inventory", "view")
-        and has_dashboard_permission(user, "tasks", "view")
+    if has_dashboard_permission(user, "inventory", "view") and has_dashboard_permission(
+        user, "tasks", "view"
     ):
         sections.append(inventory_briefing_section(user))
     if has_dashboard_permission(user, "errors", "view"):
@@ -820,6 +853,8 @@ def document_briefing_section(user):
 
 def redacted_openai_error(error):
     """Return a user-safe error category for OpenAI failures."""
+    if isinstance(error, AIServiceError):
+        return error.error_code
     name = error.__class__.__name__
     return name if name.endswith("Error") else "OpenAIError"
 
@@ -876,6 +911,54 @@ def general_tracking_notice():
     )
 
 
+def with_general_tracking_notice(answer):
+    """Return an answer with exactly one general-chat tracking notice."""
+    text = str(answer or "").strip()
+    notice = general_tracking_notice().strip()
+    if notice in text:
+        return text
+    return f"{text}\n\n{notice}" if text else notice
+
+
+def local_general_chat_answer(reason):
+    """Return a concise local fallback for general questions."""
+    if reason == "api_key_missing":
+        return (
+            "## Allgemeine Antwort\n"
+            "- **Status:** OpenAI ist nicht konfiguriert\n"
+            "- **Naechster Schritt:** OPENAI_API_KEY in der .env setzen und Server neu starten"
+        )
+    if reason == "model_not_found":
+        return (
+            "## Allgemeine Antwort\n"
+            "- **Status:** Das konfigurierte OpenAI-Modell ist nicht freigeschaltet\n"
+            "- **Naechster Schritt:** OPENAI_MODEL auf ein verfuegbares Modell setzen"
+        )
+    if reason == "rate_limit":
+        return (
+            "## Allgemeine Antwort\n"
+            "- **Status:** OpenAI-Rate-Limit erreicht\n"
+            "- **Naechster Schritt:** Kurz warten oder ein Modell mit hoeherem Limit nutzen"
+        )
+    if reason == "authentication_error":
+        return (
+            "## Allgemeine Antwort\n"
+            "- **Status:** OpenAI-Key wurde abgelehnt\n"
+            "- **Naechster Schritt:** OPENAI_API_KEY pruefen oder neu erstellen"
+        )
+    if reason in {"connection_error", "timeout"}:
+        return (
+            "## Allgemeine Antwort\n"
+            "- **Status:** Verbindung zu OpenAI nicht erfolgreich\n"
+            "- **Naechster Schritt:** Netzwerk, Firewall und Timeout-Konfiguration pruefen"
+        )
+    return (
+        "## Allgemeine Antwort\n"
+        "- **Status:** OpenAI ist gerade nicht erreichbar\n"
+        "- **Naechster Schritt:** API-Key, Modellname, Netzwerk und OpenAI-Status pruefen"
+    )
+
+
 def openai_general_answer(message):
     """Generate a short general AI answer for hybrid mode."""
     global LAST_OPENAI_ERROR
@@ -883,12 +966,8 @@ def openai_general_answer(message):
     configured_provider = current_app.config.get("AI_PROVIDER", "openai").lower()
     if provider.name == "mock" and configured_provider != "mock":
         LAST_OPENAI_ERROR = "api_key_missing"
-        answer = (
-            "## Allgemeine Antwort\n"
-            "- **Status:** OpenAI ist nicht konfiguriert\n"
-            "- **Naechster Schritt:** API-Key und Serverkonfiguration pruefen"
-        )
-        return answer + general_tracking_notice(), ai_diagnostics(
+        answer = local_general_chat_answer("api_key_missing")
+        return with_general_tracking_notice(answer), ai_diagnostics(
             "api_key_missing",
             fallback_used=True,
             error="OPENAI_API_KEY is not configured in .env",
@@ -903,12 +982,8 @@ def openai_general_answer(message):
             "ai_call_failed workflow=general_chat provider=%s",
             provider.name,
         )
-        fallback = (
-            "## Allgemeine Antwort\n"
-            "- **Status:** OpenAI ist gerade nicht erreichbar\n"
-            "- **Naechster Schritt:** Bitte spaeter erneut versuchen"
-        )
-        return fallback + general_tracking_notice(), ai_diagnostics(
+        fallback = local_general_chat_answer("openai_error")
+        return with_general_tracking_notice(fallback), ai_diagnostics(
             "openai_error",
             fallback_used=True,
             error=LAST_OPENAI_ERROR,
@@ -919,7 +994,7 @@ def openai_general_answer(message):
     LAST_OPENAI_ERROR = None
     metadata = getattr(provider, "last_call_metadata", {})
     status = "local_answer" if provider.name == "mock" else "openai_used"
-    return answer.strip() + general_tracking_notice(), ai_diagnostics(
+    return with_general_tracking_notice(answer), ai_diagnostics(
         status,
         provider=provider.name,
         metadata=metadata,
@@ -937,11 +1012,7 @@ def fallback_general_answer(context_data, blocked_scopes=None):
         "Dokumente": len(context_data.get("documents", [])),
         "Schichtplaene": len(context_data.get("shiftplans", [])),
     }
-    visible = [
-        f"{label}: {count}"
-        for label, count in counts.items()
-        if count
-    ]
+    visible = [f"{label}: {count}" for label, count in counts.items() if count]
     lines = [
         "## Ergebnis",
         "- **Status:** Freigegebene Daten geprueft",
@@ -953,9 +1024,7 @@ def fallback_general_answer(context_data, blocked_scopes=None):
     if blocked_scopes:
         labels = [DASHBOARD_SCOPE_LABELS[scope] for scope in blocked_scopes]
         blocked_labels = ", ".join(labels)
-        lines.append(
-            f"- **Eingeschraenkt:** Keine Berechtigung fuer {blocked_labels}"
-        )
+        lines.append(f"- **Eingeschraenkt:** Keine Berechtigung fuer {blocked_labels}")
         lines.append("- **Naechster Schritt:** Berechtigung beim Admin anfragen")
     else:
         lines.append("- **Naechster Schritt:** Frage bei Bedarf konkreter stellen")
@@ -1060,47 +1129,83 @@ def answer_chat(message, user):
     """Route the user message to the correct assistant behavior."""
     requested_scopes = detect_requested_scopes(message)
     allowed_scopes = allowed_ai_scopes(user)
+    if should_use_general_hybrid_mode(message, requested_scopes):
+        answer, diagnostics = openai_general_answer(message)
+        return attach_audit_metadata(
+            user,
+            {
+                "type": "general_chat",
+                "answer": answer,
+                "diagnostics": diagnostics,
+                "data": {},
+                "sources": [],
+            },
+            requested_scopes,
+            allowed_scopes,
+            workflow="general_chat",
+        )
+
     blocked_scopes = blocked_requested_scopes(user, requested_scopes)
     if blocked_scopes and len(blocked_scopes) == len(requested_scopes):
         answer = format_permission_denied_for_scopes(blocked_scopes)
-        return attach_audit_metadata(user, {
-            "type": "permission_denied",
-            "answer": answer,
-            "diagnostics": ai_diagnostics("permission_denied"),
-            "data": [],
-            "sources": [],
-        }, requested_scopes, allowed_scopes)
-
-    if looks_like_today_tasks_question(message):
-        if not has_dashboard_permission(user, "tasks", "view"):
-            answer = permission_denied_answer("Tasks", "tasks")
-            return attach_audit_metadata(user, {
+        return attach_audit_metadata(
+            user,
+            {
                 "type": "permission_denied",
                 "answer": answer,
                 "diagnostics": ai_diagnostics("permission_denied"),
                 "data": [],
                 "sources": [],
-            }, requested_scopes, allowed_scopes)
+            },
+            requested_scopes,
+            allowed_scopes,
+        )
+
+    if looks_like_today_tasks_question(message):
+        if not has_dashboard_permission(user, "tasks", "view"):
+            answer = permission_denied_answer("Tasks", "tasks")
+            return attach_audit_metadata(
+                user,
+                {
+                    "type": "permission_denied",
+                    "answer": answer,
+                    "diagnostics": ai_diagnostics("permission_denied"),
+                    "data": [],
+                    "sources": [],
+                },
+                requested_scopes,
+                allowed_scopes,
+            )
         answer, data = format_tasks_today(user)
         retrieval = retrieve_ai_context(message, user, {"tasks"})
-        return attach_audit_metadata(user, {
-            "type": "tasks_today",
-            "answer": answer,
-            "diagnostics": ai_diagnostics("local_answer"),
-            "data": data,
-            "sources": retrieval["sources"],
-        }, requested_scopes or {"tasks"}, allowed_scopes)
+        return attach_audit_metadata(
+            user,
+            {
+                "type": "tasks_today",
+                "answer": answer,
+                "diagnostics": ai_diagnostics("local_answer"),
+                "data": data,
+                "sources": retrieval["sources"],
+            },
+            requested_scopes or {"tasks"},
+            allowed_scopes,
+        )
 
     if looks_like_employee_count_question(message):
         answer, data = format_employee_count(user)
         status = "local_answer" if data else "permission_denied"
-        return attach_audit_metadata(user, {
-            "type": "employee_count" if data else "permission_denied",
-            "answer": answer,
-            "diagnostics": ai_diagnostics(status),
-            "data": data,
-            "sources": [],
-        }, requested_scopes or {"employees"}, allowed_scopes)
+        return attach_audit_metadata(
+            user,
+            {
+                "type": "employee_count" if data else "permission_denied",
+                "answer": answer,
+                "diagnostics": ai_diagnostics(status),
+                "data": data,
+                "sources": [],
+            },
+            requested_scopes or {"employees"},
+            allowed_scopes,
+        )
 
     count_result = answer_count_question(
         message,
@@ -1110,16 +1215,6 @@ def answer_chat(message, user):
     )
     if count_result:
         return count_result
-
-    if should_use_general_hybrid_mode(message, requested_scopes):
-        answer, diagnostics = openai_general_answer(message)
-        return attach_audit_metadata(user, {
-            "type": "general_chat",
-            "answer": answer,
-            "diagnostics": diagnostics,
-            "data": {},
-            "sources": [],
-        }, requested_scopes, allowed_scopes, workflow="general_chat")
 
     retrieval = retrieve_ai_context(message, user, requested_scopes)
     answer, diagnostics = openai_assistant_answer(message, retrieval["context"])
@@ -1137,9 +1232,7 @@ def answer_chat(message, user):
         diagnostics = diagnostics or ai_diagnostics("fallback_used", fallback_used=True)
     response_type = "error_help" if looks_like_error_question(message) else "assistant"
     response_data = (
-        retrieval["data"].get("errors", [])
-        if response_type == "error_help"
-        else retrieval["data"]
+        retrieval["data"].get("errors", []) if response_type == "error_help" else retrieval["data"]
     )
     action_preview = build_action_preview(message, user, retrieval["sources"])
     result = {

@@ -1,3 +1,5 @@
+"""Authentication and authorization decorators."""
+
 from functools import wraps
 
 from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
@@ -25,8 +27,11 @@ def roles_required(*roles):
     allowed = {role if isinstance(role, Role) else Role(role) for role in roles}
 
     def decorator(fn):
+        """Decorate a route with role-based authorization."""
+
         @wraps(fn)
         def wrapper(*args, **kwargs):
+            """Validate the current request role before calling the route."""
             verify_jwt_in_request()
             user = current_user()
             if not user or (not user.is_admin and user.role not in allowed):
@@ -45,9 +50,13 @@ def has_dashboard_permission(user, dashboard, action="view"):
 
 def dashboard_permission_required(dashboard, action="view"):
     """Require a dashboard permission for a protected route."""
+
     def decorator(fn):
+        """Decorate a route with dashboard permission authorization."""
+
         @wraps(fn)
         def wrapper(*args, **kwargs):
+            """Validate dashboard permissions before calling the route."""
             verify_jwt_in_request()
             user = current_user()
             if not has_dashboard_permission(user, dashboard, action):
@@ -66,9 +75,13 @@ def employee_access_level(user):
 
 def employee_access_required(required_level):
     """Require a minimum employee data access level for a protected route."""
+
     def decorator(fn):
+        """Decorate a route with employee access authorization."""
+
         @wraps(fn)
         def wrapper(*args, **kwargs):
+            """Validate employee data access before calling the route."""
             verify_jwt_in_request()
             user = current_user()
             if not has_employee_access(user, required_level):

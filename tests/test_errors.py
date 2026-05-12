@@ -1,3 +1,5 @@
+"""Tests for error catalog workflows."""
+
 from app.models import Role
 
 
@@ -176,7 +178,9 @@ def test_similar_errors_respects_department_and_sorts_matches(
     payload = response.get_json()
     assert response.status_code == 200
     assert payload["results"][0]["entry"]["error_code"] == "E104"
-    assert all(result["entry"]["department"]["name"] == "Instandhaltung" for result in payload["results"])
+    assert all(
+        result["entry"]["department"]["name"] == "Instandhaltung" for result in payload["results"]
+    )
 
 
 def test_similar_errors_rejects_empty_and_invalid_limit(client, make_user, auth_headers):
@@ -201,5 +205,5 @@ def test_errors_page_contains_similar_errors_ui(client):
     html = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert 'data-similar-errors-panel' in html
-    assert 'data-similar-errors-list' in html
+    assert "data-similar-errors-panel" in html
+    assert "data-similar-errors-list" in html

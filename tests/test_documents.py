@@ -1,10 +1,9 @@
 """Tests for GET /api/documents filters and machine_id auto-resolution."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from app.extensions import db
-from app.models import ErrorEntry, Employee, GeneratedDocument, Role
-
+from app.models import GeneratedDocument, Role
 
 # ---------------------------------------------------------------------------
 # GET /api/documents — list + filters
@@ -13,7 +12,9 @@ from app.models import ErrorEntry, Employee, GeneratedDocument, Role
 
 def test_documents_list_returns_empty_array_for_new_user(client, make_user, auth_headers):
     """GET /api/documents returns 200 with an empty list when no documents exist."""
-    user = make_user(username="doc_list_empty_user", role=Role.INSTANDHALTUNG, department_name="Instandhaltung")
+    user = make_user(
+        username="doc_list_empty_user", role=Role.INSTANDHALTUNG, department_name="Instandhaltung"
+    )
     response = client.get("/api/v1/documents", headers=auth_headers(user["username"]))
     assert response.status_code == 200
     assert response.get_json() == []
@@ -23,8 +24,12 @@ def test_documents_list_returns_own_document(
     client, app, make_user, make_task, make_document, auth_headers
 ):
     """GET /api/documents returns documents created by the authenticated user."""
-    user = make_user(username="doc_list_owner", role=Role.INSTANDHALTUNG, department_name="Instandhaltung")
-    task_id = make_task("Anlage prüfen", creator_username=user["username"], department_name="Instandhaltung")
+    user = make_user(
+        username="doc_list_owner", role=Role.INSTANDHALTUNG, department_name="Instandhaltung"
+    )
+    task_id = make_task(
+        "Anlage prüfen", creator_username=user["username"], department_name="Instandhaltung"
+    )
     make_document(task_id=task_id, created_by=user["id"], department="Instandhaltung")
 
     response = client.get("/api/v1/documents", headers=auth_headers(user["username"]))
@@ -39,13 +44,31 @@ def test_documents_filter_by_task_id(
     client, app, make_user, make_task, make_document, auth_headers
 ):
     """GET /api/documents?task_id= returns only documents for that task."""
-    user = make_user(username="doc_filter_task", role=Role.INSTANDHALTUNG, department_name="Instandhaltung")
-    task_a = make_task("Task A", creator_username=user["username"], department_name="Instandhaltung")
-    task_b = make_task("Task B", creator_username=user["username"], department_name="Instandhaltung")
-    make_document(task_id=task_a, created_by=user["id"], department="Instandhaltung", relative_path=f"2026/05/task_{task_a}/report.html")
-    make_document(task_id=task_b, created_by=user["id"], department="Instandhaltung", relative_path=f"2026/05/task_{task_b}/report.html")
+    user = make_user(
+        username="doc_filter_task", role=Role.INSTANDHALTUNG, department_name="Instandhaltung"
+    )
+    task_a = make_task(
+        "Task A", creator_username=user["username"], department_name="Instandhaltung"
+    )
+    task_b = make_task(
+        "Task B", creator_username=user["username"], department_name="Instandhaltung"
+    )
+    make_document(
+        task_id=task_a,
+        created_by=user["id"],
+        department="Instandhaltung",
+        relative_path=f"2026/05/task_{task_a}/report.html",
+    )
+    make_document(
+        task_id=task_b,
+        created_by=user["id"],
+        department="Instandhaltung",
+        relative_path=f"2026/05/task_{task_b}/report.html",
+    )
 
-    response = client.get(f"/api/v1/documents?task_id={task_a}", headers=auth_headers(user["username"]))
+    response = client.get(
+        f"/api/v1/documents?task_id={task_a}", headers=auth_headers(user["username"])
+    )
     assert response.status_code == 200
     data = response.get_json()
     assert all(doc["task_id"] == task_a for doc in data)
@@ -56,8 +79,12 @@ def test_documents_filter_by_department(
     client, app, make_user, make_task, make_document, auth_headers
 ):
     """GET /api/documents?department= filters by department substring."""
-    user = make_user(username="doc_filter_dept", role=Role.MASTER_ADMIN, department_name="Produktion")
-    task_id = make_task("Aufgabe X", creator_username=user["username"], department_name="Produktion")
+    user = make_user(
+        username="doc_filter_dept", role=Role.MASTER_ADMIN, department_name="Produktion"
+    )
+    task_id = make_task(
+        "Aufgabe X", creator_username=user["username"], department_name="Produktion"
+    )
     make_document(
         task_id=task_id,
         created_by=user["id"],
@@ -71,7 +98,9 @@ def test_documents_filter_by_department(
         relative_path="2026/05/task_y/report.html",
     )
 
-    response = client.get("/api/v1/documents?department=Instand", headers=auth_headers(user["username"]))
+    response = client.get(
+        "/api/v1/documents?department=Instand", headers=auth_headers(user["username"])
+    )
     assert response.status_code == 200
     data = response.get_json()
     assert all("Instandhaltung" in doc["department"] for doc in data)
@@ -82,8 +111,12 @@ def test_documents_filter_by_machine(
     client, app, make_user, make_task, make_document, auth_headers
 ):
     """GET /api/documents?machine= filters by machine substring."""
-    user = make_user(username="doc_filter_machine", role=Role.INSTANDHALTUNG, department_name="Instandhaltung")
-    task_id = make_task("Aufgabe M", creator_username=user["username"], department_name="Instandhaltung")
+    user = make_user(
+        username="doc_filter_machine", role=Role.INSTANDHALTUNG, department_name="Instandhaltung"
+    )
+    task_id = make_task(
+        "Aufgabe M", creator_username=user["username"], department_name="Instandhaltung"
+    )
     make_document(
         task_id=task_id,
         created_by=user["id"],
@@ -99,21 +132,25 @@ def test_documents_filter_by_machine(
         relative_path="2026/05/task_m2/report.html",
     )
 
-    response = client.get("/api/v1/documents?machine=Anlage", headers=auth_headers(user["username"]))
+    response = client.get(
+        "/api/v1/documents?machine=Anlage", headers=auth_headers(user["username"])
+    )
     assert response.status_code == 200
     data = response.get_json()
     assert all("Anlage" in doc["machine"] for doc in data)
     assert len(data) == 1
 
 
-def test_documents_filter_date_from_excludes_older(
-    client, app, make_user, make_task, auth_headers
-):
+def test_documents_filter_date_from_excludes_older(client, app, make_user, make_task, auth_headers):
     """GET /api/documents?date_from= excludes documents created before that date."""
-    user = make_user(username="doc_filter_date_from", role=Role.INSTANDHALTUNG, department_name="Instandhaltung")
-    task_id = make_task("Aufgabe D", creator_username=user["username"], department_name="Instandhaltung")
+    user = make_user(
+        username="doc_filter_date_from", role=Role.INSTANDHALTUNG, department_name="Instandhaltung"
+    )
+    task_id = make_task(
+        "Aufgabe D", creator_username=user["username"], department_name="Instandhaltung"
+    )
 
-    old_date = datetime.now(timezone.utc) - timedelta(days=30)
+    old_date = datetime.now(UTC) - timedelta(days=30)
     with app.app_context():
         old_doc = GeneratedDocument(
             task_id=task_id,
@@ -128,7 +165,7 @@ def test_documents_filter_date_from_excludes_older(
         db.session.add(old_doc)
         db.session.commit()
 
-    today_str = datetime.now(timezone.utc).date().isoformat()
+    today_str = datetime.now(UTC).date().isoformat()
     response = client.get(
         f"/api/v1/documents?date_from={today_str}",
         headers=auth_headers(user["username"]),
@@ -139,15 +176,25 @@ def test_documents_filter_date_from_excludes_older(
 
 def test_documents_filter_date_from_invalid_format(client, make_user, auth_headers):
     """GET /api/documents?date_from=not-a-date returns 400."""
-    user = make_user(username="doc_filter_bad_date", role=Role.INSTANDHALTUNG, department_name="Instandhaltung")
-    response = client.get("/api/v1/documents?date_from=not-a-date", headers=auth_headers(user["username"]))
+    user = make_user(
+        username="doc_filter_bad_date", role=Role.INSTANDHALTUNG, department_name="Instandhaltung"
+    )
+    response = client.get(
+        "/api/v1/documents?date_from=not-a-date", headers=auth_headers(user["username"])
+    )
     assert response.status_code == 400
 
 
 def test_documents_filter_date_to_invalid_format(client, make_user, auth_headers):
     """GET /api/documents?date_to=garbage returns 400."""
-    user = make_user(username="doc_filter_bad_date_to", role=Role.INSTANDHALTUNG, department_name="Instandhaltung")
-    response = client.get("/api/v1/documents?date_to=garbage", headers=auth_headers(user["username"]))
+    user = make_user(
+        username="doc_filter_bad_date_to",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    response = client.get(
+        "/api/v1/documents?date_to=garbage", headers=auth_headers(user["username"])
+    )
     assert response.status_code == 400
 
 
@@ -166,7 +213,9 @@ def test_error_entry_creation_resolves_machine_id(
     client, app, make_user, make_machine, auth_headers
 ):
     """POST /api/errors sets machine_id when the machine name matches a known machine."""
-    user = make_user(username="err_machine_user", role=Role.INSTANDHALTUNG, department_name="Instandhaltung")
+    user = make_user(
+        username="err_machine_user", role=Role.INSTANDHALTUNG, department_name="Instandhaltung"
+    )
     machine_id = make_machine(name="Testanlage Alpha")
 
     response = client.post(
@@ -188,7 +237,9 @@ def test_error_entry_creation_leaves_machine_id_null_for_unknown_machine(
     client, make_user, auth_headers
 ):
     """POST /api/errors sets machine_id=null when the machine name is unknown."""
-    user = make_user(username="err_no_machine_user", role=Role.INSTANDHALTUNG, department_name="Instandhaltung")
+    user = make_user(
+        username="err_no_machine_user", role=Role.INSTANDHALTUNG, department_name="Instandhaltung"
+    )
 
     response = client.post(
         "/api/v1/errors",
@@ -208,7 +259,9 @@ def test_error_entry_update_resolves_machine_id(
     client, app, make_user, make_machine, make_error_entry, auth_headers
 ):
     """PUT /api/errors/<id> updates machine_id when machine name is changed."""
-    user = make_user(username="err_update_machine", role=Role.INSTANDHALTUNG, department_name="Instandhaltung")
+    user = make_user(
+        username="err_update_machine", role=Role.INSTANDHALTUNG, department_name="Instandhaltung"
+    )
     machine_id = make_machine(name="Fräse Beta")
     entry_id = make_error_entry(
         machine="Alte Anlage",
@@ -235,7 +288,9 @@ def test_employee_creation_resolves_favorite_machine_id(
     client, app, make_user, make_machine, auth_headers
 ):
     """POST /api/employees sets favorite_machine_id when the name matches a machine."""
-    admin = make_user(username="emp_machine_admin", role=Role.MASTER_ADMIN, department_name="Produktion")
+    admin = make_user(
+        username="emp_machine_admin", role=Role.MASTER_ADMIN, department_name="Produktion"
+    )
     machine_id = make_machine(name="Lieblingsanlage Z")
 
     response = client.post(
@@ -266,7 +321,9 @@ def test_employee_creation_leaves_favorite_machine_id_null_for_unknown_name(
     client, make_user, auth_headers
 ):
     """POST /api/employees sets favorite_machine_id=null for an unknown machine name."""
-    admin = make_user(username="emp_no_machine_admin", role=Role.MASTER_ADMIN, department_name="Produktion")
+    admin = make_user(
+        username="emp_no_machine_admin", role=Role.MASTER_ADMIN, department_name="Produktion"
+    )
 
     response = client.post(
         "/api/v1/employees",

@@ -1,19 +1,17 @@
-"""
-Task service layer.
+"""Task service layer.
 
 All task business logic lives here. Routes should call these functions
 and do nothing more than validate input, call the service, and return a response.
 """
 
 import logging
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
 from app.models import Department, Priority, Role, Task, TaskStatus
 from app.services.ai_service import AIServiceError, MockAIProvider, get_ai_provider
-
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +66,7 @@ def get_department_for_payload(data, user):
     department = None
 
     if department_id:
-        department = Department.query.get(department_id)
+        department = db.session.get(Department, department_id)
     elif department_name:
         department = Department.query.filter_by(name=department_name).first()
     elif user.department_id:
@@ -137,8 +135,11 @@ def create_task(data, user):
 
     logger.info(
         "task_created task_id=%s user_id=%s department_id=%s priority=%s status=%s",
-        task.id, user.id, task.department_id,
-        task.priority.value, task.status.value,
+        task.id,
+        user.id,
+        task.department_id,
+        task.priority.value,
+        task.status.value,
     )
     return task, None, 201
 
@@ -216,14 +217,14 @@ def update_task_status(task, new_status, user):
         task.completed_at = None
     elif new_status == TaskStatus.IN_PROGRESS:
         task.current_worker = user
-        task.started_at = task.started_at or datetime.now(timezone.utc)
+        task.started_at = task.started_at or datetime.now(UTC)
         task.completed_by_user = None
         task.completed_at = None
     elif new_status == TaskStatus.DONE:
         task.current_worker = task.current_worker or user
-        task.started_at = task.started_at or datetime.now(timezone.utc)
+        task.started_at = task.started_at or datetime.now(UTC)
         task.completed_by_user = user
-        task.completed_at = datetime.now(timezone.utc)
+        task.completed_at = datetime.now(UTC)
     elif new_status == TaskStatus.CANCELLED:
         task.completed_by_user = None
         task.completed_at = None
@@ -243,7 +244,7 @@ def start_task(task, user):
 
     task.status = TaskStatus.IN_PROGRESS
     task.current_worker = user
-    task.started_at = datetime.now(timezone.utc)
+    task.started_at = datetime.now(UTC)
     task.completed_by_user = None
     task.completed_at = None
 
@@ -270,7 +271,7 @@ def complete_task(task, user):
 
     task.status = TaskStatus.DONE
     task.completed_by_user = user
-    task.completed_at = datetime.now(timezone.utc)
+    task.completed_at = datetime.now(UTC)
 
     try:
         db.session.commit()
@@ -315,7 +316,8 @@ def prioritize_visible_tasks(data, user):
     except AIServiceError:
         logger.warning(
             "ai_fallback workflow=task_prioritization user_id=%s task_count=%s",
-            user.id, len(serialized),
+            user.id,
+            len(serialized),
         )
         provider_result = MockAIProvider().prioritize_tasks(serialized, context)
 
@@ -343,7 +345,8 @@ def suggest_task_from_text(data, user):
     except AIServiceError:
         logger.warning(
             "ai_fallback workflow=task_suggestion user_id=%s text_length=%s",
-            user.id, len(text),
+            user.id,
+            len(text),
         )
         suggestion = MockAIProvider().suggest_task(text, user_context)
 
@@ -371,25 +374,25 @@ def normalize_task_priorities(provider_result, tasks):
     """Normalize provider priority output and attach full task payloads."""
     provider_items = _provider_priority_items(provider_result)
     priority_by_task_id = {
-        int(item["task_id"]): item
-        for item in provider_items
-        if _has_valid_task_id(item)
+        int(item["task_id"]): item for item in provider_items if _has_valid_task_id(item)
     }
-    fallback_items = MockAIProvider().prioritize_tasks(
-        [task.to_dict() for task in tasks], {}
-    )["priorities"]
+    fallback_items = MockAIProvider().prioritize_tasks([task.to_dict() for task in tasks], {})[
+        "priorities"
+    ]
     fallback_by_task_id = {item["task_id"]: item for item in fallback_items}
 
     normalized = []
     for task in tasks:
         item = priority_by_task_id.get(task.id, fallback_by_task_id[task.id])
-        normalized.append({
-            "task": task.to_dict(),
-            "score": _clamped_score(item.get("score")),
-            "risk_level": _valid_risk_level(item.get("risk_level")),
-            "reason": str(item.get("reason") or "").strip()[:500],
-            "recommended_action": str(item.get("recommended_action") or "").strip()[:500],
-        })
+        normalized.append(
+            {
+                "task": task.to_dict(),
+                "score": _clamped_score(item.get("score")),
+                "risk_level": _valid_risk_level(item.get("risk_level")),
+                "reason": str(item.get("reason") or "").strip()[:500],
+                "recommended_action": str(item.get("recommended_action") or "").strip()[:500],
+            }
+        )
 
     return sorted(normalized, key=lambda item: item["score"], reverse=True)
 

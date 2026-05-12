@@ -1,4 +1,6 @@
-from datetime import date, datetime, timezone
+"""Shared pytest fixtures for the maintenance assistant."""
+
+from datetime import UTC, date, datetime
 from itertools import count
 from pathlib import Path
 
@@ -21,7 +23,6 @@ from app.models import (
     User,
 )
 from app.permissions import upsert_default_permissions
-
 
 _USER_COUNTER = count(1)
 
@@ -324,7 +325,7 @@ def make_document(app):
                 department=department,
                 machine=machine,
                 created_by=created_by,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
             db.session.add(document)
             db.session.commit()
@@ -344,7 +345,7 @@ def create_generated_document(app, task_id, created_by, relative_path, departmen
             department=department,
             machine="Anlage 1",
             created_by=created_by,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.session.add(document)
         db.session.commit()

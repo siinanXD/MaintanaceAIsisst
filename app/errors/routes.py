@@ -1,13 +1,7 @@
+"""Error catalog API routes."""
+
 from flask import Blueprint, jsonify, request
 
-from app.services.error_service import (
-    analyze_error_description,
-    create_error_entry,
-    search_errors,
-    suggest_similar_errors,
-    update_error_entry,
-    visible_errors_query,
-)
 from app.extensions import db
 from app.models import ErrorEntry
 from app.responses import error_response, paginate_query, service_error_response, success_response
@@ -16,7 +10,14 @@ from app.security import (
     dashboard_permission_required,
     same_department_or_admin,
 )
-
+from app.services.error_service import (
+    analyze_error_description,
+    create_error_entry,
+    search_errors,
+    suggest_similar_errors,
+    update_error_entry,
+    visible_errors_query,
+)
 
 errors_bp = Blueprint("errors", __name__)
 
@@ -83,7 +84,7 @@ def search():
 @dashboard_permission_required("errors", "view")
 def get_error(error_id):
     """Return a visible error catalog entry by id."""
-    entry = ErrorEntry.query.get_or_404(error_id)
+    entry = db.get_or_404(ErrorEntry, error_id)
     if not same_department_or_admin(entry):
         return error_response("Forbidden", 403)
     return jsonify(entry.to_dict())
@@ -93,7 +94,7 @@ def get_error(error_id):
 @dashboard_permission_required("errors", "write")
 def edit_error(error_id):
     """Update a visible error catalog entry."""
-    entry = ErrorEntry.query.get_or_404(error_id)
+    entry = db.get_or_404(ErrorEntry, error_id)
     if not same_department_or_admin(entry):
         return error_response("Forbidden", 403)
     updated, error, status = update_error_entry(
@@ -110,7 +111,7 @@ def edit_error(error_id):
 @dashboard_permission_required("errors", "write")
 def delete_error(error_id):
     """Delete a visible error catalog entry."""
-    entry = ErrorEntry.query.get_or_404(error_id)
+    entry = db.get_or_404(ErrorEntry, error_id)
     if not same_department_or_admin(entry):
         return error_response("Forbidden", 403)
     db.session.delete(entry)

@@ -1,8 +1,9 @@
+"""Command-line entry point for running the Flask app."""
+
 import argparse
 import os
 
 from app import create_app
-
 
 app = create_app()
 

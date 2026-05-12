@@ -1,3 +1,5 @@
+"""AI provider implementations and normalization helpers."""
+
 import json
 import logging
 import re
@@ -5,11 +7,21 @@ from abc import ABC, abstractmethod
 from datetime import date
 
 from flask import current_app
-from openai import OpenAI, OpenAIError
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    AuthenticationError,
+    BadRequestError,
+    NotFoundError,
+    OpenAI,
+    OpenAIError,
+    PermissionDeniedError,
+    RateLimitError,
+)
 
 from app.services.ai_prompting import (
-    build_json_prompt,
     build_general_messages,
+    build_json_prompt,
     build_text_messages,
     json_system_prompt,
     text_system_prompt,
@@ -23,12 +35,42 @@ from app.services.ai_routing import (
     workflow_profile,
 )
 
-
 logger = logging.getLogger(__name__)
+
+
+def openai_error_code(error):
+    """Return a safe stable category for an OpenAI SDK error."""
+    error_text = str(error).lower()
+    if isinstance(error, RateLimitError):
+        return "rate_limit"
+    if isinstance(error, AuthenticationError):
+        return "authentication_error"
+    if isinstance(error, PermissionDeniedError | NotFoundError | BadRequestError) and (
+        "model_not_found" in error_text
+        or "does not have access to model" in error_text
+        or "model" in error_text
+    ):
+        return "model_not_found"
+    if isinstance(error, PermissionDeniedError):
+        return "permission_denied"
+    if isinstance(error, NotFoundError):
+        return "not_found"
+    if isinstance(error, BadRequestError):
+        return "bad_request"
+    if isinstance(error, APITimeoutError):
+        return "timeout"
+    if isinstance(error, APIConnectionError):
+        return "connection_error"
+    return "openai_error"
 
 
 class AIServiceError(Exception):
     """Raised when an AI provider cannot return a usable result."""
+
+    def __init__(self, message, error_code="openai_error"):
+        """Create an AI provider error with a safe diagnostic category."""
+        super().__init__(message)
+        self.error_code = error_code
 
 
 class BaseAIProvider(ABC):
@@ -78,6 +120,7 @@ class BaseAIProvider(ABC):
             dict with keys ``causes`` (list[str]), ``fixes`` (list[str]),
             and optionally ``summary`` (str) — or ``None`` to skip
             enhancement and keep local results unchanged.
+
         """
 
 
@@ -292,8 +335,7 @@ class OpenAIProvider(BaseAIProvider):
     def error_assistant_query(self, query, matches):
         """Return AI-enhanced causes and fixes for a fault description."""
         prompt = build_json_prompt(
-            "Leite aus Fehlerbeschreibung und Katalogtreffern Ursachen und "
-            "Pruefschritte ab.",
+            "Leite aus Fehlerbeschreibung und Katalogtreffern Ursachen und " "Pruefschritte ab.",
             {
                 "causes": ["string - one German cause per item"],
                 "fixes": ["string - one German fix instruction per item"],
@@ -332,8 +374,7 @@ class OpenAIProvider(BaseAIProvider):
                 "html_text": html_text[:12000],
             },
             rules=[
-                "Bewerte Maschine, Ursache, durchgefuehrte Massnahme, "
-                "Ergebnis und Notizen.",
+                "Bewerte Maschine, Ursache, durchgefuehrte Massnahme, " "Ergebnis und Notizen.",
                 "Gib konkrete, kurze Empfehlungen.",
             ],
         )
@@ -376,12 +417,19 @@ class OpenAIProvider(BaseAIProvider):
             )
             return json.loads(completion.choices[0].message.content)
         except (OpenAIError, TypeError, json.JSONDecodeError) as exc:
+            error_code = (
+                openai_error_code(exc) if isinstance(exc, OpenAIError) else "invalid_response"
+            )
             logger.exception(
-                "ai_call_failed provider=%s model=%s mode=json",
+                "ai_call_failed provider=%s model=%s mode=json error_code=%s",
                 self.name,
                 self.model,
+                error_code,
             )
-            raise AIServiceError("AI provider failed to return valid JSON") from exc
+            raise AIServiceError(
+                "AI provider failed to return valid JSON",
+                error_code=error_code,
+            ) from exc
 
     def _text_completion(self, messages, workflow):
         """Call OpenAI and return text content."""
@@ -410,19 +458,24 @@ class OpenAIProvider(BaseAIProvider):
             )
             return completion.choices[0].message.content
         except OpenAIError as exc:
+            error_code = openai_error_code(exc)
             logger.exception(
-                "ai_call_failed provider=%s model=%s mode=text",
+                "ai_call_failed provider=%s model=%s mode=text error_code=%s",
                 self.name,
                 self.model,
+                error_code,
             )
-            raise AIServiceError("AI provider failed to return text") from exc
+            raise AIServiceError(
+                "AI provider failed to return text",
+                error_code=error_code,
+            ) from exc
 
 
 def get_ai_provider():
     """Return the configured AI provider with mock fallback."""
     provider_name = current_app.config.get("AI_PROVIDER", "openai").lower()
     api_key = current_app.config.get("OPENAI_API_KEY", "")
-    model = current_app.config.get("OPENAI_MODEL", "gpt-5.4-mini")
+    model = current_app.config.get("OPENAI_MODEL", "gpt-4o-mini")
     if provider_name == "mock":
         return MockAIProvider()
     if not api_key:

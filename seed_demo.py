@@ -1,3 +1,5 @@
+"""Command-line entry point for seeding demo data."""
+
 from app import create_app
 from app.demo_data import seed_demo_data
 

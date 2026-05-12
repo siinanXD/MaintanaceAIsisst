@@ -16,7 +16,6 @@ from app.services.document_service import visible_documents_query
 from app.services.error_service import visible_errors_query
 from app.services.task_service import visible_tasks_query
 
-
 MAX_SOURCES = 8
 
 
@@ -24,11 +23,7 @@ def retrieve_ai_context(message, user, requested_scopes=None):
     """Return ranked context, sources and payloads for an assistant message."""
     requested_scopes = set(requested_scopes or [])
     allowed_scopes = allowed_ai_scopes(user)
-    searchable_scopes = (
-        requested_scopes & allowed_scopes
-        if requested_scopes
-        else allowed_scopes
-    )
+    searchable_scopes = requested_scopes & allowed_scopes if requested_scopes else allowed_scopes
     sources = []
     data = {}
 
@@ -109,7 +104,7 @@ def _task_sources(message, user, requested_scopes):
             task.id,
             task.title,
             "tasks",
-            f"/tasks",
+            "/tasks",
             _task_context(task),
             score,
             reason,
@@ -165,8 +160,9 @@ def _machine_sources(message, requested_scopes):
 def _inventory_sources(message, requested_scopes):
     """Return ranked inventory sources."""
     materials = (
-        InventoryMaterial.query
-        .order_by(InventoryMaterial.quantity.asc(), InventoryMaterial.name.asc())
+        InventoryMaterial.query.order_by(
+            InventoryMaterial.quantity.asc(), InventoryMaterial.name.asc()
+        )
         .limit(30)
         .all()
     )
@@ -195,10 +191,7 @@ def _inventory_sources(message, requested_scopes):
 def _document_sources(message, user, requested_scopes):
     """Return ranked generated-document sources visible to the user."""
     documents = (
-        visible_documents_query(user)
-        .order_by(GeneratedDocument.created_at.desc())
-        .limit(30)
-        .all()
+        visible_documents_query(user).order_by(GeneratedDocument.created_at.desc()).limit(30).all()
     )
     ranked = _rank_records(
         documents,
@@ -287,9 +280,7 @@ def _rank_records(records, message, text_fn, scope, requested_scopes):
         if score <= 0 and scope not in requested_scopes:
             continue
         reason = (
-            f"{len(overlap)} gemeinsame Begriffe"
-            if overlap
-            else "Aktueller sichtbarer Kontext"
+            f"{len(overlap)} gemeinsame Begriffe" if overlap else "Aktueller sichtbarer Kontext"
         )
         ranked.append((record, max(score, 5) - index * 0.01, reason))
     return ranked[:5]
@@ -345,12 +336,14 @@ def _context_from_sources(sources):
 
 def _task_text(task):
     """Return searchable task text."""
-    return " ".join([
-        task.title,
-        task.description,
-        task.priority.value,
-        task.status.value,
-    ])
+    return " ".join(
+        [
+            task.title,
+            task.description,
+            task.priority.value,
+            task.status.value,
+        ]
+    )
 
 
 def _task_context(task):
@@ -365,14 +358,16 @@ def _task_context(task):
 
 def _error_text(entry):
     """Return searchable error text."""
-    return " ".join([
-        entry.machine,
-        entry.error_code,
-        entry.title,
-        entry.description,
-        entry.possible_causes,
-        entry.solution,
-    ])
+    return " ".join(
+        [
+            entry.machine,
+            entry.error_code,
+            entry.title,
+            entry.description,
+            entry.possible_causes,
+            entry.solution,
+        ]
+    )
 
 
 def _error_context(entry):
@@ -414,12 +409,14 @@ def _material_context(material):
 
 def _document_text(document):
     """Return searchable generated-document text."""
-    return " ".join([
-        document.title,
-        document.document_type,
-        document.department,
-        document.machine,
-    ])
+    return " ".join(
+        [
+            document.title,
+            document.document_type,
+            document.department,
+            document.machine,
+        ]
+    )
 
 
 def _document_context(document):
@@ -459,14 +456,18 @@ def _employee_context(employee, access_level):
         f"Team: {data.get('team')}",
     ]
     if access_level in ("shift", "confidential"):
-        parts.extend([
-            f"Schichtmodell: {data.get('shift_model')}",
-            f"Aktuelle Schicht: {data.get('current_shift')}",
-            f"Qualifikationen: {data.get('qualifications')}",
-        ])
+        parts.extend(
+            [
+                f"Schichtmodell: {data.get('shift_model')}",
+                f"Aktuelle Schicht: {data.get('current_shift')}",
+                f"Qualifikationen: {data.get('qualifications')}",
+            ]
+        )
     if access_level == "confidential":
-        parts.extend([
-            f"Wohnort: {data.get('postal_code')} {data.get('city')}",
-            f"Gehaltsklasse: {data.get('salary_group')}",
-        ])
+        parts.extend(
+            [
+                f"Wohnort: {data.get('postal_code')} {data.get('city')}",
+                f"Gehaltsklasse: {data.get('salary_group')}",
+            ]
+        )
     return " | ".join(parts)

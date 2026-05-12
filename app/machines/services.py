@@ -1,15 +1,16 @@
+"""Machine service helpers."""
+
 import logging
 
 from sqlalchemy import or_
 
-from app.services.error_service import visible_errors_query
 from app.inventory.services import forecast_inventory_risks
-from app.models import ErrorEntry, GeneratedDocument, Machine, Task, TaskStatus
+from app.models import ErrorEntry, GeneratedDocument, Task, TaskStatus
 from app.security import has_dashboard_permission
 from app.services.ai_service import AIServiceError, get_ai_provider
 from app.services.document_service import visible_documents_query
+from app.services.error_service import visible_errors_query
 from app.services.task_service import visible_tasks_query
-
 
 logger = logging.getLogger(__name__)
 
@@ -52,14 +53,18 @@ def answer_machine_assistant(machine, user, data):
     context = _assistant_context(machine, history, forecast)
 
     if provider.name == "mock":
-        return {
-            "answer": _local_machine_answer(machine, history, forecast),
-            "diagnostics": {"status": "local_answer", "provider": provider.name},
-            "context": {
-                "source_counts": history["source_counts"],
-                "forecast_items": len(forecast),
+        return (
+            {
+                "answer": _local_machine_answer(machine, history, forecast),
+                "diagnostics": {"status": "local_answer", "provider": provider.name},
+                "context": {
+                    "source_counts": history["source_counts"],
+                    "forecast_items": len(forecast),
+                },
             },
-        }, None, 200
+            None,
+            200,
+        )
 
     try:
         answer = _answer_question_with_workflow(
@@ -74,27 +79,35 @@ def answer_machine_assistant(machine, user, data):
             user.id,
             machine.id,
         )
-        return {
-            "answer": _local_machine_answer(machine, history, forecast),
-            "diagnostics": {"status": "fallback_used", "provider": provider.name},
+        return (
+            {
+                "answer": _local_machine_answer(machine, history, forecast),
+                "diagnostics": {"status": "fallback_used", "provider": provider.name},
+                "context": {
+                    "source_counts": history["source_counts"],
+                    "forecast_items": len(forecast),
+                },
+            },
+            None,
+            200,
+        )
+
+    return (
+        {
+            "answer": answer,
+            "diagnostics": {
+                "status": "openai_used",
+                "provider": provider.name,
+                **getattr(provider, "last_call_metadata", {}),
+            },
             "context": {
                 "source_counts": history["source_counts"],
                 "forecast_items": len(forecast),
             },
-        }, None, 200
-
-    return {
-        "answer": answer,
-        "diagnostics": {
-            "status": "openai_used",
-            "provider": provider.name,
-            **getattr(provider, "last_call_metadata", {}),
         },
-        "context": {
-            "source_counts": history["source_counts"],
-            "forecast_items": len(forecast),
-        },
-    }, None, 200
+        None,
+        200,
+    )
 
 
 def _task_timeline(machine, user):
@@ -183,10 +196,7 @@ def _machine_summary(machine, timeline, source_counts):
     try:
         answer = _answer_question_with_workflow(
             provider,
-            (
-                "Fasse diese Maschinenhistorie auf Deutsch in maximal "
-                "3 kurzen Saetzen zusammen."
-            ),
+            ("Fasse diese Maschinenhistorie auf Deutsch in maximal " "3 kurzen Saetzen zusammen."),
             context,
             "machine_summary",
         )
@@ -342,8 +352,7 @@ def _local_machine_answer(machine, history, forecast):
         lines.append(f"Naechster Task: {open_task['title']} ({open_task['status']}).")
     if forecast:
         lines.append(
-            f"Lagerhinweis: {forecast[0]['material']['name']} "
-            f"ist {forecast[0]['risk_level']}."
+            f"Lagerhinweis: {forecast[0]['material']['name']} " f"ist {forecast[0]['risk_level']}."
         )
     if counts["total"] == 0:
         lines.append("Keine Historie gefunden; Maschine und Taskdaten pruefen.")

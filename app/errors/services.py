@@ -1,9 +1,9 @@
-"""
-Backward-compatible re-exports.
+"""Backward-compatible re-exports.
 
 Business logic has moved to app.services.error_service.
 Import directly from there in new code.
 """
+
 from app.services.error_service import (  # noqa: F401
     analyze_error_description,
     create_error_entry,

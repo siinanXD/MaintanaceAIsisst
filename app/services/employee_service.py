@@ -1,5 +1,4 @@
-"""
-Employee service layer.
+"""Employee service layer.
 
 All employee business logic lives here. Routes should call these functions
 and do nothing more than validate input, call the service, and return a response.
@@ -16,7 +15,6 @@ from werkzeug.utils import secure_filename
 
 from app.extensions import db
 from app.models import Employee, EmployeeDocument, Machine
-
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +69,7 @@ def create_employee(data):
     Returns:
         (employee, None, 201)                  on success
         (None, {"error": "..."}, 400/409/500)  on failure
+
     """
     required = ["personnel_number", "name"]
     missing = [field for field in required if not data.get(field)]
@@ -121,6 +120,7 @@ def update_employee(employee, data):
     Returns:
         (employee, None, 200)                  on success
         (None, {"error": "..."}, 400/500)      on failure
+
     """
     scalar_fields = [
         "personnel_number",
@@ -164,6 +164,7 @@ def delete_employee(employee):
     Returns:
         (None, None, 204)                      on success
         (None, {"error": "..."}, 500)          on failure
+
     """
     try:
         db.session.delete(employee)
@@ -191,6 +192,7 @@ def upload_employee_document(employee, file):
     Returns:
         (document, None, 201)                  on success
         (None, {"error": "..."}, 400/500)      on failure
+
     """
     if not file or not file.filename:
         return None, {"error": "document file is required"}, 400
@@ -221,7 +223,8 @@ def upload_employee_document(employee, file):
 
     logger.info(
         "employee_document_uploaded employee_id=%s document_id=%s",
-        employee.id, document.id,
+        employee.id,
+        document.id,
     )
     return document, None, 201
 

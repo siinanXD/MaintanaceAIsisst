@@ -29,9 +29,9 @@ def test_openapi_examples_are_present(client):
     task_example = spec["paths"]["/api/v1/tasks"]["post"]["requestBody"]["content"][
         "application/json"
     ]["example"]
-    briefing_example = spec["paths"]["/api/v1/ai/daily-briefing"]["get"]["responses"][
-        "200"
-    ]["content"]["application/json"]["example"]
+    briefing_example = spec["paths"]["/api/v1/ai/daily-briefing"]["get"]["responses"]["200"][
+        "content"
+    ]["application/json"]["example"]
 
     assert task_example["title"]
     assert task_example["priority"] == "urgent"

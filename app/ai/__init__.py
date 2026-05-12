@@ -1,1 +1,1 @@
-
+"""AI feature package."""

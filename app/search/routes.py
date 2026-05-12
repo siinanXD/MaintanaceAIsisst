@@ -1,10 +1,11 @@
+"""Search API routes."""
+
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required
 
 from app.responses import error_response
 from app.security import current_user
 from app.services.search_service import search_knowledge
-
 
 search_bp = Blueprint("search", __name__)
 

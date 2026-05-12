@@ -1,1 +1,1 @@
-
+"""Department package."""

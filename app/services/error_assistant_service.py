@@ -1,5 +1,4 @@
-"""
-Error assistant service.
+"""Error assistant service.
 
 Provides structured cause-and-fix lookup from the error catalog based
 on free-text machine fault descriptions.
@@ -146,6 +145,7 @@ def run_error_assistant(data, user):
     Returns:
         (result_dict, None, 200)              on success
         (None, {"error": "..."}, 400)         on validation failure
+
     """
     query = str(data.get("query") or "").strip()
     if not query:
@@ -208,10 +208,14 @@ def run_error_assistant(data, user):
         getattr(user, "id", "?"),
     )
 
-    return {
-        "query": query,
-        "matches": matches,
-        "causes": causes,
-        "fixes": fixes,
-        "diagnostics": diagnostics,
-    }, None, 200
+    return (
+        {
+            "query": query,
+            "matches": matches,
+            "causes": causes,
+            "fixes": fixes,
+            "diagnostics": diagnostics,
+        },
+        None,
+        200,
+    )

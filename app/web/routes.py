@@ -1,5 +1,6 @@
-from flask import Blueprint, render_template
+"""Server-rendered web page routes."""
 
+from flask import Blueprint, render_template
 
 web_bp = Blueprint("web", __name__)
 

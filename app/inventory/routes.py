@@ -1,3 +1,5 @@
+"""Inventory API routes."""
+
 from flask import Blueprint, jsonify, request
 
 from app.extensions import db
@@ -5,7 +7,6 @@ from app.inventory.services import forecast_inventory_risks
 from app.models import InventoryMaterial, Machine
 from app.responses import error_response, service_error_response, success_response
 from app.security import current_user, dashboard_permission_required
-
 
 inventory_bp = Blueprint("inventory", __name__)
 
@@ -105,7 +106,7 @@ def create_material():
 @dashboard_permission_required("inventory", "write")
 def update_material(material_id):
     """Update an inventory material including cost, quantity and machine."""
-    material = InventoryMaterial.query.get_or_404(material_id)
+    material = db.get_or_404(InventoryMaterial, material_id)
     data = request.get_json(silent=True) or {}
     try:
         if "name" in data:
@@ -128,7 +129,7 @@ def update_material(material_id):
 @dashboard_permission_required("inventory", "write")
 def delete_material(material_id):
     """Delete an inventory material from the lager."""
-    material = InventoryMaterial.query.get_or_404(material_id)
+    material = db.get_or_404(InventoryMaterial, material_id)
     db.session.delete(material)
     db.session.commit()
     return "", 204

@@ -2,7 +2,7 @@
 
 import json
 from collections import Counter
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -51,28 +51,22 @@ def create_ai_audit_event(
 
 def ai_analytics_summary(days=7):
     """Return admin-facing AI usage and feedback analytics."""
-    since = datetime.utcnow() - timedelta(days=days)
+    since = datetime.now(UTC) - timedelta(days=days)
     events = (
-        AIAuditEvent.query
-        .filter(AIAuditEvent.created_at >= since)
+        AIAuditEvent.query.filter(AIAuditEvent.created_at >= since)
         .order_by(AIAuditEvent.created_at.desc())
         .all()
     )
     feedback_entries = (
-        AIFeedback.query
-        .filter(AIFeedback.created_at >= since)
+        AIFeedback.query.filter(AIFeedback.created_at >= since)
         .order_by(AIFeedback.created_at.desc())
         .all()
     )
     status_counts = Counter(event.status for event in events)
     workflow_counts = Counter(event.workflow for event in events)
-    error_counts = Counter(
-        event.error_category for event in events if event.error_category
-    )
+    error_counts = Counter(event.error_category for event in events if event.error_category)
     helpful_count = sum(1 for item in feedback_entries if item.rating == "helpful")
-    not_helpful_count = sum(
-        1 for item in feedback_entries if item.rating == "not_helpful"
-    )
+    not_helpful_count = sum(1 for item in feedback_entries if item.rating == "not_helpful")
     feedback_total = helpful_count + not_helpful_count
     helpful_rate = round(helpful_count / feedback_total, 2) if feedback_total else None
     input_tokens = sum(event.input_tokens for event in events)
@@ -80,11 +74,7 @@ def ai_analytics_summary(days=7):
     cached_tokens = sum(event.cached_tokens for event in events)
     total_tokens = sum(event.total_tokens for event in events)
     latency_values = [event.latency_ms for event in events if event.latency_ms]
-    average_latency_ms = (
-        round(sum(latency_values) / len(latency_values))
-        if latency_values
-        else 0
-    )
+    average_latency_ms = round(sum(latency_values) / len(latency_values)) if latency_values else 0
     return {
         "window_days": days,
         "events_total": len(events),
@@ -150,9 +140,7 @@ def _workflow_metrics(events):
     for item in metrics.values():
         latency_count = item.pop("latency_count")
         latency_total = item.pop("latency_ms_total")
-        item["average_latency_ms"] = (
-            round(latency_total / latency_count) if latency_count else 0
-        )
+        item["average_latency_ms"] = round(latency_total / latency_count) if latency_count else 0
         item["estimated_cost_usd"] = round(item["estimated_cost_usd"], 6)
     return metrics
 

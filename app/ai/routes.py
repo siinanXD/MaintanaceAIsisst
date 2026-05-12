@@ -1,3 +1,5 @@
+"""AI API routes for chat, briefings, and assistants."""
+
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
 
@@ -7,7 +9,6 @@ from app.models import AIFeedback, Role
 from app.responses import error_response, service_error_response, success_response
 from app.security import current_user, has_dashboard_permission, roles_required
 from app.services.error_assistant_service import run_error_assistant
-
 
 ai_bp = Blueprint("ai", __name__)
 

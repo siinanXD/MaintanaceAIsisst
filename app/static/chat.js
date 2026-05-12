@@ -21,6 +21,26 @@
     }
   }
 
+  function openAIErrorLabel(diagnostics) {
+    const error = diagnostics && diagnostics.error;
+    if (error === "model_not_found") {
+      return "Fallback - OpenAI-Modell nicht freigeschaltet";
+    }
+    if (error === "rate_limit") {
+      return "Fallback - OpenAI-Rate-Limit erreicht";
+    }
+    if (error === "authentication_error") {
+      return "Fallback - OpenAI-Key abgelehnt";
+    }
+    if (error === "connection_error" || error === "timeout") {
+      return "Fallback - OpenAI-Verbindung fehlgeschlagen";
+    }
+    if (error === "permission_denied") {
+      return "Fallback - OpenAI-Zugriff verweigert";
+    }
+    return "Fallback - OpenAI nicht erreichbar";
+  }
+
   function statusText(diagnostics) {
     const status = diagnostics && diagnostics.status;
     const provider = (diagnostics && diagnostics.provider) || "OpenAI";
@@ -34,7 +54,7 @@
       return "Fallback - OPENAI_API_KEY fehlt in .env" + sourceLabel;
     }
     if (status === "openai_error" && sourceCount) {
-      return "Fallback - OpenAI nicht erreichbar" + sourceLabel;
+      return openAIErrorLabel(diagnostics) + sourceLabel;
     }
 
     if (status === "openai_used") {
@@ -45,6 +65,9 @@
     }
     if (status === "api_key_missing") {
       return "Fallback · OPENAI_API_KEY fehlt in .env";
+    }
+    if (status === "openai_error") {
+      return openAIErrorLabel(diagnostics);
     }
     if (status === "openai_error") {
       return "Fallback · OpenAI nicht erreichbar";
@@ -283,20 +306,22 @@
         ? responseData.data
         : responseData;
     const diagnostics = data.diagnostics || {};
+    const isGeneralChat = data.type === "general_chat";
     let answer = data.answer || "Ich habe keine Antwort erhalten.";
 
-    if (diagnostics.status === "api_key_missing") {
+    if (!isGeneralChat && diagnostics.status === "api_key_missing") {
       answer += "\n- **Hinweis:** Lokaler Fallback, API-Key fehlt";
     }
-    if (diagnostics.status === "openai_error") {
+    if (!isGeneralChat && diagnostics.status === "openai_error") {
       answer += "\n- **Hinweis:** Lokaler Fallback, OpenAI nicht erreichbar";
     }
-    if (diagnostics.fallback_used) {
+    if (!isGeneralChat && diagnostics.fallback_used) {
       answer += "\n- **Quelle:** Lokaler Fallback";
     }
     return {
       answer,
       diagnostics,
+      type: data.type || null,
       prompt: message,
       sources: data.sources || [],
       action_preview: data.action_preview || null

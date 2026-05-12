@@ -1,3 +1,5 @@
+"""Authentication service helpers."""
+
 from flask_jwt_extended import create_access_token
 from sqlalchemy import or_
 
@@ -20,7 +22,7 @@ def parse_role(value):
 def find_department(department_id=None, department_name=None):
     """Find a department by id or name."""
     if department_id:
-        return Department.query.get(department_id)
+        return db.session.get(Department, department_id)
     if department_name:
         return Department.query.filter_by(name=department_name).first()
     return None
@@ -60,9 +62,7 @@ def register_user(data):
 
 def authenticate(login, password):
     """Authenticate a user and return a JWT payload."""
-    user = User.query.filter(
-        or_(User.email == login, User.username == login)
-    ).first()
+    user = User.query.filter(or_(User.email == login, User.username == login)).first()
     if not user or not user.check_password(password):
         return None
     if not user.is_active:

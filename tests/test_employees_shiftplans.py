@@ -1,3 +1,5 @@
+"""Tests for employee and shift planning workflows."""
+
 from app.extensions import db
 from app.models import Role, User
 
@@ -193,8 +195,10 @@ def test_shiftplan_generate_rejects_when_no_production_employees(
     )
 
     assert response.status_code == 400
-    assert "mitarbeiter" in response.get_json()["message"].lower() or \
-           "abteilung" in response.get_json()["message"].lower()
+    assert (
+        "mitarbeiter" in response.get_json()["message"].lower()
+        or "abteilung" in response.get_json()["message"].lower()
+    )
 
 
 def test_shiftplan_generate_rejects_invalid_date_and_days(
@@ -351,11 +355,7 @@ def test_shiftplan_generate_saves_vacation_and_skips_worker(
     )
 
     payload = response.get_json()
-    vacation_entries = [
-        entry
-        for entry in payload["entries"]
-        if entry["work_date"] == "2026-05-01"
-    ]
+    vacation_entries = [entry for entry in payload["entries"] if entry["work_date"] == "2026-05-01"]
     assert response.status_code == 201
     assert [entry["shift"] for entry in vacation_entries] == ["Urlaub"]
     assert vacation_entries[0]["notes"] == "Erholungsurlaub"

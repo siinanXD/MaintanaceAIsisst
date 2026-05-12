@@ -1,3 +1,5 @@
+"""Machine API routes."""
+
 from flask import Blueprint, jsonify, request
 
 from app.extensions import db
@@ -5,7 +7,6 @@ from app.machines.services import answer_machine_assistant, build_machine_histor
 from app.models import InventoryMaterial, Machine, ShiftPlanEntry
 from app.responses import error_response, service_error_response, success_response
 from app.security import current_user, dashboard_permission_required
-
 
 machines_bp = Blueprint("machines", __name__)
 
@@ -55,7 +56,7 @@ def create_machine():
 @dashboard_permission_required("machines", "view")
 def machine_history(machine_id):
     """Return a read-only history for one machine."""
-    machine = Machine.query.get_or_404(machine_id)
+    machine = db.get_or_404(Machine, machine_id)
     return success_response(
         build_machine_history(machine, current_user()),
         message="Machine history loaded",
@@ -66,7 +67,7 @@ def machine_history(machine_id):
 @dashboard_permission_required("machines", "view")
 def machine_assistant(machine_id):
     """Answer a machine-specific maintenance question."""
-    machine = Machine.query.get_or_404(machine_id)
+    machine = db.get_or_404(Machine, machine_id)
     result, error, status = answer_machine_assistant(
         machine,
         current_user(),
@@ -81,7 +82,7 @@ def machine_assistant(machine_id):
 @dashboard_permission_required("machines", "write")
 def update_machine(machine_id):
     """Update machine metadata used by inventory and shift planning."""
-    machine = Machine.query.get_or_404(machine_id)
+    machine = db.get_or_404(Machine, machine_id)
     data = request.get_json(silent=True) or {}
     if "name" in data:
         machine.name = data["name"].strip()
@@ -100,7 +101,7 @@ def update_machine(machine_id):
 @dashboard_permission_required("machines", "write")
 def delete_machine(machine_id):
     """Delete a machine and detach related inventory and plan entries."""
-    machine = Machine.query.get_or_404(machine_id)
+    machine = db.get_or_404(Machine, machine_id)
     InventoryMaterial.query.filter_by(machine_id=machine.id).update({"machine_id": None})
     ShiftPlanEntry.query.filter_by(machine_id=machine.id).update({"machine_id": None})
     db.session.delete(machine)

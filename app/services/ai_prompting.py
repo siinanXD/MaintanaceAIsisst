@@ -1,6 +1,5 @@
 """Shared prompt and assistant response helpers for AI workflows."""
 
-
 MAINTENANCE_SYSTEM_PROMPT = (
     "Du bist ein professioneller Maintenance-AI-Assistent fuer ein deutsches "
     "Industrie- und Produktionsteam. Arbeite strikt read-only: Du beantwortest "

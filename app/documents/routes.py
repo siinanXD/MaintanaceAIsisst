@@ -1,3 +1,5 @@
+"""Document API routes."""
+
 import logging
 from datetime import date
 

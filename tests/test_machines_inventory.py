@@ -1,3 +1,5 @@
+"""Tests for machine and inventory workflows."""
+
 from datetime import date, timedelta
 
 from app.models import Priority, Role
@@ -422,8 +424,8 @@ def test_inventory_page_contains_forecast_ui(client):
     html = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert 'data-inventory-forecast-form' in html
-    assert 'data-inventory-forecast-list' in html
+    assert "data-inventory-forecast-form" in html
+    assert "data-inventory-forecast-list" in html
     assert "Ersatzteil-Prognose" in html
 
 
@@ -601,9 +603,9 @@ def test_machine_page_contains_history_ui(client):
     html = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert 'data-machine-history-panel' in html
-    assert 'data-machine-history-list' in html
-    assert 'data-machine-assistant-form' in html
+    assert "data-machine-history-panel" in html
+    assert "data-machine-history-list" in html
+    assert "data-machine-assistant-form" in html
     assert "Anlagenakte" in html
 
 

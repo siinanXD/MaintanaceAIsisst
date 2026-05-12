@@ -1,13 +1,13 @@
-"""add ai audit metrics
+"""Add AI audit metrics.
 
 Revision ID: a4c8d9e2f135
 Revises: 9b2d7e8f4a31
 Create Date: 2026-05-11 00:00:00.000000
 
 """
-from alembic import op
-import sqlalchemy as sa
 
+import sqlalchemy as sa
+from alembic import op
 
 revision = "a4c8d9e2f135"
 down_revision = "9b2d7e8f4a31"

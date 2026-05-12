@@ -1,8 +1,9 @@
+"""Workflow service helpers."""
+
 import logging
 
 from app.services.document_service import generate_maintenance_report
 from app.services.task_service import complete_task
-
 
 logger = logging.getLogger(__name__)
 

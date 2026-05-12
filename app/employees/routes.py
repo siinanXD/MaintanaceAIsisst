@@ -1,5 +1,9 @@
+"""Employee API routes."""
+
 from flask import Blueprint, jsonify, request, send_from_directory
 
+import app.services.employee_service as employee_svc
+from app.extensions import db
 from app.models import Employee
 from app.responses import error_response, paginate_query, service_error_response
 from app.security import (
@@ -8,8 +12,6 @@ from app.security import (
     employee_access_level,
     employee_access_required,
 )
-import app.services.employee_service as employee_svc
-
 
 employees_bp = Blueprint("employees", __name__)
 
@@ -45,8 +47,10 @@ def create_employee():
 @employee_access_required("confidential")
 def update_employee(employee_id):
     """Update an employee with confidential personnel data."""
-    employee = Employee.query.get_or_404(employee_id)
-    updated, error, status = employee_svc.update_employee(employee, request.get_json(silent=True) or {})
+    employee = db.get_or_404(Employee, employee_id)
+    updated, error, status = employee_svc.update_employee(
+        employee, request.get_json(silent=True) or {}
+    )
     if error:
         return service_error_response(error, status)
     return jsonify(updated.to_dict())
@@ -57,7 +61,7 @@ def update_employee(employee_id):
 @employee_access_required("confidential")
 def delete_employee(employee_id):
     """Delete an employee and related documents."""
-    employee = Employee.query.get_or_404(employee_id)
+    employee = db.get_or_404(Employee, employee_id)
     _, error, status = employee_svc.delete_employee(employee)
     if error:
         return service_error_response(error, status)
@@ -69,7 +73,7 @@ def delete_employee(employee_id):
 @employee_access_required("confidential")
 def upload_document(employee_id):
     """Upload a confidential document for an employee."""
-    employee = Employee.query.get_or_404(employee_id)
+    employee = db.get_or_404(Employee, employee_id)
     file = request.files.get("document")
     document, error, status = employee_svc.upload_employee_document(employee, file)
     if error:

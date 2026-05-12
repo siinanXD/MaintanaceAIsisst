@@ -1,9 +1,9 @@
-"""
-Backward-compatible re-exports.
+"""Backward-compatible re-exports.
 
 Business logic has moved to app.services.task_service.
 Import directly from there in new code.
 """
+
 from app.services.task_service import (  # noqa: F401
     complete_task,
     create_task,

@@ -1,4 +1,6 @@
-from datetime import datetime
+"""Shift planning API routes."""
+
+from datetime import UTC, datetime
 
 from flask import Blueprint, jsonify, request
 
@@ -17,7 +19,6 @@ from app.shiftplans.services import (
     generate_shift_plan,
     hours_between,
 )
-
 
 shiftplans_bp = Blueprint("shiftplans", __name__)
 
@@ -41,13 +42,13 @@ def publish_shiftplan(plan_id):
     """Toggle a shift plan between draft and published."""
     if current_user().role != Role.MASTER_ADMIN:
         return error_response("Nur Administratoren koennen Plaene veroeffentlichen", 403)
-    plan = ShiftPlan.query.get_or_404(plan_id)
+    plan = db.get_or_404(ShiftPlan, plan_id)
     if plan.is_published:
         plan.status = "draft"
         plan.published_at = None
     else:
         plan.status = "published"
-        plan.published_at = datetime.utcnow()
+        plan.published_at = datetime.now(UTC)
     db.session.add(
         ShiftPlanChangeLog(
             plan_id=plan.id,
@@ -100,7 +101,7 @@ def delete_shiftplan(plan_id):
     """Delete a generated shift plan and its entries."""
     if current_user().role != Role.MASTER_ADMIN:
         return error_response("Nur Administratoren koennen Schichtplaene loeschen", 403)
-    plan = ShiftPlan.query.get_or_404(plan_id)
+    plan = db.get_or_404(ShiftPlan, plan_id)
     db.session.delete(plan)
     db.session.commit()
     return "", 204
@@ -115,7 +116,7 @@ def delete_shiftplan(plan_id):
 @dashboard_permission_required("shiftplans", "write")
 def update_entry(entry_id):
     """Manually update a single shift plan entry and log the change."""
-    entry = ShiftPlanEntry.query.get_or_404(entry_id)
+    entry = db.get_or_404(ShiftPlanEntry, entry_id)
     data = request.get_json(silent=True) or {}
     user = current_user()
 
@@ -137,9 +138,7 @@ def update_entry(entry_id):
         except ValueError:
             return error_response("Ungueltige Start- oder Endzeit", 400)
         if h > 10:
-            return error_response(
-                "Max. 10 Stunden pro Schicht erlaubt (ArbZG §3)", 400
-            )
+            return error_response("Max. 10 Stunden pro Schicht erlaubt (ArbZG §3)", 400)
 
     for field_name, old_val, new_val in changes:
         db.session.add(
@@ -163,7 +162,8 @@ def update_entry(entry_id):
 def move_entry(entry_id):
     """Move or swap a shift entry. Chip-to-chip uses target_entry_id for deterministic swap."""
     from app.shiftplans.services import SHIFT_WINDOWS, parse_date
-    entry = ShiftPlanEntry.query.get_or_404(entry_id)
+
+    entry = db.get_or_404(ShiftPlanEntry, entry_id)
     data = request.get_json(silent=True) or {}
     user = current_user()
 
@@ -189,10 +189,10 @@ def move_entry(entry_id):
             return error_response("target_shift erforderlich", 400)
 
         existing = ShiftPlanEntry.query.filter(
-            ShiftPlanEntry.plan_id   == entry.plan_id,
+            ShiftPlanEntry.plan_id == entry.plan_id,
             ShiftPlanEntry.work_date == target_date,
-            ShiftPlanEntry.shift     == target_shift,
-            ShiftPlanEntry.id        != entry.id,
+            ShiftPlanEntry.shift == target_shift,
+            ShiftPlanEntry.id != entry.id,
         ).first()
 
     if existing:
@@ -203,48 +203,63 @@ def move_entry(entry_id):
         # Swap slot data: entry moves to existing's slot, existing moves to entry's slot
         old_date_a, old_shift_a = entry.work_date, entry.shift
         old_start_a, old_end_a = entry.start_time, entry.end_time
-        entry.work_date   = existing.work_date
-        entry.shift       = existing.shift
-        entry.start_time  = existing.start_time
-        entry.end_time    = existing.end_time
-        existing.work_date  = old_date_a
-        existing.shift      = old_shift_a
+        entry.work_date = existing.work_date
+        entry.shift = existing.shift
+        entry.start_time = existing.start_time
+        entry.end_time = existing.end_time
+        existing.work_date = old_date_a
+        existing.shift = old_shift_a
         existing.start_time = old_start_a
-        existing.end_time   = old_end_a
+        existing.end_time = old_end_a
         db.session.flush()
-        db.session.add(ShiftPlanChangeLog(
-            entry_id=entry.id, plan_id=entry.plan_id, user_id=user.id,
-            action="swap", field_name="employee_id",
-            old_value=str(old_emp_a), new_value=str(old_emp_b),
-        ))
-        db.session.add(ShiftPlanChangeLog(
-            entry_id=existing.id, plan_id=existing.plan_id, user_id=user.id,
-            action="swap", field_name="employee_id",
-            old_value=str(old_emp_b), new_value=str(old_emp_a),
-        ))
+        db.session.add(
+            ShiftPlanChangeLog(
+                entry_id=entry.id,
+                plan_id=entry.plan_id,
+                user_id=user.id,
+                action="swap",
+                field_name="employee_id",
+                old_value=str(old_emp_a),
+                new_value=str(old_emp_b),
+            )
+        )
+        db.session.add(
+            ShiftPlanChangeLog(
+                entry_id=existing.id,
+                plan_id=existing.plan_id,
+                user_id=user.id,
+                action="swap",
+                field_name="employee_id",
+                old_value=str(old_emp_b),
+                new_value=str(old_emp_a),
+            )
+        )
     else:
         # Check if the entry's employee already has an entry on the target date (different shift)
         conflict = ShiftPlanEntry.query.filter(
-            ShiftPlanEntry.plan_id     == entry.plan_id,
+            ShiftPlanEntry.plan_id == entry.plan_id,
             ShiftPlanEntry.employee_id == entry.employee_id,
-            ShiftPlanEntry.work_date   == target_date,
-            ShiftPlanEntry.id          != entry.id,
+            ShiftPlanEntry.work_date == target_date,
+            ShiftPlanEntry.id != entry.id,
         ).first()
         if conflict:
-            return error_response(
-                "Mitarbeiter hat bereits einen Eintrag an diesem Tag", 409
-            )
+            return error_response("Mitarbeiter hat bereits einen Eintrag an diesem Tag", 409)
         old_val = f"{entry.work_date.isoformat()} {entry.shift}"
         entry.work_date = target_date
-        entry.shift     = target_shift
+        entry.shift = target_shift
         if target_shift in SHIFT_WINDOWS:
             entry.start_time, entry.end_time = SHIFT_WINDOWS[target_shift]
         db.session.flush()
-        db.session.add(ShiftPlanChangeLog(
-            entry_id=entry.id, plan_id=entry.plan_id, user_id=user.id,
-            action="move", old_value=old_val,
-            new_value=f"{target_date.isoformat()} {target_shift}",
-        ))
+        db.session.add(
+            ShiftPlanChangeLog(
+                entry_id=entry.id,
+                plan_id=entry.plan_id,
+                user_id=user.id,
+                action="move",
+                old_value=old_val,
+                new_value=f"{target_date.isoformat()} {target_shift}",
+            )
+        )
 
     db.session.commit()
     plan = db.session.get(ShiftPlan, entry.plan_id)
@@ -257,7 +272,7 @@ def delete_entry(entry_id):
     """Delete a single shift plan entry (admin only) and log the action."""
     if current_user().role != Role.MASTER_ADMIN:
         return error_response("Nur Administratoren koennen Eintraege loeschen", 403)
-    entry = ShiftPlanEntry.query.get_or_404(entry_id)
+    entry = db.get_or_404(ShiftPlanEntry, entry_id)
     db.session.add(
         ShiftPlanChangeLog(
             entry_id=entry.id,
@@ -281,10 +296,9 @@ def delete_entry(entry_id):
 @roles_required(Role.MASTER_ADMIN)
 def plan_changelog(plan_id):
     """Return the full change history for a shift plan (admin only)."""
-    ShiftPlan.query.get_or_404(plan_id)
+    db.get_or_404(ShiftPlan, plan_id)
     logs = (
-        ShiftPlanChangeLog.query
-        .filter_by(plan_id=plan_id)
+        ShiftPlanChangeLog.query.filter_by(plan_id=plan_id)
         .order_by(ShiftPlanChangeLog.changed_at.desc())
         .all()
     )

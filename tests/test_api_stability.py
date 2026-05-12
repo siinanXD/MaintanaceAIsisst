@@ -1,3 +1,7 @@
+"""Tests for API stability guarantees."""
+
+import pytest
+
 from app.models import Priority, Role
 from app.permissions import DASHBOARD_KEYS
 
@@ -73,6 +77,7 @@ def test_loaded_static_assets_exist(client):
     expected_assets = (
         "/static/css/output.css",
         "/static/core/feature-registry.js",
+        "/static/core/api-client.js",
         "/static/auth.js",
         "/static/app.js",
         "/static/chat.js",
@@ -139,6 +144,34 @@ def test_api_not_found_returns_consistent_json(client, make_user, auth_headers):
     assert payload["message"]
     assert payload["error"]
     assert payload["error"] != payload["message"]
+
+
+def test_production_requires_strong_secrets(tmp_path):
+    """Verify production startup rejects weak secret configuration."""
+
+    class WeakProductionConfig:
+        """Provide intentionally weak production settings."""
+
+        TESTING = False
+        FLASK_ENV = "production"
+        SECRET_KEY = "dev-secret-change-me"
+        JWT_SECRET_KEY = "short"
+        SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
+        SQLALCHEMY_TRACK_MODIFICATIONS = False
+        AUTO_CREATE_DATABASE = False
+        AI_PROVIDER = "mock"
+        OPENAI_API_KEY = ""
+        OPENAI_MODEL = "test-model"
+        UPLOAD_FOLDER = str(tmp_path / "uploads")
+        DOCUMENTS_FOLDER = str(tmp_path / "documents")
+        LOG_DIR = str(tmp_path / "logs")
+        LOG_LEVEL = "INFO"
+        SLOW_REQUEST_THRESHOLD_MS = 500
+
+    from app import create_app
+
+    with pytest.raises(RuntimeError, match="SECRET_KEY"):
+        create_app(WeakProductionConfig)
 
 
 def test_core_ai_and_workflow_endpoints_smoke(

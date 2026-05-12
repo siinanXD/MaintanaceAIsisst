@@ -1,1 +1,1 @@
-
+"""Shift planning package."""

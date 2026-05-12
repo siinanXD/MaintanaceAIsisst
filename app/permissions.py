@@ -1,6 +1,7 @@
+"""Role and dashboard permission helpers."""
+
 from app.extensions import db
 from app.models import DashboardPermission, Role
-
 
 DASHBOARD_KEYS = (
     "dashboard",
@@ -105,10 +106,7 @@ def permission_by_dashboard(user):
     """Return the user's stored permissions indexed by dashboard key."""
     if not user:
         return {}
-    return {
-        permission.dashboard: permission
-        for permission in user.dashboard_permissions
-    }
+    return {permission.dashboard: permission for permission in user.dashboard_permissions}
 
 
 def upsert_default_permissions(user):
@@ -152,9 +150,7 @@ def serialize_permissions(user):
             dashboard: {
                 "can_view": True,
                 "can_write": True,
-                "employee_access_level": (
-                    "confidential" if dashboard == "employees" else "none"
-                ),
+                "employee_access_level": ("confidential" if dashboard == "employees" else "none"),
             }
             for dashboard in DASHBOARD_KEYS
         }
@@ -234,9 +230,7 @@ def replace_user_permissions(user, payload):
         if not isinstance(values, dict):
             raise ValueError(f"permissions.{dashboard} must be an object")
         seen_dashboards.add(dashboard)
-        access_level = validate_employee_access_level(
-            values.get("employee_access_level", "none")
-        )
+        access_level = validate_employee_access_level(values.get("employee_access_level", "none"))
         if dashboard != "employees":
             access_level = "none"
         if dashboard == "admin_users" and user.role != Role.MASTER_ADMIN:

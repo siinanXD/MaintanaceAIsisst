@@ -4,7 +4,6 @@ import logging
 
 from flask import jsonify, render_template
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -57,7 +56,7 @@ OPENAPI_SPEC = {
                 "type": "object",
                 "description": "Pagination metadata returned by list endpoints.",
                 "properties": {
-                    "page":  {"type": "integer", "example": 1},
+                    "page": {"type": "integer", "example": 1},
                     "limit": {"type": "integer", "example": 20},
                     "total": {"type": "integer", "example": 100},
                     "pages": {"type": "integer", "example": 5},
@@ -189,7 +188,9 @@ OPENAPI_SPEC = {
                     },
                     "solution": {
                         "type": "string",
-                        "example": "Anlage stoppen, Kuehlkreislauf pruefen, Probelauf dokumentieren.",
+                        "example": (
+                            "Anlage stoppen, Kuehlkreislauf pruefen, " "Probelauf dokumentieren."
+                        ),
                     },
                     "department": {"$ref": "#/components/schemas/Department"},
                 },
@@ -396,9 +397,7 @@ OPENAPI_SPEC = {
                     "recommendations": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "example": [
-                            "Ursache oder wahrscheinliche Fehlerquelle dokumentieren."
-                        ],
+                        "example": ["Ursache oder wahrscheinliche Fehlerquelle dokumentieren."],
                     },
                     "diagnostics": {
                         "type": "object",
@@ -411,25 +410,19 @@ OPENAPI_SPEC = {
             "Unauthorized": {
                 "description": "Missing or invalid JWT token",
                 "content": {
-                    "application/json": {
-                        "schema": {"$ref": "#/components/schemas/ErrorResponse"}
-                    }
+                    "application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}
                 },
             },
             "Forbidden": {
                 "description": "User lacks the required role or dashboard permission",
                 "content": {
-                    "application/json": {
-                        "schema": {"$ref": "#/components/schemas/ErrorResponse"}
-                    }
+                    "application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}
                 },
             },
             "ValidationError": {
                 "description": "Invalid or incomplete request payload",
                 "content": {
-                    "application/json": {
-                        "schema": {"$ref": "#/components/schemas/ErrorResponse"}
-                    }
+                    "application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}
                 },
             },
         },
@@ -469,9 +462,7 @@ OPENAPI_SPEC = {
                     "201": {
                         "description": "User created",
                         "content": {
-                            "application/json": {
-                                "schema": {"$ref": "#/components/schemas/User"}
-                            }
+                            "application/json": {"schema": {"$ref": "#/components/schemas/User"}}
                         },
                     },
                     "400": {"$ref": "#/components/responses/ValidationError"},
@@ -588,9 +579,7 @@ OPENAPI_SPEC = {
                     "201": {
                         "description": "Task created",
                         "content": {
-                            "application/json": {
-                                "schema": {"$ref": "#/components/schemas/Task"}
-                            }
+                            "application/json": {"schema": {"$ref": "#/components/schemas/Task"}}
                         },
                     },
                     "400": {"$ref": "#/components/responses/ValidationError"},
@@ -666,7 +655,9 @@ OPENAPI_SPEC = {
                 },
                 "responses": {
                     "200": {
-                        "description": "Task completed, optionally with generated document metadata",
+                        "description": (
+                            "Task completed, optionally with generated document metadata"
+                        ),
                         "content": {
                             "application/json": {
                                 "schema": {"$ref": "#/components/schemas/Task"},
@@ -698,11 +689,7 @@ OPENAPI_SPEC = {
                 "security": [{"bearerAuth": []}],
                 "requestBody": {
                     "required": False,
-                    "content": {
-                        "application/json": {
-                            "example": {"status": "open", "limit": 10}
-                        }
-                    },
+                    "content": {"application/json": {"example": {"status": "open", "limit": 10}}},
                 },
                 "responses": {
                     "200": {
@@ -794,7 +781,9 @@ OPENAPI_SPEC = {
                                         "error_code": "CNC-E-104",
                                         "title": "Temperatur ausserhalb Toleranz",
                                         "possible_causes": "Kuehlung, Sensor oder Lager pruefen.",
-                                        "solution": "Kuehlkreislauf pruefen und Probelauf dokumentieren.",
+                                        "solution": (
+                                            "Kuehlkreislauf pruefen und Probelauf " "dokumentieren."
+                                        ),
                                     }
                                 ],
                             }
@@ -857,7 +846,9 @@ OPENAPI_SPEC = {
                     "content": {
                         "application/json": {
                             "example": {
-                                "description": "CNC-Fraese stoppt mit Temperaturwarnung an der Spindel"
+                                "description": (
+                                    "CNC-Fraese stoppt mit Temperaturwarnung an der Spindel"
+                                )
                             }
                         }
                     },
@@ -928,9 +919,7 @@ OPENAPI_SPEC = {
                     "required": True,
                     "content": {
                         "application/json": {
-                            "example": {
-                                "question": "Welche Wartung ist vor Schichtbeginn wichtig?"
-                            }
+                            "example": {"question": "Welche Wartung ist vor Schichtbeginn wichtig?"}
                         }
                     },
                 },
@@ -964,11 +953,7 @@ OPENAPI_SPEC = {
                 "responses": {
                     "200": {
                         "description": "Service is running",
-                        "content": {
-                            "application/json": {
-                                "example": {"status": "ok"}
-                            }
-                        },
+                        "content": {"application/json": {"example": {"status": "ok"}}},
                     }
                 },
             }
@@ -1015,9 +1000,7 @@ OPENAPI_SPEC = {
                     "required": True,
                     "content": {
                         "application/json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/EmployeeCreateRequest"
-                            },
+                            "schema": {"$ref": "#/components/schemas/EmployeeCreateRequest"},
                             "example": {
                                 "personnel_number": "MA-0042",
                                 "name": "Hans Mueller",
@@ -1061,9 +1044,7 @@ OPENAPI_SPEC = {
                     "required": True,
                     "content": {
                         "application/json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/EmployeeCreateRequest"
-                            }
+                            "schema": {"$ref": "#/components/schemas/EmployeeCreateRequest"}
                         }
                     },
                 },
@@ -1114,9 +1095,7 @@ OPENAPI_SPEC = {
                             "application/json": {
                                 "schema": {
                                     "type": "array",
-                                    "items": {
-                                        "$ref": "#/components/schemas/ShiftPlan"
-                                    },
+                                    "items": {"$ref": "#/components/schemas/ShiftPlan"},
                                 }
                             }
                         },
@@ -1259,9 +1238,7 @@ OPENAPI_SPEC = {
                             "application/json": {
                                 "schema": {
                                     "type": "array",
-                                    "items": {
-                                        "$ref": "#/components/schemas/GeneratedDocument"
-                                    },
+                                    "items": {"$ref": "#/components/schemas/GeneratedDocument"},
                                 }
                             }
                         },
@@ -1289,9 +1266,7 @@ OPENAPI_SPEC = {
                     "200": {
                         "description": "HTML maintenance report as file download",
                         "content": {
-                            "text/html": {
-                                "schema": {"type": "string", "format": "binary"}
-                            }
+                            "text/html": {"schema": {"type": "string", "format": "binary"}}
                         },
                     },
                     "400": {"$ref": "#/components/responses/ValidationError"},
@@ -1320,14 +1295,10 @@ OPENAPI_SPEC = {
                 ],
                 "responses": {
                     "200": {
-                        "description": (
-                            "Quality review with score, findings, and recommendations"
-                        ),
+                        "description": ("Quality review with score, findings, and recommendations"),
                         "content": {
                             "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/DocumentReview"
-                                },
+                                "schema": {"$ref": "#/components/schemas/DocumentReview"},
                                 "example": {
                                     "quality_score": 80,
                                     "status": "needs_review",
@@ -1335,9 +1306,7 @@ OPENAPI_SPEC = {
                                         {
                                             "field": "Ursache",
                                             "severity": "warning",
-                                            "message": (
-                                                "Ursache ist sehr knapp dokumentiert."
-                                            ),
+                                            "message": ("Ursache ist sehr knapp dokumentiert."),
                                         }
                                     ],
                                     "recommendations": [

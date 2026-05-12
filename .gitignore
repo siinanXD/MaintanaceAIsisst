@@ -45,6 +45,7 @@ yarn-error.log*
 Thumbs.db
 
 # Misc
+.claude/
 .codex_deps/
 .tmp/
 *.log

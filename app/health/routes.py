@@ -1,10 +1,11 @@
+"""Health check API routes."""
+
 from flask import Blueprint, current_app, jsonify
 from flask_jwt_extended import jwt_required
 from sqlalchemy import inspect, text
 
 from app.extensions import db
 from app.models import Employee, EmployeeDocument, ErrorEntry, Task
-
 
 health_bp = Blueprint("health", __name__)
 public_health_bp = Blueprint("public_health", __name__)
