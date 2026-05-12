@@ -22,6 +22,7 @@ A modular Flask application for industrial maintenance teams. Manages tasks, err
 - JWT authentication with role-based navigation
 - Per-dashboard read/write permissions configurable by admins
 - Security audit log for user, permission, backup, restore, and shift plan changes
+- SMTP email notifications with dry-run mode and delivery dedupe
 - Employee data access tiers: none · basic · shift · confidential
 
 **Tasks & Errors**
@@ -49,6 +50,7 @@ A modular Flask application for industrial maintenance teams. Manages tasks, err
 - Swagger UI + OpenAPI JSON auto-generated from code
 - Docker Compose setup with Gunicorn and persistent volumes
 - ZIP backup/restore for SQLite data, uploads, documents, logs, and manifests
+- Scheduler-friendly CLI jobs for task reminders, AI alerts, and daily briefings
 
 ## Tech Stack
 
@@ -116,6 +118,14 @@ AI_PROVIDER=openai          # or "mock" for local-only mode
 OPENAI_API_KEY=             # leave empty to use local fallback
 OPENAI_MODEL=gpt-4o-mini
 BACKUP_FOLDER=backups
+MAIL_ENABLED=false
+MAIL_HOST=
+MAIL_PORT=587
+MAIL_USERNAME=
+MAIL_PASSWORD=
+MAIL_FROM=
+MAIL_USE_TLS=true
+MAIL_DRY_RUN=true
 ```
 
 `.env` is excluded from version control. Never commit real secrets.
@@ -123,6 +133,24 @@ For production deployments set `AUTO_CREATE_DATABASE=false` and run
 `flask --app run:app db upgrade` during release.
 `python seed.py production` never creates demo passwords. It only creates an
 initial admin when `ADMIN_USERNAME`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` are set.
+For mail, keep `MAIL_DRY_RUN=true` until SMTP credentials are verified. Dry-run
+creates delivery records but does not open an SMTP connection.
+
+### Scheduled Notifications
+
+No background scheduler runs inside Flask. Configure Windows Task Scheduler,
+Cron, or your platform scheduler to call the idempotent CLI jobs:
+
+```bash
+flask --app run:app notifications send-task-alerts
+flask --app run:app notifications send-overdue-reminders
+flask --app run:app notifications send-ai-alerts
+flask --app run:app notifications send-daily-briefings
+```
+
+Suggested cadence: task alerts every 15 minutes, overdue reminders hourly, AI
+alerts every 15 minutes, daily briefings once per day around
+`DAILY_BRIEFING_TIME`.
 
 ## Project Structure
 

@@ -185,6 +185,58 @@ OPENAPI_SPEC = {
                     },
                 },
             },
+            "MailStatus": {
+                "type": "object",
+                "properties": {
+                    "enabled": {"type": "boolean", "example": False},
+                    "dry_run": {"type": "boolean", "example": True},
+                    "host_configured": {"type": "boolean", "example": False},
+                    "port": {"type": "integer", "example": 587},
+                    "username_configured": {"type": "boolean", "example": False},
+                    "from_configured": {"type": "boolean", "example": True},
+                    "use_tls": {"type": "boolean", "example": True},
+                },
+            },
+            "NotificationDelivery": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer", "example": 1},
+                    "notification_type": {"type": "string", "example": "task_urgent"},
+                    "recipient_user_id": {"type": "integer", "nullable": True, "example": 2},
+                    "recipient_email": {"type": "string", "example": "ops@example.test"},
+                    "channel": {"type": "string", "example": "email"},
+                    "subject": {"type": "string", "example": "Dringender Task: CNC steht"},
+                    "status": {"type": "string", "example": "dry_run"},
+                    "error": {"type": "string", "example": ""},
+                    "dedupe_key": {"type": "string", "example": "task_urgent:2026-05-12:7:2"},
+                    "payload": {"type": "object"},
+                    "sent_at": {"type": "string", "format": "date-time", "nullable": True},
+                    "created_at": {"type": "string", "format": "date-time"},
+                },
+            },
+            "PaginatedNotificationDeliveries": {
+                "type": "object",
+                "properties": {
+                    "success": {"type": "boolean", "example": True},
+                    "data": {
+                        "type": "array",
+                        "items": {"$ref": "#/components/schemas/NotificationDelivery"},
+                    },
+                    "pagination": {
+                        "type": "object",
+                        "properties": {
+                            "limit": {"type": "integer", "example": 50},
+                            "offset": {"type": "integer", "example": 0},
+                            "total": {"type": "integer", "example": 1},
+                        },
+                    },
+                    "mail": {"$ref": "#/components/schemas/MailStatus"},
+                    "message": {
+                        "type": "string",
+                        "example": "Notification deliveries loaded",
+                    },
+                },
+            },
             "Department": {
                 "type": "object",
                 "properties": {
@@ -935,6 +987,103 @@ OPENAPI_SPEC = {
                     "401": {"$ref": "#/components/responses/Unauthorized"},
                     "403": {"$ref": "#/components/responses/Forbidden"},
                     "404": {"$ref": "#/components/responses/ValidationError"},
+                },
+            }
+        },
+        "/api/v1/admin/notifications/deliveries": {
+            "get": {
+                "tags": ["Admin"],
+                "summary": "List notification deliveries",
+                "description": (
+                    "Returns email delivery records and redacted mail " "configuration status."
+                ),
+                "security": [{"bearerAuth": []}],
+                "parameters": [
+                    {"name": "type", "in": "query", "schema": {"type": "string"}},
+                    {"name": "status", "in": "query", "schema": {"type": "string"}},
+                    {"name": "q", "in": "query", "schema": {"type": "string"}},
+                    {"name": "limit", "in": "query", "schema": {"type": "integer"}},
+                    {"name": "offset", "in": "query", "schema": {"type": "integer"}},
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Notification deliveries",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PaginatedNotificationDeliveries"
+                                },
+                                "example": {
+                                    "success": True,
+                                    "data": [
+                                        {
+                                            "id": 1,
+                                            "notification_type": "task_urgent",
+                                            "recipient_email": "ops@example.test",
+                                            "status": "dry_run",
+                                            "subject": "Dringender Task: CNC steht",
+                                            "created_at": "2026-05-12T12:00:00+00:00",
+                                        }
+                                    ],
+                                    "pagination": {"limit": 50, "offset": 0, "total": 1},
+                                    "mail": {"enabled": False, "dry_run": True},
+                                    "message": "Notification deliveries loaded",
+                                },
+                            }
+                        },
+                    },
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                },
+            }
+        },
+        "/api/v1/admin/notifications/test-email": {
+            "post": {
+                "tags": ["Admin"],
+                "summary": "Send test email",
+                "description": (
+                    "Creates a delivery record and sends via SMTP unless " "dry-run is enabled."
+                ),
+                "security": [{"bearerAuth": []}],
+                "requestBody": {
+                    "required": False,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "recipient_email": {
+                                        "type": "string",
+                                        "example": "ops@example.test",
+                                    }
+                                },
+                            },
+                            "example": {"recipient_email": "ops@example.test"},
+                        }
+                    },
+                },
+                "responses": {
+                    "201": {
+                        "description": "Test email delivery recorded",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/SuccessResponse"},
+                                "example": {
+                                    "success": True,
+                                    "data": {
+                                        "notification_type": "test_email",
+                                        "recipient_email": "ops@example.test",
+                                        "status": "dry_run",
+                                    },
+                                    "mail": {"enabled": False, "dry_run": True},
+                                    "message": "Test email recorded",
+                                },
+                            }
+                        },
+                    },
+                    "400": {"$ref": "#/components/responses/ValidationError"},
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
                 },
             }
         },

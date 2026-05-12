@@ -26,6 +26,8 @@ def test_openapi_json_documents_core_endpoints(client):
     assert "/api/v1/admin/backups" in paths
     assert "/api/v1/admin/backups/{backup_id}/download" in paths
     assert "/api/v1/admin/backups/{backup_id}/restore" in paths
+    assert "/api/v1/admin/notifications/deliveries" in paths
+    assert "/api/v1/admin/notifications/test-email" in paths
 
 
 def test_openapi_examples_are_present(client):
@@ -45,6 +47,8 @@ def test_openapi_examples_are_present(client):
     assert spec["components"]["schemas"]["ErrorResponse"]["properties"]["message"]["example"]
     assert spec["components"]["schemas"]["PaginatedAuditLog"]["properties"]["pagination"]
     assert spec["components"]["schemas"]["BackupMetadata"]["properties"]["download_url"]["example"]
+    assert spec["components"]["schemas"]["NotificationDelivery"]["properties"]["status"]["example"]
+    assert spec["components"]["schemas"]["MailStatus"]["properties"]["dry_run"]["example"] is True
 
 
 def test_swagger_ui_route_loads(client):

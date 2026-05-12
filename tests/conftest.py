@@ -45,6 +45,9 @@ def app(tmp_path):
         DOCUMENTS_FOLDER = str(tmp_path / "documents")
         BACKUP_FOLDER = str(tmp_path / "backups")
         LOG_DIR = str(tmp_path / "logs")
+        MAIL_DRY_RUN = True
+        MAIL_ENABLED = False
+        MAIL_FROM = "noreply@example.test"
 
     application = create_app(TestingConfig)
 

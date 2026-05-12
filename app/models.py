@@ -5,6 +5,7 @@ from app.domain_models.common import Priority, Role, TaskStatus, utc_now
 from app.domain_models.documents import EmployeeDocument, GeneratedDocument
 from app.domain_models.errors import ErrorEntry
 from app.domain_models.machines import InventoryMaterial, Machine, MaintenancePlan
+from app.domain_models.notifications import NotificationDelivery
 from app.domain_models.organization import AuditLogEntry, DashboardPermission, Department
 from app.domain_models.tasks import Task
 from app.domain_models.users import TokenBlocklist, User
@@ -31,6 +32,7 @@ __all__ = [
     "InventoryMaterial",
     "Machine",
     "MaintenancePlan",
+    "NotificationDelivery",
     "Priority",
     "Role",
     "ShiftHandover",

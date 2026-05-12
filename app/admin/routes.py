@@ -21,6 +21,8 @@ from app.services.backup_service import (
     list_backups,
     restore_backup,
 )
+from app.services.mail_service import mail_config_status
+from app.services.notification_service import delivery_query, send_test_email
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -111,6 +113,30 @@ def paginated_audit_response(query):
                 "total": total,
             },
             "message": "Audit log loaded",
+        }
+    )
+
+
+def paginated_delivery_response(query):
+    """Return a paginated notification delivery response."""
+    try:
+        limit = min(max(1, int(request.args.get("limit", 50))), 200)
+        offset = max(0, int(request.args.get("offset", 0)))
+    except (TypeError, ValueError):
+        return error_response("limit and offset must be integers", 400)
+    total = query.count()
+    deliveries = query.offset(offset).limit(limit).all()
+    return jsonify(
+        {
+            "success": True,
+            "data": [delivery.to_dict() for delivery in deliveries],
+            "pagination": {
+                "limit": limit,
+                "offset": offset,
+                "total": total,
+            },
+            "mail": mail_config_status(),
+            "message": "Notification deliveries loaded",
         }
     )
 
@@ -210,6 +236,34 @@ def restore_backup_route(backup_id):
     if error:
         return error_response(error["error"], status)
     return jsonify({"success": True, "data": result, "message": "Backup restored"}), status
+
+
+@admin_bp.get("/notifications/deliveries")
+@roles_required(Role.MASTER_ADMIN)
+def notification_deliveries():
+    """Return notification delivery records for administrators."""
+    return paginated_delivery_response(delivery_query(request.args))
+
+
+@admin_bp.post("/notifications/test-email")
+@roles_required(Role.MASTER_ADMIN)
+def test_email():
+    """Send a test email to the provided recipient or current admin."""
+    actor = current_admin_user()
+    data = request.get_json(silent=True) or {}
+    recipient_email = str(data.get("recipient_email") or actor.email).strip()
+    delivery = send_test_email(recipient_email, actor=actor)
+    return (
+        jsonify(
+            {
+                "success": True,
+                "data": delivery.to_dict() if delivery else None,
+                "mail": mail_config_status(),
+                "message": "Test email recorded",
+            }
+        ),
+        201,
+    )
 
 
 @admin_bp.get("/ai/summary")

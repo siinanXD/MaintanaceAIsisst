@@ -327,6 +327,34 @@ Restore verlangt immer eine explizite Bestaetigung:
 Das Backup-ZIP enthaelt ein Manifest, die SQLite-Datenbank, Uploads,
 Dokumente und Logs, soweit die konfigurierten Ordner existieren.
 
+## Admin-Benachrichtigungen
+
+E-Mail-Versand wird ueber SMTP aus `.env` gesteuert. `MAIL_DRY_RUN=true`
+erstellt Delivery-Records ohne SMTP-Verbindung.
+
+```http
+GET /api/v1/admin/notifications/deliveries?type=task_urgent&status=dry_run
+Authorization: Bearer <access_token>
+```
+
+```http
+POST /api/v1/admin/notifications/test-email
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{"recipient_email": "ops@example.test"}
+```
+
+Scheduler-Jobs laufen bewusst ueber CLI, nicht als Hintergrundtimer im
+Flask-Prozess:
+
+```bash
+flask --app run:app notifications send-task-alerts
+flask --app run:app notifications send-overdue-reminders
+flask --app run:app notifications send-ai-alerts
+flask --app run:app notifications send-daily-briefings
+```
+
 ## Departments
 
 ### Departments auflisten

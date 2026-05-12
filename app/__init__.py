@@ -23,6 +23,7 @@ from app.handover.routes import handover_bp
 from app.health.routes import health_bp, public_health_bp
 from app.inventory.routes import inventory_bp
 from app.machines.routes import machines_bp
+from app.notifications.commands import register_notification_commands
 from app.permissions import ensure_all_user_default_permissions
 from app.responses import error_response
 from app.search.routes import search_bp
@@ -105,6 +106,7 @@ def create_app(config_class=Config):
     app.register_blueprint(web_bp)
     configure_api_documentation(app)
     register_admin_commands(app)
+    register_notification_commands(app)
     register_error_handlers(app)
 
     if app.config.get("AUTO_CREATE_DATABASE") or app.config.get("TESTING"):
