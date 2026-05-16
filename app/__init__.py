@@ -25,10 +25,13 @@ from app.inventory.routes import inventory_bp
 from app.machines.routes import machines_bp
 from app.notifications.commands import register_notification_commands
 from app.notifications.routes import notifications_bp
+from app.operations.routes import operations_bp
 from app.permissions import ensure_all_user_default_permissions
 from app.responses import error_response
 from app.search.routes import search_bp
+from app.services.database_schema_service import ensure_local_development_schema
 from app.shiftplans.routes import shiftplans_bp
+from app.sites.routes import sites_bp
 from app.tasks.routes import tasks_bp
 from app.vacations.routes import vacations_bp
 from app.web.routes import web_bp
@@ -101,9 +104,11 @@ def create_app(config_class=Config):
     app.register_blueprint(handover_bp, url_prefix="/api/v1/handover")
     app.register_blueprint(vacations_bp, url_prefix="/api/v1/vacations")
     app.register_blueprint(notifications_bp, url_prefix="/api/v1/notifications")
+    app.register_blueprint(sites_bp, url_prefix="/api/v1/sites")
 
     # Cross-cutting: AI, search, health, frontend
     app.register_blueprint(ai_bp, url_prefix="/api/v1/ai")
+    app.register_blueprint(operations_bp, url_prefix="/api/v1/operations")
     app.register_blueprint(search_bp, url_prefix="/api/v1/search")
     app.register_blueprint(health_bp, url_prefix="/api/v1/health")
     app.register_blueprint(public_health_bp)
@@ -116,6 +121,7 @@ def create_app(config_class=Config):
     if app.config.get("AUTO_CREATE_DATABASE") or app.config.get("TESTING"):
         with app.app_context():
             db.create_all()
+            ensure_local_development_schema()
             ensure_default_departments()
             ensure_all_user_default_permissions()
 

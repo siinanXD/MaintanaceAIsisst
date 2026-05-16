@@ -8,6 +8,7 @@ import pytest
 from app.extensions import db
 from app.models import (
     AIAuditEvent,
+    AssistantTrainingEntry,
     EmployeeMachineQualification,
     GeneratedDocument,
     KnowledgeDocument,
@@ -637,6 +638,206 @@ def test_knowledge_upload_and_chat_retrieval_respect_permissions(
     with client.application.app_context():
         document = db.session.get(KnowledgeDocument, upload_response.get_json()["data"]["id"])
         assert document.chunk_count == 1
+
+
+def test_admin_training_crud_marks_knowledge_stale_and_deletes_document(
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify master admins can maintain manual assistant training entries."""
+    admin = make_user(
+        username="training_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    user = make_user(username="training_user")
+    admin_headers = auth_headers(admin["username"])
+
+    forbidden_response = client.get(
+        "/api/v1/admin/ai/training",
+        headers=auth_headers(user["username"]),
+    )
+    invalid_response = client.post(
+        "/api/v1/admin/ai/training",
+        headers=admin_headers,
+        json={"answer": "Ohne Titel"},
+    )
+    create_response = client.post(
+        "/api/v1/admin/ai/training",
+        headers=admin_headers,
+        json={
+            "title": "Hydraulikfilter X900",
+            "question": "Wie wird X900 gepflegt?",
+            "answer": "Hydraulikfilter X900 taeglich pruefen und Befund dokumentieren.",
+            "keywords": ["Hydraulikfilter", "X900", "Filterpflege"],
+            "category": "wartung",
+            "department": "Produktion",
+            "priority": 80,
+        },
+    )
+    entry_id = create_response.get_json()["data"]["id"]
+    update_response = client.put(
+        f"/api/v1/admin/ai/training/{entry_id}",
+        headers=admin_headers,
+        json={"answer": "X900 je Schicht pruefen.", "priority": 90},
+    )
+    list_response = client.get(
+        "/api/v1/admin/ai/training?q=X900",
+        headers=admin_headers,
+    )
+
+    assert forbidden_response.status_code == 403
+    assert invalid_response.status_code == 400
+    assert create_response.status_code == 201
+    assert create_response.get_json()["data"]["keywords"] == "Hydraulikfilter, X900, Filterpflege"
+    assert update_response.status_code == 200
+    assert update_response.get_json()["data"]["priority"] == 90
+    assert list_response.get_json()["data"]["pagination"]["total"] == 1
+    with client.application.app_context():
+        document = KnowledgeDocument.query.filter_by(
+            source_type="manual_training",
+            source_id=entry_id,
+        ).one()
+        assert document.status == "stale"
+
+    delete_response = client.delete(
+        f"/api/v1/admin/ai/training/{entry_id}",
+        headers=admin_headers,
+    )
+
+    assert delete_response.status_code == 200
+    with client.application.app_context():
+        assert db.session.get(AssistantTrainingEntry, entry_id) is None
+        assert (
+            KnowledgeDocument.query.filter_by(
+                source_type="manual_training",
+                source_id=entry_id,
+            ).first()
+            is None
+        )
+
+
+def test_manual_training_rag_respects_active_state_and_department(
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify manual training sources are indexed and permission-aware."""
+    admin = make_user(
+        username="training_rag_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    user = make_user(
+        username="training_rag_user",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+    blocked = make_user(
+        username="training_rag_blocked",
+        role=Role.PRODUKTION,
+        department_name="Instandhaltung",
+    )
+    admin_headers = auth_headers(admin["username"])
+    user_headers = auth_headers(user["username"])
+    blocked_headers = auth_headers(blocked["username"])
+
+    create_response = client.post(
+        "/api/v1/admin/ai/training",
+        headers=admin_headers,
+        json={
+            "title": "X900 Filterpflege",
+            "question": "Was ist bei X900 wichtig?",
+            "answer": "X900 Filter taeglich pruefen und Druckverlust dokumentieren.",
+            "keywords": "X900, Druckverlust",
+            "department": "Produktion",
+        },
+    )
+    client.post(
+        "/api/v1/admin/ai/training",
+        headers=admin_headers,
+        json={
+            "title": "Y900 inaktiv",
+            "question": "Was ist bei Y900 wichtig?",
+            "answer": "Dieser Eintrag ist inaktiv.",
+            "keywords": "Y900",
+            "department": "Produktion",
+            "is_active": False,
+        },
+    )
+    client.post(
+        "/api/v1/admin/ai/training",
+        headers=admin_headers,
+        json={
+            "title": "Z900 andere Abteilung",
+            "question": "Was ist bei Z900 wichtig?",
+            "answer": "Z900 gehoert zur Instandhaltung.",
+            "keywords": "Z900",
+            "department": "Instandhaltung",
+        },
+    )
+    reindex_response = client.post(
+        "/api/v1/admin/ai/knowledge/reindex?mode=stale",
+        headers=admin_headers,
+    )
+    visible_response = client.post(
+        "/api/v1/ai/chat",
+        headers=user_headers,
+        json={"message": "Was ist bei X900 Druckverlust wichtig?"},
+    )
+    inactive_response = client.post(
+        "/api/v1/ai/chat",
+        headers=user_headers,
+        json={"message": "Was ist bei Y900 wichtig?"},
+    )
+    department_response = client.post(
+        "/api/v1/ai/chat",
+        headers=user_headers,
+        json={"message": "Was ist bei Z900 wichtig?"},
+    )
+    blocked_response = client.post(
+        "/api/v1/ai/chat",
+        headers=blocked_headers,
+        json={"message": "Was ist bei X900 Druckverlust wichtig?"},
+    )
+
+    assert create_response.status_code == 201
+    assert reindex_response.status_code == 200
+    assert any(
+        source["type"] == "knowledge" and "X900" in source["title"]
+        for source in visible_response.get_json()["sources"]
+    )
+    assert not any("Y900" in source["title"] for source in inactive_response.get_json()["sources"])
+    assert not any(
+        "Z900" in source["title"] for source in department_response.get_json()["sources"]
+    )
+    assert not any("X900" in source["title"] for source in blocked_response.get_json()["sources"])
+
+
+def test_chat_templates_are_permission_aware(
+    client,
+    make_user,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify chat template suggestions are filtered by dashboard permissions."""
+    user = make_user(username="chat_template_user")
+    set_dashboard_permission(user["username"], "tasks", can_view=True, can_write=False)
+    set_dashboard_permission(user["username"], "errors", can_view=False)
+    set_dashboard_permission(user["username"], "machines", can_view=True)
+
+    response = client.get(
+        "/api/v1/ai/chat/templates",
+        headers=auth_headers(user["username"]),
+    )
+
+    messages = [item["message"] for item in response.get_json()["data"]["items"]]
+    assert response.status_code == 200
+    assert "Welche Tasks sind heute wichtig?" in messages
+    assert "Welche Maschinen brauchen Aufmerksamkeit?" in messages
+    assert "Was bedeutet Fehler E104?" not in messages
+    assert "Task erstellen: Maschine 3 macht Geraeusche" not in messages
 
 
 def test_knowledge_reindex_registers_generated_documents(
@@ -1293,7 +1494,7 @@ def test_daily_briefing_returns_no_sections_without_permissions(
 def test_dashboard_contains_daily_briefing_and_priority_ui(client):
     """Verify dashboard exposes briefing and task priority UI hooks."""
     response = client.get("/")
-    script_response = client.get("/static/app.js")
+    script_response = client.get("/static/pages/workflows.js")
     chat_response = client.get("/static/chat.js")
     css_response = client.get("/static/css/output.css")
     html = response.get_data(as_text=True)
@@ -1324,15 +1525,17 @@ def test_dashboard_contains_daily_briefing_and_priority_ui(client):
     assert "OpenAI-Rate-Limit erreicht" in chat_script
     assert "model_not_allowed" in chat_script
     assert "/api/v1/ai/chat/history" in chat_script
+    assert "/api/v1/ai/chat/templates" in chat_script
     assert "historyMetaText(item)" in chat_script
     assert "chatSuggestionsForUser" in chat_script
+    assert "setChatFormBusy" in chat_script
     assert "suggestions.hidden = true" in chat_script
 
 
 def test_admin_users_page_contains_ai_analytics_ui(client):
     """Verify Admin Users exposes AI analytics UI hooks."""
     page_response = client.get("/admin/users")
-    script_response = client.get("/static/app.js")
+    script_response = client.get("/static/pages/workflows.js")
     html = page_response.get_data(as_text=True)
     script = script_response.get_data(as_text=True)
 
@@ -1356,12 +1559,19 @@ def test_admin_users_page_contains_ai_analytics_ui(client):
 def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
     """Verify the dedicated AI admin page exposes management UI hooks."""
     page_response = client.get("/admin/ai")
+    script_response = client.get("/static/pages/admin-ai.js")
     html = page_response.get_data(as_text=True)
+    script = script_response.get_data(as_text=True)
+    source = html + script
 
     assert page_response.status_code == 200
+    assert script_response.status_code == 200
     assert "data-admin-ai-page" in html
     assert "data-ai-chat-search" in html
+    assert "data-ai-training-form" in html
+    assert "data-ai-training-search" in html
     assert "data-ai-knowledge-upload" in html
+    assert "data-ai-knowledge-source" in html
     assert "data-rag-source-status" in html
     assert "data-rag-diagnostics" in html
     assert "data-rag-kpi=\"searchable_documents\"" in html
@@ -1369,14 +1579,16 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
     assert "data-ai-reindex-stale" in html
     assert "data-ai-queue-stale" in html
     assert "data-ai-jobs" in html
-    assert "/api/v1/admin/ai/events" in html
-    assert "/api/v1/admin/ai/chats" in html
-    assert "/api/v1/admin/jobs" in html
-    assert "/api/v1/admin/ai/knowledge/upload" in html
-    assert "/api/v1/admin/ai/knowledge/status" in html
-    assert "/api/v1/admin/ai/knowledge/reindex/jobs" in html
-    assert "/api/v1/admin/ai/knowledge/reindex?mode=stale" in html
-    assert "/reindex" in html
+    assert "/api/v1/admin/ai/events" in source
+    assert "/api/v1/admin/ai/chats" in source
+    assert "/api/v1/admin/jobs" in source
+    assert "/api/v1/admin/ai/knowledge/upload" in source
+    assert "/api/v1/admin/ai/knowledge/status" in source
+    assert "/api/v1/admin/ai/knowledge/reindex/jobs" in source
+    assert "/api/v1/admin/ai/knowledge/reindex?mode=stale" in source
+    assert "/api/v1/admin/ai/training" in source
+    assert "manual_training" in source
+    assert "/reindex" in source
 
 
 def test_document_path_rejects_storage_escape(app):
@@ -1705,14 +1917,20 @@ def test_uploaded_document_check_validates_and_reviews_file(
 def test_documents_page_contains_review_ui(client):
     """Verify the documents page and static script expose review UI hooks."""
     page_response = client.get("/documents")
-    script_response = client.get("/static/app.js")
+    script_response = client.get("/static/pages/workflows.js")
     html = page_response.get_data(as_text=True)
     script = script_response.get_data(as_text=True)
 
     assert page_response.status_code == 200
     assert "data-document-review-panel" in html
     assert "data-document-review-findings" in html
-    assert 'actionButton("Pruefen"' in script
+    assert "data-document-upload-check-form" in html
+    assert 'actionButton("Prüfen"' in script
+    assert '"/api/v1/documents/check"' in script
+    assert "validateUploadCheckFile" in script
+    assert "reviewFindingItem" in script
+    assert "runAction({" in script
+    assert "renderTableMessage(list, 8" in script
 
 
 def test_complete_task_can_generate_maintenance_report(

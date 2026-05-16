@@ -6,19 +6,56 @@ from app.domain_models.common import utc_now
 from app.extensions import db
 
 
+class Site(db.Model):
+    """Physical plant/site used to scope departments and operations KPIs."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(40), unique=True, nullable=False)
+    name = db.Column(db.String(160), nullable=False)
+    timezone = db.Column(db.String(80), nullable=False, default="Europe/Berlin")
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+    departments = db.relationship("Department", back_populates="site")
+    machines = db.relationship("Machine", back_populates="site")
+    inventory_materials = db.relationship("InventoryMaterial", back_populates="site")
+
+    def to_dict(self):
+        """Return a JSON-serializable representation of the site."""
+        return {
+            "id": self.id,
+            "code": self.code,
+            "name": self.name,
+            "timezone": self.timezone,
+            "is_active": self.is_active,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+        }
+
+
 class Department(db.Model):
     """Organisational unit that groups users, tasks, and error entries."""
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(80), unique=True, nullable=False)
+    site_id = db.Column(db.Integer, db.ForeignKey("site.id"), nullable=True, index=True)
 
+    site = db.relationship("Site", back_populates="departments")
     users = db.relationship("User", back_populates="department")
     tasks = db.relationship("Task", back_populates="department")
     errors = db.relationship("ErrorEntry", back_populates="department")
 
+    __table_args__ = (db.Index("ix_department_site_name", "site_id", "name"),)
+
     def to_dict(self):
         """Return a JSON-serializable representation of the department."""
-        return {"id": self.id, "name": self.name}
+        return {
+            "id": self.id,
+            "name": self.name,
+            "site_id": self.site_id,
+            "site": self.site.to_dict() if self.site else None,
+        }
 
 
 class DashboardPermission(db.Model):

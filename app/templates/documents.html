@@ -51,7 +51,7 @@
       </div>
       <div class="toolbar form-actions">
         <button class="btn btn-primary" type="submit">Filtern</button>
-        <button class="btn btn-ghost" type="button" data-document-filter-reset>Zuruecksetzen</button>
+        <button class="btn btn-ghost" type="button" data-document-filter-reset>Zurücksetzen</button>
         <span class="panel-meta" data-document-message></span>
       </div>
       </div>
@@ -66,7 +66,7 @@
             <h2 class="panel-title">Upload prüfen</h2>
             <p class="panel-meta">HTML- oder TXT-Bericht prüfen, ohne ihn zu speichern</p>
           </div>
-          <span class="badge badge-ai">Pruefung</span>
+          <span class="badge badge-ai">Prüfung</span>
         </div>
         <div class="upload-check-panel">
           <div class="field">
@@ -120,14 +120,14 @@
     <div class="card-body">
       <div class="panel-header">
         <div>
-          <h2 class="panel-title">Dokumentpruefung</h2>
+          <h2 class="panel-title">Dokumentprüfung</h2>
           <p class="panel-meta" data-document-review-summary>Bericht prüfen, um fehlende oder schwache Angaben zu erkennen.</p>
         </div>
-        <span class="badge badge-status is-open" data-document-review-status-badge>ungeprueft</span>
+        <span class="badge badge-status is-open" data-document-review-status-badge>ungeprüft</span>
       </div>
       <div class="review-score-card">
         <div>
-          <span class="resource-label">Qualitaetsscore</span>
+          <span class="resource-label">Qualitätsscore</span>
           <strong data-document-review-score>-</strong>
         </div>
         <div>
@@ -174,16 +174,17 @@
       </div>
       <div class="table-wrap bounded-table-wrap">
         <table class="table data-table">
+          <caption>Generierte Wartungsdokumente mit Review-Status und Aktionen</caption>
           <thead>
             <tr>
-              <th>Titel</th>
-              <th>Task</th>
-              <th>Bereich</th>
-              <th>Maschine</th>
-              <th>Status</th>
-              <th>Version</th>
-              <th>Erstellt</th>
-              <th>Aktionen</th>
+              <th scope="col">Titel</th>
+              <th scope="col">Task</th>
+              <th scope="col">Bereich</th>
+              <th scope="col">Maschine</th>
+              <th scope="col">Status</th>
+              <th scope="col">Version</th>
+              <th scope="col">Erstellt</th>
+              <th scope="col">Aktionen</th>
             </tr>
           </thead>
           <tbody data-document-list></tbody>
@@ -196,21 +197,22 @@
     <div class="card-body">
       <div class="panel-header">
         <div>
-          <h2 class="panel-title">Maschinenhandbuecher</h2>
-          <p class="panel-meta">Gespeicherte Handbuecher mit Analyse- und Summary-Status</p>
+          <h2 class="panel-title">Maschinenhandbücher</h2>
+          <p class="panel-meta">Gespeicherte Handbücher mit Analyse- und Summary-Status</p>
         </div>
-        <span class="badge badge-status is-open" data-manual-count>0 Handbuecher</span>
+        <span class="badge badge-status is-open" data-manual-count>0 Handbücher</span>
       </div>
       <div class="table-wrap bounded-table-wrap">
         <table class="table data-table">
+          <caption>Gespeicherte Maschinenhandbücher mit Analyse-, Summary- und Löschaktionen</caption>
           <thead>
             <tr>
-              <th>Titel</th>
-              <th>Maschine</th>
-              <th>Bereich</th>
-              <th>Analyse</th>
-              <th>Summary</th>
-              <th>Aktionen</th>
+              <th scope="col">Titel</th>
+              <th scope="col">Maschine</th>
+              <th scope="col">Bereich</th>
+              <th scope="col">Analyse</th>
+              <th scope="col">Summary</th>
+              <th scope="col">Aktionen</th>
             </tr>
           </thead>
           <tbody data-manual-list></tbody>

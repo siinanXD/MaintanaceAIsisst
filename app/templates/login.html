@@ -67,42 +67,4 @@
       </div>
     </div>
   </article>
-</section>
-<script>
-  const loginForm = document.querySelector("[data-login-form]");
-  const loginMessage = document.querySelector("[data-login-message]");
-
-  loginForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    loginMessage.textContent = "Anmeldung wird geprueft...";
-
-    const formData = new FormData(loginForm);
-    const response = await fetch("/api/v1/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        login: formData.get("login"),
-        password: formData.get("password")
-      })
-    });
-
-    if (!response.ok) {
-      loginMessage.textContent = "Login fehlgeschlagen. Bitte Zugangsdaten prüfen.";
-      return;
-    }
-
-    const responseData = await response.json();
-    const data = responseData && responseData.success === true && Object.prototype.hasOwnProperty.call(responseData, "data")
-      ? responseData.data
-      : responseData;
-    window.localStorage.setItem("maintenance_access_token", data.access_token);
-    window.localStorage.setItem("maintenance_user", JSON.stringify(data.user));
-    loginMessage.textContent = "Login erfolgreich. Du wirst weitergeleitet...";
-    window.dispatchEvent(new Event("maintenance-auth-changed"));
-    const nextPath = new URLSearchParams(window.location.search).get("next");
-    window.location.href = window.maintenanceAuth && window.maintenanceAuth.destinationForUserOrNext
-      ? window.maintenanceAuth.destinationForUserOrNext(data.user, nextPath)
-      : "/";
-  });
-</script>
-{% endblock %}
+</section>{% endblock %}

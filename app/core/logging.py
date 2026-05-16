@@ -3,8 +3,10 @@
 import hashlib
 import logging
 import time
+from collections import defaultdict
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from threading import Lock
 
 from flask import g, request
 
@@ -12,6 +14,16 @@ LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s %(message)s"
 LOG_DATE_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
 DEFAULT_MAX_BYTES = 5 * 1024 * 1024
 DEFAULT_BACKUP_COUNT = 5
+_REQUEST_METRICS = defaultdict(
+    lambda: {
+        "count": 0,
+        "slow_count": 0,
+        "total_duration_ms": 0.0,
+        "max_duration_ms": 0.0,
+        "last_status": 0,
+    }
+)
+_REQUEST_METRICS_LOCK = Lock()
 
 
 def configure_logging(app):
@@ -96,6 +108,7 @@ def register_request_logging(app):
         )
 
         threshold_ms = float(app.config.get("SLOW_REQUEST_THRESHOLD_MS", 500))
+        record_request_metric(endpoint, response.status_code, duration_ms, threshold_ms)
         if duration_ms > threshold_ms:
             logging.getLogger("app.performance").warning(
                 "slow_request method=%s endpoint=%s status=%s duration_ms=%.2f",
@@ -113,6 +126,42 @@ def request_duration_ms():
     if started_at is None:
         return 0.0
     return (time.perf_counter() - started_at) * 1000
+
+
+def record_request_metric(endpoint, status_code, duration_ms, slow_threshold_ms):
+    """Store compact in-memory request metrics for operations diagnostics."""
+    with _REQUEST_METRICS_LOCK:
+        item = _REQUEST_METRICS[str(endpoint or "unknown")]
+        item["count"] += 1
+        item["total_duration_ms"] += float(duration_ms or 0)
+        item["max_duration_ms"] = max(item["max_duration_ms"], float(duration_ms or 0))
+        item["last_status"] = int(status_code or 0)
+        if float(duration_ms or 0) > float(slow_threshold_ms or 0):
+            item["slow_count"] += 1
+
+
+def request_metrics_snapshot(limit=10):
+    """Return the slowest observed endpoints since process start."""
+    with _REQUEST_METRICS_LOCK:
+        rows = []
+        for endpoint, item in _REQUEST_METRICS.items():
+            count = item["count"] or 1
+            average = item["total_duration_ms"] / count
+            rows.append(
+                {
+                    "endpoint": endpoint,
+                    "count": item["count"],
+                    "slow_count": item["slow_count"],
+                    "avg_duration_ms": round(average, 2),
+                    "max_duration_ms": round(item["max_duration_ms"], 2),
+                    "last_status": item["last_status"],
+                }
+            )
+    rows.sort(
+        key=lambda row: (row["slow_count"], row["avg_duration_ms"], row["max_duration_ms"]),
+        reverse=True,
+    )
+    return rows[: max(1, int(limit or 10))]
 
 
 def safe_identifier(value):

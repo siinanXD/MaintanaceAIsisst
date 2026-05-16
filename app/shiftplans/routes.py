@@ -6,7 +6,7 @@ from io import BytesIO
 from flask import Blueprint, jsonify, request, send_file
 
 from app.extensions import db
-from app.models import Role, ShiftPlan, ShiftPlanChangeLog, ShiftPlanEntry
+from app.models import Department, Role, ShiftPlan, ShiftPlanChangeLog, ShiftPlanEntry
 from app.responses import error_response, service_error_response, success_response
 from app.security import (
     current_user,
@@ -17,6 +17,7 @@ from app.security import (
 )
 from app.services.audit_service import create_audit_log
 from app.services.in_app_notification_service import notify_shiftplan_change
+from app.services.operations_tracking_service import record_event
 from app.shiftplans.services import (
     calendar_entries_for_user,
     conflicts_for_plan,
@@ -27,6 +28,28 @@ from app.shiftplans.services import (
 )
 
 shiftplans_bp = Blueprint("shiftplans", __name__)
+
+
+def department_for_plan(plan):
+    """Return the department model matching a shift plan's department name."""
+    if not plan or not plan.department:
+        return None
+    return Department.query.filter_by(name=plan.department).first()
+
+
+def refresh_plan_operations_metrics(plan):
+    """Refresh persisted conflict and coverage counters for a shift plan."""
+    payload = conflicts_for_plan(plan)
+    summary = payload.get("summary") or {}
+    coverage = payload.get("coverage_summary") or {}
+    required_slots = coverage.get("required_slots") or 0
+    assigned_slots = coverage.get("assigned_slots") or 0
+    plan.coverage_percent = (
+        round((assigned_slots / required_slots) * 100, 2) if required_slots else 0
+    )
+    plan.conflict_count = int(summary.get("total") or 0)
+    plan.critical_conflict_count = int(summary.get("critical") or 0)
+    return payload
 
 
 @shiftplans_bp.get("")
@@ -80,6 +103,22 @@ def publish_shiftplan(plan_id):
         plan,
         user,
         "publish" if plan.is_published else "unpublish",
+    )
+    plan.change_count = (plan.change_count or 0) + 1
+    refresh_plan_operations_metrics(plan)
+    record_event(
+        "shiftplan.published" if plan.is_published else "shiftplan.unpublished",
+        "workforce",
+        entity_type="shift_plan",
+        entity_id=plan.id,
+        user=user,
+        department=department_for_plan(plan),
+        source="shiftplans",
+        metadata={
+            "status": plan.status,
+            "coverage_percent": plan.coverage_percent,
+            "conflict_count": plan.conflict_count,
+        },
     )
     db.session.commit()
     create_audit_log(
@@ -163,6 +202,22 @@ def generate():
     )
     if error:
         return service_error_response(error, status)
+    record_event(
+        "shiftplan.generated",
+        "workforce",
+        entity_type="shift_plan",
+        entity_id=plan.id,
+        user=current_user(),
+        department=department_for_plan(plan),
+        source="shiftplans",
+        metadata={
+            "days": plan.days,
+            "coverage_percent": plan.coverage_percent,
+            "conflict_count": plan.conflict_count,
+            "critical_conflict_count": plan.critical_conflict_count,
+        },
+        commit=True,
+    )
     access_level = employee_access_level(current_user())
     payload = plan.to_dict(access_level)
     payload["warnings"] = getattr(plan, "warnings", [])
@@ -177,7 +232,18 @@ def delete_shiftplan(plan_id):
     """Delete a generated shift plan and its entries."""
     if current_user().role != Role.MASTER_ADMIN:
         return error_response("Nur Administratoren koennen Schichtplaene loeschen", 403)
+    user = current_user()
     plan = db.get_or_404(ShiftPlan, plan_id)
+    record_event(
+        "shiftplan.deleted",
+        "workforce",
+        entity_type="shift_plan",
+        entity_id=plan.id,
+        user=user,
+        department=department_for_plan(plan),
+        source="shiftplans",
+        metadata={"title": plan.title, "status": plan.status},
+    )
     db.session.delete(plan)
     db.session.commit()
     return "", 204
@@ -231,9 +297,26 @@ def update_entry(entry_id):
 
     plan = db.session.get(ShiftPlan, entry.plan_id)
     notify_shiftplan_change(plan, user, "update", entry=entry)
+    plan.change_count = (plan.change_count or 0) + len(changes)
+    conflict_payload = refresh_plan_operations_metrics(plan)
+    record_event(
+        "shiftplan.entry_updated",
+        "workforce",
+        entity_type="shift_plan_entry",
+        entity_id=entry.id,
+        user=user,
+        department=department_for_plan(plan),
+        machine_id=entry.machine_id,
+        source="shiftplans",
+        metadata={
+            "plan_id": plan.id,
+            "fields": [field_name for field_name, _old, _new in changes],
+            "conflict_count": plan.conflict_count,
+        },
+    )
     db.session.commit()
     payload = plan.to_dict(employee_access_level(user))
-    payload["conflicts"] = conflicts_for_plan(plan)
+    payload["conflicts"] = conflict_payload
     return success_response(payload, message="Eintrag aktualisiert")
 
 
@@ -359,10 +442,27 @@ def move_entry(entry_id):
             entry=entry,
         )
 
-    db.session.commit()
     plan = db.session.get(ShiftPlan, entry.plan_id)
+    plan.change_count = (plan.change_count or 0) + (2 if existing else 1)
+    conflict_payload = refresh_plan_operations_metrics(plan)
+    record_event(
+        "shiftplan.entry_swapped" if existing else "shiftplan.entry_moved",
+        "workforce",
+        entity_type="shift_plan_entry",
+        entity_id=entry.id,
+        user=user,
+        department=department_for_plan(plan),
+        machine_id=entry.machine_id,
+        source="shiftplans",
+        metadata={
+            "plan_id": plan.id,
+            "target_entry_id": getattr(existing, "id", None),
+            "conflict_count": plan.conflict_count,
+        },
+    )
+    db.session.commit()
     payload = plan.to_dict(employee_access_level(user))
-    payload["conflicts"] = conflicts_for_plan(plan)
+    payload["conflicts"] = conflict_payload
     return success_response(payload, message="Eintrag verschoben")
 
 
@@ -384,7 +484,25 @@ def delete_entry(entry_id):
     )
     plan = db.session.get(ShiftPlan, entry.plan_id)
     notify_shiftplan_change(plan, current_user(), "delete", entry=entry)
+    plan.change_count = (plan.change_count or 0) + 1
+    record_event(
+        "shiftplan.entry_deleted",
+        "workforce",
+        entity_type="shift_plan_entry",
+        entity_id=entry.id,
+        user=current_user(),
+        department=department_for_plan(plan),
+        machine_id=entry.machine_id,
+        source="shiftplans",
+        metadata={
+            "plan_id": plan.id,
+            "shift": entry.shift,
+            "work_date": entry.work_date.isoformat(),
+        },
+    )
     db.session.delete(entry)
+    db.session.flush()
+    refresh_plan_operations_metrics(plan)
     db.session.commit()
     return "", 204
 

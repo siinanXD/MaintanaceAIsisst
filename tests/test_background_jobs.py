@@ -1,5 +1,8 @@
 """Tests for background job queue APIs and services."""
 
+from datetime import timedelta
+
+from app.domain_models.common import utc_now
 from app.extensions import db
 from app.models import BackgroundJob
 
@@ -68,3 +71,59 @@ def test_worker_marks_failed_rag_document_job(app, make_user):
 
     assert job.status == "failed"
     assert "Knowledge document not found" in job.error_message
+
+
+def test_worker_claims_each_job_once(app):
+    """Verify queued jobs are claimed once and marked running atomically."""
+    from app.services.background_job_service import (
+        claim_next_queued_job,
+        enqueue_rag_reindex_job,
+    )
+
+    with app.app_context():
+        queued = enqueue_rag_reindex_job(mode="stale", user=None)
+        first_claim = claim_next_queued_job()
+        second_claim = claim_next_queued_job()
+
+    assert first_claim.id == queued.id
+    assert first_claim.status == "running"
+    assert first_claim.attempts == 1
+    assert second_claim is None
+
+
+def test_expired_running_job_is_released_for_retry(app):
+    """Verify an expired worker lease makes a running job claimable again."""
+    from app.services.background_job_service import (
+        claim_next_queued_job,
+        enqueue_rag_reindex_job,
+        requeue_expired_jobs,
+    )
+
+    with app.app_context():
+        app.config["WORKER_JOB_LEASE_SECONDS"] = 60
+        job = enqueue_rag_reindex_job(mode="stale", user=None)
+        job.status = "running"
+        job.attempts = 1
+        job.locked_at = utc_now() - timedelta(minutes=10)
+        db.session.commit()
+
+        released = requeue_expired_jobs()
+        claimed = claim_next_queued_job()
+
+    assert released == 1
+    assert claimed.id == job.id
+    assert claimed.status == "running"
+    assert claimed.attempts == 2
+
+
+def test_duplicate_reindex_jobs_reuse_active_job(app):
+    """Verify duplicate queued RAG jobs are not inserted twice."""
+    from app.services.background_job_service import enqueue_rag_reindex_job
+
+    with app.app_context():
+        first_job = enqueue_rag_reindex_job(mode="stale", user=None)
+        second_job = enqueue_rag_reindex_job(mode="stale", user=None)
+        job_count = BackgroundJob.query.count()
+
+    assert second_job.id == first_job.id
+    assert job_count == 1

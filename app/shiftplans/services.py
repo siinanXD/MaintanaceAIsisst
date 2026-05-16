@@ -1023,6 +1023,14 @@ def generate_shift_plan(data, user=None):
         department=department,
         created_by=user.id if user else None,
     )
+    summary = conflict_summary(warnings)
+    required_slots = coverage_summary.get("required_slots") or 0
+    assigned_slots = coverage_summary.get("assigned_slots") or 0
+    plan.coverage_percent = (
+        round((assigned_slots / required_slots) * 100, 2) if required_slots else 0
+    )
+    plan.conflict_count = summary["total"]
+    plan.critical_conflict_count = summary["critical"]
     db.session.add(plan)
     db.session.flush()
 

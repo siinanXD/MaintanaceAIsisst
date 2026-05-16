@@ -6,7 +6,15 @@ from flask import Blueprint, jsonify, request, send_file
 
 from app.auth.services import find_department, parse_role
 from app.extensions import db
-from app.models import AIAuditEvent, Employee, KnowledgeDocument, Role, User
+from app.models import (
+    AIAuditEvent,
+    AssistantTrainingEntry,
+    Employee,
+    KnowledgeDocument,
+    Role,
+    Site,
+    User,
+)
 from app.permissions import (
     permission_schema,
     replace_user_permissions,
@@ -17,6 +25,12 @@ from app.responses import error_response, service_error_response, success_respon
 from app.security import roles_required
 from app.services.ai_audit_service import ai_analytics_summary
 from app.services.ai_history_service import paginated_chat_history, parse_limit_offset
+from app.services.assistant_training_service import (
+    create_training_entry,
+    delete_training_entry,
+    list_training_entries,
+    update_training_entry,
+)
 from app.services.audit_service import audit_log_query, create_audit_log
 from app.services.background_job_service import (
     enqueue_rag_reindex_job,
@@ -43,6 +57,8 @@ from app.services.knowledge_service import (
 )
 from app.services.mail_service import mail_config_status
 from app.services.notification_service import delivery_query, send_test_email
+from app.services.operations_tracking_service import aggregate_operations, record_event
+from app.services.site_service import create_site, list_sites, update_site
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -286,6 +302,96 @@ def test_email():
     )
 
 
+@admin_bp.get("/sites")
+@roles_required(Role.MASTER_ADMIN)
+def admin_sites():
+    """Return all sites for master-admin maintenance."""
+    include_inactive = str(request.args.get("include_inactive", "true")).lower() not in {
+        "0",
+        "false",
+        "no",
+    }
+    return success_response(
+        [site.to_dict() for site in list_sites(include_inactive=include_inactive)],
+        message="Sites loaded",
+    )
+
+
+@admin_bp.post("/sites")
+@roles_required(Role.MASTER_ADMIN)
+def admin_create_site():
+    """Create a site."""
+    actor = current_admin_user()
+    site, error, status = create_site(request.get_json(silent=True) or {})
+    if error:
+        return service_error_response(error, status)
+    record_event(
+        "site.created",
+        "operations",
+        entity_type="site",
+        entity_id=site.id,
+        user=actor,
+        site_id=site.id,
+        source="admin",
+        metadata={"code": site.code, "name": site.name},
+        commit=True,
+    )
+    return success_response(site.to_dict(), status, "Site created")
+
+
+@admin_bp.put("/sites/<int:site_id>")
+@roles_required(Role.MASTER_ADMIN)
+def admin_update_site(site_id):
+    """Update a site."""
+    actor = current_admin_user()
+    site = db.get_or_404(Site, site_id)
+    updated, error, status = update_site(site, request.get_json(silent=True) or {})
+    if error:
+        return service_error_response(error, status)
+    record_event(
+        "site.updated",
+        "operations",
+        entity_type="site",
+        entity_id=updated.id,
+        user=actor,
+        site_id=updated.id,
+        source="admin",
+        metadata={"code": updated.code, "name": updated.name, "is_active": updated.is_active},
+        commit=True,
+    )
+    return success_response(updated.to_dict(), status, "Site updated")
+
+
+@admin_bp.post("/operations/aggregate")
+@roles_required(Role.MASTER_ADMIN)
+def admin_aggregate_operations():
+    """Rebuild persisted operations KPI aggregates."""
+    actor = current_admin_user()
+    payload = request.get_json(silent=True) or {}
+    try:
+        result = aggregate_operations(
+            period_type=payload.get("period_type", "day"),
+            args=payload,
+            user=None,
+        )
+    except ValueError as exc:
+        return error_response(str(exc), 400)
+    record_event(
+        "operations.aggregate",
+        "operations",
+        entity_type="operational_kpi_aggregate",
+        user=actor,
+        source="admin",
+        metadata={
+            "period_type": result["period_type"],
+            "aggregates": result["aggregates"],
+            "events": result["events"],
+        },
+        commit=True,
+    )
+    return success_response(result, message="Operations aggregates rebuilt")
+
+
 @admin_bp.get("/ai/summary")
 @roles_required(Role.MASTER_ADMIN)
 def ai_summary():
@@ -333,17 +439,139 @@ def ai_events():
     )
 
 
+@admin_bp.get("/ai/training")
+@roles_required(Role.MASTER_ADMIN)
+def ai_training_entries():
+    """Return filtered manual assistant training entries."""
+    schema_status = database_schema_status()
+    if not schema_status["ok"]:
+        return jsonify(database_schema_error_payload(schema_status)), 503
+    try:
+        limit, offset = parse_limit_offset(request.args, default_limit=50)
+    except ValueError as exc:
+        return error_response(str(exc), 400)
+    query = list_training_entries(request.args)
+    total = query.count()
+    entries = query.offset(offset).limit(limit).all()
+    return success_response(
+        {
+            "items": [entry.to_dict() for entry in entries],
+            "pagination": {"limit": limit, "offset": offset, "total": total},
+        },
+        message="Training entries loaded",
+    )
+
+
+@admin_bp.post("/ai/training")
+@roles_required(Role.MASTER_ADMIN)
+def create_ai_training_entry():
+    """Create a manual assistant training entry."""
+    actor = current_admin_user()
+    result, error, status = create_training_entry(
+        request.get_json(silent=True) or {},
+        actor,
+    )
+    if error:
+        return service_error_response(error, status)
+    record_event(
+        "ai.training_created",
+        "ai",
+        entity_type="assistant_training_entry",
+        entity_id=result["id"],
+        user=actor,
+        source="admin",
+        metadata={
+            "category": result.get("category"),
+            "department": result.get("department"),
+            "priority": result.get("priority"),
+            "is_active": result.get("is_active"),
+        },
+        commit=True,
+    )
+    return success_response(result, status, "Training entry created")
+
+
+@admin_bp.put("/ai/training/<int:entry_id>")
+@roles_required(Role.MASTER_ADMIN)
+def update_ai_training_entry(entry_id):
+    """Update a manual assistant training entry."""
+    actor = current_admin_user()
+    entry = db.get_or_404(AssistantTrainingEntry, entry_id)
+    result, error, status = update_training_entry(entry, request.get_json(silent=True) or {})
+    if error:
+        return service_error_response(error, status)
+    record_event(
+        "ai.training_updated",
+        "ai",
+        entity_type="assistant_training_entry",
+        entity_id=entry_id,
+        user=actor,
+        source="admin",
+        metadata={
+            "category": result.get("category"),
+            "department": result.get("department"),
+            "priority": result.get("priority"),
+            "is_active": result.get("is_active"),
+        },
+        commit=True,
+    )
+    return success_response(result, status, "Training entry updated")
+
+
+@admin_bp.delete("/ai/training/<int:entry_id>")
+@roles_required(Role.MASTER_ADMIN)
+def delete_ai_training_entry(entry_id):
+    """Delete a manual assistant training entry."""
+    actor = current_admin_user()
+    entry = db.get_or_404(AssistantTrainingEntry, entry_id)
+    metadata = {
+        "title": entry.title,
+        "category": entry.category,
+        "department": entry.department,
+        "priority": entry.priority,
+    }
+    result, error, status = delete_training_entry(entry)
+    if error:
+        return service_error_response(error, status)
+    record_event(
+        "ai.training_deleted",
+        "ai",
+        entity_type="assistant_training_entry",
+        entity_id=entry_id,
+        user=actor,
+        source="admin",
+        metadata=metadata,
+        commit=True,
+    )
+    return success_response(result, status, "Training entry deleted")
+
+
 @admin_bp.post("/ai/knowledge/upload")
 @roles_required(Role.MASTER_ADMIN)
 def upload_ai_knowledge():
     """Upload and index a local knowledge document."""
+    actor = current_admin_user()
     result, error, status = upload_knowledge_document(
         request.files.get("file"),
-        current_admin_user(),
+        actor,
         department=request.form.get("department", ""),
     )
     if error:
         return service_error_response(error, status)
+    record_event(
+        "rag.knowledge_uploaded",
+        "ai",
+        entity_type="knowledge_document",
+        entity_id=result.get("id"),
+        user=actor,
+        source="admin",
+        metadata={
+            "source_type": result.get("source_type"),
+            "department": result.get("department"),
+            "status": result.get("status"),
+        },
+        commit=True,
+    )
     return success_response(result, status, "Knowledge document uploaded")
 
 
@@ -410,15 +638,26 @@ def queue_ai_knowledge_reindex_job():
     schema_status = database_schema_status()
     if not schema_status["ok"]:
         return jsonify(database_schema_error_payload(schema_status)), 503
+    actor = current_admin_user()
     data = request.get_json(silent=True) or {}
     try:
         job = enqueue_rag_reindex_job(
             mode=data.get("mode", "stale"),
             document_id=data.get("document_id"),
-            user=current_admin_user(),
+            user=actor,
         )
     except ValueError as exc:
         return error_response(str(exc), 400)
+    record_event(
+        "rag.reindex_queued",
+        "ai",
+        entity_type="background_job",
+        entity_id=job.id,
+        user=actor,
+        source="admin",
+        metadata={"job_type": job.job_type, "status": job.status},
+        commit=True,
+    )
     return success_response(job.to_dict(), 202, "Background job queued")
 
 
@@ -436,6 +675,15 @@ def reindex_ai_knowledge():
         result = reindex_all_knowledge()
     else:
         return error_response("mode must be 'all' or 'stale'", 400)
+    record_event(
+        "rag.reindexed",
+        "ai",
+        entity_type="knowledge_document",
+        user=current_admin_user(),
+        source="admin",
+        metadata={"mode": mode, "result": result},
+        commit=True,
+    )
     return success_response(result, message="Knowledge reindexed")
 
 
@@ -447,10 +695,18 @@ def reindex_ai_knowledge_document(document_id):
     if not schema_status["ok"]:
         return jsonify(database_schema_error_payload(schema_status)), 503
     document = db.get_or_404(KnowledgeDocument, document_id)
-    return success_response(
-        reindex_knowledge_document(document),
-        message="Knowledge document reindexed",
+    result = reindex_knowledge_document(document)
+    record_event(
+        "rag.document_reindexed",
+        "ai",
+        entity_type="knowledge_document",
+        entity_id=document_id,
+        user=current_admin_user(),
+        source="admin",
+        metadata={"source_type": document.source_type, "status": document.status},
+        commit=True,
     )
+    return success_response(result, message="Knowledge document reindexed")
 
 
 @admin_bp.delete("/ai/knowledge/<int:document_id>")
@@ -458,7 +714,18 @@ def reindex_ai_knowledge_document(document_id):
 def delete_ai_knowledge(document_id):
     """Delete a knowledge document and its chunks."""
     document = db.get_or_404(KnowledgeDocument, document_id)
+    metadata = {"source_type": document.source_type, "department": document.department}
     delete_knowledge_document(document)
+    record_event(
+        "rag.knowledge_deleted",
+        "ai",
+        entity_type="knowledge_document",
+        entity_id=document_id,
+        user=current_admin_user(),
+        source="admin",
+        metadata=metadata,
+        commit=True,
+    )
     return success_response({"id": document_id}, message="Knowledge document deleted")
 
 

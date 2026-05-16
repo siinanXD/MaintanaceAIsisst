@@ -23,6 +23,7 @@ coverage.xml
 instance/
 data/
 /documents/
+manuals/
 logs/
 
 # Database files

@@ -364,6 +364,43 @@ def test_delete_machine_detaches_inventory_material(
     assert materials_response.get_json()[0]["machine_id"] is None
 
 
+def test_machine_and_inventory_lists_support_optional_pagination(
+    client,
+    make_user,
+    make_machine,
+    make_material,
+    auth_headers,
+):
+    """Verify large catalog endpoints keep old arrays and expose paginated shapes."""
+    admin = make_user(
+        username="pagination_asset_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    machine_id = make_machine(name="Paginated Anlage")
+    make_material("Paginated Lager", 2.5, 4, machine_id=machine_id)
+    headers = auth_headers(admin["username"])
+
+    legacy_machines = client.get("/api/v1/machines", headers=headers)
+    paged_machines = client.get("/api/v1/machines?limit=1", headers=headers)
+    legacy_materials = client.get("/api/v1/inventory", headers=headers)
+    paged_materials = client.get("/api/v1/inventory?limit=1", headers=headers)
+    compact_summary = client.get(
+        "/api/v1/inventory/summary?include_materials=0",
+        headers=headers,
+    )
+
+    assert legacy_machines.status_code == 200
+    assert isinstance(legacy_machines.get_json(), list)
+    assert paged_machines.status_code == 200
+    assert paged_machines.get_json()["data"]["pagination"]["total"] >= 1
+    assert len(paged_machines.get_json()["data"]["items"]) == 1
+    assert legacy_materials.status_code == 200
+    assert isinstance(legacy_materials.get_json(), list)
+    assert paged_materials.get_json()["data"]["pagination"]["total"] >= 1
+    assert "materials" not in compact_summary.get_json()
+
+
 def test_inventory_forecast_respects_task_department_visibility(
     client,
     make_user,

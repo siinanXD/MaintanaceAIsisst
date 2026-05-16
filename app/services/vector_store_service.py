@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 
 from flask import current_app, has_app_context
 
+from app.extensions import db
 from app.models import GeneratedDocument, KnowledgeChunk, KnowledgeDocument
 from app.services.chunking_service import token_set
 from app.services.embedding_service import get_embedding_provider
@@ -61,6 +62,10 @@ class BaseVectorStore(ABC):
     @abstractmethod
     def similarity_search(self, query_text, user=None, limit=None, filters=None):
         """Return vector-search results for query text."""
+
+    def delete_document(self, document_id):
+        """Delete records for one knowledge document when the backend supports it."""
+        return 0
 
 
 class SqlAlchemyKnowledgeVectorStore(BaseVectorStore):
@@ -169,18 +174,31 @@ class ChromaVectorStore(BaseVectorStore):
         )
         return ids
 
+    def delete_document(self, document_id):
+        """Delete all Chroma records for one knowledge document id."""
+        if document_id is None:
+            return 0
+        self.collection.delete(where={"id": int(document_id)})
+        return 1
+
     def similarity_search(self, query_text, user=None, limit=None, filters=None):
         """Return Chroma vector-search results for query text."""
         if not query_text:
             return []
         limit_value = _positive_int(limit, _config_value("RAG_TOP_K", DEFAULT_RAG_TOP_K))
         query_embedding = self.embedding_provider.embed_text(query_text)
+        candidate_limit = max(limit_value * 4, limit_value)
         response = self.collection.query(
             query_embeddings=[query_embedding],
-            n_results=limit_value,
+            n_results=candidate_limit,
             where=_flat_metadata(filters or {}) or None,
         )
-        return _chroma_results(response)
+        return _filter_visible_results(
+            _chroma_results(response),
+            user=user,
+            filters=filters,
+            limit=limit_value,
+        )
 
 
 def get_vector_store():
@@ -261,6 +279,8 @@ def _source_url(document):
         return "/documents"
     if document.source_type == "shift_handover":
         return "/handover"
+    if document.source_type == "manual_training":
+        return "/admin/ai"
     return "/admin/ai"
 
 
@@ -320,6 +340,50 @@ def _chroma_results(response):
             )
         )
     return results
+
+
+def _filter_visible_results(results, user=None, filters=None, limit=None):
+    """Return Chroma results still visible according to database permissions."""
+    if user is None:
+        return results[:limit] if limit else results
+
+    visible = []
+    for result in results:
+        document_id = result.metadata.get("id")
+        try:
+            document = db.session.get(KnowledgeDocument, int(document_id))
+        except (TypeError, ValueError):
+            continue
+        if not document or document.status != "indexed":
+            continue
+        if not _matches_filters(document, filters):
+            continue
+        if not can_user_read_knowledge_document(user, document):
+            continue
+        merged_metadata = dict(result.metadata)
+        merged_metadata.update(_knowledge_metadata(document, _chunk_for_metadata(result)))
+        visible.append(
+            VectorSearchResult(
+                text=result.text,
+                score=result.score,
+                metadata=merged_metadata,
+            )
+        )
+        if limit and len(visible) >= limit:
+            break
+    return visible
+
+
+def _chunk_for_metadata(result):
+    """Return a lightweight object exposing chunk metadata fields."""
+    return type(
+        "ChunkMetadata",
+        (),
+        {
+            "id": result.metadata.get("chunk_id"),
+            "chunk_index": result.metadata.get("chunk_index", 0),
+        },
+    )()
 
 
 def _config_value(name, default):

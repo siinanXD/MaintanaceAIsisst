@@ -20,6 +20,17 @@ def test_openapi_json_documents_core_endpoints(client):
     assert "/api/v1/ai/daily-briefing" in paths
     assert "/api/v1/ai/order-plan" in paths
     assert "/api/v1/ai/chat/history" in paths
+    assert "/api/v1/sites" in paths
+    assert "/api/v1/operations/summary" in paths
+    assert "/api/v1/operations/events" in paths
+    assert "/api/v1/operations/tasks" in paths
+    assert "/api/v1/operations/machines" in paths
+    assert "/api/v1/operations/inventory" in paths
+    assert "/api/v1/operations/workforce" in paths
+    assert "/api/v1/operations/ai-quality" in paths
+    assert "/api/v1/admin/sites" in paths
+    assert "/api/v1/admin/sites/{site_id}" in paths
+    assert "/api/v1/admin/operations/aggregate" in paths
     assert "/api/v1/admin/ai/chats" in paths
     assert "/api/v1/admin/ai/events" in paths
     assert "/api/v1/admin/jobs" in paths
@@ -95,6 +106,11 @@ def test_openapi_examples_are_present(client):
     ]
     assert spec["components"]["schemas"]["AIAuditEvent"]["properties"]["error_category"]["example"]
     assert spec["components"]["schemas"]["KnowledgeDocument"]["properties"]["status"]["example"]
+    assert spec["components"]["schemas"]["Site"]["properties"]["code"]["example"]
+    assert spec["components"]["schemas"]["OperationalEvent"]["properties"]["actor_hash"][
+        "example"
+    ]
+    assert spec["components"]["schemas"]["OperationsSummary"]["properties"]["tasks"]
 
 
 def test_swagger_ui_route_loads(client):

@@ -36,6 +36,8 @@ OPENAPI_SPEC = {
         {"name": "ShiftPlans", "description": "AI-generated shift plans and calendar"},
         {"name": "Notifications", "description": "User-facing in-app notifications"},
         {"name": "Documents", "description": "Generated maintenance reports and quality reviews"},
+        {"name": "Sites", "description": "Plant/site selectors for multi-plant operations"},
+        {"name": "Operations", "description": "Pseudonymized event tracking and KPI summaries"},
         {"name": "Admin", "description": "Users, permissions, audit log and backups"},
         {"name": "Health", "description": "Service health probes"},
     ],
@@ -2847,6 +2849,71 @@ OPENAPI_SPEC["components"]["schemas"].update(
                 "department": {"type": "string", "example": "Produktion"},
             },
         },
+        "ChatTemplate": {
+            "type": "object",
+            "properties": {
+                "label": {"type": "string", "example": "Fehler analysieren"},
+                "prompt": {"type": "string", "example": "Welche Ursache hat Fehler F-100?"},
+                "category": {"type": "string", "example": "Stoerung"},
+                "sort_order": {"type": "integer", "example": 10},
+            },
+        },
+        "Site": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "integer", "example": 1},
+                "code": {"type": "string", "example": "werk-1"},
+                "name": {"type": "string", "example": "Werk 1"},
+                "timezone": {"type": "string", "example": "Europe/Berlin"},
+                "is_active": {"type": "boolean", "example": True},
+            },
+        },
+        "OperationalEvent": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "integer", "example": 42},
+                "event_type": {"type": "string", "example": "task.completed"},
+                "feature": {"type": "string", "example": "tasks"},
+                "entity_type": {"type": "string", "example": "task"},
+                "entity_id": {"type": "integer", "example": 12},
+                "site_id": {"type": "integer", "example": 1},
+                "department_id": {"type": "integer", "example": 3},
+                "machine_id": {"type": "integer", "nullable": True},
+                "task_id": {"type": "integer", "nullable": True},
+                "actor_hash": {"type": "string", "example": "pseudonymous-hmac"},
+                "actor_role": {"type": "string", "example": "instandhaltung"},
+                "source": {"type": "string", "example": "app"},
+                "metadata": {"type": "object"},
+                "occurred_at": {"type": "string", "format": "date-time"},
+            },
+        },
+        "OperationsSummary": {
+            "type": "object",
+            "properties": {
+                "filters": {"type": "object"},
+                "tasks": {"type": "object"},
+                "machines": {"type": "object"},
+                "inventory": {"type": "object"},
+                "workforce": {"type": "object"},
+                "documents": {"type": "object"},
+                "ai_quality": {"type": "object"},
+                "events": {"type": "object"},
+            },
+        },
+        "AssistantTrainingEntry": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "integer", "example": 7},
+                "title": {"type": "string", "example": "Hydraulik X900"},
+                "question": {"type": "string", "example": "Was tun bei X900?"},
+                "answer": {"type": "string", "example": "Druck pruefen und Ventil reinigen."},
+                "keywords": {"type": "string", "example": "X900, Hydraulik"},
+                "category": {"type": "string", "example": "Stoerung"},
+                "department": {"type": "string", "example": "Instandhaltung"},
+                "is_active": {"type": "boolean", "example": True},
+                "priority": {"type": "integer", "example": 50},
+            },
+        },
     }
 )
 
@@ -2858,6 +2925,14 @@ OPENAPI_SPEC["paths"].update(
                 "summary": "Search own AI chat history",
                 "security": [{"bearerAuth": []}],
                 "responses": {"200": {"description": "Chat history loaded"}},
+            }
+        },
+        "/api/v1/ai/chat/templates": {
+            "get": {
+                "tags": ["AI"],
+                "summary": "Load permission-aware chat templates",
+                "security": [{"bearerAuth": []}],
+                "responses": {"200": {"description": "Chat templates loaded"}},
             }
         },
         "/api/v1/ai/order-plan": {
@@ -2886,6 +2961,115 @@ OPENAPI_SPEC["paths"].update(
                 },
             }
         },
+        "/api/v1/sites": {
+            "get": {
+                "tags": ["Sites"],
+                "summary": "List active plants/sites for selectors",
+                "security": [{"bearerAuth": []}],
+                "responses": {"200": {"description": "Sites loaded"}},
+            }
+        },
+        "/api/v1/operations/summary": {
+            "get": {
+                "tags": ["Operations"],
+                "summary": "Load cross-feature operations KPIs",
+                "security": [{"bearerAuth": []}],
+                "parameters": [
+                    {"name": "from", "in": "query", "schema": {"type": "string", "format": "date"}},
+                    {"name": "to", "in": "query", "schema": {"type": "string", "format": "date"}},
+                    {"name": "site_id", "in": "query", "schema": {"type": "integer"}},
+                    {"name": "department_id", "in": "query", "schema": {"type": "integer"}},
+                    {"name": "machine_id", "in": "query", "schema": {"type": "integer"}},
+                ],
+                "responses": {"200": {"description": "Operations summary loaded"}},
+            }
+        },
+        "/api/v1/operations/events": {
+            "get": {
+                "tags": ["Operations"],
+                "summary": "List pseudonymized operational events",
+                "security": [{"bearerAuth": []}],
+                "responses": {"200": {"description": "Operations events loaded"}},
+            }
+        },
+        "/api/v1/operations/tasks": {
+            "get": {
+                "tags": ["Operations"],
+                "summary": "Load task lifecycle KPI drilldown",
+                "security": [{"bearerAuth": []}],
+                "responses": {"200": {"description": "Task operations loaded"}},
+            }
+        },
+        "/api/v1/operations/machines": {
+            "get": {
+                "tags": ["Operations"],
+                "summary": "Load machine downtime and fault KPIs",
+                "security": [{"bearerAuth": []}],
+                "responses": {"200": {"description": "Machine operations loaded"}},
+            }
+        },
+        "/api/v1/operations/inventory": {
+            "get": {
+                "tags": ["Operations"],
+                "summary": "Load inventory risk KPIs",
+                "security": [{"bearerAuth": []}],
+                "responses": {"200": {"description": "Inventory operations loaded"}},
+            }
+        },
+        "/api/v1/operations/workforce": {
+            "get": {
+                "tags": ["Operations"],
+                "summary": "Load shift coverage and conflict KPIs",
+                "security": [{"bearerAuth": []}],
+                "responses": {"200": {"description": "Workforce operations loaded"}},
+            }
+        },
+        "/api/v1/operations/ai-quality": {
+            "get": {
+                "tags": ["Operations"],
+                "summary": "Load AI latency, cost and feedback KPIs",
+                "security": [{"bearerAuth": []}],
+                "responses": {"200": {"description": "AI quality operations loaded"}},
+            }
+        },
+        "/api/v1/admin/sites": {
+            "get": {
+                "tags": ["Sites", "Admin"],
+                "summary": "List all sites as master admin",
+                "security": [{"bearerAuth": []}],
+                "responses": {"200": {"description": "Sites loaded"}},
+            },
+            "post": {
+                "tags": ["Sites", "Admin"],
+                "summary": "Create a site",
+                "security": [{"bearerAuth": []}],
+                "responses": {
+                    "201": {"description": "Site created"},
+                    "400": {"$ref": "#/components/responses/ValidationError"},
+                    "409": {"$ref": "#/components/responses/ValidationError"},
+                },
+            },
+        },
+        "/api/v1/admin/sites/{site_id}": {
+            "put": {
+                "tags": ["Sites", "Admin"],
+                "summary": "Update a site",
+                "security": [{"bearerAuth": []}],
+                "responses": {
+                    "200": {"description": "Site updated"},
+                    "400": {"$ref": "#/components/responses/ValidationError"},
+                    "404": {"description": "Site not found"},
+                },
+            }
+        },
+        "/api/v1/admin/operations/aggregate": {
+            "post": {
+                "tags": ["Operations", "Admin"],
+                "summary": "Rebuild persisted operations aggregates",
+                "security": [{"bearerAuth": []}],
+                "responses": {"200": {"description": "Operations aggregates rebuilt"}},
+            }
+        },
         "/api/v1/admin/ai/chats": {
             "get": {
                 "tags": ["Admin"],
@@ -2901,6 +3085,44 @@ OPENAPI_SPEC["paths"].update(
                 "security": [{"bearerAuth": []}],
                 "responses": {"200": {"description": "AI events loaded"}},
             }
+        },
+        "/api/v1/admin/ai/training": {
+            "get": {
+                "tags": ["Admin"],
+                "summary": "List manual assistant training entries",
+                "security": [{"bearerAuth": []}],
+                "responses": {"200": {"description": "Training entries loaded"}},
+            },
+            "post": {
+                "tags": ["Admin"],
+                "summary": "Create a manual assistant training entry",
+                "security": [{"bearerAuth": []}],
+                "responses": {
+                    "201": {"description": "Training entry created"},
+                    "400": {"$ref": "#/components/responses/ValidationError"},
+                },
+            },
+        },
+        "/api/v1/admin/ai/training/{entry_id}": {
+            "put": {
+                "tags": ["Admin"],
+                "summary": "Update a manual assistant training entry",
+                "security": [{"bearerAuth": []}],
+                "responses": {
+                    "200": {"description": "Training entry updated"},
+                    "400": {"$ref": "#/components/responses/ValidationError"},
+                    "404": {"description": "Training entry not found"},
+                },
+            },
+            "delete": {
+                "tags": ["Admin"],
+                "summary": "Delete a manual assistant training entry",
+                "security": [{"bearerAuth": []}],
+                "responses": {
+                    "200": {"description": "Training entry deleted"},
+                    "404": {"description": "Training entry not found"},
+                },
+            },
         },
         "/api/v1/admin/ai/knowledge/upload": {
             "post": {
@@ -2932,6 +3154,14 @@ OPENAPI_SPEC["paths"].update(
                 "summary": "List background jobs",
                 "security": [{"bearerAuth": []}],
                 "responses": {"200": {"description": "Background jobs loaded"}},
+            }
+        },
+        "/api/v1/health/operations": {
+            "get": {
+                "tags": ["Health", "Admin"],
+                "summary": "Inspect operations metrics for administrators",
+                "security": [{"bearerAuth": []}],
+                "responses": {"200": {"description": "Operations metrics loaded"}},
             }
         },
         "/api/v1/admin/ai/knowledge/reindex/jobs": {

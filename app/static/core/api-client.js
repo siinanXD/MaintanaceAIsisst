@@ -14,14 +14,16 @@
   }
 
   async function request(path, options) {
+    const requestOptions = options || {};
+    const isFormData = typeof FormData !== "undefined" && requestOptions.body instanceof FormData;
     const headers = Object.assign(
-      { "Content-Type": "application/json" },
-      options && options.headers
+      isFormData ? {} : { "Content-Type": "application/json" },
+      requestOptions.headers
     );
     const authToken = token();
     if (authToken) headers.Authorization = "Bearer " + authToken;
 
-    const response = await fetch(path, Object.assign({}, options, { headers }));
+    const response = await fetch(path, Object.assign({}, requestOptions, { headers }));
     if (response.status === 401 || response.status === 422) {
       handleExpiredSession();
       throw new Error("Sitzung abgelaufen. Bitte neu einloggen.");

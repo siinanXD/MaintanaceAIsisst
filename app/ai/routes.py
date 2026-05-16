@@ -9,7 +9,9 @@ from app.models import AIFeedback, Role
 from app.responses import error_response, service_error_response, success_response
 from app.security import current_user, has_dashboard_permission, roles_required
 from app.services.ai_history_service import paginated_chat_history
+from app.services.chat_template_service import chat_templates_for_user
 from app.services.error_assistant_service import run_error_assistant
+from app.services.operations_tracking_service import record_event
 from app.services.order_planning_service import plan_order
 
 ai_bp = Blueprint("ai", __name__)
@@ -28,6 +30,21 @@ def chat():
     user = current_user()
     result = answer_chat(message, user)
     save_chat_message(user, message, result)
+    diagnostics = result.get("diagnostics") or {}
+    record_event(
+        "ai.chat",
+        "ai",
+        entity_type="chat_message",
+        user=user,
+        department=user.department,
+        source="ai",
+        metadata={
+            "response_type": result.get("response_type"),
+            "source_count": len(result.get("sources") or []),
+            "audit_event_id": diagnostics.get("audit_event_id"),
+        },
+        commit=True,
+    )
 
     return success_response(result, message="AI response generated")
 
@@ -41,6 +58,16 @@ def chat_history():
     except ValueError as exc:
         return error_response(str(exc), 400)
     return success_response(result, message="Chat history loaded")
+
+
+@ai_bp.get("/chat/templates")
+@jwt_required()
+def chat_templates():
+    """Return permission-aware chat templates for the current user."""
+    return success_response(
+        chat_templates_for_user(current_user()),
+        message="Chat templates loaded",
+    )
 
 
 @ai_bp.get("/status")
@@ -61,9 +88,24 @@ def briefing():
 @jwt_required()
 def order_plan():
     """Return a RAG-supported production order planning preview."""
-    result, error, status_code = plan_order(request.get_json(silent=True) or {}, current_user())
+    user = current_user()
+    result, error, status_code = plan_order(request.get_json(silent=True) or {}, user)
     if error:
         return service_error_response(error, status_code)
+    record_event(
+        "ai.order_plan",
+        "ai",
+        entity_type="order_plan",
+        user=user,
+        department=user.department,
+        source="ai",
+        metadata={
+            "source_count": len(result.get("sources") or [])
+            if isinstance(result, dict)
+            else 0,
+        },
+        commit=True,
+    )
     return success_response(result, message="Order plan generated")
 
 
@@ -93,6 +135,23 @@ def error_assistant():
     result, error, status_code = run_error_assistant(data, user)
     if error:
         return service_error_response(error, status_code)
+    record_event(
+        "ai.error_assistant",
+        "ai",
+        entity_type="error_assistant",
+        user=user,
+        department=user.department,
+        source="ai",
+        metadata={
+            "match_count": len(result.get("matches") or []) if isinstance(result, dict) else 0,
+            "ai_enhanced": bool(
+                (result.get("diagnostics") or {}).get("ai_enhanced")
+                if isinstance(result, dict)
+                else False
+            ),
+        },
+        commit=True,
+    )
     return success_response(result, message="Error assistant result")
 
 
@@ -109,14 +168,24 @@ def feedback():
     if not prompt or not response:
         return error_response("prompt and response are required", 400)
 
+    user = current_user()
     feedback_entry = AIFeedback(
-        user_id=current_user().id,
+        user_id=user.id,
         prompt=prompt[:4000],
         response=response[:8000],
         rating=rating,
         comment=str(data.get("comment") or "").strip()[:1000],
     )
     db.session.add(feedback_entry)
+    record_event(
+        "ai.feedback",
+        "ai",
+        entity_type="ai_feedback",
+        user=user,
+        department=user.department,
+        source="ai",
+        metadata={"rating": feedback_entry.rating},
+    )
     db.session.commit()
     return success_response(
         feedback_entry.to_dict(),

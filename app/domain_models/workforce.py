@@ -41,6 +41,11 @@ class Employee(db.Model):
         order_by="EmployeeMachineQualification.machine_id.asc()",
     )
 
+    __table_args__ = (
+        db.Index("ix_employee_department_name", "department", "name"),
+        db.Index("ix_employee_favorite_machine", "favorite_machine_id"),
+    )
+
     def to_dict(self, access_level="confidential"):
         """Return employee data filtered by the requested access level."""
         base_data = {
@@ -94,6 +99,8 @@ class EmployeeMachineQualification(db.Model):
             "machine_id",
             name="uq_employee_machine_qualification",
         ),
+        db.Index("ix_employee_machine_qualification_machine", "machine_id"),
+        db.Index("ix_employee_machine_qualification_valid_until", "valid_until"),
     )
 
     id = db.Column(db.Integer, primary_key=True)
@@ -146,6 +153,10 @@ class ShiftPlan(db.Model):
     department = db.Column(db.String(120), nullable=False, default="")
     status = db.Column(db.String(20), nullable=False, default="draft")
     published_at = db.Column(db.DateTime, nullable=True)
+    coverage_percent = db.Column(db.Float, nullable=False, default=0.0)
+    conflict_count = db.Column(db.Integer, nullable=False, default=0)
+    critical_conflict_count = db.Column(db.Integer, nullable=False, default=0)
+    change_count = db.Column(db.Integer, nullable=False, default=0)
     created_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
 
@@ -155,6 +166,11 @@ class ShiftPlan(db.Model):
         cascade="all, delete-orphan",
     )
     creator = db.relationship("User", foreign_keys=[created_by])
+
+    __table_args__ = (
+        db.Index("ix_shift_plan_department_start", "department", "start_date"),
+        db.Index("ix_shift_plan_status_start", "status", "start_date"),
+    )
 
     @property
     def is_published(self):
@@ -174,6 +190,10 @@ class ShiftPlan(db.Model):
             "department": self.department,
             "status": self.status,
             "published_at": self.published_at.isoformat() if self.published_at else None,
+            "coverage_percent": self.coverage_percent,
+            "conflict_count": self.conflict_count,
+            "critical_conflict_count": self.critical_conflict_count,
+            "change_count": self.change_count,
             "created_by": self.creator.username if self.creator else None,
             "entries": [entry.to_dict(employee_access_level) for entry in self.entries],
             "created_at": self.created_at.isoformat(),
@@ -190,6 +210,9 @@ class ShiftPlanEntry(db.Model):
             "work_date",
             name="uq_entry_emp_day",
         ),
+        db.Index("ix_shift_plan_entry_plan_date", "plan_id", "work_date"),
+        db.Index("ix_shift_plan_entry_employee_date", "employee_id", "work_date"),
+        db.Index("ix_shift_plan_entry_machine_date", "machine_id", "work_date"),
     )
 
     id = db.Column(db.Integer, primary_key=True)
@@ -286,6 +309,11 @@ class ShiftHandover(db.Model):
     plan = db.relationship("ShiftPlan")
     author = db.relationship("User", foreign_keys=[handed_over_by])
 
+    __table_args__ = (
+        db.Index("ix_shift_handover_department_date", "department", "shift_date"),
+        db.Index("ix_shift_handover_status_date", "status", "shift_date"),
+    )
+
     def to_dict(self):
         """Return a JSON-serializable representation of the shift handover record."""
         return {
@@ -323,6 +351,11 @@ class VacationRequest(db.Model):
     employee = db.relationship("Employee", back_populates="vacation_requests")
     requester = db.relationship("User", foreign_keys=[requested_by])
     approver = db.relationship("User", foreign_keys=[approved_by])
+
+    __table_args__ = (
+        db.Index("ix_vacation_request_employee_status", "employee_id", "status"),
+        db.Index("ix_vacation_request_status_start", "status", "start_date"),
+    )
 
     def to_dict(self):
         """Return a JSON-serializable representation of the vacation request."""

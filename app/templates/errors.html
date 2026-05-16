@@ -62,7 +62,7 @@
             <input class="input input-bordered" id="analysis-title" data-error-analysis-field="title">
           </div>
           <div class="field">
-            <label for="analysis-causes">Moegliche Ursachen</label>
+            <label for="analysis-causes">Mögliche Ursachen</label>
             <textarea class="textarea textarea-bordered" id="analysis-causes" data-error-analysis-field="possible_causes"></textarea>
           </div>
           <div class="field">
@@ -112,7 +112,7 @@
           <input class="input input-bordered" id="error-title" name="title" required>
         </div>
         <div class="field is-full">
-          <label for="error-causes">Moegliche Ursachen</label>
+          <label for="error-causes">Mögliche Ursachen</label>
           <textarea class="textarea textarea-bordered" id="error-causes" name="possible_causes"></textarea>
         </div>
         <div class="field is-full">
@@ -138,13 +138,14 @@
       </div>
       <div class="table-wrap bounded-table-wrap">
         <table class="table data-table">
+          <caption>Ähnliche vorhandene Fehler vor dem Speichern</caption>
           <thead>
             <tr>
-              <th>Score</th>
-              <th>Code</th>
-              <th>Maschine</th>
-              <th>Fehler</th>
-              <th>Grund</th>
+              <th scope="col">Score</th>
+              <th scope="col">Code</th>
+              <th scope="col">Maschine</th>
+              <th scope="col">Fehler</th>
+              <th scope="col">Grund</th>
             </tr>
           </thead>
           <tbody data-similar-errors-list></tbody>
@@ -166,19 +167,20 @@
           <span>Fehler suchen</span>
           <input class="input input-bordered" id="error-search" data-error-search placeholder="Code, Maschine, Fehler, Ursache oder Lösung">
         </label>
-        <span class="panel-meta" data-error-count>0 Eintraege</span>
+        <span class="panel-meta" data-error-count>0 Einträge</span>
       </div>
       <div class="table-wrap">
         <table class="table data-table">
+          <caption>Fehlerkatalog mit Code, Maschine, Ursache, Lösung und Aktionen</caption>
           <thead>
             <tr>
-              <th>Code</th>
-              <th>Maschine</th>
-              <th>Fehler</th>
-              <th>Bereich</th>
-              <th>Moegliche Ursache</th>
-              <th>Lösung</th>
-              <th data-errors-action-th hidden></th>
+              <th scope="col">Code</th>
+              <th scope="col">Maschine</th>
+              <th scope="col">Fehler</th>
+              <th scope="col">Bereich</th>
+              <th scope="col">Mögliche Ursache</th>
+              <th scope="col">Lösung</th>
+              <th scope="col" data-errors-action-th hidden>Aktionen</th>
             </tr>
           </thead>
           <tbody data-error-list></tbody>
@@ -211,7 +213,7 @@
         <input class="input input-bordered" id="eed-title-input" required>
       </div>
       <div class="field is-full">
-        <label for="eed-causes">Moegliche Ursachen</label>
+        <label for="eed-causes">Mögliche Ursachen</label>
         <textarea class="textarea textarea-bordered" id="eed-causes"></textarea>
       </div>
       <div class="field is-full">

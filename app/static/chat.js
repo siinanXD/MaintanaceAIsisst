@@ -9,19 +9,66 @@
   const historyPanel = document.querySelector("[data-chat-history-panel]");
   const historySearch = document.querySelector("[data-chat-history-search]");
   const historyList = document.querySelector("[data-chat-history-list]");
+  let chatTemplateItems = [];
+  let isTemplateLoading = false;
+  let hasHydratedPanel = false;
+  let isSending = false;
+  let lastFocusedElement = null;
+  const CHAT_OPEN_KEY = "maintenance_chat_open";
 
   if (!widget || !toggle || !panel || !form || !messages) {
     return;
   }
 
+  function isOpen() {
+    return widget.classList.contains("is-open");
+  }
+
+  function hydrateChatPanel() {
+    if (!hasHydratedPanel) {
+      hasHydratedPanel = true;
+      renderSuggestions();
+    }
+    loadChatHistory();
+  }
+
+  function focusChatInput() {
+    const input = form.querySelector("input");
+    if (input) input.focus();
+  }
+
+  function focusableChatElements() {
+    return Array.from(panel.querySelectorAll(
+      "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
+    )).filter((element) => element.offsetParent !== null || element === document.activeElement);
+  }
+
+  function restorePreviousFocus() {
+    if (lastFocusedElement && typeof lastFocusedElement.focus === "function" && document.contains(lastFocusedElement)) {
+      lastFocusedElement.focus();
+      return;
+    }
+    toggle.focus();
+  }
+
   function setOpen(open) {
+    const wasOpen = isOpen();
+    if (open && !wasOpen) {
+      lastFocusedElement = document.activeElement;
+    }
     widget.classList.toggle("is-open", open);
     toggle.setAttribute("aria-expanded", String(open));
     panel.setAttribute("aria-hidden", String(!open));
+    panel.setAttribute("aria-modal", String(open));
+    window.localStorage.setItem(CHAT_OPEN_KEY, String(open));
     if (open) {
-      const input = form.querySelector("input");
-      if (input) input.focus();
-      loadChatHistory();
+      panel.focus({ preventScroll: true });
+      focusChatInput();
+      hydrateChatPanel();
+      return;
+    }
+    if (wasOpen) {
+      restorePreviousFocus();
     }
   }
 
@@ -65,19 +112,16 @@
     }
 
     if (status === "openai_used") {
-      return provider + (model ? " · " + model : "");
+      return provider + (model ? " - " + model : "");
     }
     if (status === "local_answer") {
       return "Lokale Antwort" + sourceLabel;
     }
     if (status === "api_key_missing") {
-      return "Fallback · OPENAI_API_KEY fehlt in .env";
+      return "Fallback - OPENAI_API_KEY fehlt in .env";
     }
     if (status === "openai_error") {
       return openAIErrorLabel(diagnostics);
-    }
-    if (status === "openai_error") {
-      return "Fallback · OpenAI nicht erreichbar";
     }
     if (status === "permission_denied") {
       return "Berechtigung fehlt" + sourceLabel;
@@ -182,6 +226,7 @@
   function appendMessage(text, type, diagnostics) {
     const bubble = document.createElement("div");
     bubble.className = "chat-message " + (type === "user" ? "is-user" : "is-assistant");
+    bubble.setAttribute("role", "article");
 
     const body = document.createElement("div");
     body.className = "chat-message-text";
@@ -213,11 +258,19 @@
     if (!sources || !sources.length) return;
     const sourceList = document.createElement("div");
     sourceList.className = "chat-sources";
+    sourceList.setAttribute("aria-label", "Verwendete Quellen");
     sources.slice(0, 4).forEach((source) => {
-      const item = document.createElement("a");
-      item.href = source.url || "#";
-      item.textContent = source.module + " #" + source.id + ": " + source.title;
+      const item = document.createElement(source.url ? "a" : "span");
+      const moduleName = source.module || source.type || "Quelle";
+      const sourceId = source.id ? " #" + source.id : "";
+      const title = source.title || "Wissensquelle";
+      const label = document.createElement("strong");
+      const meta = document.createElement("small");
+      if (source.url) item.href = source.url;
       item.title = source.reason || "";
+      label.textContent = title;
+      meta.textContent = moduleName + sourceId;
+      item.append(label, meta);
       sourceList.appendChild(item);
     });
     bubble.appendChild(sourceList);
@@ -408,25 +461,39 @@
   function addFeedbackButtons(bubble, prompt, response) {
     const actions = document.createElement("div");
     actions.className = "chat-feedback";
+    actions.setAttribute("aria-label", "Antwort bewerten");
     const helpful = document.createElement("button");
     helpful.type = "button";
     helpful.textContent = "Hilfreich";
+    helpful.setAttribute("aria-pressed", "false");
     const notHelpful = document.createElement("button");
     notHelpful.type = "button";
     notHelpful.textContent = "Nicht hilfreich";
+    notHelpful.setAttribute("aria-pressed", "false");
     const comment = document.createElement("input");
     comment.className = "input input-bordered";
     comment.placeholder = "Optionaler Kommentar";
     [helpful, notHelpful].forEach((button) => {
       button.className = "chat-feedback-button";
     });
+    async function storeFeedback(rating) {
+      const selectedButton = rating === "helpful" ? helpful : notHelpful;
+      selectedButton.setAttribute("aria-pressed", "true");
+      helpful.disabled = true;
+      notHelpful.disabled = true;
+      comment.disabled = true;
+      try {
+        await sendFeedback(prompt, response, rating, comment.value);
+        actions.textContent = "Feedback gespeichert.";
+      } catch (error) {
+        actions.textContent = "Feedback konnte nicht gespeichert werden.";
+      }
+    }
     helpful.addEventListener("click", async () => {
-      await sendFeedback(prompt, response, "helpful", comment.value);
-      actions.textContent = "Feedback gespeichert.";
+      await storeFeedback("helpful");
     });
     notHelpful.addEventListener("click", async () => {
-      await sendFeedback(prompt, response, "not_helpful", comment.value);
-      actions.textContent = "Feedback gespeichert.";
+      await storeFeedback("not_helpful");
     });
     actions.append(comment, helpful, notHelpful);
     bubble.appendChild(actions);
@@ -443,35 +510,94 @@
     renderSuggestions();
   }
 
-  function chatSuggestionsForUser() {
+  function fallbackChatSuggestionsForUser() {
     const auth = window.maintenanceAuth;
     if (!auth || !auth.user || !auth.user()) return [];
     const items = [];
-    if (auth.canView("tasks")) items.push("Welche Tasks sind heute wichtig?");
-    if (auth.canWrite("tasks")) items.push("Task erstellen: Maschine 3 macht Geraeusche");
-    if (auth.canView("errors")) items.push("Was bedeutet Fehler E104?");
-    if (auth.canWrite("errors")) items.push("Fehleranalyse: Sensor meldet kein Signal");
-    if (auth.canView("machines")) items.push("Welche Maschinen brauchen Aufmerksamkeit?");
-    if (auth.canView("inventory")) items.push("Welche Lagerteile sind kritisch?");
-    if (auth.canView("documents")) items.push("Welche Dokumente sollte ich pruefen?");
+    if (auth.canView("tasks")) items.push({ category: "tasks", message: "Welche Tasks sind heute wichtig?" });
+    if (auth.canWrite("tasks")) items.push({ category: "tasks", message: "Task erstellen: Maschine 3 macht Geräusche" });
+    if (auth.canView("errors")) items.push({ category: "errors", message: "Was bedeutet Fehler E104?" });
+    if (auth.canWrite("errors")) items.push({ category: "errors", message: "Fehleranalyse: Sensor meldet kein Signal" });
+    if (auth.canView("machines")) items.push({ category: "machines", message: "Welche Maschinen brauchen Aufmerksamkeit?" });
+    if (auth.canView("inventory")) items.push({ category: "inventory", message: "Welche Lagerteile sind kritisch?" });
+    if (auth.canView("documents")) items.push({ category: "documents", message: "Welche Dokumente sollte ich prüfen?" });
     return items.slice(0, 6);
   }
 
-  function renderSuggestions() {
+  function templateCategoryLabel(category) {
+    const labels = {
+      tasks: "Aufgaben",
+      errors: "Störungen",
+      machines: "Maschinen",
+      inventory: "Inventar",
+      documents: "Dokumente",
+      shiftplans: "Schicht"
+    };
+    return labels[category] || "Vorschlag";
+  }
+
+  function normalizeTemplateItem(item) {
+    if (typeof item === "string") {
+      return { category: "general", label: item, message: item };
+    }
+    const message = item && (item.message || item.label);
+    return {
+      category: (item && (item.category || item.scope)) || "general",
+      label: (item && item.label) || message,
+      message
+    };
+  }
+
+  function chatSuggestionsForUser() {
+    if (chatTemplateItems.length) {
+      return chatTemplateItems.map(normalizeTemplateItem).filter((item) => item.message);
+    }
+    return fallbackChatSuggestionsForUser();
+  }
+
+  async function loadChatTemplates() {
+    const token = window.localStorage.getItem("maintenance_access_token");
+    if (!token || isTemplateLoading) return;
+    isTemplateLoading = true;
+    try {
+      const response = await fetch("/api/v1/ai/chat/templates", {
+        headers: { "Authorization": "Bearer " + token }
+      });
+      if (!response.ok) return;
+      const payload = await response.json();
+      const data = payload && payload.data ? payload.data : payload;
+      chatTemplateItems = Array.isArray(data.items) ? data.items : [];
+      renderSuggestions(false);
+    } finally {
+      isTemplateLoading = false;
+    }
+  }
+
+  function renderSuggestions(loadRemote) {
     if (!suggestions) return;
+    const shouldLoadRemote = loadRemote !== false;
     suggestions.innerHTML = "";
     const items = chatSuggestionsForUser();
+    if (!chatTemplateItems.length && shouldLoadRemote) {
+      loadChatTemplates();
+    }
     suggestions.hidden = items.length === 0;
-    items.forEach((text) => {
+    items.forEach((item) => {
+      const template = normalizeTemplateItem(item);
       const chip = document.createElement("button");
+      const scope = document.createElement("span");
+      const label = document.createElement("strong");
       chip.type = "button";
       chip.className = "chat-suggestion";
-      chip.textContent = text;
+      scope.textContent = templateCategoryLabel(template.category);
+      label.textContent = template.label || template.message;
+      chip.append(scope, label);
+      chip.title = template.message;
       chip.addEventListener("click", () => {
         suggestions.hidden = true;
         const input = form.querySelector("input");
         if (input) {
-          input.value = text;
+          input.value = template.message;
           input.focus();
         }
       });
@@ -483,19 +609,62 @@
   close.addEventListener("click", () => setOpen(false));
   if (clearBtn) clearBtn.addEventListener("click", clearChat);
 
+  function setChatFormBusy(busy) {
+    const input = form.querySelector("input");
+    const button = form.querySelector("button[type='submit']");
+    isSending = busy;
+    form.setAttribute("aria-busy", String(busy));
+    if (input) input.disabled = busy;
+    if (button) {
+      button.disabled = busy;
+      button.setAttribute("aria-busy", String(busy));
+      button.textContent = busy ? "Prüfe..." : "Senden";
+    }
+  }
+
+  document.addEventListener("keydown", (event) => {
+    if (!isOpen()) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setOpen(false);
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = focusableChatElements();
+    if (!focusable.length) {
+      event.preventDefault();
+      panel.focus();
+      return;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+      return;
+    }
+    if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (isSending) return;
     const input = form.querySelector("input");
     const message = input.value.trim();
     if (!message) return;
 
     input.value = "";
+    setChatFormBusy(true);
     if (suggestions) suggestions.hidden = true;
     appendMessage(message, "user");
     const loading = appendMessage(
-      "Ich sende deine Frage an den Assistenten und pruefe die freigegebenen Daten...",
+      "Ich prüfe die freigegebenen Daten und formuliere eine sichere Antwort...",
       "assistant"
     );
+    loading.classList.add("is-loading");
 
     try {
       const result = await askAssistant(message);
@@ -507,22 +676,49 @@
         result.action_preview
       );
       addFeedbackButtons(loading, result.prompt || message, result.answer);
+      loading.classList.remove("is-loading");
     } catch (error) {
       updateAssistantMessage(
         loading,
-        "Keine Verbindung zur API. Bitte pruefe, ob der Server laeuft.",
+        "Keine Verbindung zur API. Bitte prüfe, ob der Server läuft.",
         { status: "openai_error", fallback_used: true }
       );
+      loading.classList.remove("is-loading");
+    } finally {
+      setChatFormBusy(false);
+      const currentInput = form.querySelector("input");
+      if (currentInput) currentInput.focus();
     }
   });
 
-  window.addEventListener("maintenance-auth-ready", renderSuggestions);
-  window.addEventListener("maintenance-auth-changed", renderSuggestions);
+  window.addEventListener("maintenance-auth-ready", () => {
+    chatTemplateItems = [];
+    if (isOpen()) {
+      hasHydratedPanel = false;
+      hydrateChatPanel();
+    }
+  });
+  window.addEventListener("maintenance-auth-changed", () => {
+    chatTemplateItems = [];
+    if (isOpen()) {
+      hasHydratedPanel = false;
+      hydrateChatPanel();
+    }
+  });
   if (historySearch) {
     historySearch.addEventListener("input", () => {
       window.clearTimeout(historySearch._timer);
       historySearch._timer = window.setTimeout(loadChatHistory, 250);
     });
   }
-  renderSuggestions();
+  window.maintenanceChat = {
+    open: () => setOpen(true),
+    close: () => setOpen(false),
+    toggle: () => setOpen(!isOpen()),
+    hydrate: hydrateChatPanel
+  };
+
+  if (window.localStorage.getItem(CHAT_OPEN_KEY) === "true") {
+    setOpen(true);
+  }
 })();

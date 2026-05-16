@@ -5,10 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Maintenance Assistant{% endblock %}</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b7cff'/%3E%3Ctext x='32' y='39' text-anchor='middle' font-family='Arial,sans-serif' font-size='22' font-weight='800' fill='white'%3EMA%3C/text%3E%3C/svg%3E">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}?v=20260516-chat-history-layout1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}?v=20260516-a11y-polish1">
   </head>
   <body class="app-body min-h-screen text-slate-900 antialiased">
-    <div class="app-shell-layout min-h-screen lg:grid lg:grid-cols-[268px_minmax(0,1fr)]">
+    <a class="skip-link" href="#main-content">Zum Hauptinhalt springen</a>
+    <svg class="icon-sprite" aria-hidden="true" focusable="false">
+      <symbol id="icon-dashboard" viewBox="0 0 24 24"><path d="M4 13h7V4H4v9Zm9 7h7V4h-7v16ZM4 20h7v-5H4v5Z"/></symbol>
+      <symbol id="icon-tasks" viewBox="0 0 24 24"><path d="M9 3h6l1 2h4v16H4V5h4l1-2Zm1.2 2-.5 1h4.6l-.5-1h-3.6ZM8 11l2.1 2.1L15.6 8 17 9.4l-6.9 6.5L6.6 12.4 8 11Z"/></symbol>
+      <symbol id="icon-alert" viewBox="0 0 24 24"><path d="M12 3 2 20h20L12 3Zm1 14h-2v-2h2v2Zm0-4h-2V8h2v5Z"/></symbol>
+      <symbol id="icon-handover" viewBox="0 0 24 24"><path d="M7 7h9.2l-2.6-2.6L15 3l5 5-5 5-1.4-1.4L16.2 9H7V7Zm10 10H7.8l2.6 2.6L9 21l-5-5 5-5 1.4 1.4L7.8 15H17v2Z"/></symbol>
+      <symbol id="icon-users" viewBox="0 0 24 24"><path d="M8.5 12a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm0 2c3.1 0 5.5 1.6 5.5 3.6V20H3v-2.4C3 15.6 5.4 14 8.5 14Zm7-2.2a3.4 3.4 0 0 1-1.7-.45A5.9 5.9 0 0 0 14.5 8c0-1.15-.33-2.22-.9-3.12A3.5 3.5 0 1 1 15.5 11.8ZM16.5 14c2.5.1 4.5 1.5 4.5 3.2V20h-5v-2.4c0-1.3-.58-2.46-1.55-3.4.6-.14 1.28-.2 2.05-.2Z"/></symbol>
+      <symbol id="icon-machine" viewBox="0 0 24 24"><path d="M4 5h16v8H4V5Zm2 2v4h12V7H6Zm-1 8h14l2 4v1H3v-1l2-4Zm3 .8L7.4 18h9.2l-.6-2.2H8Z"/></symbol>
+      <symbol id="icon-inventory" viewBox="0 0 24 24"><path d="M4 5.5 12 2l8 3.5V18l-8 4-8-4V5.5Zm8 2.2 4.9-2.1L12 3.8 7.1 5.6 12 7.7Zm-6 9.1 5 2.5V9.4l-5-2.2v9.6Zm7 2.5 5-2.5V7.2l-5 2.2v9.9Z"/></symbol>
+      <symbol id="icon-calendar" viewBox="0 0 24 24"><path d="M7 2h2v2h6V2h2v2h3v18H4V4h3V2Zm11 8H6v10h12V10ZM6 8h12V6H6v2Z"/></symbol>
+      <symbol id="icon-document" viewBox="0 0 24 24"><path d="M6 2h8l5 5v15H6V2Zm7 1.8V8h4.2L13 3.8ZM8 12h8v2H8v-2Zm0 4h8v2H8v-2Z"/></symbol>
+      <symbol id="icon-admin" viewBox="0 0 24 24"><path d="M12 2 4 5.5v6.2c0 4.9 3.3 8.7 8 10.3 4.7-1.6 8-5.4 8-10.3V5.5L12 2Zm0 2.2 6 2.6v4.9c0 3.8-2.3 6.7-6 8.1-3.7-1.4-6-4.3-6-8.1V6.8l6-2.6Zm-1 4.3h2v4h-2v-4Zm0 6h2v2h-2v-2Z"/></symbol>
+      <symbol id="icon-ai" viewBox="0 0 24 24"><path d="M11 2h2v3h3a3 3 0 0 1 3 3v3h3v2h-3v3a3 3 0 0 1-3 3h-3v3h-2v-3H8a3 3 0 0 1-3-3v-3H2v-2h3V8a3 3 0 0 1 3-3h3V2Zm-3 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1H8Zm1.2 7 2-5h1.6l2 5h-1.5l-.35-.95h-1.9L10.7 14H9.2Zm2.25-2.1h1.1L12 10.35l-.55 1.55Z"/></symbol>
+      <symbol id="icon-vacation" viewBox="0 0 24 24"><path d="M7 2h2v2h6V2h2v2h3v18H4V4h3V2Zm11 8H6v10h12V10ZM8 12h3v3H8v-3Zm5 0h3v3h-3v-3Z"/></symbol>
+    </svg>
+    <div class="app-shell-layout min-h-screen lg:grid lg:grid-cols-[var(--sidebar-width)_minmax(0,1fr)]">
       <aside class="app-sidebar hidden lg:flex lg:min-h-screen lg:flex-col">
         <a class="sidebar-brand" href="/">
           <span class="sidebar-brand-mark" aria-hidden="true">
@@ -25,74 +40,74 @@
         <nav aria-label="Hauptnavigation" class="sidebar-nav">
           <section class="sidebar-nav-group" data-nav-group open>
             <h2>Arbeit</h2>
-            <a data-dashboard-nav="dashboard" hidden class="nav-link {% if request.path == '/' %}is-active{% endif %}" href="/">
-              <span class="nav-icon" aria-hidden="true">▦</span>
+            <a data-dashboard-nav="dashboard" hidden class="nav-link {% if request.path == '/' %}is-active{% endif %}" href="/" {% if request.path == '/' %}aria-current="page"{% endif %}>
+              <svg class="nav-icon" aria-hidden="true"><use href="#icon-dashboard"></use></svg>
               <span>Dashboard</span>
             </a>
-            <a data-dashboard-nav="tasks" hidden class="nav-link {% if request.path == '/tasks' %}is-active{% endif %}" href="/tasks">
-              <span class="nav-icon" aria-hidden="true">▣</span>
+            <a data-dashboard-nav="tasks" hidden class="nav-link {% if request.path == '/tasks' %}is-active{% endif %}" href="/tasks" {% if request.path == '/tasks' %}aria-current="page"{% endif %}>
+              <svg class="nav-icon" aria-hidden="true"><use href="#icon-tasks"></use></svg>
               <span>Aufgaben</span>
               <span class="nav-count" data-dashboard-task-count>0</span>
             </a>
-            <a data-dashboard-nav="errors" hidden class="nav-link {% if request.path == '/errors' %}is-active{% endif %}" href="/errors">
-              <span class="nav-icon" aria-hidden="true">△</span>
+            <a data-dashboard-nav="errors" hidden class="nav-link {% if request.path == '/errors' %}is-active{% endif %}" href="/errors" {% if request.path == '/errors' %}aria-current="page"{% endif %}>
+              <svg class="nav-icon" aria-hidden="true"><use href="#icon-alert"></use></svg>
               <span>St&ouml;rungen</span>
               <span class="nav-count is-alert" data-dashboard-machine-issue-count>0</span>
             </a>
-            <a data-feature-key="handover" data-dashboard-nav="shiftplans" hidden class="nav-link {% if request.path == '/handover' %}is-active{% endif %}" href="/handover">
-              <span class="nav-icon" aria-hidden="true">↺</span>
+            <a data-feature-key="handover" data-dashboard-nav="shiftplans" hidden class="nav-link {% if request.path == '/handover' %}is-active{% endif %}" href="/handover" {% if request.path == '/handover' %}aria-current="page"{% endif %}>
+              <svg class="nav-icon" aria-hidden="true"><use href="#icon-handover"></use></svg>
               <span>Schichtübergabe</span>
             </a>
           </section>
 
           <section class="sidebar-nav-group" data-nav-group>
             <h2>Ressourcen</h2>
-            <a data-dashboard-nav="employees" hidden class="nav-link {% if request.path == '/employees' %}is-active{% endif %}" href="/employees">
-              <span class="nav-icon" aria-hidden="true">♙</span>
+            <a data-dashboard-nav="employees" hidden class="nav-link {% if request.path == '/employees' %}is-active{% endif %}" href="/employees" {% if request.path == '/employees' %}aria-current="page"{% endif %}>
+              <svg class="nav-icon" aria-hidden="true"><use href="#icon-users"></use></svg>
               <span>Mitarbeiter</span>
             </a>
-            <a data-dashboard-nav="machines" hidden class="nav-link {% if request.path == '/machines' %}is-active{% endif %}" href="/machines">
-              <span class="nav-icon" aria-hidden="true">▤</span>
+            <a data-dashboard-nav="machines" hidden class="nav-link {% if request.path == '/machines' %}is-active{% endif %}" href="/machines" {% if request.path == '/machines' %}aria-current="page"{% endif %}>
+              <svg class="nav-icon" aria-hidden="true"><use href="#icon-machine"></use></svg>
               <span>Maschinen</span>
             </a>
-            <a data-dashboard-nav="inventory" hidden class="nav-link {% if request.path == '/inventory' %}is-active{% endif %}" href="/inventory">
-              <span class="nav-icon" aria-hidden="true">□</span>
+            <a data-dashboard-nav="inventory" hidden class="nav-link {% if request.path == '/inventory' %}is-active{% endif %}" href="/inventory" {% if request.path == '/inventory' %}aria-current="page"{% endif %}>
+              <svg class="nav-icon" aria-hidden="true"><use href="#icon-inventory"></use></svg>
               <span>Inventar</span>
             </a>
           </section>
 
           <section class="sidebar-nav-group" data-nav-group>
             <h2>Planung &amp; Dokumente</h2>
-            <a data-dashboard-nav="shiftplans" hidden class="nav-link {% if request.path == '/shiftplans' %}is-active{% endif %}" href="/shiftplans">
-              <span class="nav-icon" aria-hidden="true">▥</span>
+            <a data-dashboard-nav="shiftplans" hidden class="nav-link {% if request.path == '/shiftplans' %}is-active{% endif %}" href="/shiftplans" {% if request.path == '/shiftplans' %}aria-current="page"{% endif %}>
+              <svg class="nav-icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>
               <span>Schichtpl&auml;ne</span>
             </a>
-            <a data-feature-key="vacations" data-dashboard-nav="employees" hidden class="nav-link {% if request.path == '/vacations' %}is-active{% endif %}" href="/vacations">
-              <span class="nav-icon" aria-hidden="true">☂</span>
+            <a data-feature-key="vacations" data-dashboard-nav="employees" hidden class="nav-link {% if request.path == '/vacations' %}is-active{% endif %}" href="/vacations" {% if request.path == '/vacations' %}aria-current="page"{% endif %}>
+              <svg class="nav-icon" aria-hidden="true"><use href="#icon-vacation"></use></svg>
               <span>Urlaube</span>
             </a>
-            <a data-dashboard-nav="documents" hidden class="nav-link {% if request.path == '/documents' %}is-active{% endif %}" href="/documents">
-              <span class="nav-icon" aria-hidden="true">▭</span>
+            <a data-dashboard-nav="documents" hidden class="nav-link {% if request.path == '/documents' %}is-active{% endif %}" href="/documents" {% if request.path == '/documents' %}aria-current="page"{% endif %}>
+              <svg class="nav-icon" aria-hidden="true"><use href="#icon-document"></use></svg>
               <span>Dokumente</span>
             </a>
           </section>
 
           <section class="sidebar-nav-group" data-nav-group>
             <h2>Administration</h2>
-            <a data-dashboard-nav="admin_users" hidden class="nav-link {% if request.path == '/admin/users' %}is-active{% endif %}" href="/admin/users">
-              <span class="nav-icon" aria-hidden="true">♙</span>
+            <a data-dashboard-nav="admin_users" hidden class="nav-link {% if request.path == '/admin/users' %}is-active{% endif %}" href="/admin/users" {% if request.path == '/admin/users' %}aria-current="page"{% endif %}>
+              <svg class="nav-icon" aria-hidden="true"><use href="#icon-admin"></use></svg>
               <span>Benutzer</span>
             </a>
-            <a data-feature-key="admin_ai" data-dashboard-nav="admin_users" hidden class="nav-link {% if request.path == '/admin/ai' %}is-active{% endif %}" href="/admin/ai">
-              <span class="nav-icon" aria-hidden="true">AI</span>
+            <a data-feature-key="admin_ai" data-dashboard-nav="admin_users" hidden class="nav-link {% if request.path == '/admin/ai' %}is-active{% endif %}" href="/admin/ai" {% if request.path == '/admin/ai' %}aria-current="page"{% endif %}>
+              <svg class="nav-icon" aria-hidden="true"><use href="#icon-ai"></use></svg>
               <span>AI Admin</span>
             </a>
           </section>
         </nav>
 
-        <button class="sidebar-minimize" type="button" aria-label="Menü minimieren">
-          <span aria-hidden="true">←</span>
-          <span>Menü minimieren</span>
+        <button class="sidebar-minimize" type="button" aria-label="Menü minimieren" data-sidebar-toggle>
+          <span class="sidebar-minimize-icon" aria-hidden="true"></span>
+          <span data-sidebar-toggle-label>Menü minimieren</span>
         </button>
       </aside>
 
@@ -106,18 +121,18 @@
             <details class="mobile-nav" data-nav-root>
               <summary>Menü</summary>
               <div class="mobile-nav-panel" data-nav-group>
-                <a data-dashboard-nav="dashboard" hidden class="top-nav-link {% if request.path == '/' %}is-active{% endif %}" href="/">Dashboard</a>
-                <a data-dashboard-nav="tasks" hidden class="top-nav-link {% if request.path == '/tasks' %}is-active{% endif %}" href="/tasks">Aufgaben</a>
-                <a data-dashboard-nav="errors" hidden class="top-nav-link {% if request.path == '/errors' %}is-active{% endif %}" href="/errors">St&ouml;rungen</a>
-                <a data-dashboard-nav="employees" hidden class="top-nav-link {% if request.path == '/employees' %}is-active{% endif %}" href="/employees">Mitarbeiter</a>
-                <a data-dashboard-nav="machines" hidden class="top-nav-link {% if request.path == '/machines' %}is-active{% endif %}" href="/machines">Maschinen</a>
-                <a data-dashboard-nav="inventory" hidden class="top-nav-link {% if request.path == '/inventory' %}is-active{% endif %}" href="/inventory">Inventar</a>
-                <a data-dashboard-nav="shiftplans" hidden class="top-nav-link {% if request.path == '/shiftplans' %}is-active{% endif %}" href="/shiftplans">Schichtpl&auml;ne</a>
-                <a data-feature-key="handover" data-dashboard-nav="shiftplans" hidden class="top-nav-link {% if request.path == '/handover' %}is-active{% endif %}" href="/handover">Schicht&uuml;bergabe</a>
-                <a data-feature-key="vacations" data-dashboard-nav="employees" hidden class="top-nav-link {% if request.path == '/vacations' %}is-active{% endif %}" href="/vacations">Urlaube</a>
-                <a data-dashboard-nav="documents" hidden class="top-nav-link {% if request.path == '/documents' %}is-active{% endif %}" href="/documents">Dokumente</a>
-                <a data-dashboard-nav="admin_users" hidden class="top-nav-link {% if request.path == '/admin/users' %}is-active{% endif %}" href="/admin/users">Benutzer</a>
-                <a data-feature-key="admin_ai" data-dashboard-nav="admin_users" hidden class="top-nav-link {% if request.path == '/admin/ai' %}is-active{% endif %}" href="/admin/ai">AI Admin</a>
+                <a data-dashboard-nav="dashboard" hidden class="top-nav-link {% if request.path == '/' %}is-active{% endif %}" href="/" {% if request.path == '/' %}aria-current="page"{% endif %}>Dashboard</a>
+                <a data-dashboard-nav="tasks" hidden class="top-nav-link {% if request.path == '/tasks' %}is-active{% endif %}" href="/tasks" {% if request.path == '/tasks' %}aria-current="page"{% endif %}>Aufgaben</a>
+                <a data-dashboard-nav="errors" hidden class="top-nav-link {% if request.path == '/errors' %}is-active{% endif %}" href="/errors" {% if request.path == '/errors' %}aria-current="page"{% endif %}>St&ouml;rungen</a>
+                <a data-dashboard-nav="employees" hidden class="top-nav-link {% if request.path == '/employees' %}is-active{% endif %}" href="/employees" {% if request.path == '/employees' %}aria-current="page"{% endif %}>Mitarbeiter</a>
+                <a data-dashboard-nav="machines" hidden class="top-nav-link {% if request.path == '/machines' %}is-active{% endif %}" href="/machines" {% if request.path == '/machines' %}aria-current="page"{% endif %}>Maschinen</a>
+                <a data-dashboard-nav="inventory" hidden class="top-nav-link {% if request.path == '/inventory' %}is-active{% endif %}" href="/inventory" {% if request.path == '/inventory' %}aria-current="page"{% endif %}>Inventar</a>
+                <a data-dashboard-nav="shiftplans" hidden class="top-nav-link {% if request.path == '/shiftplans' %}is-active{% endif %}" href="/shiftplans" {% if request.path == '/shiftplans' %}aria-current="page"{% endif %}>Schichtpl&auml;ne</a>
+                <a data-feature-key="handover" data-dashboard-nav="shiftplans" hidden class="top-nav-link {% if request.path == '/handover' %}is-active{% endif %}" href="/handover" {% if request.path == '/handover' %}aria-current="page"{% endif %}>Schicht&uuml;bergabe</a>
+                <a data-feature-key="vacations" data-dashboard-nav="employees" hidden class="top-nav-link {% if request.path == '/vacations' %}is-active{% endif %}" href="/vacations" {% if request.path == '/vacations' %}aria-current="page"{% endif %}>Urlaube</a>
+                <a data-dashboard-nav="documents" hidden class="top-nav-link {% if request.path == '/documents' %}is-active{% endif %}" href="/documents" {% if request.path == '/documents' %}aria-current="page"{% endif %}>Dokumente</a>
+                <a data-dashboard-nav="admin_users" hidden class="top-nav-link {% if request.path == '/admin/users' %}is-active{% endif %}" href="/admin/users" {% if request.path == '/admin/users' %}aria-current="page"{% endif %}>Benutzer</a>
+                <a data-feature-key="admin_ai" data-dashboard-nav="admin_users" hidden class="top-nav-link {% if request.path == '/admin/ai' %}is-active{% endif %}" href="/admin/ai" {% if request.path == '/admin/ai' %}aria-current="page"{% endif %}>AI Admin</a>
               </div>
             </details>
           </div>
@@ -125,26 +140,27 @@
           <div class="desktop-topbar">
             <h1>{% block header_title %}Maintenance Assistant{% endblock %}</h1>
             <div class="topbar-actions">
-              <button class="topbar-select" type="button" aria-label="Werk ausw&auml;hlen" data-topbar-work>
-                <span aria-hidden="true">▥</span>
+              <button class="topbar-select" type="button" aria-label="Werk ausw&auml;hlen" title="Aktives Werk anzeigen" data-topbar-work>
+                <span class="topbar-control-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M4 20V8.5l5-3v4l5-3v4l6-3.5V20H4Zm3-2h10v-7.4l-5 2.9v-4l-5 3V18Z"/></svg>
+                </span>
                 <span>Werk 1</span>
-                <span aria-hidden="true">⌄</span>
               </button>
-              <button class="topbar-select" type="button" aria-label="Aktuelles Datum" data-topbar-date>
-                <span aria-hidden="true">□</span>
+              <button class="topbar-select" type="button" aria-label="Aktuelles Datum" title="Zum Schichtplan wechseln" data-topbar-date>
+                <span class="topbar-control-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M7 2h2v2h6V2h2v2h3v18H4V4h3V2Zm11 8H6v10h12V10ZM6 8h12V6H6v2Z"/></svg>
+                </span>
                 <span data-current-date>--.--.----</span>
-                <span aria-hidden="true">⌄</span>
               </button>
-              <button class="topbar-select shift-select" type="button" aria-label="Aktuell laufende Schicht" data-current-shift>
+              <button class="topbar-select shift-select" type="button" aria-label="Aktuell laufende Schicht" title="Schichtplan öffnen" data-current-shift>
                 <span class="status-dot" aria-hidden="true"></span>
                 <span>
                   <strong data-current-shift-label>Schicht</strong>
                   <small data-current-shift-time>--:-- - --:--</small>
                 </span>
-                <span aria-hidden="true">⌄</span>
               </button>
-              <button class="notification-button" type="button" aria-label="Benachrichtigungen" data-topbar-notifications>
-                <span aria-hidden="true">♢</span>
+              <button class="notification-button" type="button" aria-label="Benachrichtigungen" title="Briefing und kritische Hinweise öffnen" data-topbar-notifications>
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 22a2.3 2.3 0 0 0 2.2-1.6H9.8A2.3 2.3 0 0 0 12 22Zm7-5-1.7-2.2V10a5.4 5.4 0 0 0-4.1-5.3V3a1.2 1.2 0 1 0-2.4 0v1.7A5.4 5.4 0 0 0 6.7 10v4.8L5 17v1.2h14V17Z"/></svg>
                 <span class="notification-badge" data-notification-badge hidden>0</span>
               </button>
               <div class="user-menu" data-auth-session hidden>
@@ -161,7 +177,7 @@
           </div>
         </header>
 
-        <main class="app-main">
+        <main class="app-main" id="main-content" tabindex="-1">
           <div class="sr-only" aria-live="polite" aria-atomic="true" data-global-live-region></div>
           {% block content %}{% endblock %}
         </main>
@@ -170,38 +186,41 @@
 
     <section class="chat-widget" aria-label="AI Chat">
       <button class="chat-toggle" type="button" aria-expanded="false" aria-controls="chat-panel">
-        <span aria-hidden="true">✦</span>
+        <span aria-hidden="true">AI</span>
       </button>
-      <div class="chat-panel" id="chat-panel" aria-hidden="true">
+      <div class="chat-panel" id="chat-panel" role="dialog" aria-modal="false" aria-labelledby="chat-panel-title" aria-hidden="true" tabindex="-1">
         <div class="chat-panel-header">
           <div>
             <p class="chat-panel-kicker">AI Assistant</p>
-            <h2 class="chat-panel-title">Fragen stellen...</h2>
+            <h2 class="chat-panel-title" id="chat-panel-title">Fragen stellen</h2>
           </div>
-          <button class="chat-clear" type="button" aria-label="Chat leeren" title="Chat leeren">↺</button>
-          <button class="chat-close" type="button" aria-label="Chat schliessen">x</button>
+          <button class="chat-clear" type="button" aria-label="Chat leeren" title="Chat leeren">Neu</button>
+          <button class="chat-close" type="button" aria-label="Chat schließen">&times;</button>
         </div>
-        <div class="chat-panel-body" data-chat-messages aria-live="polite">
+        <div class="chat-panel-body" data-chat-messages role="log" aria-live="polite" aria-relevant="additions text">
           <div class="chat-message is-assistant">
-            Frag mich nach Fehlercodes, Maschinenstoerungen oder heutigen Aufgaben.
+            Frag mich nach Fehlercodes, Maschinenstörungen oder heutigen Aufgaben.
           </div>
         </div>
         <div class="chat-history-panel" data-chat-history-panel hidden>
-          <input class="input input-bordered w-full" data-chat-history-search autocomplete="off" placeholder="Historie durchsuchen">
+          <label class="sr-only" for="chat-history-search">Chat-Historie durchsuchen</label>
+          <input class="input input-bordered w-full" id="chat-history-search" data-chat-history-search autocomplete="off" placeholder="Historie durchsuchen">
           <div class="chat-history-list" data-chat-history-list></div>
         </div>
         <div class="chat-suggestions" data-chat-suggestions></div>
-        <form class="chat-panel-form" data-chat-form>
-          <input class="input input-bordered w-full" name="message" autocomplete="off" placeholder="z. B. Presse 3 verliert Hydraulik">
+        <form class="chat-panel-form" data-chat-form aria-describedby="chat-input-help">
+          <label class="sr-only" for="chat-message-input">Nachricht an den AI Assistant</label>
+          <input class="input input-bordered w-full" id="chat-message-input" name="message" autocomplete="off" placeholder="z. B. Presse 3 verliert Hydraulik" aria-describedby="chat-input-help">
+          <span class="sr-only" id="chat-input-help">Der Assistant arbeitet read-only und nutzt nur freigegebene Daten.</span>
           <button class="btn btn-primary" type="submit">Senden</button>
         </form>
       </div>
     </section>
 
-    <script src="{{ url_for('static', filename='core/feature-registry.js') }}?v=20260510-feature-registry1"></script>
+    <script src="{{ url_for('static', filename='core/feature-registry.js') }}?v=20260516-a11y-polish1"></script>
     <script src="{{ url_for('static', filename='auth.js') }}?v=20260510-feature-registry1"></script>
     <script src="{{ url_for('static', filename='core/api-client.js') }}?v=20260511-api-client1"></script>
-    <script src="{{ url_for('static', filename='app.js') }}?v=20260511-dashboard-actions1"></script>
-    <script src="{{ url_for('static', filename='chat.js') }}?v=20260516-chat-history-layout1"></script>
+    <script src="{{ url_for('static', filename='app.js') }}?v=20260516-a11y-polish1"></script>
+    <script src="{{ url_for('static', filename='chat-loader.js') }}?v=20260516-a11y-polish1"></script>
   </body>
 </html>

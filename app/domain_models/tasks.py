@@ -1,6 +1,6 @@
 """SQLAlchemy domain models for this bounded area."""
 
-from datetime import date
+from datetime import UTC, date
 
 from app.domain_models.common import Priority, TaskStatus, utc_now
 from app.extensions import db
@@ -21,6 +21,10 @@ class Task(db.Model):
     started_at = db.Column(db.DateTime)
     completed_by_id = db.Column(db.Integer, db.ForeignKey("user.id"))
     completed_at = db.Column(db.DateTime)
+    planned_minutes = db.Column(db.Integer, nullable=False, default=0)
+    actual_minutes = db.Column(db.Integer, nullable=False, default=0)
+    blocked_reason = db.Column(db.String(220), nullable=False, default="")
+    reopened_count = db.Column(db.Integer, nullable=False, default=0)
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
     updated_at = db.Column(
         db.DateTime,
@@ -46,8 +50,21 @@ class Task(db.Model):
         back_populates="completed_tasks",
     )
 
+    __table_args__ = (
+        db.Index("ix_task_department_status_due", "department_id", "status", "due_date"),
+        db.Index("ix_task_status_due_id", "status", "due_date", "id"),
+        db.Index("ix_task_created_at", "created_at"),
+        db.Index("ix_task_updated_at", "updated_at"),
+    )
+
     def to_dict(self):
         """Return a JSON-serializable representation of the task."""
+        response_minutes = None
+        if self.started_at and self.created_at:
+            response_minutes = round(_minutes_between(self.created_at, self.started_at), 2)
+        cycle_minutes = None
+        if self.completed_at and self.created_at:
+            cycle_minutes = round(_minutes_between(self.created_at, self.completed_at), 2)
         return {
             "id": self.id,
             "title": self.title,
@@ -66,6 +83,24 @@ class Task(db.Model):
                 self.completed_by_user.to_dict() if self.completed_by_user else None
             ),
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "planned_minutes": self.planned_minutes,
+            "actual_minutes": self.actual_minutes,
+            "blocked_reason": self.blocked_reason,
+            "reopened_count": self.reopened_count,
+            "response_minutes": response_minutes,
+            "cycle_minutes": cycle_minutes,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
+
+
+def _comparable_datetime(value):
+    """Return a timezone-free UTC datetime for safe arithmetic."""
+    if value.tzinfo:
+        return value.astimezone(UTC).replace(tzinfo=None)
+    return value
+
+
+def _minutes_between(start, end):
+    """Return elapsed minutes between two datetimes despite tz storage differences."""
+    return (_comparable_datetime(end) - _comparable_datetime(start)).total_seconds() / 60

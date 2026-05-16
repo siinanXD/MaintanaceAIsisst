@@ -28,6 +28,9 @@ class GeneratedDocument(db.Model):
     )
     summary = db.Column(db.Text, nullable=False, default="")
     summary_status = db.Column(db.String(40), nullable=False, default="not_started")
+    quality_score = db.Column(db.Integer, nullable=False, default=0)
+    quality_status = db.Column(db.String(40), nullable=False, default="not_checked")
+    quality_checked_at = db.Column(db.DateTime)
     approved_by = db.Column(db.Integer, db.ForeignKey("user.id"))
     approved_at = db.Column(db.DateTime)
     approval_comment = db.Column(db.Text, nullable=False, default="")
@@ -54,6 +57,18 @@ class GeneratedDocument(db.Model):
         order_by="DocumentApprovalEvent.created_at.desc()",
     )
 
+    __table_args__ = (
+        db.Index("ix_generated_document_task_id", "task_id"),
+        db.Index(
+            "ix_generated_document_department_created",
+            "department",
+            "created_at",
+        ),
+        db.Index("ix_generated_document_machine_created", "machine_id", "created_at"),
+        db.Index("ix_generated_document_status_created", "status", "created_at"),
+        db.Index("ix_generated_document_created_at", "created_at"),
+    )
+
     def to_dict(self):
         """Return a JSON-serializable representation of the document metadata."""
         return {
@@ -73,6 +88,11 @@ class GeneratedDocument(db.Model):
             "version": self.current_version.version_number if self.current_version else None,
             "summary": self.summary,
             "summary_status": self.summary_status,
+            "quality_score": self.quality_score,
+            "quality_status": self.quality_status,
+            "quality_checked_at": (
+                self.quality_checked_at.isoformat() if self.quality_checked_at else None
+            ),
             "approved_by": self.approver.username if self.approver else None,
             "approved_at": self.approved_at.isoformat() if self.approved_at else None,
             "approval_comment": self.approval_comment,
@@ -111,6 +131,7 @@ class DocumentVersion(db.Model):
             "version_number",
             name="uq_document_version_document_number",
         ),
+        db.Index("ix_document_version_document_created", "document_id", "created_at"),
     )
 
     def to_dict(self):
@@ -198,6 +219,12 @@ class MachineManual(db.Model):
         order_by="MachineManualVersion.version_number.desc()",
     )
 
+    __table_args__ = (
+        db.Index("ix_machine_manual_department_created", "department", "created_at"),
+        db.Index("ix_machine_manual_machine_created", "machine_id", "created_at"),
+        db.Index("ix_machine_manual_created_at", "created_at"),
+    )
+
     def to_dict(self):
         """Return a JSON-serializable machine manual."""
         return {
@@ -250,6 +277,7 @@ class MachineManualVersion(db.Model):
             "version_number",
             name="uq_machine_manual_version_manual_number",
         ),
+        db.Index("ix_machine_manual_version_manual_created", "manual_id", "created_at"),
     )
 
     def to_dict(self):

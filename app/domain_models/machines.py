@@ -11,8 +11,13 @@ class Machine(db.Model):
     name = db.Column(db.String(160), unique=True, nullable=False)
     produced_item = db.Column(db.String(160), nullable=False, default="")
     required_employees = db.Column(db.Integer, nullable=False, default=1)
+    site_id = db.Column(db.Integer, db.ForeignKey("site.id"), nullable=True, index=True)
+    criticality = db.Column(db.String(40), nullable=False, default="normal")
+    status = db.Column(db.String(40), nullable=False, default="running")
+    last_downtime_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
 
+    site = db.relationship("Site", back_populates="machines")
     materials = db.relationship("InventoryMaterial", back_populates="machine")
     maintenance_plans = db.relationship(
         "MaintenancePlan",
@@ -27,6 +32,13 @@ class Machine(db.Model):
             "name": self.name,
             "produced_item": self.produced_item,
             "required_employees": self.required_employees,
+            "site_id": self.site_id,
+            "site": self.site.to_dict() if self.site else None,
+            "criticality": self.criticality,
+            "status": self.status,
+            "last_downtime_at": (
+                self.last_downtime_at.isoformat() if self.last_downtime_at else None
+            ),
             "created_at": self.created_at.isoformat(),
         }
 
@@ -38,11 +50,21 @@ class InventoryMaterial(db.Model):
     name = db.Column(db.String(160), nullable=False)
     unit_cost = db.Column(db.Float, nullable=False, default=0)
     quantity = db.Column(db.Integer, nullable=False, default=0)
+    min_quantity = db.Column(db.Integer, nullable=False, default=0)
+    criticality = db.Column(db.String(40), nullable=False, default="normal")
+    lead_time_days = db.Column(db.Integer, nullable=False, default=0)
     manufacturer = db.Column(db.String(160), nullable=False, default="")
+    site_id = db.Column(db.Integer, db.ForeignKey("site.id"), nullable=True, index=True)
     machine_id = db.Column(db.Integer, db.ForeignKey("machine.id"))
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
 
+    site = db.relationship("Site", back_populates="inventory_materials")
     machine = db.relationship("Machine", back_populates="materials")
+
+    __table_args__ = (
+        db.Index("ix_inventory_material_machine_id", "machine_id"),
+        db.Index("ix_inventory_material_name", "name"),
+    )
 
     @property
     def total_value(self):
@@ -56,10 +78,16 @@ class InventoryMaterial(db.Model):
             "name": self.name,
             "unit_cost": self.unit_cost,
             "quantity": self.quantity,
+            "min_quantity": self.min_quantity,
+            "criticality": self.criticality,
+            "lead_time_days": self.lead_time_days,
             "manufacturer": self.manufacturer,
+            "site_id": self.site_id,
+            "site": self.site.to_dict() if self.site else None,
             "machine_id": self.machine_id,
             "machine": self.machine.to_dict() if self.machine else None,
             "total_value": self.total_value,
+            "is_below_minimum": self.quantity < self.min_quantity if self.min_quantity else False,
             "created_at": self.created_at.isoformat(),
         }
 
@@ -94,6 +122,16 @@ class MaintenancePlan(db.Model):
     department = db.relationship("Department")
     creator = db.relationship("User", foreign_keys=[created_by])
     last_generated_task = db.relationship("Task", foreign_keys=[last_generated_task_id])
+
+    __table_args__ = (
+        db.Index(
+            "ix_maintenance_plan_department_active_due",
+            "department_id",
+            "is_active",
+            "next_due_date",
+        ),
+        db.Index("ix_maintenance_plan_machine_due", "machine_id", "next_due_date"),
+    )
 
     def to_dict(self):
         """Return a JSON-serializable representation of the maintenance plan."""

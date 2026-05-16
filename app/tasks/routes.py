@@ -12,6 +12,7 @@ from app.security import (
     dashboard_permission_required,
     same_department_or_admin,
 )
+from app.services.operations_tracking_service import record_event
 from app.services.task_service import (
     create_task,
     delete_task,
@@ -70,6 +71,21 @@ def suggest_task():
     suggestion, error, status = suggest_task_from_text(data, current_user())
     if error:
         return service_error_response(error, status)
+    user = current_user()
+    record_event(
+        "ai.task_suggested",
+        "ai",
+        entity_type="task_suggestion",
+        user=user,
+        department=user.department,
+        source="ai",
+        metadata={
+            "has_title": bool(suggestion.get("title"))
+            if isinstance(suggestion, dict)
+            else False,
+        },
+        commit=True,
+    )
     return success_response(suggestion, message="Task suggestion generated")
 
 
@@ -83,6 +99,17 @@ def prioritize_tasks():
     )
     if error:
         return service_error_response(error, status)
+    user = current_user()
+    record_event(
+        "ai.tasks_prioritized",
+        "ai",
+        entity_type="task_priority",
+        user=user,
+        department=user.department,
+        source="ai",
+        metadata={"result_count": len(priorities or [])},
+        commit=True,
+    )
     return success_response(priorities, status, "Task priorities loaded")
 
 
@@ -169,6 +196,16 @@ def delete_task_endpoint(task_id):
     task = db.get_or_404(Task, task_id)
     if not same_department_or_admin(task):
         return error_response("Forbidden", 403)
+    record_event(
+        "task.deleted",
+        "tasks",
+        entity_type="task",
+        entity_id=task.id,
+        task=task,
+        user=current_user(),
+        department=task.department,
+        metadata={"title": task.title, "status": task.status.value},
+    )
     _, error, status = delete_task(task)
     if error:
         return service_error_response(error, status)

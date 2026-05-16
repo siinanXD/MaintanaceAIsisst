@@ -19,6 +19,7 @@ from app.services.error_service import (
     visible_errors_query,
 )
 from app.services.knowledge_service import delete_source_knowledge_document
+from app.services.operations_tracking_service import record_event
 
 errors_bp = Blueprint("errors", __name__)
 
@@ -115,6 +116,16 @@ def delete_error(error_id):
     entry = db.get_or_404(ErrorEntry, error_id)
     if not same_department_or_admin(entry):
         return error_response("Forbidden", 403)
+    record_event(
+        "error.deleted",
+        "errors",
+        entity_type="error_entry",
+        entity_id=entry.id,
+        user=current_user(),
+        department=entry.department,
+        machine_id=entry.machine_id,
+        metadata={"error_code": entry.error_code, "severity": entry.severity},
+    )
     delete_source_knowledge_document("error_entry", entry.id)
     db.session.delete(entry)
     db.session.commit()

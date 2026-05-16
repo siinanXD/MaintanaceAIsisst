@@ -1,6 +1,10 @@
 """Tests for database schema diagnostics."""
 
-from app.services.database_schema_service import database_schema_status
+from app.extensions import db
+from app.services.database_schema_service import (
+    database_schema_status,
+    ensure_local_development_schema,
+)
 
 
 def test_database_schema_status_reports_ready_test_schema(app):
@@ -12,3 +16,15 @@ def test_database_schema_status_reports_ready_test_schema(app):
     assert status["missing_tables"] == []
     assert status["missing_columns"] == {}
     assert "db upgrade" in status["migration_command"]
+
+
+def test_local_development_schema_adds_missing_tracking_columns(app):
+    """Verify local startup can repair additive columns in existing SQLite databases."""
+    with app.app_context():
+        db.session.execute(db.text("ALTER TABLE task DROP COLUMN planned_minutes"))
+        db.session.commit()
+
+        ensure_local_development_schema()
+        status = database_schema_status()
+
+    assert status["missing_columns"].get("task") is None

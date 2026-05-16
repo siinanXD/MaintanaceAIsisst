@@ -8,6 +8,7 @@ import logging
 from datetime import UTC, date, datetime
 
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import joinedload
 
 from app.extensions import db
 from app.models import Department, Priority, Role, Task, TaskStatus
@@ -16,6 +17,7 @@ from app.services.knowledge_service import (
     delete_source_knowledge_document,
     mark_task_knowledge_stale,
 )
+from app.services.operations_tracking_service import record_event
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +54,24 @@ def validate_task_payload(data, require_title=True):
         raise ValueError("title is required")
     if "title" in data and not str(data["title"]).strip():
         raise ValueError("title must not be empty")
+
+
+def parse_non_negative_int(value, field_name, default=0):
+    """Parse a non-negative integer task metric field."""
+    try:
+        parsed = int(value if value not in (None, "") else default)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be a number") from exc
+    if parsed < 0:
+        raise ValueError(f"{field_name} must not be negative")
+    return parsed
+
+
+def minutes_between(start, end):
+    """Return elapsed minutes for task timestamps with mixed tz awareness."""
+    normalized_start = start.astimezone(UTC).replace(tzinfo=None) if start.tzinfo else start
+    normalized_end = end.astimezone(UTC).replace(tzinfo=None) if end.tzinfo else end
+    return (normalized_end - normalized_start).total_seconds() / 60
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +113,12 @@ def visible_tasks_query(user):
 
     MASTER_ADMIN sees all tasks. Other roles see only their department.
     """
-    query = Task.query
+    query = Task.query.options(
+        joinedload(Task.department),
+        joinedload(Task.creator),
+        joinedload(Task.current_worker),
+        joinedload(Task.completed_by_user),
+    )
     if user.role != Role.MASTER_ADMIN:
         query = query.filter(Task.department_id == user.department_id)
     return query
@@ -122,6 +147,15 @@ def create_task(data, user):
             due_date=parse_date(data.get("due_date")),
             department=department,
             created_by=user.id,
+            planned_minutes=parse_non_negative_int(
+                data.get("planned_minutes"),
+                "planned_minutes",
+            ),
+            actual_minutes=parse_non_negative_int(
+                data.get("actual_minutes"),
+                "actual_minutes",
+            ),
+            blocked_reason=str(data.get("blocked_reason") or "").strip(),
         )
         update_task_status(task, requested_status, user)
     except PermissionError as exc:
@@ -132,6 +166,20 @@ def create_task(data, user):
     db.session.add(task)
     try:
         db.session.flush()
+        record_event(
+            "task.created",
+            "tasks",
+            entity_type="task",
+            entity_id=task.id,
+            task=task,
+            user=user,
+            department=task.department,
+            metadata={
+                "priority": task.priority.value,
+                "status": task.status.value,
+                "planned_minutes": task.planned_minutes,
+            },
+        )
         mark_task_knowledge_stale(task)
         db.session.commit()
     except SQLAlchemyError:
@@ -165,17 +213,46 @@ def update_task(task, data, user):
             task.description = data["description"]
         if "priority" in data:
             task.priority = parse_enum(Priority, data["priority"], task.priority)
+        old_status = task.status
         if "status" in data:
             status = parse_enum(TaskStatus, data["status"], task.status)
             update_task_status(task, status, user)
         if "due_date" in data:
             task.due_date = parse_date(data["due_date"])
+        if "planned_minutes" in data:
+            task.planned_minutes = parse_non_negative_int(
+                data["planned_minutes"],
+                "planned_minutes",
+            )
+        if "actual_minutes" in data:
+            task.actual_minutes = parse_non_negative_int(
+                data["actual_minutes"],
+                "actual_minutes",
+            )
+        if "blocked_reason" in data:
+            task.blocked_reason = str(data.get("blocked_reason") or "").strip()
     except PermissionError as exc:
         return None, {"error": str(exc)}, 403
     except ValueError as exc:
         return None, {"error": str(exc)}, 400
 
     try:
+        event_type = "task.status_changed" if old_status != task.status else "task.updated"
+        record_event(
+            event_type,
+            "tasks",
+            entity_type="task",
+            entity_id=task.id,
+            task=task,
+            user=user,
+            department=task.department,
+            metadata={
+                "old_status": old_status.value,
+                "new_status": task.status.value,
+                "priority": task.priority.value,
+                "blocked": bool(task.blocked_reason),
+            },
+        )
         mark_task_knowledge_stale(task)
         db.session.commit()
     except SQLAlchemyError:
@@ -217,7 +294,13 @@ def update_task_status(task, new_status, user):
     if task.status == new_status:
         return
 
+    previous_status = task.status
     task.status = new_status
+    if previous_status == TaskStatus.DONE and new_status in {
+        TaskStatus.OPEN,
+        TaskStatus.IN_PROGRESS,
+    }:
+        task.reopened_count = (task.reopened_count or 0) + 1
     if new_status == TaskStatus.OPEN:
         task.current_worker = None
         task.started_at = None
@@ -257,6 +340,16 @@ def start_task(task, user):
     task.completed_at = None
 
     try:
+        record_event(
+            "task.started",
+            "tasks",
+            entity_type="task",
+            entity_id=task.id,
+            task=task,
+            user=user,
+            department=task.department,
+            metadata={"priority": task.priority.value},
+        )
         mark_task_knowledge_stale(task)
         db.session.commit()
     except SQLAlchemyError:
@@ -281,8 +374,27 @@ def complete_task(task, user):
     task.status = TaskStatus.DONE
     task.completed_by_user = user
     task.completed_at = datetime.now(UTC)
+    if task.started_at and not task.actual_minutes:
+        task.actual_minutes = max(
+            0,
+            round(minutes_between(task.started_at, task.completed_at)),
+        )
 
     try:
+        record_event(
+            "task.completed",
+            "tasks",
+            entity_type="task",
+            entity_id=task.id,
+            task=task,
+            user=user,
+            department=task.department,
+            metadata={
+                "priority": task.priority.value,
+                "actual_minutes": task.actual_minutes,
+                "planned_minutes": task.planned_minutes,
+            },
+        )
         mark_task_knowledge_stale(task)
         db.session.commit()
     except SQLAlchemyError:

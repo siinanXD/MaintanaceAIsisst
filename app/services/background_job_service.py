@@ -2,7 +2,9 @@
 
 import json
 import logging
+from datetime import timedelta
 
+from flask import current_app, has_app_context
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.domain_models.common import utc_now
@@ -22,6 +24,8 @@ RUNNING = "running"
 DONE = "done"
 FAILED = "failed"
 RETRYING_STATUSES = (QUEUED,)
+ACTIVE_STATUSES = (RUNNING,)
+DEFAULT_JOB_LEASE_SECONDS = 900
 
 
 def enqueue_rag_reindex_job(mode="stale", document_id=None, user=None):
@@ -30,10 +34,19 @@ def enqueue_rag_reindex_job(mode="stale", document_id=None, user=None):
     payload = {"mode": normalized_mode}
     if document_id is not None:
         payload["document_id"] = int(document_id)
+    existing = existing_active_reindex_job(payload)
+    if existing:
+        logger.info(
+            "background_job_deduplicated id=%s type=%s payload=%s",
+            existing.id,
+            existing.job_type,
+            payload,
+        )
+        return existing
     job = BackgroundJob(
         job_type=JOB_RAG_REINDEX,
         status=QUEUED,
-        payload_json=json.dumps(payload),
+        payload_json=json.dumps(payload, sort_keys=True),
         result_json="{}",
         error_message="",
         created_by=getattr(user, "id", None),
@@ -44,6 +57,20 @@ def enqueue_rag_reindex_job(mode="stale", document_id=None, user=None):
     db.session.commit()
     logger.info("background_job_queued id=%s type=%s payload=%s", job.id, job.job_type, payload)
     return job
+
+
+def existing_active_reindex_job(payload):
+    """Return an already queued or running RAG reindex job for the payload."""
+    payload_json = json.dumps(payload, sort_keys=True)
+    return (
+        BackgroundJob.query.filter(
+            BackgroundJob.job_type == JOB_RAG_REINDEX,
+            BackgroundJob.status.in_((QUEUED, RUNNING)),
+            BackgroundJob.payload_json == payload_json,
+        )
+        .order_by(BackgroundJob.created_at.asc(), BackgroundJob.id.asc())
+        .first()
+    )
 
 
 def validate_reindex_mode(mode, document_id=None):
@@ -70,9 +97,14 @@ def list_background_jobs(args):
 
 def process_next_background_job():
     """Process the next queued job and return a worker summary."""
-    job = next_queued_job()
+    recovered = requeue_expired_jobs()
+    job = claim_next_queued_job()
     if not job:
-        return {"processed": False, "reason": "no_queued_jobs"}
+        return {
+            "processed": False,
+            "reason": "no_queued_jobs",
+            "recovered": recovered,
+        }
     return process_background_job(job)
 
 
@@ -85,15 +117,96 @@ def next_queued_job():
     )
 
 
-def process_background_job(job):
-    """Run one background job and persist its final state."""
+def claim_next_queued_job():
+    """Atomically claim the oldest queued job for this worker process."""
+    now = utc_now()
+    query = BackgroundJob.query.filter(BackgroundJob.status.in_(RETRYING_STATUSES))
+    if _supports_skip_locked():
+        query = query.with_for_update(skip_locked=True)
+    job = query.order_by(BackgroundJob.created_at.asc(), BackgroundJob.id.asc()).first()
+    if not job:
+        return None
+
     job.status = RUNNING
     job.attempts += 1
-    job.locked_at = utc_now()
-    job.started_at = job.started_at or job.locked_at
+    job.locked_at = now
+    job.started_at = now
     job.error_message = ""
-    job.updated_at = utc_now()
-    db.session.commit()
+    job.updated_at = now
+    try:
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        logger.exception("background_job_claim_failed")
+        return None
+    logger.info("background_job_claimed id=%s type=%s", job.id, job.job_type)
+    return job
+
+
+def requeue_expired_jobs():
+    """Move running jobs with an expired lease back into the queue."""
+    cutoff = utc_now() - timedelta(seconds=job_lease_seconds())
+    jobs = (
+        BackgroundJob.query.filter(
+            BackgroundJob.status.in_(ACTIVE_STATUSES),
+            BackgroundJob.locked_at.isnot(None),
+            BackgroundJob.locked_at < cutoff,
+        )
+        .order_by(BackgroundJob.locked_at.asc(), BackgroundJob.id.asc())
+        .all()
+    )
+    if not jobs:
+        return 0
+
+    now = utc_now()
+    for job in jobs:
+        job.status = QUEUED if job.attempts < job.max_attempts else FAILED
+        job.locked_at = None
+        job.started_at = None if job.status == QUEUED else job.started_at
+        job.finished_at = now if job.status == FAILED else None
+        job.error_message = "Job lease expired and was released for retry."
+        job.updated_at = now
+    try:
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        logger.exception("background_job_requeue_expired_failed")
+        return 0
+    logger.warning("background_jobs_requeued count=%s", len(jobs))
+    return len(jobs)
+
+
+def job_lease_seconds():
+    """Return the worker job lease duration in seconds."""
+    if not has_app_context():
+        return DEFAULT_JOB_LEASE_SECONDS
+    try:
+        value = int(
+            current_app.config.get(
+                "WORKER_JOB_LEASE_SECONDS",
+                DEFAULT_JOB_LEASE_SECONDS,
+            )
+        )
+    except (TypeError, ValueError):
+        return DEFAULT_JOB_LEASE_SECONDS
+    return max(60, value)
+
+
+def _supports_skip_locked():
+    """Return whether the active database dialect supports skip-locked claims."""
+    return db.engine.dialect.name == "postgresql"
+
+
+def process_background_job(job):
+    """Run one background job and persist its final state."""
+    if job.status != RUNNING or not job.locked_at:
+        job.status = RUNNING
+        job.attempts += 1
+        job.locked_at = utc_now()
+        job.started_at = job.locked_at
+        job.error_message = ""
+        job.updated_at = utc_now()
+        db.session.commit()
     try:
         result = execute_job(job)
     except Exception as exc:
@@ -103,6 +216,7 @@ def process_background_job(job):
 
     job.status = DONE
     job.result_json = json.dumps(result)
+    job.locked_at = None
     job.finished_at = utc_now()
     job.updated_at = utc_now()
     db.session.commit()
@@ -134,8 +248,12 @@ def mark_job_failed(job, exc):
     """Persist a failed job state with retry awareness."""
     job.error_message = str(exc)[:1000]
     job.status = QUEUED if job.attempts < job.max_attempts else FAILED
+    job.locked_at = None
     if job.status == FAILED:
         job.finished_at = utc_now()
+    else:
+        job.started_at = None
+        job.finished_at = None
     job.updated_at = utc_now()
     try:
         db.session.commit()

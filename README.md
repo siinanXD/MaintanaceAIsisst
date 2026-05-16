@@ -69,8 +69,14 @@ A modular Flask application for industrial maintenance teams. Manages tasks, err
 | Database | SQLite for tests/dev, PostgreSQL + pgvector-ready Docker setup |
 | AI | OpenAI API with local rule-based fallback |
 | Frontend | Jinja2 templates, Tailwind CSS, vanilla JS |
-| Tests | pytest (192 tests, no external services required) |
+| Tests | pytest (228 tests, no external services required) |
 | CI | GitHub Actions — lint, compile, test, Docker build |
+
+Frontend convention: `app/static/app.js` is the small shell bootstrap for auth,
+feedback, toasts, live regions and route-module loading. Feature behavior lives
+in `app/static/pages/workflows.js` or route-specific modules such as
+`login.js`, `admin-ai.js`, `handover.js` and `shiftplans.js`; templates should
+not carry large inline scripts.
 
 ## Getting Started
 
@@ -285,6 +291,7 @@ Current implementation:
 - `POST /api/v1/admin/ai/knowledge/reindex` runs the current ingestion workflow and registers generated reports, error catalog entries, tasks, maintenance plans, machine manuals, and shift handovers as RAG sources.
 - `POST /api/v1/admin/ai/knowledge/reindex?mode=stale` reindexes only pending or stale RAG documents.
 - `POST /api/v1/admin/ai/knowledge/{id}/reindex` reindexes one document for granular admin recovery.
+- `GET/POST/PUT/DELETE /api/v1/admin/ai/training` lets master admins maintain manual Q&A training entries that are indexed as `manual_training` knowledge and marked stale on changes.
 - `POST /api/v1/machines/{machine_id}/assistant` enriches the machine-specific history with matching RAG sources and returns source metadata alongside the answer.
 - `POST /api/v1/ai/error-assistant` returns catalog matches, RAG sources, and a read-only task draft for fault-to-task workflows.
 - `POST /api/v1/tasks/suggest` can attach RAG source metadata to AI task drafts without persisting anything.
@@ -296,6 +303,7 @@ Initial RAG-ready data sources:
 - `GeneratedDocument` and `MachineManual`: reports/manual metadata plus extracted or stored text.
 - `KnowledgeDocument` and `KnowledgeChunk`: already indexed local knowledge base for uploaded TXT/HTML/PDF and generated reports.
 - `Task`, `MaintenancePlan`, and `ShiftHandover`: indexed as structured operational context by the reindex workflow.
+- `AssistantTrainingEntry`: manually curated question, answer, keywords, category, department, active state and priority.
 - `Machine`, `ChatMessage`, and AI briefings are suitable next candidates once metadata fields and retention rules are normalized.
 
 Metadata to preserve for future vector stores: `machine_id`, `task_id`,

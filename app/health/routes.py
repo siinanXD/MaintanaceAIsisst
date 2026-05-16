@@ -6,9 +6,12 @@ from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
-from app.models import Employee, EmployeeDocument, ErrorEntry, Task
+from app.models import Employee, EmployeeDocument, ErrorEntry, Role, Task
+from app.responses import success_response
+from app.security import roles_required
 from app.services.database_schema_service import database_schema_status
 from app.services.knowledge_service import knowledge_index_status
+from app.services.operations_metrics_service import operations_metrics
 
 health_bp = Blueprint("health", __name__)
 public_health_bp = Blueprint("public_health", __name__)
@@ -58,8 +61,10 @@ def database_health():
     """Return authenticated database diagnostics for administrators and tests."""
     inspector = inspect(db.engine)
     table_names = inspector.get_table_names()
-    with db.engine.connect() as connection:
-        database_rows = connection.execute(text("PRAGMA database_list")).mappings().all()
+    database_rows = []
+    if db.engine.url.get_backend_name() == "sqlite":
+        with db.engine.connect() as connection:
+            database_rows = connection.execute(text("PRAGMA database_list")).mappings().all()
 
     return jsonify(
         {
@@ -75,6 +80,13 @@ def database_health():
             },
         }
     )
+
+
+@health_bp.get("/operations")
+@roles_required(Role.MASTER_ADMIN)
+def operations_health():
+    """Return authenticated production operations metrics for administrators."""
+    return success_response(operations_metrics(), message="Operations metrics loaded")
 
 
 def database_probe():

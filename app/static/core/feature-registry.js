@@ -6,7 +6,8 @@
       label: "Dashboard",
       route: "/",
       group: "Arbeit",
-      initializer: "initDailyCockpit",
+      module: "workflows",
+      initializers: ["initDashboardShiftRealtime", "initDailyCockpit"],
     },
     {
       key: "tasks",
@@ -14,7 +15,8 @@
       label: "Tasks",
       route: "/tasks",
       group: "Arbeit",
-      initializer: "initTasks",
+      module: "workflows",
+      initializers: ["initDepartments", "initTasks"],
     },
     {
       key: "errors",
@@ -22,7 +24,8 @@
       label: "Fehlerliste",
       route: "/errors",
       group: "Arbeit",
-      initializer: "initErrors",
+      module: "workflows",
+      initializers: ["initDepartments", "initErrors"],
     },
     {
       key: "employees",
@@ -30,7 +33,8 @@
       label: "Mitarbeiter",
       route: "/employees",
       group: "Ressourcen",
-      initializer: "initEmployees",
+      module: "workflows",
+      initializers: ["initDepartments", "initEmployees"],
     },
     {
       key: "machines",
@@ -38,7 +42,8 @@
       label: "Maschinen",
       route: "/machines",
       group: "Ressourcen",
-      initializer: "initMachines",
+      module: "workflows",
+      initializers: ["initMachines"],
     },
     {
       key: "inventory",
@@ -46,7 +51,8 @@
       label: "Lager",
       route: "/inventory",
       group: "Ressourcen",
-      initializer: "initInventory",
+      module: "workflows",
+      initializers: ["initInventory"],
     },
     {
       key: "shiftplans",
@@ -54,7 +60,8 @@
       label: "Schichtplan",
       route: "/shiftplans",
       group: "Planung & Dokumente",
-      initializer: "initShiftPlans",
+      module: "page",
+      moduleUrl: "/static/pages/shiftplans.js",
     },
     {
       key: "handover",
@@ -62,7 +69,8 @@
       label: "Schichtübergabe",
       route: "/handover",
       group: "Planung & Dokumente",
-      initializer: "initHandover",
+      module: "page",
+      moduleUrl: "/static/pages/handover.js",
     },
     {
       key: "vacations",
@@ -70,7 +78,8 @@
       label: "Urlaubsplanung",
       route: "/vacations",
       group: "Planung & Dokumente",
-      initializer: "initVacations",
+      module: "workflows",
+      initializers: ["initVacations"],
     },
     {
       key: "documents",
@@ -78,7 +87,8 @@
       label: "Dokumente",
       route: "/documents",
       group: "Planung & Dokumente",
-      initializer: "initDocuments",
+      module: "workflows",
+      initializers: ["initDocuments"],
     },
     {
       key: "admin_users",
@@ -86,7 +96,8 @@
       label: "Users",
       route: "/admin/users",
       group: "Administration",
-      initializer: "initUsers",
+      module: "workflows",
+      initializers: ["initUsers"],
     },
     {
       key: "admin_ai",
@@ -94,7 +105,8 @@
       label: "AI Admin",
       route: "/admin/ai",
       group: "Administration",
-      initializer: "initAdminAi",
+      module: "page",
+      moduleUrl: "/static/pages/admin-ai.js",
     },
   ];
 

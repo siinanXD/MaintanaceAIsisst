@@ -42,6 +42,43 @@ def test_documents_list_returns_own_document(
     assert data[0]["task_id"] == task_id
 
 
+def test_documents_list_supports_optional_pagination(
+    client,
+    make_user,
+    make_task,
+    make_document,
+    auth_headers,
+):
+    """GET /api/documents keeps legacy arrays and supports paginated clients."""
+    user = make_user(
+        username="doc_list_paged_user",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    task_id = make_task(
+        "Dokument paginiert",
+        creator_username=user["username"],
+        department_name="Instandhaltung",
+    )
+    make_document(
+        task_id=task_id,
+        created_by=user["id"],
+        department="Instandhaltung",
+        machine="Anlage Dokument",
+    )
+    headers = auth_headers(user["username"])
+
+    legacy_response = client.get("/api/v1/documents", headers=headers)
+    paged_response = client.get("/api/v1/documents?limit=1", headers=headers)
+    payload = paged_response.get_json()
+
+    assert legacy_response.status_code == 200
+    assert isinstance(legacy_response.get_json(), list)
+    assert paged_response.status_code == 200
+    assert payload["data"]["pagination"]["total"] == 1
+    assert len(payload["data"]["items"]) == 1
+
+
 def test_documents_filter_by_task_id(
     client, app, make_user, make_task, make_document, auth_headers
 ):

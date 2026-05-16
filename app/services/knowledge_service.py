@@ -11,6 +11,7 @@ from werkzeug.utils import secure_filename
 from app.domain_models.common import utc_now
 from app.extensions import db
 from app.models import (
+    AssistantTrainingEntry,
     ErrorEntry,
     GeneratedDocument,
     InventoryMaterial,
@@ -49,6 +50,7 @@ STRUCTURED_SOURCE_TYPES = (
     "maintenance_plan",
     "machine_manual",
     "shift_handover",
+    "manual_training",
 )
 
 
@@ -130,10 +132,10 @@ def index_knowledge_document(document, raw_content=None, filename=None):
         document.chunk_count = 0
         return document
 
+    document.updated_at = utc_now()
     rebuild_chunks(document, text)
     document.status = "indexed" if document.chunk_count else "no_text"
     document.error_message = "" if document.chunk_count else "Keine Textschicht gefunden."
-    document.updated_at = utc_now()
     return document
 
 
@@ -159,6 +161,8 @@ def extract_knowledge_text(document, raw_content=None, filename=None):
         return machine_manual_text(document.source_id)
     if document.source_type == "shift_handover":
         return shift_handover_text(document.source_id)
+    if document.source_type == "manual_training":
+        return manual_training_text(document.source_id)
 
     path = knowledge_path(document)
     if not path.exists():
@@ -344,21 +348,93 @@ def shift_handover_text(handover_id):
     )
 
 
+def manual_training_text(entry_id):
+    """Return searchable text for a manual assistant training entry."""
+    entry = db.session.get(AssistantTrainingEntry, entry_id)
+    if not entry or not entry.is_active:
+        return ""
+    return "\n".join(
+        part
+        for part in (
+            f"Manuelles Assistant-Training #{entry.id}",
+            f"Titel: {entry.title}",
+            f"Kategorie: {entry.category}",
+            f"Abteilung: {entry.department}",
+            f"Prioritaet: {entry.priority}",
+            f"Frage: {entry.question}",
+            f"Antwort: {entry.answer}",
+            f"Keywords: {entry.keywords}",
+        )
+        if part
+    )
+
+
 def rebuild_chunks(document, text):
     """Replace all chunks for a knowledge document."""
     KnowledgeChunk.query.filter(KnowledgeChunk.document_id == document.id).delete()
     chunks = chunk_text(text)
+    chunk_objects = []
     for index, chunk in enumerate(chunks):
-        db.session.add(
-            KnowledgeChunk(
-                document_id=document.id,
-                chunk_index=index,
-                text=chunk,
-                token_text=" ".join(sorted(tokens(chunk))),
-                created_at=utc_now(),
-            )
+        chunk_object = KnowledgeChunk(
+            document_id=document.id,
+            chunk_index=index,
+            text=chunk,
+            token_text=" ".join(sorted(tokens(chunk))),
+            created_at=utc_now(),
         )
+        db.session.add(chunk_object)
+        chunk_objects.append(chunk_object)
+    db.session.flush()
     document.chunk_count = len(chunks)
+    sync_vector_store_document(document, chunk_objects)
+
+
+def sync_vector_store_document(document, chunks):
+    """Persist indexed chunks in the configured external vector store when enabled."""
+    try:
+        from app.services.vector_store_service import (
+            VectorRecord,
+            get_vector_store,
+        )
+    except ImportError as exc:
+        logger.warning("vector_store_import_failed document_id=%s error=%s", document.id, exc)
+        return
+
+    store = get_vector_store()
+    if getattr(store, "name", "") != "chroma":
+        return
+    try:
+        store.delete_document(document.id)
+        store.add_documents(
+            [
+                VectorRecord(
+                    text=chunk.text,
+                    record_id=f"knowledge:{document.id}:{chunk.chunk_index}",
+                    metadata=chunk_vector_metadata(document, chunk),
+                )
+                for chunk in chunks
+            ]
+        )
+    except Exception as exc:
+        logger.warning("vector_store_sync_failed document_id=%s error=%s", document.id, exc)
+
+
+def chunk_vector_metadata(document, chunk):
+    """Return metadata stored with an external vector record."""
+    return {
+        "type": "knowledge",
+        "id": document.id,
+        "chunk_id": chunk.id,
+        "chunk_index": chunk.chunk_index,
+        "title": document.title,
+        "module": "knowledge",
+        "source_type": document.source_type,
+        "source_id": document.source_id,
+        "document_type": document.source_type,
+        "department": document.department,
+        "url": source_url(document),
+        "updated_at": document.updated_at.isoformat() if document.updated_at else "",
+    }
 
 
 def chunk_text(text, max_chars=1400, overlap=160):
@@ -383,7 +459,7 @@ def tokens(value):
 def search_knowledge_chunks(query_text, user, limit=MAX_RETRIEVAL_CHUNKS):
     """Return ranked knowledge chunks visible to the given user."""
     query_tokens = tokens(query_text)
-    if not query_tokens or not has_dashboard_permission(user, "documents", "view"):
+    if not query_tokens:
         return []
 
     chunks = (
@@ -436,6 +512,8 @@ def can_user_read_knowledge_document(user, document):
         return has_dashboard_permission(user, "documents", "view")
     if document.source_type == "shift_handover":
         return has_dashboard_permission(user, "shiftplans", "view")
+    if document.source_type == "manual_training" and document.source_id:
+        return can_read_training_entry(user, document.source_id)
     return has_dashboard_permission(user, "documents", "view")
 
 
@@ -471,6 +549,16 @@ def can_read_maintenance_plan(user, plan_id):
     )
 
 
+def can_read_training_entry(user, entry_id):
+    """Return whether a user can read a manual training source."""
+    entry = db.session.get(AssistantTrainingEntry, entry_id)
+    if not entry or not entry.is_active:
+        return False
+    if entry.department and (not user.department or user.department.name != entry.department):
+        return False
+    return True
+
+
 def chunk_payload(chunk, score):
     """Return an internal retrieval payload for one chunk."""
     document = chunk.document
@@ -501,32 +589,16 @@ def source_url(document):
         "maintenance_plan": "/machines",
         "machine_manual": "/documents",
         "shift_handover": "/handover",
+        "manual_training": "/admin/ai",
     }
     return urls.get(document.source_type, "/admin/ai")
 
 
 def knowledge_sources_for_chat(query_text, user):
     """Return context text and public source records for chat retrieval."""
-    chunks = search_knowledge_chunks(query_text, user)
-    if not chunks:
-        return "", []
-    context = "\n\n".join(
-        f"Quelle: Wissen #{item['id']} - {item['title']}\n{item['context']}" for item in chunks
-    )
-    sources = [
-        {
-            "type": "knowledge",
-            "id": item["id"],
-            "chunk_id": item["chunk_id"],
-            "title": item["title"],
-            "module": item["module"],
-            "url": item["url"],
-            "reason": item["reason"],
-            "score": item["score"],
-        }
-        for item in chunks
-    ]
-    return context, sources
+    from app.services.retrieval_service import knowledge_context_for_chat
+
+    return knowledge_context_for_chat(query_text, user, limit=MAX_RETRIEVAL_CHUNKS)
 
 
 def list_knowledge_documents(args):
@@ -534,6 +606,7 @@ def list_knowledge_documents(args):
     query = KnowledgeDocument.query
     q = str(args.get("q") or "").strip()
     status = str(args.get("status") or "").strip()
+    source_type = str(args.get("source_type") or "").strip()
     if q:
         pattern = f"%{q}%"
         query = query.filter(
@@ -543,6 +616,8 @@ def list_knowledge_documents(args):
         )
     if status:
         query = query.filter(KnowledgeDocument.status == status)
+    if source_type:
+        query = query.filter(KnowledgeDocument.source_type == source_type)
     return query.order_by(KnowledgeDocument.updated_at.desc(), KnowledgeDocument.id.desc())
 
 
@@ -678,6 +753,7 @@ def ensure_structured_sources_registered():
     registered += ensure_maintenance_plans_registered()
     registered += ensure_machine_manuals_registered()
     registered += ensure_shift_handovers_registered()
+    registered += ensure_assistant_training_entries_registered()
     return registered
 
 
@@ -811,6 +887,24 @@ def ensure_shift_handovers_registered():
     return count
 
 
+def ensure_assistant_training_entries_registered():
+    """Register active manual assistant training entries in the knowledge base."""
+    existing = existing_source_ids("manual_training")
+    count = 0
+    entries = (
+        AssistantTrainingEntry.query.filter_by(is_active=True)
+        .order_by(AssistantTrainingEntry.priority.desc(), AssistantTrainingEntry.id.asc())
+        .all()
+    )
+    for entry in entries:
+        if entry.id in existing:
+            continue
+        register_training_entry_document(entry)
+        count += 1
+    db.session.flush()
+    return count
+
+
 def existing_source_ids(source_type):
     """Return registered source ids for a knowledge source type."""
     return {
@@ -873,6 +967,19 @@ def register_task_document(task):
     )
 
 
+def register_training_entry_document(entry):
+    """Register one manual assistant training entry as a pending knowledge document."""
+    register_source_document(
+        source_type="manual_training",
+        source_id=entry.id,
+        title=entry.title,
+        department=entry.department,
+        created_by=entry.created_by,
+        created_at=entry.created_at,
+        url_path="/admin/ai",
+    )
+
+
 def mark_task_knowledge_stale(task):
     """Create or mark the task knowledge document as stale after a data change."""
     document = source_document("task", task.id)
@@ -884,6 +991,20 @@ def mark_task_knowledge_stale(task):
     document.relative_path = f"/api/v1/tasks/{task.id}"
     document.status = "stale"
     document.error_message = "Task wurde geaendert und muss neu indexiert werden."
+    document.updated_at = utc_now()
+
+
+def mark_training_entry_knowledge_stale(entry):
+    """Create or mark a manual training knowledge document as stale after a change."""
+    document = source_document("manual_training", entry.id)
+    if not document:
+        register_training_entry_document(entry)
+        return
+    document.title = entry.title
+    document.department = entry.department
+    document.relative_path = "/admin/ai"
+    document.status = "stale"
+    document.error_message = "Trainingseintrag wurde geaendert und muss neu indexiert werden."
     document.updated_at = utc_now()
 
 

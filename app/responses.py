@@ -92,3 +92,72 @@ def paginate_query(query, serializer):
             "message": "OK",
         }
     )
+
+
+def pagination_requested(args=None):
+    """Return whether request arguments explicitly ask for pagination."""
+    source = args if args is not None else _request.args
+    return any(key in source for key in ("limit", "offset", "page", "paginate"))
+
+
+def parse_pagination_args(args=None, default_limit=20, max_limit=100):
+    """Return normalized page, limit and offset values from request arguments."""
+    source = args if args is not None else _request.args
+    limit = _safe_positive_int(source.get("limit"), default_limit)
+    limit = min(limit, max_limit)
+    if source.get("offset") is not None:
+        offset = _safe_non_negative_int(source.get("offset"), 0)
+        page = (offset // limit) + 1
+        return page, limit, offset
+    page = _safe_positive_int(source.get("page"), 1)
+    return page, limit, (page - 1) * limit
+
+
+def optional_paginated_response(
+    query,
+    serializer,
+    message="OK",
+    default_limit=20,
+    max_limit=100,
+):
+    """Return an old array response unless the client requested pagination."""
+    if not pagination_requested():
+        return jsonify([serializer(item) for item in query.all()])
+
+    page, limit, offset = parse_pagination_args(
+        default_limit=default_limit,
+        max_limit=max_limit,
+    )
+    total = query.count()
+    items = query.offset(offset).limit(limit).all()
+    return success_response(
+        {
+            "items": [serializer(item) for item in items],
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "offset": offset,
+                "total": total,
+                "pages": max(1, (total + limit - 1) // limit),
+            },
+        },
+        message=message,
+    )
+
+
+def _safe_positive_int(value, default):
+    """Return a positive integer or the provided default."""
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
+def _safe_non_negative_int(value, default):
+    """Return a non-negative integer or the provided default."""
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed >= 0 else default

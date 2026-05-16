@@ -788,7 +788,7 @@ def test_shiftplan_calendar_admin_can_filter_employee(
 
 def test_shiftplan_page_script_renders_warnings(client):
     """Verify shift plan UI has warning rendering code."""
-    response = client.get("/static/app.js")
+    response = client.get("/static/pages/workflows.js")
     script = response.get_data(as_text=True)
     page_html = client.get("/shiftplans").get_data(as_text=True)
 

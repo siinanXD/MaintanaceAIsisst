@@ -8,7 +8,8 @@
   },
   "scripts": {
     "build:css": "tailwindcss -i ./app/static/css/input.css -o ./app/static/css/output.css --minify",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "lint": ".\\.venv\\Scripts\\python.exe -m ruff check app tests",
+    "test": "npm run lint && .\\.venv\\Scripts\\python.exe -m pytest"
   },
   "repository": {
     "type": "git",

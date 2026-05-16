@@ -31,7 +31,8 @@ services:
       KNOWLEDGE_FOLDER: /app/knowledge
       BACKUP_FOLDER: /app/backups
       LOG_DIR: /app/logs
-      RAG_VECTOR_STORE: local
+      RAG_VECTOR_STORE: chroma
+      CHROMA_PERSIST_DIR: /app/data/chroma
       EMBEDDING_PROVIDER: hashing
     depends_on:
       db:
@@ -74,7 +75,8 @@ services:
       KNOWLEDGE_FOLDER: /app/knowledge
       BACKUP_FOLDER: /app/backups
       LOG_DIR: /app/logs
-      RAG_VECTOR_STORE: local
+      RAG_VECTOR_STORE: chroma
+      CHROMA_PERSIST_DIR: /app/data/chroma
       EMBEDDING_PROVIDER: hashing
       WORKER_RAG_REINDEX_ENABLED: "true"
       WORKER_POLL_SECONDS: "60"

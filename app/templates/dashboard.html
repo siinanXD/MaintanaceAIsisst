@@ -6,53 +6,89 @@
 {% block content %}
 <section class="dashboard-page-hero dashboard-kpi-grid" aria-label="Cockpit Kennzahlen">
   <article class="kpi-card kpi-card-open">
-    <div class="kpi-icon" aria-hidden="true">▣</div>
+    <div class="kpi-icon" aria-hidden="true">AU</div>
     <div>
       <p class="kpi-label">Offene Aufgaben</p>
       <p class="kpi-value" data-dashboard-open-count>23</p>
-      <p class="kpi-meta"><span class="trend-up">↑ 5</span> seit gestern</p>
+      <p class="kpi-meta"><span class="trend-up">+5</span> seit gestern</p>
     </div>
   </article>
   <article class="kpi-card kpi-card-progress">
-    <div class="kpi-icon" aria-hidden="true">⚒</div>
+    <div class="kpi-icon" aria-hidden="true">IP</div>
     <div>
       <p class="kpi-label">In Arbeit</p>
       <p class="kpi-value" data-dashboard-progress-count>11</p>
-      <p class="kpi-meta">− 0 seit gestern</p>
+      <p class="kpi-meta">0 seit gestern</p>
     </div>
   </article>
   <article class="kpi-card kpi-card-done">
-    <div class="kpi-icon" aria-hidden="true">✓</div>
+    <div class="kpi-icon" aria-hidden="true">OK</div>
     <div>
       <p class="kpi-label">Abgeschlossen</p>
       <p class="kpi-value" data-dashboard-done-count>34</p>
-      <p class="kpi-meta"><span class="trend-up">↑ 8</span> seit gestern</p>
+      <p class="kpi-meta"><span class="trend-up">+8</span> seit gestern</p>
     </div>
   </article>
   <article class="kpi-card kpi-card-critical">
-    <div class="kpi-icon" aria-hidden="true">△</div>
+    <div class="kpi-icon" aria-hidden="true">KR</div>
     <div>
       <p class="kpi-label">Kritische St&ouml;rungen</p>
       <p class="kpi-value" data-dashboard-critical-count>7</p>
-      <p class="kpi-meta"><span class="trend-danger">↑ 2</span> seit gestern</p>
+      <p class="kpi-meta"><span class="trend-danger">+2</span> seit gestern</p>
     </div>
   </article>
   <article class="kpi-card kpi-card-machine">
-    <div class="kpi-icon" aria-hidden="true">▤</div>
+    <div class="kpi-icon" aria-hidden="true">MA</div>
     <div>
       <p class="kpi-label">Maschinen mit St&ouml;rung</p>
       <p class="kpi-value" data-dashboard-machine-issue-count>5</p>
-      <p class="kpi-meta">− 0 seit gestern</p>
+      <p class="kpi-meta">0 seit gestern</p>
     </div>
   </article>
   <article class="kpi-card kpi-card-ai">
-    <div class="kpi-icon" aria-hidden="true">✦</div>
+    <div class="kpi-icon" aria-hidden="true">AI</div>
     <div>
       <p class="kpi-label">AI Briefing</p>
       <p class="kpi-value" data-dashboard-briefing-count>3 Hinweise</p>
-      <p class="kpi-meta"><a href="#daily-briefing">Details anzeigen →</a></p>
+      <p class="kpi-meta"><a href="#daily-briefing">Details anzeigen</a></p>
     </div>
   </article>
+</section>
+
+<section class="ops-insights-shell app-card" data-operations-insights aria-labelledby="operations-insights-title">
+  <header class="ops-insights-header">
+    <div>
+      <p class="eyebrow-label">Operations Insights</p>
+      <h2 id="operations-insights-title">Werks-KPIs und Prozessqualit&auml;t</h2>
+      <p data-operations-insights-status role="status" aria-live="polite">Kennzahlen werden geladen.</p>
+    </div>
+    <div class="ops-insights-controls" aria-label="Operations Filter">
+      <label class="field field-compact">
+        <span>Werk</span>
+        <select class="select select-bordered" data-operations-site-filter>
+          <option value="">Alle aktiven Werke</option>
+        </select>
+      </label>
+      <label class="field field-compact">
+        <span>Zeitraum</span>
+        <select class="select select-bordered" data-operations-range-filter>
+          <option value="7">7 Tage</option>
+          <option value="30" selected>30 Tage</option>
+          <option value="90">90 Tage</option>
+        </select>
+      </label>
+      <button class="btn btn-outline btn-sm" type="button" data-operations-refresh>Kennzahlen aktualisieren</button>
+    </div>
+  </header>
+  <div class="ops-insights-grid" data-operations-kpi-grid>
+    <article class="ops-insight-card is-loading"><span>Tasks</span><strong>--</strong><small>Offene Arbeit</small></article>
+    <article class="ops-insight-card is-loading"><span>MTTR</span><strong>--</strong><small>Ausfallzeit</small></article>
+    <article class="ops-insight-card is-loading"><span>Lager</span><strong>--</strong><small>Engp&auml;sse</small></article>
+    <article class="ops-insight-card is-loading"><span>AI</span><strong>--</strong><small>Qualit&auml;t</small></article>
+  </div>
+  <div class="ops-insights-drilldown" data-operations-drilldown aria-label="Operations Drilldowns">
+    <div class="empty-state">Drilldowns erscheinen nach dem Laden der Kennzahlen.</div>
+  </div>
 </section>
 
 <section class="ops-dashboard-grid" aria-label="Dashboard Bereiche">
@@ -143,7 +179,7 @@
         </header>
         <div class="employee-table" role="table" aria-label="Mitarbeiter heute" data-dashboard-employee-overview>
           <div class="employee-row is-head" role="row">
-            <span>Mitarbeiter</span><span>Rolle</span><span>Schicht</span><span>Status</span>
+            <span role="columnheader">Mitarbeiter</span><span role="columnheader">Rolle</span><span role="columnheader">Schicht</span><span role="columnheader">Status</span>
           </div>
           <div class="employee-row" role="row">
             <span><span class="mini-avatar">MM</span>Max M&uuml;ller</span><span>Instandhalter</span><span>Fr&uuml;h</span><strong>Anwesend</strong>
@@ -166,15 +202,15 @@
     <article class="ops-panel app-card daily-briefing" id="daily-briefing" data-daily-briefing-card>
       <header class="ops-panel-header">
         <h2>T&auml;gliches Briefing</h2>
-        <span class="ai-label">AI ✦</span>
+        <span class="ai-label">AI</span>
       </header>
       <p class="briefing-summary" data-daily-briefing-summary>3 kritische St&ouml;rungen erfordern Aufmerksamkeit.</p>
       <div class="briefing-list" data-daily-briefing-list>
-        <div class="briefing-item is-critical"><span>△</span><strong>3 kritische St&ouml;rungen</strong><small>Presse 3, Motor M-22, F&ouml;rderband 7</small></div>
-        <div class="briefing-item is-warning"><span>⚒</span><strong>Kompressor K-1 überfällig</strong><small>Letzte Wartung vor 45 Tagen.</small></div>
-        <div class="briefing-item is-success"><span>✓</span><strong>Ersatzteil Engpass</strong><small>Dichtung 40x3 nur 3 St&uuml;ck auf Lager.</small></div>
+        <div class="briefing-item is-critical"><span>!</span><strong>3 kritische St&ouml;rungen</strong><small>Presse 3, Motor M-22, F&ouml;rderband 7</small></div>
+        <div class="briefing-item is-warning"><span>W</span><strong>Kompressor K-1 überfällig</strong><small>Letzte Wartung vor 45 Tagen.</small></div>
+        <div class="briefing-item is-success"><span>OK</span><strong>Ersatzteil Engpass</strong><small>Dichtung 40x3 nur 3 St&uuml;ck auf Lager.</small></div>
       </div>
-      <a class="panel-link" href="#daily-briefing">Vollst&auml;ndiges Briefing anzeigen →</a>
+      <a class="panel-link" href="#daily-briefing">Vollst&auml;ndiges Briefing anzeigen</a>
     </article>
 
     <article class="ops-panel app-card shift-panel">
@@ -205,7 +241,7 @@
         <div><strong>Kritisch</strong><span>3</span><small>Artikel</small></div>
         <div><strong>Niedrig</strong><span>12</span><small>Artikel</small></div>
         <div><strong>OK</strong><span>145</span><small>Artikel</small></div>
-        <div><strong>Gesamtwert</strong><span>126.350 €</span><small>Lagerwert</small></div>
+        <div><strong>Gesamtwert</strong><span>126.350 EUR</span><small>Lagerwert</small></div>
       </div>
       <div class="shortage-tags" aria-label="Top Engp&auml;sse" data-dashboard-inventory-shortages>
         <span>Dichtung 40x3 <strong>3 Stk.</strong></span>
@@ -238,7 +274,7 @@
         <h2 class="panel-title" id="task-detail-title" data-task-detail-title>Aufgabe</h2>
         <p class="panel-meta" data-task-detail-subtitle>Details und Workflow</p>
       </div>
-      <button class="btn btn-ghost btn-sm" type="button" data-task-detail-close>Schliessen</button>
+      <button class="btn btn-ghost btn-sm" type="button" data-task-detail-close>Schließen</button>
     </div>
     <div class="task-detail-body" data-task-detail-body></div>
     <div class="form-grid mt-6" data-report-options>
@@ -259,13 +295,13 @@
         <input class="input input-bordered" id="report-cause" data-report-field="cause">
       </div>
       <div class="field is-full">
-        <label for="report-action">Massnahme / Notizen</label>
+        <label for="report-action">Maßnahme / Notizen</label>
         <textarea class="textarea textarea-bordered" id="report-action" data-report-field="action"></textarea>
       </div>
     </div>
     <div class="toolbar form-actions">
       <button class="btn btn-primary" type="button" data-task-start-button>Aufgabe starten</button>
-      <button class="btn btn-success text-white" type="button" data-task-complete-button>Aufgabe abschliessen</button>
+      <button class="btn btn-success text-white" type="button" data-task-complete-button>Aufgabe abschließen</button>
       <span class="panel-meta" data-task-detail-message role="status" aria-live="polite"></span>
     </div>
   </div>

@@ -51,10 +51,25 @@
     </div>
     <div class="table-wrap">
       <table class="data-table">
-        <thead><tr><th>ID</th><th>Typ</th><th>Status</th><th>Versuche</th><th>Ergebnis</th></tr></thead>
+        <caption>Background-Jobs für RAG-Reindex und Wartungsdiagnose</caption>
+        <thead><tr><th scope="col">ID</th><th scope="col">Typ</th><th scope="col">Status</th><th scope="col">Versuche</th><th scope="col">Ergebnis</th></tr></thead>
         <tbody data-ai-jobs></tbody>
       </table>
     </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header">
+      <h3>Operationsdiagnose</h3>
+      <span class="panel-meta" data-ops-generated>-</span>
+    </div>
+    <div class="dashboard-grid dashboard-grid-4">
+      <article class="metric-card"><span>DB Latenz</span><strong data-ops-kpi="database_latency_ms">0 ms</strong></article>
+      <article class="metric-card"><span>Queue</span><strong data-ops-kpi="queue_length">0</strong></article>
+      <article class="metric-card"><span>AI Latenz</span><strong data-ops-kpi="ai_latency_ms">0 ms</strong></article>
+      <article class="metric-card"><span>RAG stale</span><strong data-ops-kpi="rag_stale_ratio">0%</strong></article>
+    </div>
+    <div class="stats-list mt-4" data-ops-slow-endpoints></div>
   </section>
 
   <div class="content-grid two-columns">
@@ -65,14 +80,15 @@
           <option value="">Alle Fehler</option>
           <option value="rate_limit">Rate Limit</option>
           <option value="model_not_allowed">Modell nicht erlaubt</option>
-          <option value="authentication_error">Key ungueltig</option>
+          <option value="authentication_error">Key ungültig</option>
           <option value="connection_error">Verbindung</option>
           <option value="timeout">Timeout</option>
         </select>
       </div>
       <div class="table-wrap">
         <table class="data-table">
-          <thead><tr><th>Zeit</th><th>Workflow</th><th>Status</th><th>Fehler</th><th>Tokens</th></tr></thead>
+          <caption>Letzte AI-Events mit Status, Fehlerart und Tokenverbrauch</caption>
+          <thead><tr><th scope="col">Zeit</th><th scope="col">Workflow</th><th scope="col">Status</th><th scope="col">Fehler</th><th scope="col">Tokens</th></tr></thead>
           <tbody data-ai-events></tbody>
         </table>
       </div>
@@ -87,336 +103,98 @@
     </section>
   </div>
 
+  <section class="panel admin-training-panel">
+    <div class="panel-header">
+      <div>
+        <h3>Manuelles Assistant-Training</h3>
+        <p class="panel-meta">Q&amp;A, Regeln und Synonyme als gepflegte Wissensbasis.</p>
+      </div>
+      <div class="admin-filterbar">
+        <input class="input input-bordered" data-ai-training-search placeholder="Training durchsuchen">
+        <select class="input input-bordered" data-ai-training-active aria-label="Training nach Status filtern">
+          <option value="">Alle Trainings</option>
+          <option value="true">Nur aktiv</option>
+          <option value="false">Nur inaktiv</option>
+        </select>
+      </div>
+    </div>
+    <div class="admin-training-workflow">
+      <aside class="admin-training-list" data-ai-training aria-label="Trainingseinträge"></aside>
+      <form class="admin-training-editor" data-ai-training-form>
+        <input type="hidden" name="id">
+        <div class="training-editor-header">
+          <div>
+            <span class="section-kicker">Editor</span>
+            <h4 data-ai-training-editor-title>Neuer Trainingseintrag</h4>
+          </div>
+          <span class="status-pill is-stale" data-ai-training-editor-status>Nach dem Speichern neu indexieren</span>
+        </div>
+        <div class="training-status-strip">
+          <label class="inline-form training-active-toggle">
+            <span>Aktiv</span>
+            <input name="is_active" type="checkbox" checked>
+          </label>
+          <label class="inline-form training-priority-field">
+            <span>Priorität</span>
+            <input class="input input-bordered" name="priority" type="number" min="0" max="100" value="50">
+          </label>
+        </div>
+        <div class="content-grid two-columns">
+          <input class="input input-bordered" name="title" maxlength="220" placeholder="Titel">
+          <input class="input input-bordered" name="category" maxlength="80" placeholder="Kategorie, z. B. Wartung">
+          <input class="input input-bordered" name="department" maxlength="120" placeholder="Abteilung optional">
+          <input class="input input-bordered" name="keywords" maxlength="1000" placeholder="Keywords, Synonyme, Fehlercodes">
+        </div>
+        <textarea class="input input-bordered" name="question" maxlength="1000" rows="3" placeholder="Typische Frage oder Situation"></textarea>
+        <textarea class="input input-bordered" name="answer" maxlength="6000" rows="6" placeholder="Freigegebene Antwort, Regel oder Wartungshinweis"></textarea>
+        <p class="panel-meta">Aktuelle strukturierte Daten bleiben führend; Training ergänzt nur freigegebenes Erfahrungswissen.</p>
+        <div class="toolbar training-editor-actions">
+          <button class="btn btn-primary" type="submit">Training speichern</button>
+          <button class="btn btn-ghost" type="button" data-ai-training-reset>Neu</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
   <section class="panel">
     <div class="panel-header">
       <h3>Wissensdatenbank</h3>
-      <form class="inline-form" data-ai-knowledge-upload>
-        <input class="input input-bordered" name="department" placeholder="Abteilung optional">
-        <input class="input input-bordered" name="file" type="file" accept=".pdf,.txt,.html,.htm">
-        <button class="btn btn-secondary" type="submit">Hochladen</button>
-      </form>
+      <div class="toolbar">
+        <select class="input input-bordered" data-ai-knowledge-source>
+          <option value="">Alle Quellen</option>
+          <option value="upload">Uploads</option>
+          <option value="manual_training">Manuelles Training</option>
+          <option value="generated_document">Berichte</option>
+          <option value="error_entry">Fehlerkatalog</option>
+          <option value="task">Tasks</option>
+          <option value="machine">Maschinen</option>
+          <option value="inventory_material">Inventar</option>
+          <option value="maintenance_plan">Wartungspläne</option>
+          <option value="machine_manual">Maschinenhandbücher</option>
+          <option value="shift_handover">Schichtübergaben</option>
+        </select>
+        <select class="input input-bordered" data-ai-knowledge-status aria-label="Wissen nach Indexstatus filtern">
+          <option value="">Alle Status</option>
+          <option value="indexed">Indexiert</option>
+          <option value="stale">Veraltet</option>
+          <option value="pending">Ausstehend</option>
+          <option value="error">Fehler</option>
+          <option value="no_text">Ohne Text</option>
+        </select>
+        <form class="inline-form" data-ai-knowledge-upload>
+          <input class="input input-bordered" name="department" placeholder="Abteilung optional">
+          <input class="input input-bordered" name="file" type="file" accept=".pdf,.txt,.html,.htm">
+          <button class="btn btn-secondary" type="submit">Hochladen</button>
+        </form>
+      </div>
     </div>
     <div class="table-wrap">
-      <table class="data-table">
-        <thead><tr><th>Titel</th><th>Quelle</th><th>Status</th><th>Chunks</th><th>Abteilung</th><th></th></tr></thead>
+        <table class="data-table">
+        <caption>Wissensdatenbank mit Quelle, Indexstatus, Chunks und Abteilung</caption>
+        <thead><tr><th scope="col">Titel</th><th scope="col">Quelle</th><th scope="col">Status</th><th scope="col">Chunks</th><th scope="col">Abteilung</th><th scope="col">Aktionen</th></tr></thead>
         <tbody data-ai-knowledge></tbody>
       </table>
     </div>
   </section>
 </section>
-
-<script>
-(function () {
-  const root = document.querySelector("[data-admin-ai-page]");
-  if (!root) return;
-
-  function token() {
-    return window.localStorage.getItem("maintenance_access_token");
-  }
-
-  async function api(path, options) {
-    const response = await fetch(path, {
-      ...options,
-      headers: {
-        ...(options && options.headers ? options.headers : {}),
-        Authorization: "Bearer " + token()
-      }
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.message || payload.error || "API error");
-    return payload.data || payload;
-  }
-
-  function text(value) {
-    return value == null || value === "" ? "-" : String(value);
-  }
-
-  function cell(value) {
-    const item = document.createElement("td");
-    item.textContent = text(value);
-    return item;
-  }
-
-  function statusRow(label, value) {
-    const item = document.createElement("div");
-    item.className = "stat-row";
-    const labelElement = document.createElement("span");
-    labelElement.textContent = label;
-    const valueElement = document.createElement("strong");
-    valueElement.textContent = text(value);
-    item.append(labelElement, valueElement);
-    return item;
-  }
-
-  function sourceTypeLabel(sourceType) {
-    const labels = {
-      upload: "Uploads",
-      generated_document: "Berichte",
-      error_entry: "Fehlerkatalog",
-      task: "Tasks",
-      maintenance_plan: "Wartungsplaene",
-      machine_manual: "Maschineninfos",
-      shift_handover: "Schichtuebergaben"
-    };
-    return labels[sourceType] || sourceType;
-  }
-
-  function setAdminMessage(message, isError) {
-    const target = root.querySelector("[data-ai-reindex-message]");
-    if (!target) return;
-    target.textContent = message || "";
-    target.classList.toggle("is-error", Boolean(isError));
-  }
-
-  async function loadSummary() {
-    const summary = await api("/api/v1/admin/ai/summary?days=7");
-    ["events_total", "fallback_count", "total_tokens", "estimated_cost_usd"].forEach((key) => {
-      const target = root.querySelector('[data-ai-kpi="' + key + '"]');
-      if (target) target.textContent = text(summary[key]);
-    });
-  }
-
-  function renderKnowledgeStatus(status) {
-    ["documents", "indexed", "stale", "pending", "searchable_documents", "chunks"].forEach((key) => {
-      const target = root.querySelector('[data-rag-kpi="' + key + '"]');
-      if (target) target.textContent = text(status[key]);
-    });
-
-    const readiness = root.querySelector("[data-rag-readiness]");
-    if (readiness) {
-      readiness.textContent = status.diagnostics && status.diagnostics.ready
-        ? "bereit"
-        : "nicht bereit";
-    }
-
-    const sourceList = root.querySelector("[data-rag-source-status]");
-    sourceList.innerHTML = "";
-    const sourceTypes = status.source_types || [];
-    if (!sourceTypes.length) {
-      sourceList.appendChild(statusRow("Quellen", "Noch keine Daten indexiert"));
-    } else {
-      sourceTypes.forEach((item) => {
-        sourceList.appendChild(statusRow(
-          sourceTypeLabel(item.source_type),
-          item.searchable_documents + "/" + item.documents + " durchsuchbar, " + item.chunks + " Chunks"
-        ));
-      });
-    }
-
-    const diagnostics = status.diagnostics || {};
-    const diagnosticList = root.querySelector("[data-rag-diagnostics]");
-    diagnosticList.innerHTML = "";
-    diagnosticList.append(
-      statusRow("RAG aktiv", diagnostics.rag_enabled ? "ja" : "nein"),
-      statusRow("Vector Store", diagnostics.vector_store),
-      statusRow("Embedding", diagnostics.embedding_provider),
-      statusRow("Chunking", diagnostics.chunk_size + " / " + diagnostics.chunk_overlap),
-      statusRow("Top K", diagnostics.top_k),
-      statusRow("Scan Limit", diagnostics.scan_limit)
-    );
-  }
-
-  async function loadKnowledgeStatus() {
-    const status = await api("/api/v1/admin/ai/knowledge/status");
-    renderKnowledgeStatus(status);
-  }
-
-  async function loadJobs() {
-    const data = await api("/api/v1/admin/jobs?job_type=rag_reindex&limit=10");
-    const tbody = root.querySelector("[data-ai-jobs]");
-    const count = root.querySelector("[data-ai-job-count]");
-    tbody.innerHTML = "";
-    if (count) count.textContent = data.pagination.total + " Jobs";
-    data.items.forEach((job) => {
-      const row = document.createElement("tr");
-      row.append(
-        cell(job.id),
-        cell(job.job_type),
-        cell(job.status),
-        cell(job.attempts + "/" + job.max_attempts),
-        cell(job.error_message || JSON.stringify(job.result || {}))
-      );
-      tbody.appendChild(row);
-    });
-  }
-
-  async function loadEvents() {
-    const error = root.querySelector("[data-ai-event-error]").value;
-    const data = await api("/api/v1/admin/ai/events?limit=20&error=" + encodeURIComponent(error));
-    const tbody = root.querySelector("[data-ai-events]");
-    tbody.innerHTML = "";
-    data.items.forEach((event) => {
-      const row = document.createElement("tr");
-      row.append(
-        cell(event.created_at),
-        cell(event.workflow),
-        cell(event.status),
-        cell(event.error_category),
-        cell(event.total_tokens)
-      );
-      tbody.appendChild(row);
-    });
-  }
-
-  async function loadChats() {
-    const query = root.querySelector("[data-ai-chat-search]").value;
-    const data = await api("/api/v1/admin/ai/chats?limit=20&q=" + encodeURIComponent(query));
-    const list = root.querySelector("[data-ai-chats]");
-    list.innerHTML = "";
-    data.items.forEach((chat) => {
-      const item = document.createElement("article");
-      item.className = "list-card";
-      const user = document.createElement("strong");
-      const prompt = document.createElement("p");
-      const meta = document.createElement("small");
-      user.textContent = text(chat.user && chat.user.username);
-      prompt.textContent = text(chat.message);
-      meta.textContent = text(chat.response_type) + " - " + text(chat.created_at);
-      item.append(user, prompt, meta);
-      list.appendChild(item);
-    });
-  }
-
-  async function loadKnowledge() {
-    const data = await api("/api/v1/admin/ai/knowledge?limit=50");
-    const tbody = root.querySelector("[data-ai-knowledge]");
-    tbody.innerHTML = "";
-    data.items.forEach((documentItem) => {
-      const row = document.createElement("tr");
-      const actions = document.createElement("td");
-      const reindexButton = document.createElement("button");
-      reindexButton.type = "button";
-      reindexButton.className = "btn btn-secondary btn-sm";
-      reindexButton.dataset.reindexKnowledge = documentItem.id;
-      reindexButton.textContent = "Indexieren";
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "btn btn-ghost btn-sm";
-      button.dataset.deleteKnowledge = documentItem.id;
-      button.textContent = "Loeschen";
-      actions.append(reindexButton, button);
-      row.append(
-        cell(documentItem.title),
-        cell(documentItem.source_type),
-        cell(documentItem.status),
-        cell(documentItem.chunk_count),
-        cell(documentItem.department),
-        actions
-      );
-      tbody.appendChild(row);
-    });
-  }
-
-  async function refreshAll() {
-    await Promise.all([
-      loadSummary(),
-      loadEvents(),
-      loadChats(),
-      loadKnowledge(),
-      loadKnowledgeStatus(),
-      loadJobs()
-    ]);
-  }
-
-  root.querySelector("[data-ai-event-error]").addEventListener("change", loadEvents);
-  root.querySelector("[data-ai-chat-search]").addEventListener("input", () => {
-    window.clearTimeout(root._chatTimer);
-    root._chatTimer = window.setTimeout(loadChats, 250);
-  });
-  async function runReindex(button, path) {
-    button.disabled = true;
-    setAdminMessage("Index wird neu aufgebaut...");
-    try {
-      const result = await api(path, { method: "POST" });
-      setAdminMessage(
-        "Indexiert: " + result.indexed + " Dokumente, " + result.chunks + " Chunks."
-      );
-      await Promise.all([loadKnowledge(), loadKnowledgeStatus(), loadJobs()]);
-    } catch (error) {
-      setAdminMessage(error.message, true);
-    } finally {
-      button.disabled = false;
-    }
-  }
-
-  root.querySelector("[data-ai-reindex]").addEventListener("click", async () => {
-    await runReindex(
-      root.querySelector("[data-ai-reindex]"),
-      "/api/v1/admin/ai/knowledge/reindex"
-    );
-  });
-  root.querySelector("[data-ai-reindex-stale]").addEventListener("click", async () => {
-    await runReindex(
-      root.querySelector("[data-ai-reindex-stale]"),
-      "/api/v1/admin/ai/knowledge/reindex?mode=stale"
-    );
-  });
-  root.querySelector("[data-ai-queue-stale]").addEventListener("click", async () => {
-    const button = root.querySelector("[data-ai-queue-stale]");
-    button.disabled = true;
-    setAdminMessage("RAG-Reindex-Job wird eingeplant...");
-    try {
-      const job = await api("/api/v1/admin/ai/knowledge/reindex/jobs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "stale" })
-      });
-      setAdminMessage("Job #" + job.id + " wurde eingeplant.");
-      await loadJobs();
-    } catch (error) {
-      setAdminMessage(error.message, true);
-    } finally {
-      button.disabled = false;
-    }
-  });
-  root.querySelector("[data-ai-knowledge-upload]").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    try {
-      await api("/api/v1/admin/ai/knowledge/upload", { method: "POST", body: formData });
-      event.currentTarget.reset();
-      setAdminMessage("Dokument hochgeladen und indexiert.");
-      await Promise.all([loadKnowledge(), loadKnowledgeStatus(), loadJobs()]);
-    } catch (error) {
-      setAdminMessage(error.message, true);
-    }
-  });
-  root.addEventListener("click", async (event) => {
-    const reindexButton = event.target.closest("[data-reindex-knowledge]");
-    if (reindexButton) {
-      reindexButton.disabled = true;
-      setAdminMessage("Dokument wird neu indexiert...");
-      try {
-        const documentItem = await api(
-          "/api/v1/admin/ai/knowledge/" + reindexButton.dataset.reindexKnowledge + "/reindex",
-          { method: "POST" }
-        );
-        setAdminMessage(
-          "Dokument " + documentItem.id + " ist " + documentItem.status + "."
-        );
-        await Promise.all([loadKnowledge(), loadKnowledgeStatus(), loadJobs()]);
-      } catch (error) {
-        setAdminMessage(error.message, true);
-      } finally {
-        reindexButton.disabled = false;
-      }
-      return;
-    }
-
-    const button = event.target.closest("[data-delete-knowledge]");
-    if (!button) return;
-    try {
-      await api("/api/v1/admin/ai/knowledge/" + button.dataset.deleteKnowledge, { method: "DELETE" });
-      setAdminMessage("Dokument geloescht.");
-      await Promise.all([loadKnowledge(), loadKnowledgeStatus(), loadJobs()]);
-    } catch (error) {
-      setAdminMessage(error.message, true);
-    }
-  });
-
-  refreshAll().catch((error) => {
-    setAdminMessage("AI Admin konnte nicht vollstaendig geladen werden: " + error.message, true);
-  });
-})();
-</script>
 {% endblock %}

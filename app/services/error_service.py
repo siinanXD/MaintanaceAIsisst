@@ -5,13 +5,16 @@ and do nothing more than validate input, call the service, and return a response
 """
 
 import logging
+from datetime import UTC, datetime
 
 from sqlalchemy import or_
+from sqlalchemy.orm import joinedload
 
 from app.extensions import db
 from app.models import Department, ErrorEntry, Machine, Role
 from app.services.ai_service import AIServiceError, MockAIProvider, get_ai_provider
 from app.services.knowledge_service import mark_error_entry_knowledge_stale
+from app.services.operations_tracking_service import record_event
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +32,17 @@ def _resolve_machine_id(name):
     return machine.id if machine else None
 
 
+def _non_negative_int(value, field_name):
+    """Parse optional non-negative integer tracking fields."""
+    try:
+        parsed = int(value or 0)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be a number") from exc
+    if parsed < 0:
+        raise ValueError(f"{field_name} must not be negative")
+    return parsed
+
+
 # ---------------------------------------------------------------------------
 # Visibility / authorization
 # ---------------------------------------------------------------------------
@@ -39,7 +53,10 @@ def visible_errors_query(user):
 
     MASTER_ADMIN sees all entries. Other roles see only their department.
     """
-    query = ErrorEntry.query
+    query = ErrorEntry.query.options(
+        joinedload(ErrorEntry.department),
+        joinedload(ErrorEntry.machine_rel),
+    )
     if user.role != Role.MASTER_ADMIN:
         query = query.filter(ErrorEntry.department_id == user.department_id)
     return query
@@ -91,18 +108,54 @@ def create_error_entry(data, user):
     except ValueError as exc:
         return None, {"error": str(exc)}, 400
 
-    entry = ErrorEntry(
-        machine=data["machine"],
-        machine_id=_resolve_machine_id(data["machine"]),
-        error_code=data["error_code"].upper(),
-        title=data["title"],
-        description=data.get("description", ""),
-        possible_causes=data.get("possible_causes", ""),
-        solution=data.get("solution", ""),
-        department=department,
-    )
+    try:
+        machine_id = (
+            int(data["machine_id"])
+            if data.get("machine_id")
+            else _resolve_machine_id(data["machine"])
+        )
+        entry = ErrorEntry(
+            machine=data["machine"],
+            machine_id=machine_id,
+            error_code=data["error_code"].upper(),
+            title=data["title"],
+            description=data.get("description", ""),
+            possible_causes=data.get("possible_causes", ""),
+            solution=data.get("solution", ""),
+            department=department,
+            severity=str(data.get("severity") or "medium").strip(),
+            cause_category=str(data.get("cause_category") or "").strip(),
+            impact=str(data.get("impact") or "").strip(),
+            downtime_minutes=_non_negative_int(
+                data.get("downtime_minutes"),
+                "downtime_minutes",
+            ),
+            production_loss_minutes=_non_negative_int(
+                data.get("production_loss_minutes"),
+                "production_loss_minutes",
+            ),
+            repeat_count=_non_negative_int(data.get("repeat_count"), "repeat_count"),
+            last_seen_at=datetime.now(UTC),
+        )
+    except ValueError as exc:
+        return None, {"error": str(exc)}, 400
     db.session.add(entry)
     db.session.flush()
+    record_event(
+        "error.created",
+        "errors",
+        entity_type="error_entry",
+        entity_id=entry.id,
+        user=user,
+        department=entry.department,
+        machine_id=entry.machine_id,
+        metadata={
+            "error_code": entry.error_code,
+            "severity": entry.severity,
+            "downtime_minutes": entry.downtime_minutes,
+            "cause_category": entry.cause_category,
+        },
+    )
     mark_error_entry_knowledge_stale(entry)
     db.session.commit()
     return entry, None, 201
@@ -129,11 +182,38 @@ def update_error_entry(entry, data, user):
     for field in ["machine", "title", "description", "possible_causes", "solution"]:
         if field in data:
             setattr(entry, field, data[field])
-    if "machine" in data:
-        entry.machine_id = _resolve_machine_id(data["machine"])
+    try:
+        if "machine_id" in data:
+            entry.machine_id = int(data["machine_id"]) if data.get("machine_id") else None
+        elif "machine" in data:
+            entry.machine_id = _resolve_machine_id(data["machine"])
+        for field in ["severity", "cause_category", "impact"]:
+            if field in data:
+                setattr(entry, field, str(data.get(field) or "").strip())
+        for field in ["downtime_minutes", "production_loss_minutes", "repeat_count"]:
+            if field in data:
+                setattr(entry, field, _non_negative_int(data[field], field))
+    except ValueError as exc:
+        return None, {"error": str(exc)}, 400
     if "error_code" in data:
         entry.error_code = data["error_code"].upper()
+    entry.last_seen_at = datetime.now(UTC)
 
+    record_event(
+        "error.updated",
+        "errors",
+        entity_type="error_entry",
+        entity_id=entry.id,
+        user=user,
+        department=entry.department,
+        machine_id=entry.machine_id,
+        metadata={
+            "error_code": entry.error_code,
+            "severity": entry.severity,
+            "downtime_minutes": entry.downtime_minutes,
+            "cause_category": entry.cause_category,
+        },
+    )
     mark_error_entry_knowledge_stale(entry)
     db.session.commit()
     return entry, None, 200

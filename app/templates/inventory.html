@@ -33,7 +33,7 @@
           <input class="input input-bordered" id="material-name" name="name" required>
         </div>
         <div class="field">
-          <label for="unit-cost">Kosten pro Stueck</label>
+          <label for="unit-cost">Kosten pro Stück</label>
           <input class="input input-bordered" id="unit-cost" name="unit_cost" type="number" min="0" step="0.01" required>
         </div>
         <div class="field">
@@ -77,14 +77,15 @@
       </form>
       <div class="table-wrap">
         <table class="table data-table">
+          <caption>Ersatzteil-Prognose nach Material, Maschine, Risiko und Empfehlung</caption>
           <thead>
             <tr>
-              <th>Material</th>
-              <th>Maschine</th>
-              <th>Anzahl</th>
-              <th>Risiko</th>
-              <th>Task</th>
-              <th>Empfehlung</th>
+              <th scope="col">Material</th>
+              <th scope="col">Maschine</th>
+              <th scope="col">Anzahl</th>
+              <th scope="col">Risiko</th>
+              <th scope="col">Task</th>
+              <th scope="col">Empfehlung</th>
             </tr>
           </thead>
           <tbody data-inventory-forecast-list>
@@ -114,15 +115,16 @@
       </div>
       <div class="table-wrap bounded-table-wrap">
         <table class="table data-table">
+          <caption>Lagerbestand mit Mengen, Kosten, Hersteller und Aktionen</caption>
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Kosten</th>
-              <th>Anzahl</th>
-              <th>Maschine</th>
-              <th>Hersteller</th>
-              <th>Gesamtwert</th>
-              <th>Aktion</th>
+              <th scope="col">Name</th>
+              <th scope="col">Kosten</th>
+              <th scope="col">Anzahl</th>
+              <th scope="col">Maschine</th>
+              <th scope="col">Hersteller</th>
+              <th scope="col">Gesamtwert</th>
+              <th scope="col">Aktion</th>
             </tr>
           </thead>
           <tbody data-inventory-list></tbody>

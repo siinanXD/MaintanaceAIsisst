@@ -13,9 +13,15 @@ from app.machines.maintenance_services import (
     visible_maintenance_plans_query,
 )
 from app.machines.services import answer_machine_assistant, build_machine_history
-from app.models import InventoryMaterial, Machine, MaintenancePlan, ShiftPlanEntry
-from app.responses import error_response, service_error_response, success_response
+from app.models import InventoryMaterial, Machine, MaintenancePlan, ShiftPlanEntry, Site
+from app.responses import (
+    error_response,
+    optional_paginated_response,
+    service_error_response,
+    success_response,
+)
 from app.security import current_user, dashboard_permission_required
+from app.services.operations_tracking_service import record_event
 
 machines_bp = Blueprint("machines", __name__)
 
@@ -31,12 +37,31 @@ def parse_required_employees(value):
     return amount
 
 
+def site_for_payload(data):
+    """Resolve an optional site reference from request data."""
+    if not data.get("site_id"):
+        return None
+    return db.session.get(Site, int(data["site_id"]))
+
+
 @machines_bp.get("")
 @dashboard_permission_required("machines", "view")
 def list_machines():
-    """Return all machines for admin views and planning forms."""
-    machines = Machine.query.order_by(Machine.name.asc()).all()
-    return jsonify([machine.to_dict() for machine in machines])
+    """Return machines, optionally paginated for large plant catalogs."""
+    query = Machine.query.order_by(Machine.name.asc(), Machine.id.asc())
+    site_id = request.args.get("site_id", type=int)
+    if site_id is not None:
+        query = query.filter(Machine.site_id == site_id)
+    machine_id = request.args.get("machine_id", type=int)
+    if machine_id is not None:
+        query = query.filter(Machine.id == machine_id)
+    return optional_paginated_response(
+        query,
+        lambda machine: machine.to_dict(),
+        message="Machines loaded",
+        default_limit=100,
+        max_limit=200,
+    )
 
 
 @machines_bp.post("")
@@ -53,10 +78,23 @@ def create_machine():
             name=data["name"].strip(),
             produced_item=data.get("produced_item", "").strip(),
             required_employees=parse_required_employees(data.get("required_employees")),
+            site=site_for_payload(data),
+            criticality=str(data.get("criticality") or "normal").strip(),
+            status=str(data.get("status") or "running").strip(),
         )
     except ValueError as exc:
         return error_response(str(exc), 400)
     db.session.add(machine)
+    db.session.flush()
+    record_event(
+        "machine.created",
+        "machines",
+        entity_type="machine",
+        entity_id=machine.id,
+        user=current_user(),
+        machine=machine,
+        metadata={"criticality": machine.criticality, "status": machine.status},
+    )
     db.session.commit()
     return jsonify(machine.to_dict()), 201
 
@@ -93,9 +131,19 @@ def add_maintenance_plan():
 @dashboard_permission_required("machines", "write")
 def generate_due_maintenance():
     """Generate open tasks for due recurring maintenance plans."""
+    user = current_user()
     result, error, status = generate_due_maintenance_tasks(current_user())
     if error:
         return service_error_response(error, status)
+    record_event(
+        "maintenance.tasks_generated",
+        "tasks",
+        entity_type="maintenance_plan",
+        user=user,
+        source="machines",
+        metadata={"generated_count": result.get("generated_count", 0)},
+        commit=True,
+    )
     return success_response(result, status, "Maintenance tasks generated")
 
 
@@ -158,13 +206,29 @@ def machine_history(machine_id):
 def machine_assistant(machine_id):
     """Answer a machine-specific maintenance question."""
     machine = db.get_or_404(Machine, machine_id)
+    user = current_user()
     result, error, status = answer_machine_assistant(
         machine,
-        current_user(),
+        user,
         request.get_json(silent=True) or {},
     )
     if error:
         return service_error_response(error, status)
+    record_event(
+        "ai.machine_assistant",
+        "ai",
+        entity_type="machine",
+        entity_id=machine.id,
+        user=user,
+        machine=machine,
+        source="ai",
+        metadata={
+            "status": (result.get("diagnostics") or {}).get("status")
+            if isinstance(result, dict)
+            else "",
+        },
+        commit=True,
+    )
     return success_response(result, status, "Machine assistant response generated")
 
 
@@ -183,6 +247,21 @@ def update_machine(machine_id):
             machine.required_employees = parse_required_employees(data["required_employees"])
         except ValueError as exc:
             return error_response(str(exc), 400)
+    if "site_id" in data:
+        machine.site = site_for_payload(data)
+    if "criticality" in data:
+        machine.criticality = str(data.get("criticality") or "normal").strip()
+    if "status" in data:
+        machine.status = str(data.get("status") or "running").strip()
+    record_event(
+        "machine.updated",
+        "machines",
+        entity_type="machine",
+        entity_id=machine.id,
+        user=current_user(),
+        machine=machine,
+        metadata={"criticality": machine.criticality, "status": machine.status},
+    )
     db.session.commit()
     return jsonify(machine.to_dict())
 
@@ -192,6 +271,15 @@ def update_machine(machine_id):
 def delete_machine(machine_id):
     """Delete a machine and detach related inventory and plan entries."""
     machine = db.get_or_404(Machine, machine_id)
+    record_event(
+        "machine.deleted",
+        "machines",
+        entity_type="machine",
+        entity_id=machine.id,
+        user=current_user(),
+        machine=machine,
+        metadata={"name": machine.name, "criticality": machine.criticality},
+    )
     InventoryMaterial.query.filter_by(machine_id=machine.id).update({"machine_id": None})
     ShiftPlanEntry.query.filter_by(machine_id=machine.id).update({"machine_id": None})
     db.session.delete(machine)

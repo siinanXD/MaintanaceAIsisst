@@ -22,6 +22,11 @@ class ChatMessage(db.Model):
     user = db.relationship("User", foreign_keys=[user_id])
     audit_event = db.relationship("AIAuditEvent", foreign_keys=[audit_event_id])
 
+    __table_args__ = (
+        db.Index("ix_chat_message_user_created", "user_id", "created_at"),
+        db.Index("ix_chat_message_created", "created_at"),
+    )
+
     def diagnostics(self):
         """Return stored diagnostics as a safe dictionary."""
         try:
@@ -80,6 +85,55 @@ class AIFeedback(db.Model):
         }
 
 
+class AssistantTrainingEntry(db.Model):
+    """Admin-maintained assistant knowledge used as manual RAG training data."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(220), nullable=False)
+    question = db.Column(db.Text, nullable=False)
+    answer = db.Column(db.Text, nullable=False)
+    keywords = db.Column(db.Text, nullable=False, default="")
+    category = db.Column(db.String(80), nullable=False, default="wartung")
+    department = db.Column(db.String(120), nullable=False, default="")
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    priority = db.Column(db.Integer, nullable=False, default=50)
+    created_by = db.Column(db.Integer, db.ForeignKey("user.id"))
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+    creator = db.relationship("User", foreign_keys=[created_by])
+
+    __table_args__ = (
+        db.Index(
+            "ix_assistant_training_active_department",
+            "is_active",
+            "department",
+        ),
+        db.Index(
+            "ix_assistant_training_category_priority",
+            "category",
+            "priority",
+        ),
+    )
+
+    def to_dict(self):
+        """Return a JSON-serializable training entry."""
+        return {
+            "id": self.id,
+            "title": self.title,
+            "question": self.question,
+            "answer": self.answer,
+            "keywords": self.keywords,
+            "category": self.category,
+            "department": self.department,
+            "is_active": self.is_active,
+            "priority": self.priority,
+            "created_by": self.creator.username if self.creator else None,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+        }
+
+
 class AIAuditEvent(db.Model):
     """Metadata-only audit record for one AI workflow execution."""
 
@@ -105,6 +159,12 @@ class AIAuditEvent(db.Model):
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
 
     user = db.relationship("User")
+
+    __table_args__ = (
+        db.Index("ix_ai_audit_event_created", "created_at"),
+        db.Index("ix_ai_audit_event_workflow_created", "workflow", "created_at"),
+        db.Index("ix_ai_audit_event_status_created", "status", "created_at"),
+    )
 
     def to_dict(self):
         """Return a JSON-serializable audit event without prompts or answers."""
@@ -158,6 +218,12 @@ class KnowledgeDocument(db.Model):
         back_populates="document",
         cascade="all, delete-orphan",
         order_by="KnowledgeChunk.chunk_index.asc()",
+    )
+
+    __table_args__ = (
+        db.Index("ix_knowledge_document_source_status", "source_type", "status"),
+        db.Index("ix_knowledge_document_department_status", "department", "status"),
+        db.Index("ix_knowledge_document_updated", "updated_at"),
     )
 
     def to_dict(self, include_chunks=False):
@@ -239,6 +305,17 @@ class BackgroundJob(db.Model):
     updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
 
     creator = db.relationship("User", foreign_keys=[created_by])
+
+    __table_args__ = (
+        db.Index(
+            "ix_background_job_claim",
+            "status",
+            "job_type",
+            "created_at",
+            "id",
+        ),
+        db.Index("ix_background_job_locked_at", "locked_at"),
+    )
 
     def payload(self):
         """Return the stored job payload as a dictionary."""
