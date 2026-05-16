@@ -161,6 +161,50 @@ def test_error_assistant_finds_matching_entry(client, make_user, make_error_entr
     assert any("schmieren" in f or "austauschen" in f for f in data["fixes"])
 
 
+def test_error_assistant_returns_rag_sources_and_task_draft(
+    client,
+    make_user,
+    make_error_entry,
+    auth_headers,
+):
+    """A fault query should return RAG sources and a read-only task draft."""
+    admin = make_user(
+        username="ea_rag_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    user = make_user(
+        username="ea_rag_user",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    make_error_entry(
+        machine="Anlage RAG Fehler",
+        error_code="ER900",
+        title="Hydraulikfilter Druckverlust",
+        department_name="Instandhaltung",
+        possible_causes="Hydraulikfilter verschmutzt",
+        solution="Filter pruefen und Druck messen",
+    )
+    client.post(
+        "/api/v1/admin/ai/knowledge/reindex",
+        headers=auth_headers(admin["username"]),
+    )
+
+    response = client.post(
+        "/api/v1/ai/error-assistant",
+        headers=auth_headers(user["username"]),
+        json={"query": "Anlage RAG Fehler meldet Hydraulikfilter Druckverlust"},
+    )
+
+    data = response.get_json()["data"]
+    assert response.status_code == 200
+    assert data["diagnostics"]["rag_source_count"] >= 1
+    assert any(source["type"] == "knowledge" for source in data["sources"])
+    assert data["action_preview"]["type"] == "task_draft"
+    assert data["action_preview"]["payload"]["status"] == "open"
+
+
 def test_error_assistant_extracts_error_code(client, make_user, make_error_entry, auth_headers):
     """Error codes like F007 must be extracted and reflected in diagnostics."""
     user = make_user(

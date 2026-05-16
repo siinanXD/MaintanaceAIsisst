@@ -152,6 +152,59 @@ def test_maintenance_plan_update_delete_and_inactive_generation(
     assert delete_response.status_code == 204
 
 
+def test_preventive_maintenance_recommendations_use_visible_history(
+    client,
+    make_user,
+    make_machine,
+    make_task,
+    make_error_entry,
+    auth_headers,
+):
+    """Verify preventive recommendations are built from visible machine history."""
+    admin = make_user(
+        username="preventive_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    user = make_user(
+        username="preventive_user",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    make_machine(name="Anlage Preventive")
+    make_task(
+        "Anlage Preventive Hydraulik pruefen",
+        creator_username=user["username"],
+        department_name="Instandhaltung",
+        description="Anlage Preventive zeigt wieder Druckverlust.",
+    )
+    make_error_entry(
+        "Anlage Preventive",
+        "PV900",
+        "Druckverlust",
+        department_name="Instandhaltung",
+        possible_causes="Hydraulikfilter zugesetzt",
+        solution="Filter pruefen",
+    )
+    client.post(
+        "/api/v1/admin/ai/knowledge/reindex",
+        headers=auth_headers(admin["username"]),
+    )
+
+    response = client.get(
+        "/api/v1/machines/maintenance-recommendations",
+        headers=auth_headers(user["username"]),
+    )
+
+    payload = response.get_json()["data"]
+    assert response.status_code == 200
+    assert payload["count"] == 1
+    assert payload["items"][0]["machine"]["name"] == "Anlage Preventive"
+    assert payload["items"][0]["source_counts"]["tasks"] == 1
+    assert payload["items"][0]["source_counts"]["errors"] == 1
+    assert payload["items"][0]["source_counts"]["rag_sources"] >= 1
+
+
 def test_maintenance_task_generation_requires_task_write_permission(
     client,
     make_user,
@@ -733,6 +786,8 @@ def test_machine_page_contains_history_ui(client):
     assert "data-machine-history-panel" in html
     assert "data-machine-history-list" in html
     assert "data-machine-assistant-form" in html
+    assert "data-machine-assistant-sources" in html
+    assert "data-maintenance-recommendations-list" in html
     assert "Anlagenakte" in html
 
 
@@ -775,6 +830,59 @@ def test_machine_assistant_uses_local_context_and_requires_question(
     assert valid_response.status_code == 200
     assert payload["diagnostics"]["status"] == "local_answer"
     assert payload["context"]["source_counts"]["tasks"] == 1
+
+
+def test_machine_assistant_uses_rag_sources_after_reindex(
+    client,
+    make_user,
+    make_machine,
+    make_task,
+    make_error_entry,
+    auth_headers,
+):
+    """Verify the machine assistant adds indexed RAG sources to its context."""
+    admin = make_user(
+        username="machine_assistant_rag_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    user = make_user(
+        username="machine_assistant_rag_user",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    machine_id = make_machine(name="Anlage RAG")
+    make_task(
+        "Hydraulikfilter Anlage RAG pruefen",
+        creator_username=user["username"],
+        department_name="Instandhaltung",
+        priority=Priority.URGENT,
+        description="Anlage RAG zeigt Druckverlust am Hydraulikfilter.",
+    )
+    make_error_entry(
+        "Anlage RAG",
+        "RAG900",
+        "Hydraulikfilter Druckverlust",
+        department_name="Instandhaltung",
+        possible_causes="Hydraulikfilter zugesetzt oder Druckversorgung instabil",
+        solution="Filter pruefen, Druck messen und Befund dokumentieren",
+    )
+    client.post(
+        "/api/v1/admin/ai/knowledge/reindex",
+        headers=auth_headers(admin["username"]),
+    )
+
+    response = client.post(
+        f"/api/v1/machines/{machine_id}/assistant",
+        headers=auth_headers(user["username"]),
+        json={"question": "Welche bekannten Hydraulikfilter-Probleme gibt es?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["context"]["rag_source_count"] >= 1
+    assert any(source["type"] == "knowledge" for source in payload["sources"])
+    assert "RAG-Kontext" in payload["answer"]
 
 
 def test_machine_assistant_excludes_unpermitted_sources(
@@ -834,6 +942,8 @@ def test_machine_assistant_excludes_unpermitted_sources(
         "total": 0,
     }
     assert payload["context"]["forecast_items"] == 0
+    assert payload["context"]["rag_source_count"] == 0
+    assert payload["sources"] == []
 
 
 def test_machine_assistant_falls_back_when_ai_provider_fails(

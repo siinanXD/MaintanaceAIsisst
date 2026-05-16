@@ -1,4 +1,19 @@
 services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: maintenance
+      POSTGRES_USER: maintenance
+      POSTGRES_PASSWORD: maintenance
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maintenance -d maintenance"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   app:
     build:
       context: .
@@ -8,16 +23,26 @@ services:
     environment:
       FLASK_ENV: production
       FLASK_DEBUG: "0"
-      DATABASE_URL: sqlite:////app/data/maintenance.db
+      AUTO_CREATE_DATABASE: "true"
+      DATABASE_URL: postgresql+psycopg://maintenance:maintenance@db:5432/maintenance
       UPLOAD_FOLDER: /app/data/uploads
       DOCUMENTS_FOLDER: /app/documents
+      MANUALS_FOLDER: /app/manuals
+      KNOWLEDGE_FOLDER: /app/knowledge
       BACKUP_FOLDER: /app/backups
       LOG_DIR: /app/logs
+      RAG_VECTOR_STORE: local
+      EMBEDDING_PROVIDER: hashing
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       - "5050:5050"
     volumes:
       - maintenance_data:/app/data
       - maintenance_documents:/app/documents
+      - maintenance_manuals:/app/manuals
+      - maintenance_knowledge:/app/knowledge
       - maintenance_logs:/app/logs
       - maintenance_backups:/app/backups
     restart: unless-stopped
@@ -26,14 +51,51 @@ services:
         - CMD
         - python
         - -c
-        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5050/health', timeout=3).read()"
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5050/health/ready', timeout=3).read()"
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 20s
+      start_period: 30s
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      FLASK_ENV: production
+      FLASK_DEBUG: "0"
+      AUTO_CREATE_DATABASE: "true"
+      DATABASE_URL: postgresql+psycopg://maintenance:maintenance@db:5432/maintenance
+      UPLOAD_FOLDER: /app/data/uploads
+      DOCUMENTS_FOLDER: /app/documents
+      MANUALS_FOLDER: /app/manuals
+      KNOWLEDGE_FOLDER: /app/knowledge
+      BACKUP_FOLDER: /app/backups
+      LOG_DIR: /app/logs
+      RAG_VECTOR_STORE: local
+      EMBEDDING_PROVIDER: hashing
+      WORKER_RAG_REINDEX_ENABLED: "true"
+      WORKER_POLL_SECONDS: "60"
+    command: ["python", "-m", "app.worker"]
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - maintenance_data:/app/data
+      - maintenance_documents:/app/documents
+      - maintenance_manuals:/app/manuals
+      - maintenance_knowledge:/app/knowledge
+      - maintenance_logs:/app/logs
+      - maintenance_backups:/app/backups
+    restart: unless-stopped
 
 volumes:
+  postgres_data:
   maintenance_data:
   maintenance_documents:
+  maintenance_manuals:
+  maintenance_knowledge:
   maintenance_logs:
   maintenance_backups:

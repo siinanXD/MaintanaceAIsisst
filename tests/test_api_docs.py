@@ -18,12 +18,17 @@ def test_openapi_json_documents_core_endpoints(client):
     assert "/api/v1/errors/search" in paths
     assert "/api/v1/errors/similar" in paths
     assert "/api/v1/ai/daily-briefing" in paths
+    assert "/api/v1/ai/order-plan" in paths
     assert "/api/v1/ai/chat/history" in paths
     assert "/api/v1/admin/ai/chats" in paths
     assert "/api/v1/admin/ai/events" in paths
+    assert "/api/v1/admin/jobs" in paths
     assert "/api/v1/admin/ai/knowledge/upload" in paths
     assert "/api/v1/admin/ai/knowledge" in paths
+    assert "/api/v1/admin/ai/knowledge/status" in paths
+    assert "/api/v1/admin/ai/knowledge/reindex/jobs" in paths
     assert "/api/v1/admin/ai/knowledge/reindex" in paths
+    assert "/api/v1/admin/ai/knowledge/{id}/reindex" in paths
     assert "/api/v1/admin/ai/knowledge/{id}" in paths
     assert "/api/v1/machines/{machine_id}/assistant" in paths
     assert "/api/v1/inventory/forecast" in paths

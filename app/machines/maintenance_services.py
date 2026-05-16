@@ -5,9 +5,16 @@ from datetime import UTC, date, datetime, timedelta
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
-from app.models import Machine, MaintenancePlan, Priority, Role, Task, TaskStatus
+from app.models import ErrorEntry, Machine, MaintenancePlan, Priority, Role, Task, TaskStatus
 from app.security import has_dashboard_permission
-from app.services.task_service import get_department_for_payload, parse_date, parse_enum
+from app.services.error_service import visible_errors_query
+from app.services.retrieval_service import knowledge_context_for_chat
+from app.services.task_service import (
+    get_department_for_payload,
+    parse_date,
+    parse_enum,
+    visible_tasks_query,
+)
 
 
 def visible_maintenance_plans_query(user):
@@ -209,3 +216,141 @@ def generate_due_maintenance_tasks(user, generated_until=None):
         return None, {"error": "Database error while generating maintenance tasks"}, 500
 
     return {"generated_count": len(generated), "items": generated}, None, 200
+
+
+def recommend_preventive_maintenance(user, limit=5):
+    """Return read-only preventive maintenance recommendations from visible history."""
+    if not has_dashboard_permission(user, "machines", "view"):
+        return None, {"error": "machines view permission is required"}, 403
+    try:
+        limit_value = min(max(1, int(limit)), 20)
+    except (TypeError, ValueError):
+        return None, {"error": "limit must be an integer between 1 and 20"}, 400
+
+    machine_signals = _machine_signal_map(user)
+    recommendations = [
+        _preventive_recommendation(machine, signals, user)
+        for machine, signals in machine_signals.items()
+        if _signal_score(signals) >= 2
+    ]
+    recommendations.sort(
+        key=lambda item: (item["score"], item["source_counts"]["errors"]),
+        reverse=True,
+    )
+    return {
+        "items": recommendations[:limit_value],
+        "count": min(len(recommendations), limit_value),
+        "total_candidates": len(recommendations),
+    }, None, 200
+
+
+def _machine_signal_map(user):
+    """Return visible recurring maintenance signals grouped by machine."""
+    signals = {}
+    machines = Machine.query.order_by(Machine.name.asc()).all()
+    for machine in machines:
+        signals[machine] = {"tasks": [], "errors": []}
+
+    if has_dashboard_permission(user, "tasks", "view"):
+        tasks = visible_tasks_query(user).order_by(Task.updated_at.desc()).limit(200).all()
+        for task in tasks:
+            machine = _matching_machine(task.title, task.description, machines=machines)
+            if machine:
+                signals.setdefault(machine, {"tasks": [], "errors": []})["tasks"].append(task)
+
+    if has_dashboard_permission(user, "errors", "view"):
+        errors = visible_errors_query(user).order_by(ErrorEntry.created_at.desc()).limit(200).all()
+        for entry in errors:
+            machine = _matching_machine(entry.machine, entry.title, machines=machines)
+            if machine:
+                signals.setdefault(machine, {"tasks": [], "errors": []})["errors"].append(entry)
+    return signals
+
+
+def _matching_machine(*values, machines):
+    """Return the first machine referenced by text values."""
+    text = " ".join(str(value or "").lower() for value in values)
+    return next((machine for machine in machines if machine.name.lower() in text), None)
+
+
+def _signal_score(signals):
+    """Return a simple recurrence score for task and error signals."""
+    return len(signals["tasks"]) + (len(signals["errors"]) * 2)
+
+
+def _preventive_recommendation(machine, signals, user):
+    """Return one preventive maintenance recommendation for a machine."""
+    score = min(100, _signal_score(signals) * 20)
+    query = f"{machine.name} Wartung Stoerung Fehler wiederkehrend"
+    _context, rag_sources = knowledge_context_for_chat(query, user, limit=3)
+    return {
+        "machine": machine.to_dict(),
+        "score": score,
+        "risk_level": _preventive_risk_level(score),
+        "reason": _preventive_reason(signals),
+        "recommended_action": _preventive_action(machine, signals),
+        "source_counts": {
+            "tasks": len(signals["tasks"]),
+            "errors": len(signals["errors"]),
+            "rag_sources": len(rag_sources),
+        },
+        "evidence": _preventive_evidence(signals),
+        "sources": rag_sources,
+    }
+
+
+def _preventive_risk_level(score):
+    """Return a risk level for a preventive recommendation score."""
+    if score >= 80:
+        return "critical"
+    if score >= 60:
+        return "high"
+    if score >= 40:
+        return "medium"
+    return "low"
+
+
+def _preventive_reason(signals):
+    """Return a concise German reason for recurring signals."""
+    return (
+        f"{len(signals['tasks'])} sichtbare Tasks und "
+        f"{len(signals['errors'])} Fehler deuten auf wiederkehrende Themen hin."
+    )
+
+
+def _preventive_action(machine, signals):
+    """Return a practical next action for preventive maintenance."""
+    if signals["errors"]:
+        return (
+            f"Wartungsplan fuer {machine.name} pruefen: Fehlerursachen buendeln, "
+            "Inspektionsintervall festlegen und Ersatzteile abgleichen."
+        )
+    return (
+        f"Tasks zu {machine.name} auswerten und bei wiederkehrenden Symptomen "
+        "einen praeventiven Wartungsplan anlegen."
+    )
+
+
+def _preventive_evidence(signals):
+    """Return compact evidence entries for a recommendation."""
+    task_items = [
+        {
+            "type": "task",
+            "id": task.id,
+            "title": task.title,
+            "status": task.status.value,
+            "date": task.updated_at.isoformat(),
+        }
+        for task in signals["tasks"][:3]
+    ]
+    error_items = [
+        {
+            "type": "error",
+            "id": entry.id,
+            "title": f"{entry.error_code} - {entry.title}",
+            "machine": entry.machine,
+            "date": entry.created_at.isoformat(),
+        }
+        for entry in signals["errors"][:3]
+    ]
+    return task_items + error_items

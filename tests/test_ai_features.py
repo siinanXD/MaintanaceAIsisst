@@ -6,7 +6,15 @@ from io import BytesIO
 import pytest
 
 from app.extensions import db
-from app.models import AIAuditEvent, GeneratedDocument, KnowledgeDocument, Priority, Role, Task
+from app.models import (
+    AIAuditEvent,
+    EmployeeMachineQualification,
+    GeneratedDocument,
+    KnowledgeDocument,
+    Priority,
+    Role,
+    Task,
+)
 from app.services.ai_audit_service import create_ai_audit_event
 from app.services.ai_routing import estimate_cost_usd, workflow_profile
 from app.services.ai_service import AIServiceError
@@ -656,6 +664,374 @@ def test_knowledge_reindex_registers_generated_documents(
     assert response.get_json()["data"]["documents"] >= 1
 
 
+def test_knowledge_reindex_reports_outdated_database_schema(
+    client,
+    make_user,
+    auth_headers,
+    monkeypatch,
+):
+    """Verify reindex returns actionable diagnostics when migrations are missing."""
+    admin = make_user(
+        username="knowledge_schema_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    schema_status = {
+        "ok": False,
+        "missing_tables": [],
+        "missing_columns": {"generated_document": ["status"]},
+        "migration_command": "flask --app run:app db upgrade",
+    }
+    monkeypatch.setattr(
+        "app.admin.routes.database_schema_status",
+        lambda: schema_status,
+    )
+
+    response = client.post(
+        "/api/v1/admin/ai/knowledge/reindex",
+        headers=auth_headers(admin["username"]),
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 503
+    assert payload["error"] == "database_schema_outdated"
+    assert payload["data"]["missing_columns"]["generated_document"] == ["status"]
+    assert "db upgrade" in payload["message"]
+
+
+def test_knowledge_reindex_registers_structured_rag_sources(
+    client,
+    make_user,
+    make_task,
+    make_error_entry,
+    make_machine,
+    make_material,
+    auth_headers,
+):
+    """Verify reindex ingests structured maintenance records for RAG."""
+    admin = make_user(
+        username="knowledge_structured_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    user = make_user(
+        username="knowledge_structured_user",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+    blocked = make_user(
+        username="knowledge_structured_blocked",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    make_task(
+        "Hydraulikfilter X900 pruefen",
+        creator_username=user["username"],
+        department_name="Produktion",
+        description="Hydraulikfilter X900 taeglich kontrollieren.",
+    )
+    make_error_entry(
+        "Anlage X900",
+        "H900",
+        "Hydraulikfilter Druckverlust",
+        department_name="Produktion",
+        possible_causes="Hydraulikfilter X900 verschmutzt",
+        solution="Filter pruefen und bei Bedarf ersetzen",
+    )
+    machine_id = make_machine(name="Montage Linie", produced_item="Rahmen")
+    make_material("Rahmen Rohling", 12.5, 8, machine_id=machine_id)
+
+    reindex_response = client.post(
+        "/api/v1/admin/ai/knowledge/reindex",
+        headers=auth_headers(admin["username"]),
+    )
+    chat_response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Was wissen wir ueber Hydraulikfilter X900?"},
+    )
+    blocked_response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(blocked["username"]),
+        json={"message": "Was wissen wir ueber Hydraulikfilter X900?"},
+    )
+
+    sources = chat_response.get_json()["sources"]
+    blocked_sources = blocked_response.get_json()["sources"]
+    assert reindex_response.status_code == 200
+    assert reindex_response.get_json()["data"]["sources"]["task"] == 1
+    assert reindex_response.get_json()["data"]["sources"]["error_entry"] == 1
+    assert reindex_response.get_json()["data"]["sources"]["machine"] == 1
+    assert reindex_response.get_json()["data"]["sources"]["inventory_material"] == 1
+    assert any(source["type"] == "knowledge" for source in sources)
+    assert any("Hydraulikfilter" in source["title"] for source in sources)
+    assert not any(source["type"] == "knowledge" for source in blocked_sources)
+
+
+def test_knowledge_status_reports_rag_index_diagnostics(
+    client,
+    make_user,
+    make_task,
+    auth_headers,
+):
+    """Verify admins can inspect RAG index readiness and source diagnostics."""
+    admin = make_user(
+        username="knowledge_status_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    make_task(
+        "Status RAG Hydraulik",
+        creator_username=admin["username"],
+        department_name="Instandhaltung",
+        description="Hydraulikstatus fuer RAG Diagnose.",
+    )
+    client.post(
+        "/api/v1/admin/ai/knowledge/reindex",
+        headers=auth_headers(admin["username"]),
+    )
+
+    response = client.get(
+        "/api/v1/admin/ai/knowledge/status",
+        headers=auth_headers(admin["username"]),
+    )
+
+    payload = response.get_json()["data"]
+    assert response.status_code == 200
+    assert payload["documents"] >= 1
+    assert payload["indexed"] >= 1
+    assert payload["searchable_documents"] >= 1
+    assert payload["chunks"] >= 1
+    assert "stale" in payload
+    assert "pending" in payload
+    assert payload["diagnostics"]["rag_enabled"] is True
+    assert payload["diagnostics"]["vector_store"] == "local"
+    assert any(item["source_type"] == "task" for item in payload["source_types"])
+
+
+def test_task_update_marks_rag_source_stale_and_reindex_recovers(
+    app,
+    client,
+    make_user,
+    make_task,
+    auth_headers,
+):
+    """Verify changed source data becomes stale and can be reindexed granularly."""
+    admin = make_user(
+        username="knowledge_stale_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    user = make_user(
+        username="knowledge_stale_user",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    task_id = make_task(
+        "Stale RAG Task",
+        creator_username=user["username"],
+        department_name="Instandhaltung",
+        description="Alter RAG Inhalt",
+    )
+    client.post(
+        "/api/v1/admin/ai/knowledge/reindex",
+        headers=auth_headers(admin["username"]),
+    )
+
+    update_response = client.put(
+        f"/api/v1/tasks/{task_id}",
+        headers=auth_headers(user["username"]),
+        json={"title": "Aktualisierter Stale RAG Task"},
+    )
+    stale_response = client.get(
+        "/api/v1/admin/ai/knowledge/status",
+        headers=auth_headers(admin["username"]),
+    )
+    stale_reindex_response = client.post(
+        "/api/v1/admin/ai/knowledge/reindex?mode=stale",
+        headers=auth_headers(admin["username"]),
+    )
+
+    with app.app_context():
+        db.session.expire_all()
+        document = KnowledgeDocument.query.filter_by(
+            source_type="task",
+            source_id=task_id,
+        ).one()
+        document_id = document.id
+        assert document.status == "indexed"
+        assert document.title == "Aktualisierter Stale RAG Task"
+
+    single_reindex_response = client.post(
+        f"/api/v1/admin/ai/knowledge/{document_id}/reindex",
+        headers=auth_headers(admin["username"]),
+    )
+
+    assert update_response.status_code == 200
+    assert stale_response.status_code == 200
+    assert stale_response.get_json()["data"]["stale"] >= 1
+    assert stale_reindex_response.status_code == 200
+    assert stale_reindex_response.get_json()["data"]["documents"] == 1
+    assert single_reindex_response.status_code == 200
+    assert single_reindex_response.get_json()["data"]["status"] == "indexed"
+
+
+def test_order_plan_selects_machine_staff_and_material(
+    app,
+    client,
+    make_user,
+    make_machine,
+    make_material,
+    make_employee,
+    auth_headers,
+):
+    """Verify the order planner checks machine fit, staffing and stock."""
+    admin = make_user(
+        username="order_plan_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    machine_id = make_machine(
+        name="Deckel Linie 1",
+        produced_item="Deckel",
+        required_employees=2,
+    )
+    make_material("Deckel Rohling", 1.5, 12, machine_id=machine_id)
+    first_employee_id = make_employee(
+        personnel_number="OP-001",
+        name="Anna Plan",
+        department="Produktion",
+        qualifications="Deckel Linie",
+    )
+    second_employee_id = make_employee(
+        personnel_number="OP-002",
+        name="Ben Plan",
+        department="Produktion",
+        qualifications="Deckel Linie",
+    )
+    with app.app_context():
+        db.session.add(
+            EmployeeMachineQualification(
+                employee_id=first_employee_id,
+                machine_id=machine_id,
+                level="trained",
+            )
+        )
+        db.session.add(
+            EmployeeMachineQualification(
+                employee_id=second_employee_id,
+                machine_id=machine_id,
+                level="expert",
+            )
+        )
+        db.session.commit()
+
+    response = client.post(
+        "/api/v1/ai/order-plan",
+        headers=auth_headers(admin["username"]),
+        json={
+            "product": "Deckel",
+            "quantity": 10,
+            "department": "Produktion",
+            "work_date": "2026-05-18",
+        },
+    )
+
+    payload = response.get_json()["data"]
+    recommended = payload["recommended_plan"]
+    assert response.status_code == 200
+    assert payload["type"] == "order_plan"
+    assert recommended["machine"]["id"] == machine_id
+    assert recommended["status"] == "feasible"
+    assert recommended["material_check"]["status"] == "enough"
+    assert recommended["staffing"]["status"] == "covered"
+    assert len(recommended["staffing"]["assigned_employees"]) == 2
+    assert payload["diagnostics"]["workflow"] == "order_planning"
+
+
+def test_order_plan_reports_material_shortage(
+    client,
+    make_user,
+    make_machine,
+    make_material,
+    make_employee,
+    auth_headers,
+):
+    """Verify the order planner exposes missing stock as a blocker."""
+    admin = make_user(
+        username="order_shortage_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    machine_id = make_machine(name="Gehaeuse Linie", produced_item="Gehaeuse")
+    make_material("Gehaeuse Rohling", 2.0, 3, machine_id=machine_id)
+    make_employee(
+        personnel_number="OP-003",
+        name="Cara Plan",
+        department="Produktion",
+        qualifications="Gehaeuse Linie",
+    )
+
+    response = client.post(
+        "/api/v1/ai/order-plan",
+        headers=auth_headers(admin["username"]),
+        json={"product": "Gehaeuse", "quantity": 5, "department": "Produktion"},
+    )
+
+    recommended = response.get_json()["data"]["recommended_plan"]
+    assert response.status_code == 200
+    assert recommended["status"] == "blocked"
+    assert recommended["material_check"]["status"] == "shortage"
+    assert recommended["material_check"]["missing"][0]["shortage"] == 2
+    assert "fehlen" in recommended["blockers"][0]
+
+
+def test_ai_chat_can_return_order_plan(
+    app,
+    client,
+    make_user,
+    make_machine,
+    make_material,
+    make_employee,
+    auth_headers,
+):
+    """Verify chat can trigger the structured order planning workflow."""
+    admin = make_user(
+        username="order_chat_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    machine_id = make_machine(name="Pumpen Linie", produced_item="Pumpe")
+    make_material("Pumpen Rohling", 3.0, 8, machine_id=machine_id)
+    employee_id = make_employee(
+        personnel_number="OP-004",
+        name="Dina Plan",
+        department="Produktion",
+        qualifications="Pumpen Linie",
+    )
+    with app.app_context():
+        db.session.add(
+            EmployeeMachineQualification(
+                employee_id=employee_id,
+                machine_id=machine_id,
+                level="trained",
+            )
+        )
+        db.session.commit()
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(admin["username"]),
+        json={"message": "Plane Auftrag 4 Stueck Pumpe mit Maschine und Personal"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "order_plan"
+    assert payload["data"]["recommended_plan"]["machine"]["id"] == machine_id
+    assert "Auftragsplanung" in payload["answer"]
+
+
 def test_ai_workflow_routing_uses_balanced_defaults(app):
     """Verify workflow routing selects models, temperature and output budgets."""
     with app.app_context():
@@ -832,6 +1208,47 @@ def test_daily_briefing_respects_permissions_and_uses_local_fallback(
     assert "documents" not in section_types
 
 
+def test_daily_briefing_includes_rag_knowledge_section_after_reindex(
+    client,
+    make_user,
+    make_task,
+    auth_headers,
+):
+    """Verify daily briefing can include visible indexed RAG context."""
+    admin = make_user(
+        username="briefing_rag_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    user = make_user(
+        username="briefing_rag_user",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    make_task(
+        "Kritische Wartung Maschine RAG",
+        creator_username=user["username"],
+        department_name="Instandhaltung",
+        priority=Priority.URGENT,
+        description="Maschine RAG braucht Wartung wegen Stoerung.",
+    )
+    client.post(
+        "/api/v1/admin/ai/knowledge/reindex",
+        headers=auth_headers(admin["username"]),
+    )
+
+    response = client.get(
+        "/api/v1/ai/daily-briefing",
+        headers=auth_headers(user["username"]),
+    )
+
+    payload = response.get_json()
+    section_types = {section["type"] for section in payload["sections"]}
+    assert response.status_code == 200
+    assert "knowledge" in section_types
+    assert payload["diagnostics"]["rag_source_count"] >= 1
+
+
 def test_daily_briefing_returns_no_sections_without_permissions(
     client,
     make_user,
@@ -878,17 +1295,23 @@ def test_dashboard_contains_daily_briefing_and_priority_ui(client):
     response = client.get("/")
     script_response = client.get("/static/app.js")
     chat_response = client.get("/static/chat.js")
+    css_response = client.get("/static/css/output.css")
     html = response.get_data(as_text=True)
     script = script_response.get_data(as_text=True)
     chat_script = chat_response.get_data(as_text=True)
+    css = css_response.get_data(as_text=True)
 
     assert response.status_code == 200
     assert script_response.status_code == 200
     assert chat_response.status_code == 200
+    assert css_response.status_code == 200
     assert "data-daily-briefing-list" in html
     assert "data-dashboard-priority-list" in html
     assert "data-chat-suggestions" in html
+    assert "data-chat-history-panel hidden" in html
     assert "data-chat-history-search" in html
+    assert ".chat-history-item" in css
+    assert "briefingItem(section, item)" in script
     assert "Briefing konnte nicht geladen werden." in script
     assert "KI-Priorisierung" in script
     assert "maintenance_ai_action_preview" in script
@@ -901,6 +1324,7 @@ def test_dashboard_contains_daily_briefing_and_priority_ui(client):
     assert "OpenAI-Rate-Limit erreicht" in chat_script
     assert "model_not_allowed" in chat_script
     assert "/api/v1/ai/chat/history" in chat_script
+    assert "historyMetaText(item)" in chat_script
     assert "chatSuggestionsForUser" in chat_script
     assert "suggestions.hidden = true" in chat_script
 
@@ -938,9 +1362,21 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
     assert "data-admin-ai-page" in html
     assert "data-ai-chat-search" in html
     assert "data-ai-knowledge-upload" in html
+    assert "data-rag-source-status" in html
+    assert "data-rag-diagnostics" in html
+    assert "data-rag-kpi=\"searchable_documents\"" in html
+    assert "data-rag-kpi=\"stale\"" in html
+    assert "data-ai-reindex-stale" in html
+    assert "data-ai-queue-stale" in html
+    assert "data-ai-jobs" in html
     assert "/api/v1/admin/ai/events" in html
     assert "/api/v1/admin/ai/chats" in html
+    assert "/api/v1/admin/jobs" in html
     assert "/api/v1/admin/ai/knowledge/upload" in html
+    assert "/api/v1/admin/ai/knowledge/status" in html
+    assert "/api/v1/admin/ai/knowledge/reindex/jobs" in html
+    assert "/api/v1/admin/ai/knowledge/reindex?mode=stale" in html
+    assert "/reindex" in html
 
 
 def test_document_path_rejects_storage_escape(app):

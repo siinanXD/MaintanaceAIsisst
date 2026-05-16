@@ -381,6 +381,49 @@ def test_prioritize_tasks_uses_local_fallback_without_openai_key(
     }
 
 
+def test_task_suggestion_includes_rag_sources_after_reindex(
+    client,
+    make_user,
+    make_error_entry,
+    auth_headers,
+):
+    """Verify task suggestions can use indexed RAG sources without persisting data."""
+    admin = make_user(
+        username="task_suggest_rag_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    user = make_user(
+        username="task_suggest_rag_user",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    make_error_entry(
+        "Anlage Task RAG",
+        "TR900",
+        "Hydraulikfilter Problem",
+        department_name="Instandhaltung",
+        possible_causes="Hydraulikfilter zugesetzt",
+        solution="Filter pruefen und austauschen",
+    )
+    client.post(
+        "/api/v1/admin/ai/knowledge/reindex",
+        headers=auth_headers(admin["username"]),
+    )
+
+    response = client.post(
+        "/api/v1/tasks/suggest",
+        headers=auth_headers(user["username"]),
+        json={"text": "Anlage Task RAG hat Hydraulikfilter Druckverlust"},
+    )
+
+    payload = response.get_json()["data"]
+    assert response.status_code == 200
+    assert payload["diagnostics"]["rag_source_count"] >= 1
+    assert any(source["type"] == "knowledge" for source in payload["sources"])
+    assert payload["status"] == "open"
+
+
 def test_task_page_contains_priority_ui(client):
     """Verify task prioritization is exposed on the task page."""
     response = client.get("/tasks")

@@ -15,9 +15,10 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 COPY app ./app
 COPY docs ./docs
+COPY migrations ./migrations
 COPY run.py seed.py seed_demo.py seed_production.py seed_test.py ./
 
-RUN mkdir -p /app/data /app/logs /app/documents /app/backups \
+RUN mkdir -p /app/data /app/logs /app/documents /app/manuals /app/backups /app/knowledge \
     && chown -R app:app /app
 
 USER app

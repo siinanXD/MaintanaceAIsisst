@@ -10,6 +10,7 @@ from app.responses import error_response, service_error_response, success_respon
 from app.security import current_user, has_dashboard_permission, roles_required
 from app.services.ai_history_service import paginated_chat_history
 from app.services.error_assistant_service import run_error_assistant
+from app.services.order_planning_service import plan_order
 
 ai_bp = Blueprint("ai", __name__)
 
@@ -54,6 +55,16 @@ def status():
 def briefing():
     """Return a daily maintenance briefing for the current user."""
     return success_response(daily_briefing(current_user()), message="Daily briefing loaded")
+
+
+@ai_bp.post("/order-plan")
+@jwt_required()
+def order_plan():
+    """Return a RAG-supported production order planning preview."""
+    result, error, status_code = plan_order(request.get_json(silent=True) or {}, current_user())
+    if error:
+        return service_error_response(error, status_code)
+    return success_response(result, message="Order plan generated")
 
 
 @ai_bp.post("/error-assistant")

@@ -10,6 +10,7 @@ from app.security import has_dashboard_permission
 from app.services.ai_service import AIServiceError, get_ai_provider
 from app.services.document_service import visible_documents_query
 from app.services.error_service import visible_errors_query
+from app.services.retrieval_service import knowledge_context_for_chat
 from app.services.task_service import visible_tasks_query
 
 logger = logging.getLogger(__name__)
@@ -50,17 +51,17 @@ def answer_machine_assistant(machine, user, data):
     history = build_machine_history(machine, user)
     forecast = _machine_forecast_context(machine, user)
     provider = get_ai_provider()
-    context = _assistant_context(machine, history, forecast)
+    rag_context, rag_sources = _machine_rag_context(machine, question, user)
+    context = _assistant_context(machine, history, forecast, rag_context)
+    context_payload = _assistant_context_payload(history, forecast, rag_sources)
 
     if provider.name == "mock":
         return (
             {
-                "answer": _local_machine_answer(machine, history, forecast),
+                "answer": _local_machine_answer(machine, history, forecast, rag_sources),
                 "diagnostics": {"status": "local_answer", "provider": provider.name},
-                "context": {
-                    "source_counts": history["source_counts"],
-                    "forecast_items": len(forecast),
-                },
+                "context": context_payload,
+                "sources": rag_sources,
             },
             None,
             200,
@@ -81,12 +82,10 @@ def answer_machine_assistant(machine, user, data):
         )
         return (
             {
-                "answer": _local_machine_answer(machine, history, forecast),
+                "answer": _local_machine_answer(machine, history, forecast, rag_sources),
                 "diagnostics": {"status": "fallback_used", "provider": provider.name},
-                "context": {
-                    "source_counts": history["source_counts"],
-                    "forecast_items": len(forecast),
-                },
+                "context": context_payload,
+                "sources": rag_sources,
             },
             None,
             200,
@@ -100,10 +99,8 @@ def answer_machine_assistant(machine, user, data):
                 "provider": provider.name,
                 **getattr(provider, "last_call_metadata", {}),
             },
-            "context": {
-                "source_counts": history["source_counts"],
-                "forecast_items": len(forecast),
-            },
+            "context": context_payload,
+            "sources": rag_sources,
         },
         None,
         200,
@@ -300,7 +297,21 @@ def _machine_forecast_context(machine, user):
     ]
 
 
-def _assistant_context(machine, history, forecast):
+def _machine_rag_context(machine, question, user):
+    """Return RAG context and sources for a machine-specific question."""
+    query_text = " ".join(
+        part
+        for part in (
+            machine.name,
+            machine.produced_item,
+            question,
+        )
+        if part
+    )
+    return knowledge_context_for_chat(query_text, user)
+
+
+def _assistant_context(machine, history, forecast, rag_context=""):
     """Return compact context text for machine assistant answers."""
     rows = [
         f"Maschine: {machine.name}",
@@ -330,11 +341,24 @@ def _assistant_context(machine, history, forecast):
                 ]
             )
         )
+    if rag_context:
+        rows.append("RAG-Kontext:")
+        rows.append(rag_context)
     return "\n".join(rows)
 
 
-def _local_machine_answer(machine, history, forecast):
+def _assistant_context_payload(history, forecast, rag_sources):
+    """Return safe context metadata for machine assistant responses."""
+    return {
+        "source_counts": history["source_counts"],
+        "forecast_items": len(forecast),
+        "rag_source_count": len(rag_sources),
+    }
+
+
+def _local_machine_answer(machine, history, forecast, rag_sources=None):
     """Return a deterministic machine assistant answer."""
+    rag_sources = rag_sources or []
     counts = history["source_counts"]
     lines = [
         f"{machine.name}: {counts['tasks']} Tasks, {counts['errors']} Fehler, "
@@ -354,6 +378,12 @@ def _local_machine_answer(machine, history, forecast):
         lines.append(
             f"Lagerhinweis: {forecast[0]['material']['name']} " f"ist {forecast[0]['risk_level']}."
         )
+    if rag_sources:
+        titles = ", ".join(source["title"] for source in rag_sources[:3])
+        lines.append(f"RAG-Kontext: {len(rag_sources)} Quellen gefunden ({titles}).")
     if counts["total"] == 0:
-        lines.append("Keine Historie gefunden; Maschine und Taskdaten pruefen.")
+        if rag_sources:
+            lines.append("Keine klassische Historie gefunden; RAG-Quellen pruefen.")
+        else:
+            lines.append("Keine Historie gefunden; Maschine und Taskdaten pruefen.")
     return " ".join(lines)

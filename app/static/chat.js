@@ -226,14 +226,18 @@
   function renderChatHistory(items) {
     if (!historyList) return;
     historyList.innerHTML = "";
-    (items || []).forEach((item) => {
+    const historyItems = items || [];
+    if (historyPanel) {
+      historyPanel.hidden = historyItems.length === 0;
+    }
+    historyItems.forEach((item) => {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "chat-history-item";
       const question = document.createElement("strong");
       question.textContent = item.message || "";
       const meta = document.createElement("small");
-      meta.textContent = (item.response_type || "assistant") + " - " + (item.created_at || "");
+      meta.textContent = historyMetaText(item);
       button.append(question, meta);
       button.addEventListener("click", () => {
         appendMessage(item.message, "user");
@@ -241,6 +245,21 @@
         renderSources(bubble, item.sources || []);
       });
       historyList.appendChild(button);
+    });
+  }
+
+  function historyMetaText(item) {
+    const responseType = item.response_type || "assistant";
+    if (!item.created_at) return responseType;
+    const createdAt = new Date(item.created_at);
+    if (Number.isNaN(createdAt.getTime())) {
+      return responseType;
+    }
+    return responseType + " - " + createdAt.toLocaleString("de-DE", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit"
     });
   }
 

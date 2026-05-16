@@ -66,7 +66,7 @@ A modular Flask application for industrial maintenance teams. Manages tasks, err
 | Layer | Technology |
 |-------|-----------|
 | Backend | Flask, SQLAlchemy, Flask-JWT-Extended |
-| Database | SQLite (dev) — swap via `DATABASE_URL` |
+| Database | SQLite for tests/dev, PostgreSQL + pgvector-ready Docker setup |
 | AI | OpenAI API with local rule-based fallback |
 | Frontend | Jinja2 templates, Tailwind CSS, vanilla JS |
 | Tests | pytest (192 tests, no external services required) |
@@ -108,11 +108,22 @@ cp .env.example .env   # set SECRET_KEY and JWT_SECRET_KEY
 docker compose up --build
 ```
 
-App runs at `http://127.0.0.1:5050`. Health check: `GET /health`.
+Compose starts three services: `db` using PostgreSQL with pgvector, `app`
+using Gunicorn, and `worker` for background RAG maintenance. App runs at
+`http://127.0.0.1:5050`.
+
+Health checks:
+
+```bash
+curl http://127.0.0.1:5050/health
+curl http://127.0.0.1:5050/health/ready
+```
+
 Production containers should set `AUTO_CREATE_DATABASE=false` and run
 `flask --app run:app db upgrade` during release before starting Gunicorn.
-Persistent volumes are configured for data, documents, uploads, logs, and
-backups. Secrets must come from `.env`, never from the image.
+Persistent volumes are configured for PostgreSQL, data, documents, manuals,
+knowledge, logs, and backups. Secrets must come from `.env`, never from the
+image.
 
 ## Configuration
 
@@ -122,10 +133,19 @@ Copy `.env.example` to `.env` and set these values:
 SECRET_KEY=change-this-in-production
 JWT_SECRET_KEY=change-this-in-production
 DATABASE_URL=sqlite:///data/maintenance.db
+# Docker/Postgres:
+# DATABASE_URL=postgresql+psycopg://maintenance:maintenance@db:5432/maintenance
 AUTO_CREATE_DATABASE=true  # set false in production and run migrations
 AI_PROVIDER=openai          # or "mock" for local-only mode
 OPENAI_API_KEY=             # leave empty to use local fallback
 OPENAI_MODEL=gpt-4o-mini
+RAG_ENABLED=true
+RAG_VECTOR_STORE=local      # local now, chroma later
+RAG_CHUNK_SIZE=1400
+RAG_CHUNK_OVERLAP=160
+RAG_TOP_K=4
+EMBEDDING_PROVIDER=hashing  # hashing now, openai later
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 KNOWLEDGE_FOLDER=knowledge
 BACKUP_FOLDER=backups
 DOCUMENTS_FOLDER=documents
@@ -138,6 +158,8 @@ MAIL_PASSWORD=
 MAIL_FROM=
 MAIL_USE_TLS=true
 MAIL_DRY_RUN=true
+WORKER_RAG_REINDEX_ENABLED=false
+WORKER_POLL_SECONDS=60
 ```
 
 `.env` is excluded from version control. Never commit real secrets.
@@ -166,6 +188,30 @@ Suggested cadence: task alerts every 15 minutes, overdue reminders hourly, AI
 alerts every 15 minutes, daily briefings once per day around
 `DAILY_BRIEFING_TIME`.
 
+### Background Worker
+
+Docker Compose includes a separate `worker` process:
+
+```bash
+python -m app.worker
+```
+
+The worker currently processes stale/pending RAG knowledge documents at a
+configurable interval when jobs are queued. Enable it with
+`WORKER_RAG_REINDEX_ENABLED=true` and tune `WORKER_POLL_SECONDS`.
+
+RAG reindex jobs can be queued and inspected through the admin API:
+
+```http
+POST /api/v1/admin/ai/knowledge/reindex/jobs
+GET /api/v1/admin/jobs?job_type=rag_reindex
+```
+
+The first supported job type is `rag_reindex` with payload modes `stale`,
+`all`, or `document`. This keeps the web process ready for future queue engines
+such as RQ or Celery without moving long-running indexing work into request
+handlers.
+
 ## Project Structure
 
 ```
@@ -193,7 +239,7 @@ app/
 ├── ai/                  # chat, daily briefing, status endpoints
 ├── search/              # cross-domain knowledge search
 └── admin/               # user and permission management
-tests/                   # 133 pytest tests, SQLite in-memory
+tests/                   # pytest suite, SQLite in-memory
 docs/
 ├── API_PROTOCOL.md      # full endpoint reference
 └── screenshots/
@@ -213,6 +259,49 @@ flowchart LR
 ```
 
 Routes accept HTTP input and delegate immediately to services. Services validate, run workflows, and return `(result, error, status_code)` tuples. AI integrations are isolated behind a provider interface and always have a local fallback.
+
+### AI / RAG Architecture
+
+The assistant is prepared as a modular Retrieval Augmented Generation pipeline,
+not as a direct chatbot bolted onto CRUD screens.
+
+```mermaid
+flowchart LR
+    Data["Tasks, errors, machines, reports, manuals, briefings"] --> Chunking["chunking_service.py"]
+    Chunking --> Embeddings["embedding_service.py"]
+    Embeddings --> VectorStore["vector_store_service.py"]
+    VectorStore --> Retrieval["retrieval_service.py"]
+    Retrieval --> RAG["rag_service.py"]
+    RAG --> Provider["ai_service.py\nOpenAI, mock, future Gemini/local"]
+    Provider --> Answer["Answer with sources"]
+```
+
+Current implementation:
+- `chunking_service.py` provides configurable intelligent chunking with overlap and metadata-ready chunk payloads.
+- `embedding_service.py` abstracts embeddings. It defaults to deterministic local hashing and can switch to OpenAI embeddings by config.
+- `vector_store_service.py` abstracts vector backends. It uses the existing SQLAlchemy knowledge chunks locally and can switch to Chroma.
+- `retrieval_service.py` combines permission-aware structured retrieval with RAG knowledge chunks.
+- `rag_service.py` owns the high-level RAG context pipeline so future LangChain or LangGraph orchestration can be added without changing API routes.
+- `POST /api/v1/admin/ai/knowledge/reindex` runs the current ingestion workflow and registers generated reports, error catalog entries, tasks, maintenance plans, machine manuals, and shift handovers as RAG sources.
+- `POST /api/v1/admin/ai/knowledge/reindex?mode=stale` reindexes only pending or stale RAG documents.
+- `POST /api/v1/admin/ai/knowledge/{id}/reindex` reindexes one document for granular admin recovery.
+- `POST /api/v1/machines/{machine_id}/assistant` enriches the machine-specific history with matching RAG sources and returns source metadata alongside the answer.
+- `POST /api/v1/ai/error-assistant` returns catalog matches, RAG sources, and a read-only task draft for fault-to-task workflows.
+- `POST /api/v1/tasks/suggest` can attach RAG source metadata to AI task drafts without persisting anything.
+- `GET /api/v1/ai/daily-briefing` can include an `AI-Wissenskontext` section from visible RAG sources.
+- `GET /api/v1/machines/maintenance-recommendations` returns read-only preventive maintenance recommendations from visible task/error history.
+
+Initial RAG-ready data sources:
+- `ErrorEntry`: error code, machine, title, description, possible causes, solution, department, `machine_id`.
+- `GeneratedDocument` and `MachineManual`: reports/manual metadata plus extracted or stored text.
+- `KnowledgeDocument` and `KnowledgeChunk`: already indexed local knowledge base for uploaded TXT/HTML/PDF and generated reports.
+- `Task`, `MaintenancePlan`, and `ShiftHandover`: indexed as structured operational context by the reindex workflow.
+- `Machine`, `ChatMessage`, and AI briefings are suitable next candidates once metadata fields and retention rules are normalized.
+
+Metadata to preserve for future vector stores: `machine_id`, `task_id`,
+`error_id`, `document_type`, `department`, `source_type`, `source_id`, and
+timestamp fields. Sensitive employee fields must stay behind the existing
+permission model and should not be embedded without an explicit data policy.
 
 ## API
 
@@ -234,7 +323,7 @@ See [`docs/API_PROTOCOL.md`](docs/API_PROTOCOL.md) for the full endpoint referen
 ## Running Tests
 
 ```bash
-pytest                    # run all 155 tests
+pytest                    # run all tests
 pytest tests/test_auth.py # single file
 pytest -q --tb=short      # compact output
 ```

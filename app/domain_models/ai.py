@@ -220,6 +220,63 @@ class KnowledgeChunk(db.Model):
         }
 
 
+class BackgroundJob(db.Model):
+    """Persisted background job for asynchronous maintenance workflows."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    job_type = db.Column(db.String(120), nullable=False, index=True)
+    status = db.Column(db.String(40), nullable=False, default="queued", index=True)
+    payload_json = db.Column(db.Text, nullable=False, default="{}")
+    result_json = db.Column(db.Text, nullable=False, default="{}")
+    error_message = db.Column(db.Text, nullable=False, default="")
+    attempts = db.Column(db.Integer, nullable=False, default=0)
+    max_attempts = db.Column(db.Integer, nullable=False, default=3)
+    locked_at = db.Column(db.DateTime)
+    started_at = db.Column(db.DateTime)
+    finished_at = db.Column(db.DateTime)
+    created_by = db.Column(db.Integer, db.ForeignKey("user.id"))
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+    creator = db.relationship("User", foreign_keys=[created_by])
+
+    def payload(self):
+        """Return the stored job payload as a dictionary."""
+        return _loads_json_dict(self.payload_json)
+
+    def result(self):
+        """Return the stored job result as a dictionary."""
+        return _loads_json_dict(self.result_json)
+
+    def to_dict(self):
+        """Return a JSON-serializable background job."""
+        return {
+            "id": self.id,
+            "job_type": self.job_type,
+            "status": self.status,
+            "payload": self.payload(),
+            "result": self.result(),
+            "error_message": self.error_message,
+            "attempts": self.attempts,
+            "max_attempts": self.max_attempts,
+            "locked_at": self.locked_at.isoformat() if self.locked_at else None,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "finished_at": self.finished_at.isoformat() if self.finished_at else None,
+            "created_by": self.creator.username if self.creator else None,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+        }
+
+
+def _loads_json_dict(value):
+    """Return a safe dictionary from stored JSON text."""
+    try:
+        data = json.loads(value or "{}")
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def _loads_json_list(value):
     """Return a JSON-list text value as a safe Python list."""
     try:

@@ -40,7 +40,9 @@ def test_new_ai_frontend_routes_exist(app, client):
         ("/api/v1/shiftplans/calendar", "GET"),
         ("/api/v1/machines/<int:machine_id>/history", "GET"),
         ("/api/v1/machines/<int:machine_id>/assistant", "POST"),
+        ("/api/v1/machines/maintenance-recommendations", "GET"),
         ("/api/v1/ai/daily-briefing", "GET"),
+        ("/api/v1/ai/error-assistant", "POST"),
         ("/api/v1/documents/<int:document_id>/review", "POST"),
     }
     assert expected_routes <= routes
@@ -49,6 +51,8 @@ def test_new_ai_frontend_routes_exist(app, client):
     assert "/api/v1/inventory/forecast" in script
     assert "/api/v1/shiftplans/calendar" in script
     assert "/api/v1/ai/daily-briefing" in script
+    assert "/api/v1/ai/error-assistant" in script
+    assert "/api/v1/machines/maintenance-recommendations" in script
 
 
 def test_feature_registry_covers_permissions_and_frontend_assets(client):

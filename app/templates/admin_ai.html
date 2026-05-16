@@ -10,7 +10,12 @@
       <p class="section-kicker">Transparenz</p>
       <h2>AI-Nutzung, Fehler und Wissensdatenbank</h2>
     </div>
-    <button class="btn btn-primary" type="button" data-ai-reindex>Wissen neu indexieren</button>
+    <div class="toolbar">
+      <button class="btn btn-primary" type="button" data-ai-reindex>Wissen neu indexieren</button>
+      <button class="btn btn-secondary" type="button" data-ai-reindex-stale>Nur veraltete indexieren</button>
+      <button class="btn btn-ghost" type="button" data-ai-queue-stale>Job einplanen</button>
+      <span class="panel-meta" data-ai-reindex-message></span>
+    </div>
   </div>
 
   <div class="dashboard-grid dashboard-grid-4" data-ai-kpis>
@@ -19,6 +24,38 @@
     <article class="metric-card"><span>Tokens</span><strong data-ai-kpi="total_tokens">0</strong></article>
     <article class="metric-card"><span>Kosten USD</span><strong data-ai-kpi="estimated_cost_usd">0</strong></article>
   </div>
+
+  <section class="panel">
+    <div class="panel-header">
+      <h3>RAG-Index Status</h3>
+      <span class="badge badge-ai" data-rag-readiness>RAG</span>
+    </div>
+    <div class="dashboard-grid dashboard-grid-4">
+      <article class="metric-card"><span>Dokumente</span><strong data-rag-kpi="documents">0</strong></article>
+      <article class="metric-card"><span>Indexiert</span><strong data-rag-kpi="indexed">0</strong></article>
+      <article class="metric-card"><span>Veraltet</span><strong data-rag-kpi="stale">0</strong></article>
+      <article class="metric-card"><span>Ausstehend</span><strong data-rag-kpi="pending">0</strong></article>
+      <article class="metric-card"><span>Durchsuchbar</span><strong data-rag-kpi="searchable_documents">0</strong></article>
+      <article class="metric-card"><span>Chunks</span><strong data-rag-kpi="chunks">0</strong></article>
+    </div>
+    <div class="content-grid two-columns mt-4">
+      <div class="stats-list" data-rag-source-status></div>
+      <div class="stats-list" data-rag-diagnostics></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header">
+      <h3>Background Jobs</h3>
+      <span class="panel-meta" data-ai-job-count>0 Jobs</span>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>ID</th><th>Typ</th><th>Status</th><th>Versuche</th><th>Ergebnis</th></tr></thead>
+        <tbody data-ai-jobs></tbody>
+      </table>
+    </div>
+  </section>
 
   <div class="content-grid two-columns">
     <section class="panel">
@@ -100,11 +137,106 @@
     return item;
   }
 
+  function statusRow(label, value) {
+    const item = document.createElement("div");
+    item.className = "stat-row";
+    const labelElement = document.createElement("span");
+    labelElement.textContent = label;
+    const valueElement = document.createElement("strong");
+    valueElement.textContent = text(value);
+    item.append(labelElement, valueElement);
+    return item;
+  }
+
+  function sourceTypeLabel(sourceType) {
+    const labels = {
+      upload: "Uploads",
+      generated_document: "Berichte",
+      error_entry: "Fehlerkatalog",
+      task: "Tasks",
+      maintenance_plan: "Wartungsplaene",
+      machine_manual: "Maschineninfos",
+      shift_handover: "Schichtuebergaben"
+    };
+    return labels[sourceType] || sourceType;
+  }
+
+  function setAdminMessage(message, isError) {
+    const target = root.querySelector("[data-ai-reindex-message]");
+    if (!target) return;
+    target.textContent = message || "";
+    target.classList.toggle("is-error", Boolean(isError));
+  }
+
   async function loadSummary() {
     const summary = await api("/api/v1/admin/ai/summary?days=7");
     ["events_total", "fallback_count", "total_tokens", "estimated_cost_usd"].forEach((key) => {
       const target = root.querySelector('[data-ai-kpi="' + key + '"]');
       if (target) target.textContent = text(summary[key]);
+    });
+  }
+
+  function renderKnowledgeStatus(status) {
+    ["documents", "indexed", "stale", "pending", "searchable_documents", "chunks"].forEach((key) => {
+      const target = root.querySelector('[data-rag-kpi="' + key + '"]');
+      if (target) target.textContent = text(status[key]);
+    });
+
+    const readiness = root.querySelector("[data-rag-readiness]");
+    if (readiness) {
+      readiness.textContent = status.diagnostics && status.diagnostics.ready
+        ? "bereit"
+        : "nicht bereit";
+    }
+
+    const sourceList = root.querySelector("[data-rag-source-status]");
+    sourceList.innerHTML = "";
+    const sourceTypes = status.source_types || [];
+    if (!sourceTypes.length) {
+      sourceList.appendChild(statusRow("Quellen", "Noch keine Daten indexiert"));
+    } else {
+      sourceTypes.forEach((item) => {
+        sourceList.appendChild(statusRow(
+          sourceTypeLabel(item.source_type),
+          item.searchable_documents + "/" + item.documents + " durchsuchbar, " + item.chunks + " Chunks"
+        ));
+      });
+    }
+
+    const diagnostics = status.diagnostics || {};
+    const diagnosticList = root.querySelector("[data-rag-diagnostics]");
+    diagnosticList.innerHTML = "";
+    diagnosticList.append(
+      statusRow("RAG aktiv", diagnostics.rag_enabled ? "ja" : "nein"),
+      statusRow("Vector Store", diagnostics.vector_store),
+      statusRow("Embedding", diagnostics.embedding_provider),
+      statusRow("Chunking", diagnostics.chunk_size + " / " + diagnostics.chunk_overlap),
+      statusRow("Top K", diagnostics.top_k),
+      statusRow("Scan Limit", diagnostics.scan_limit)
+    );
+  }
+
+  async function loadKnowledgeStatus() {
+    const status = await api("/api/v1/admin/ai/knowledge/status");
+    renderKnowledgeStatus(status);
+  }
+
+  async function loadJobs() {
+    const data = await api("/api/v1/admin/jobs?job_type=rag_reindex&limit=10");
+    const tbody = root.querySelector("[data-ai-jobs]");
+    const count = root.querySelector("[data-ai-job-count]");
+    tbody.innerHTML = "";
+    if (count) count.textContent = data.pagination.total + " Jobs";
+    data.items.forEach((job) => {
+      const row = document.createElement("tr");
+      row.append(
+        cell(job.id),
+        cell(job.job_type),
+        cell(job.status),
+        cell(job.attempts + "/" + job.max_attempts),
+        cell(job.error_message || JSON.stringify(job.result || {}))
+      );
+      tbody.appendChild(row);
     });
   }
 
@@ -152,12 +284,17 @@
     data.items.forEach((documentItem) => {
       const row = document.createElement("tr");
       const actions = document.createElement("td");
+      const reindexButton = document.createElement("button");
+      reindexButton.type = "button";
+      reindexButton.className = "btn btn-secondary btn-sm";
+      reindexButton.dataset.reindexKnowledge = documentItem.id;
+      reindexButton.textContent = "Indexieren";
       const button = document.createElement("button");
       button.type = "button";
       button.className = "btn btn-ghost btn-sm";
       button.dataset.deleteKnowledge = documentItem.id;
       button.textContent = "Loeschen";
-      actions.appendChild(button);
+      actions.append(reindexButton, button);
       row.append(
         cell(documentItem.title),
         cell(documentItem.source_type),
@@ -171,7 +308,14 @@
   }
 
   async function refreshAll() {
-    await Promise.all([loadSummary(), loadEvents(), loadChats(), loadKnowledge()]);
+    await Promise.all([
+      loadSummary(),
+      loadEvents(),
+      loadChats(),
+      loadKnowledge(),
+      loadKnowledgeStatus(),
+      loadJobs()
+    ]);
   }
 
   root.querySelector("[data-ai-event-error]").addEventListener("change", loadEvents);
@@ -179,25 +323,100 @@
     window.clearTimeout(root._chatTimer);
     root._chatTimer = window.setTimeout(loadChats, 250);
   });
+  async function runReindex(button, path) {
+    button.disabled = true;
+    setAdminMessage("Index wird neu aufgebaut...");
+    try {
+      const result = await api(path, { method: "POST" });
+      setAdminMessage(
+        "Indexiert: " + result.indexed + " Dokumente, " + result.chunks + " Chunks."
+      );
+      await Promise.all([loadKnowledge(), loadKnowledgeStatus(), loadJobs()]);
+    } catch (error) {
+      setAdminMessage(error.message, true);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
   root.querySelector("[data-ai-reindex]").addEventListener("click", async () => {
-    await api("/api/v1/admin/ai/knowledge/reindex", { method: "POST" });
-    await loadKnowledge();
+    await runReindex(
+      root.querySelector("[data-ai-reindex]"),
+      "/api/v1/admin/ai/knowledge/reindex"
+    );
+  });
+  root.querySelector("[data-ai-reindex-stale]").addEventListener("click", async () => {
+    await runReindex(
+      root.querySelector("[data-ai-reindex-stale]"),
+      "/api/v1/admin/ai/knowledge/reindex?mode=stale"
+    );
+  });
+  root.querySelector("[data-ai-queue-stale]").addEventListener("click", async () => {
+    const button = root.querySelector("[data-ai-queue-stale]");
+    button.disabled = true;
+    setAdminMessage("RAG-Reindex-Job wird eingeplant...");
+    try {
+      const job = await api("/api/v1/admin/ai/knowledge/reindex/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "stale" })
+      });
+      setAdminMessage("Job #" + job.id + " wurde eingeplant.");
+      await loadJobs();
+    } catch (error) {
+      setAdminMessage(error.message, true);
+    } finally {
+      button.disabled = false;
+    }
   });
   root.querySelector("[data-ai-knowledge-upload]").addEventListener("submit", async (event) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
-    await api("/api/v1/admin/ai/knowledge/upload", { method: "POST", body: formData });
-    event.currentTarget.reset();
-    await loadKnowledge();
+    try {
+      await api("/api/v1/admin/ai/knowledge/upload", { method: "POST", body: formData });
+      event.currentTarget.reset();
+      setAdminMessage("Dokument hochgeladen und indexiert.");
+      await Promise.all([loadKnowledge(), loadKnowledgeStatus(), loadJobs()]);
+    } catch (error) {
+      setAdminMessage(error.message, true);
+    }
   });
   root.addEventListener("click", async (event) => {
+    const reindexButton = event.target.closest("[data-reindex-knowledge]");
+    if (reindexButton) {
+      reindexButton.disabled = true;
+      setAdminMessage("Dokument wird neu indexiert...");
+      try {
+        const documentItem = await api(
+          "/api/v1/admin/ai/knowledge/" + reindexButton.dataset.reindexKnowledge + "/reindex",
+          { method: "POST" }
+        );
+        setAdminMessage(
+          "Dokument " + documentItem.id + " ist " + documentItem.status + "."
+        );
+        await Promise.all([loadKnowledge(), loadKnowledgeStatus(), loadJobs()]);
+      } catch (error) {
+        setAdminMessage(error.message, true);
+      } finally {
+        reindexButton.disabled = false;
+      }
+      return;
+    }
+
     const button = event.target.closest("[data-delete-knowledge]");
     if (!button) return;
-    await api("/api/v1/admin/ai/knowledge/" + button.dataset.deleteKnowledge, { method: "DELETE" });
-    await loadKnowledge();
+    try {
+      await api("/api/v1/admin/ai/knowledge/" + button.dataset.deleteKnowledge, { method: "DELETE" });
+      setAdminMessage("Dokument geloescht.");
+      await Promise.all([loadKnowledge(), loadKnowledgeStatus(), loadJobs()]);
+    } catch (error) {
+      setAdminMessage(error.message, true);
+    }
   });
 
-  refreshAll().catch(() => {});
+  refreshAll().catch((error) => {
+    setAdminMessage("AI Admin konnte nicht vollstaendig geladen werden: " + error.message, true);
+  });
 })();
 </script>
 {% endblock %}

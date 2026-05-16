@@ -2860,6 +2860,32 @@ OPENAPI_SPEC["paths"].update(
                 "responses": {"200": {"description": "Chat history loaded"}},
             }
         },
+        "/api/v1/ai/order-plan": {
+            "post": {
+                "tags": ["AI"],
+                "summary": "Plan a production order with machine, material and staffing checks",
+                "security": [{"bearerAuth": []}],
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "example": {
+                                "product": "Deckel",
+                                "quantity": 100,
+                                "department": "Produktion",
+                                "work_date": "2026-05-18",
+                            }
+                        }
+                    },
+                },
+                "responses": {
+                    "200": {"description": "Order plan generated"},
+                    "400": {"$ref": "#/components/responses/ValidationError"},
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                },
+            }
+        },
         "/api/v1/admin/ai/chats": {
             "get": {
                 "tags": ["Admin"],
@@ -2892,12 +2918,44 @@ OPENAPI_SPEC["paths"].update(
                 "responses": {"200": {"description": "Knowledge documents loaded"}},
             }
         },
+        "/api/v1/admin/ai/knowledge/status": {
+            "get": {
+                "tags": ["Admin"],
+                "summary": "Inspect RAG index status and source diagnostics",
+                "security": [{"bearerAuth": []}],
+                "responses": {"200": {"description": "Knowledge status loaded"}},
+            }
+        },
+        "/api/v1/admin/jobs": {
+            "get": {
+                "tags": ["Admin"],
+                "summary": "List background jobs",
+                "security": [{"bearerAuth": []}],
+                "responses": {"200": {"description": "Background jobs loaded"}},
+            }
+        },
+        "/api/v1/admin/ai/knowledge/reindex/jobs": {
+            "post": {
+                "tags": ["Admin"],
+                "summary": "Queue a RAG reindex background job",
+                "security": [{"bearerAuth": []}],
+                "responses": {"202": {"description": "Background job queued"}},
+            }
+        },
         "/api/v1/admin/ai/knowledge/reindex": {
             "post": {
                 "tags": ["Admin"],
-                "summary": "Rebuild local knowledge chunks",
+                "summary": "Rebuild local knowledge chunks, optionally stale only",
                 "security": [{"bearerAuth": []}],
                 "responses": {"200": {"description": "Knowledge reindexed"}},
+            }
+        },
+        "/api/v1/admin/ai/knowledge/{id}/reindex": {
+            "post": {
+                "tags": ["Admin"],
+                "summary": "Reindex one knowledge document",
+                "security": [{"bearerAuth": []}],
+                "responses": {"200": {"description": "Knowledge document reindexed"}},
             }
         },
         "/api/v1/admin/ai/knowledge/{id}": {

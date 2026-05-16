@@ -3,6 +3,7 @@
 from app.domain_models.ai import (
     AIAuditEvent,
     AIFeedback,
+    BackgroundJob,
     ChatMessage,
     KnowledgeChunk,
     KnowledgeDocument,
@@ -36,6 +37,7 @@ __all__ = [
     "AIAuditEvent",
     "AIFeedback",
     "AuditLogEntry",
+    "BackgroundJob",
     "ChatMessage",
     "DashboardPermission",
     "Department",

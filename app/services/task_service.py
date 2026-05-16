@@ -12,6 +12,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db
 from app.models import Department, Priority, Role, Task, TaskStatus
 from app.services.ai_service import AIServiceError, MockAIProvider, get_ai_provider
+from app.services.knowledge_service import (
+    delete_source_knowledge_document,
+    mark_task_knowledge_stale,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +131,8 @@ def create_task(data, user):
 
     db.session.add(task)
     try:
+        db.session.flush()
+        mark_task_knowledge_stale(task)
         db.session.commit()
     except SQLAlchemyError:
         db.session.rollback()
@@ -170,6 +176,7 @@ def update_task(task, data, user):
         return None, {"error": str(exc)}, 400
 
     try:
+        mark_task_knowledge_stale(task)
         db.session.commit()
     except SQLAlchemyError:
         db.session.rollback()
@@ -185,6 +192,7 @@ def delete_task(task):
     Returns (None, None, 204) on success or (None, error_dict, status) on failure.
     """
     try:
+        delete_source_knowledge_document("task", task.id)
         db.session.delete(task)
         db.session.commit()
     except SQLAlchemyError:
@@ -249,6 +257,7 @@ def start_task(task, user):
     task.completed_at = None
 
     try:
+        mark_task_knowledge_stale(task)
         db.session.commit()
     except SQLAlchemyError:
         db.session.rollback()
@@ -274,6 +283,7 @@ def complete_task(task, user):
     task.completed_at = datetime.now(UTC)
 
     try:
+        mark_task_knowledge_stale(task)
         db.session.commit()
     except SQLAlchemyError:
         db.session.rollback()
@@ -340,6 +350,12 @@ def suggest_task_from_text(data, user):
         "role": user.role.value,
         "department": user.department.name if user.department else "",
     }
+    from app.services.retrieval_service import knowledge_context_for_chat
+
+    rag_context, rag_sources = knowledge_context_for_chat(text, user)
+    if rag_context:
+        user_context["rag_context"] = rag_context
+        user_context["rag_sources"] = rag_sources
     try:
         suggestion = get_ai_provider().suggest_task(text, user_context)
     except AIServiceError:
@@ -351,6 +367,11 @@ def suggest_task_from_text(data, user):
         suggestion = MockAIProvider().suggest_task(text, user_context)
 
     normalized = normalize_task_suggestion(suggestion, text, user)
+    normalized["sources"] = rag_sources
+    normalized["diagnostics"] = {
+        "status": "local_answer",
+        "rag_source_count": len(rag_sources),
+    }
     return normalized, None, 200
 
 

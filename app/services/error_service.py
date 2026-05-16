@@ -11,6 +11,7 @@ from sqlalchemy import or_
 from app.extensions import db
 from app.models import Department, ErrorEntry, Machine, Role
 from app.services.ai_service import AIServiceError, MockAIProvider, get_ai_provider
+from app.services.knowledge_service import mark_error_entry_knowledge_stale
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,8 @@ def create_error_entry(data, user):
         department=department,
     )
     db.session.add(entry)
+    db.session.flush()
+    mark_error_entry_knowledge_stale(entry)
     db.session.commit()
     return entry, None, 201
 
@@ -131,6 +134,7 @@ def update_error_entry(entry, data, user):
     if "error_code" in data:
         entry.error_code = data["error_code"].upper()
 
+    mark_error_entry_knowledge_stale(entry)
     db.session.commit()
     return entry, None, 200
 

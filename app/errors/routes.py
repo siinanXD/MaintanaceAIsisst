@@ -18,6 +18,7 @@ from app.services.error_service import (
     update_error_entry,
     visible_errors_query,
 )
+from app.services.knowledge_service import delete_source_knowledge_document
 
 errors_bp = Blueprint("errors", __name__)
 
@@ -114,6 +115,7 @@ def delete_error(error_id):
     entry = db.get_or_404(ErrorEntry, error_id)
     if not same_department_or_admin(entry):
         return error_response("Forbidden", 403)
+    delete_source_knowledge_document("error_entry", entry.id)
     db.session.delete(entry)
     db.session.commit()
     return "", 204

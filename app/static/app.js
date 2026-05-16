@@ -213,6 +213,88 @@
     if (liveRegion) liveRegion.textContent = message;
   }
 
+  function sourceTypeLabel(source) {
+    const key = String((source && (source.module || source.type)) || "knowledge");
+    const labels = {
+      tasks: "Task",
+      errors: "Fehler",
+      machines: "Maschine",
+      documents: "Dokument",
+      reports: "Bericht",
+      briefings: "Briefing",
+      maintenance: "Wartung",
+      knowledge: "Wissen"
+    };
+    return labels[key] || labels.knowledge;
+  }
+
+  function renderSourcePanel(container, sources, emptyText) {
+    if (!container) return;
+    const items = Array.isArray(sources) ? sources.filter(Boolean) : [];
+    container.innerHTML = "";
+    if (!items.length) {
+      if (!emptyText) {
+        container.hidden = true;
+        return;
+      }
+      const empty = document.createElement("p");
+      empty.className = "panel-meta";
+      empty.textContent = emptyText;
+      container.appendChild(empty);
+      container.hidden = false;
+      return;
+    }
+
+    const title = document.createElement("strong");
+    title.className = "rag-source-title";
+    title.textContent = "RAG-Quellen";
+    const list = document.createElement("div");
+    list.className = "rag-source-list";
+    items.slice(0, 5).forEach((source) => {
+      const item = source.url ? document.createElement("a") : document.createElement("div");
+      item.className = "rag-source-chip";
+      if (source.url) item.href = source.url;
+      const label = document.createElement("span");
+      label.textContent = sourceTypeLabel(source);
+      const value = document.createElement("strong");
+      value.textContent = source.title || "Wissensquelle";
+      const reason = document.createElement("small");
+      reason.textContent = source.reason || (source.score ? source.score + " Punkte" : "");
+      item.append(label, value, reason);
+      list.appendChild(item);
+    });
+    container.append(title, list);
+    container.hidden = false;
+  }
+
+  function applyAiActionPreview(preview) {
+    if (!preview || !preview.target) return;
+    window.sessionStorage.setItem("maintenance_ai_action_preview", JSON.stringify(preview));
+    window.location.href = preview.url || "/";
+  }
+
+  function renderInlineActionPreview(container, preview) {
+    if (!container) return;
+    container.innerHTML = "";
+    if (!preview || !preview.label || !preview.target) {
+      container.hidden = true;
+      return;
+    }
+    const copy = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = preview.label;
+    const meta = document.createElement("span");
+    meta.textContent = "Aus der Analyse kann direkt ein Task vorbereitet werden.";
+    copy.append(title, meta);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "btn btn-primary btn-sm";
+    button.textContent = "Task vorbereiten";
+    button.addEventListener("click", () => applyAiActionPreview(preview));
+    container.append(copy, button);
+    container.hidden = false;
+  }
+
   function initTopbarActions() {
     const workButton = document.querySelector("[data-topbar-work]");
     const dateButton = document.querySelector("[data-topbar-date]");
@@ -978,8 +1060,11 @@
     const errorCount = document.querySelector("[data-error-count]");
     const searchFocus = document.querySelector("[data-error-search-focus]");
     const analysisFocus = document.querySelector("[data-error-analysis-focus]");
+    const analysisSources = document.querySelector("[data-error-rag-sources]");
+    const actionPreview = document.querySelector("[data-error-action-preview]");
     if (!list || !form || !token()) return;
     let currentAnalysis = null;
+    let currentAssistantResult = null;
     let currentErrors = [];
 
     const errorEditDialog = document.getElementById("error-edit-dialog");
@@ -1111,6 +1196,33 @@
       form.elements.title.focus();
     }
 
+    function updateErrorRagPanels(result) {
+      currentAssistantResult = result || null;
+      renderSourcePanel(analysisSources, result && result.sources);
+      renderInlineActionPreview(actionPreview, result && result.action_preview);
+    }
+
+    async function enrichErrorAnalysis(data, message) {
+      try {
+        const result = await api("/api/v1/ai/error-assistant", {
+          method: "POST",
+          body: JSON.stringify({ query: data.description, limit: 5 })
+        });
+        updateErrorRagPanels(result);
+        if (message && result.diagnostics && result.diagnostics.rag_source_count) {
+          setStatusMessage(
+            message,
+            "Analyse erstellt. " + result.diagnostics.rag_source_count + " RAG-Quellen gefunden."
+          );
+        }
+      } catch (error) {
+        updateErrorRagPanels(null);
+        if (message) {
+          setStatusMessage(message, "Analyse erstellt. RAG-Kontext nicht verfuegbar: " + error.message);
+        }
+      }
+    }
+
     function renderErrors() {
       const query = searchInput ? searchInput.value.trim().toLowerCase() : "";
       const filteredErrors = currentErrors.filter((entry) => {
@@ -1193,6 +1305,7 @@
             field.value = currentAnalysis[field.dataset.errorAnalysisField] || "";
           });
           setStatusMessage(message, "Analyse erstellt.");
+          await enrichErrorAnalysis(data, message);
           await loadSimilarErrors({
             description: data.description,
             machine: currentAnalysis.machine
@@ -1215,6 +1328,7 @@
         form.elements.title.value = values.title || "";
         form.elements.possible_causes.value = values.possible_causes || "";
         form.elements.solution.value = values.solution || "";
+        if (currentAssistantResult) updateErrorRagPanels(currentAssistantResult);
         revealSurface(form);
         form.elements.title.focus();
       });
@@ -2632,7 +2746,11 @@
     const historyList = document.querySelector("[data-machine-history-list]");
     const assistantForm = document.querySelector("[data-machine-assistant-form]");
     const assistantAnswer = document.querySelector("[data-machine-assistant-answer]");
+    const assistantSources = document.querySelector("[data-machine-assistant-sources]");
     const assistantFocus = document.querySelector("[data-machine-assistant-focus]");
+    const recommendationPanel = document.querySelector("[data-maintenance-recommendations-panel]");
+    const recommendationList = document.querySelector("[data-maintenance-recommendations-list]");
+    const recommendationSummary = document.querySelector("[data-maintenance-recommendations-summary]");
     if (!list || !form || !token()) return;
     let activeHistoryMachine = null;
 
@@ -2755,10 +2873,108 @@
             ? "Fallback-Antwort: "
             : "";
           setStatusMessage(assistantAnswer, fallback + result.answer);
+          renderSourcePanel(assistantSources, result.sources);
         } catch (error) {
           setStatusMessage(assistantAnswer, error.message, true);
+          renderSourcePanel(assistantSources, []);
         }
       });
+    }
+
+    function recommendationRiskLabel(riskLevel) {
+      const labels = {
+        critical: "kritisch",
+        high: "hoch",
+        medium: "mittel",
+        low: "niedrig"
+      };
+      return labels[riskLevel] || riskLevel || "niedrig";
+    }
+
+    function recommendationCard(item) {
+      const card = document.createElement("article");
+      card.className = "resource-card maintenance-recommendation-card";
+      const header = document.createElement("div");
+      header.className = "resource-card-header";
+      const titleBlock = document.createElement("div");
+      const title = document.createElement("h3");
+      title.className = "resource-card-title";
+      title.textContent = (item.machine && item.machine.name) || "Maschine";
+      const subtitle = document.createElement("p");
+      subtitle.className = "resource-card-subtitle";
+      subtitle.textContent = item.reason || "Historie und Wissensquellen pruefen.";
+      titleBlock.append(title, subtitle);
+      const badges = document.createElement("div");
+      badges.className = "resource-card-badges";
+      badges.appendChild(badge(recommendationRiskLabel(item.risk_level), "badge badge-ai"));
+      header.append(titleBlock, badges);
+
+      const metrics = document.createElement("div");
+      metrics.className = "resource-meta-grid";
+      [
+        ["Score", String(item.score || 0)],
+        ["Tasks", String((item.source_counts && item.source_counts.tasks) || 0)],
+        ["Fehler", String((item.source_counts && item.source_counts.errors) || 0)],
+        ["RAG", String((item.source_counts && item.source_counts.rag_sources) || 0)]
+      ].forEach(([label, value]) => {
+        const metric = document.createElement("div");
+        metric.className = "resource-metric";
+        const labelElement = document.createElement("span");
+        labelElement.className = "resource-label";
+        labelElement.textContent = label;
+        const valueElement = document.createElement("span");
+        valueElement.className = "resource-value";
+        valueElement.textContent = value;
+        metric.append(labelElement, valueElement);
+        metrics.appendChild(metric);
+      });
+
+      const action = document.createElement("p");
+      action.className = "resource-note";
+      action.textContent = item.recommended_action || "Naechsten Wartungsschritt planen.";
+
+      const actions = document.createElement("div");
+      actions.className = "resource-actions";
+      if (item.machine && item.machine.id) {
+        actions.appendChild(actionButton("Historie", () => loadMachineHistory(item.machine)));
+      }
+
+      card.append(header, metrics, action, actions);
+      return card;
+    }
+
+    function renderMaintenanceRecommendations(payload) {
+      if (!recommendationList) return;
+      const items = Array.isArray(payload && payload.items) ? payload.items : listData(payload);
+      recommendationList.innerHTML = "";
+      if (recommendationSummary) {
+        recommendationSummary.textContent = items.length
+          ? items.length + " praeventive Hinweise aus Tasks, Fehlern und RAG-Quellen."
+          : "Keine auffaelligen Wartungssignale gefunden.";
+      }
+      if (!items.length) {
+        const empty = document.createElement("p");
+        empty.className = "panel-meta";
+        empty.textContent = "Keine praeventiven Empfehlungen vorhanden.";
+        recommendationList.appendChild(empty);
+        return;
+      }
+      items.forEach((item) => {
+        recommendationList.appendChild(recommendationCard(item));
+      });
+    }
+
+    async function loadMaintenanceRecommendations() {
+      if (!recommendationPanel || !recommendationList) return;
+      try {
+        const payload = await api("/api/v1/machines/maintenance-recommendations?limit=5");
+        renderMaintenanceRecommendations(payload);
+      } catch (error) {
+        recommendationList.innerHTML = "";
+        if (recommendationSummary) {
+          recommendationSummary.textContent = "Praeventive Wartung konnte nicht geladen werden: " + error.message;
+        }
+      }
     }
 
     if (assistantFocus) {
@@ -2819,6 +3035,7 @@
     });
 
     const machines = await load();
+    await loadMaintenanceRecommendations();
     const machinePreview = consumeAiActionPreview("machines");
     if (machinePreview && machinePreview.payload) {
       const machine = machines.find((item) => item.id === machinePreview.payload.machine_id);
@@ -3785,6 +4002,33 @@
       return item;
     }
 
+    function briefingClass(severity) {
+      if (severity === "critical" || severity === "urgent") return "is-critical";
+      if (severity === "warning" || severity === "soon" || severity === "high") return "is-warning";
+      return "is-success";
+    }
+
+    function briefingIcon(section, item) {
+      if (section && section.type === "knowledge") return "AI";
+      if (item && (item.severity === "critical" || item.severity === "urgent")) return "!";
+      if (item && (item.severity === "warning" || item.severity === "soon")) return "!";
+      return "OK";
+    }
+
+    function briefingItem(section, item) {
+      const element = document.createElement(item && item.url ? "a" : "div");
+      element.className = "briefing-item " + briefingClass(item && item.severity);
+      if (item && item.url) element.href = item.url;
+      const icon = document.createElement("span");
+      icon.textContent = briefingIcon(section, item);
+      const title = document.createElement("strong");
+      title.textContent = (item && item.title) || "Hinweis";
+      const meta = document.createElement("small");
+      meta.textContent = (item && (item.summary || item.severity)) || "";
+      element.append(icon, title, meta);
+      return element;
+    }
+
     function emptyDashboardMessage(message) {
       const empty = document.createElement("div");
       empty.className = "empty-state";
@@ -4117,7 +4361,7 @@
       briefing.sections.forEach((section) => {
         briefingList.appendChild(rowLikeStat(section.title, String(section.count)));
         section.items.slice(0, 2).forEach((item) => {
-          briefingList.appendChild(rowLikeStat(item.title, item.severity));
+          briefingList.appendChild(briefingItem(section, item));
         });
       });
     }

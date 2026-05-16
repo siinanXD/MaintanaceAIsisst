@@ -8,6 +8,7 @@ from app.machines.maintenance_services import (
     delete_maintenance_plan,
     generate_due_maintenance_tasks,
     get_visible_maintenance_plan,
+    recommend_preventive_maintenance,
     update_maintenance_plan,
     visible_maintenance_plans_query,
 )
@@ -96,6 +97,19 @@ def generate_due_maintenance():
     if error:
         return service_error_response(error, status)
     return success_response(result, status, "Maintenance tasks generated")
+
+
+@machines_bp.get("/maintenance-recommendations")
+@dashboard_permission_required("machines", "view")
+def preventive_maintenance_recommendations():
+    """Return read-only preventive maintenance recommendations."""
+    result, error, status = recommend_preventive_maintenance(
+        current_user(),
+        limit=request.args.get("limit", 5),
+    )
+    if error:
+        return service_error_response(error, status)
+    return success_response(result, status, "Maintenance recommendations loaded")
 
 
 @machines_bp.put("/maintenance-plans/<int:plan_id>")

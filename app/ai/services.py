@@ -33,6 +33,16 @@ from app.services.ai_service import AIServiceError, MockAIProvider, get_ai_provi
 from app.services.document_service import visible_documents_query
 from app.services.error_service import search_errors
 from app.services.knowledge_service import knowledge_sources_for_chat
+from app.services.order_planning_service import (
+    REQUIRED_SCOPES as REQUIRED_ORDER_PLANNING_SCOPES,
+)
+from app.services.order_planning_service import (
+    format_order_plan_answer,
+    order_planning_payload_from_message,
+    plan_order,
+)
+from app.services.rag_service import build_rag_context
+from app.services.retrieval_service import knowledge_context_for_chat
 from app.services.task_service import visible_tasks_query
 
 LAST_OPENAI_ERROR = None
@@ -721,6 +731,7 @@ def daily_briefing(user):
         sections.append(error_briefing_section(user))
     if has_dashboard_permission(user, "documents", "view"):
         sections.append(document_briefing_section(user))
+    sections.append(rag_briefing_section(user))
 
     visible_sections = [section for section in sections if section]
     important_count = sum(section["count"] for section in visible_sections)
@@ -732,7 +743,13 @@ def daily_briefing(user):
         "date": date.today().isoformat(),
         "summary": summary,
         "sections": visible_sections,
-        "diagnostics": {"status": "local_answer", "provider": "local_briefing"},
+        "diagnostics": {
+            "status": "local_answer",
+            "provider": "local_briefing",
+            "rag_source_count": sum(
+                section.get("rag_source_count", 0) for section in visible_sections
+            ),
+        },
     }
 
 
@@ -849,6 +866,38 @@ def document_briefing_section(user):
         "title": "Dokumente",
         "count": len(items),
         "items": items,
+    }
+
+
+def rag_briefing_section(user):
+    """Return visible RAG knowledge sources relevant for today's briefing."""
+    department = user.department.name if user.department else ""
+    query_text = " ".join(
+        part
+        for part in (
+            "heute kritisch stoerung wartung instandhaltung maschine",
+            department,
+        )
+        if part
+    )
+    _context, sources = knowledge_context_for_chat(query_text, user, limit=3)
+    if not sources:
+        return None
+    items = [
+        {
+            "title": source["title"],
+            "severity": "info",
+            "summary": source["reason"],
+            "url": source["url"],
+        }
+        for source in sources
+    ]
+    return {
+        "type": "knowledge",
+        "title": "AI-Wissenskontext",
+        "count": len(items),
+        "items": items,
+        "rag_source_count": len(sources),
     }
 
 
@@ -1134,7 +1183,7 @@ def answer_chat(message, user):
     requested_scopes = detect_requested_scopes(message)
     allowed_scopes = allowed_ai_scopes(user)
     if should_use_general_hybrid_mode(message, requested_scopes):
-        knowledge_context, knowledge_sources = knowledge_sources_for_chat(message, user)
+        knowledge_context, knowledge_sources = knowledge_context_for_chat(message, user)
         answer, diagnostics = openai_general_answer(message, knowledge_context)
         return attach_audit_metadata(
             user,
@@ -1221,11 +1270,38 @@ def answer_chat(message, user):
     if count_result:
         return count_result
 
-    retrieval = with_knowledge_context(
-        retrieve_ai_context(message, user, requested_scopes),
-        message,
-        user,
-    )
+    order_payload = order_planning_payload_from_message(message)
+    if order_payload:
+        plan, error, status_code = plan_order(order_payload, user)
+        if error:
+            answer = error.get("message") or error.get("error") or "Auftrag nicht planbar."
+            diagnostic_status = "permission_denied" if status_code == 403 else "local_answer"
+            return attach_audit_metadata(
+                user,
+                {
+                    "type": "permission_denied" if status_code == 403 else "order_plan",
+                    "answer": answer,
+                    "diagnostics": ai_diagnostics(diagnostic_status),
+                    "data": error,
+                    "sources": [],
+                },
+                requested_scopes or REQUIRED_ORDER_PLANNING_SCOPES,
+                allowed_scopes,
+            )
+        return attach_audit_metadata(
+            user,
+            {
+                "type": "order_plan",
+                "answer": format_order_plan_answer(plan),
+                "diagnostics": plan["diagnostics"],
+                "data": plan,
+                "sources": plan["sources"],
+            },
+            requested_scopes or REQUIRED_ORDER_PLANNING_SCOPES,
+            allowed_scopes,
+        )
+
+    retrieval = build_rag_context(message, user, requested_scopes)
     answer, diagnostics = openai_assistant_answer(message, retrieval["context"])
     if not answer:
         logger.warning("ai_fallback workflow=chat type=assistant")

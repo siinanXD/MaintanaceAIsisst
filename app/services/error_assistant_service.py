@@ -24,6 +24,7 @@ from app.services.error_service import (
     search_errors,
     suggest_similar_errors,
 )
+from app.services.retrieval_service import knowledge_context_for_chat
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +127,39 @@ def _try_ai_enhance(query, matches):
         return None
 
 
+def _task_draft_from_fault(query, user, causes, fixes):
+    """Return a read-only task draft for a fault query when permitted."""
+    from app.security import has_dashboard_permission
+    from app.services.ai_service import MockAIProvider
+
+    if not has_dashboard_permission(user, "tasks", "write"):
+        return None
+
+    enriched_text = "\n".join(
+        part
+        for part in (
+            query,
+            f"Moegliche Ursache: {causes[0]}" if causes else "",
+            f"Empfohlene Pruefung: {fixes[0]}" if fixes else "",
+        )
+        if part
+    )
+    suggestion = MockAIProvider().suggest_task(
+        enriched_text,
+        {
+            "role": user.role.value,
+            "department": user.department.name if user.department else "",
+        },
+    )
+    return {
+        "type": "task_draft",
+        "label": "Task-Entwurf aus Stoerung",
+        "target": "tasks",
+        "url": "/tasks",
+        "payload": suggestion,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -180,6 +214,7 @@ def run_error_assistant(data, user):
         matches = _exact_code_fallback(error_code, user, limit)
 
     causes, fixes = _aggregate_causes_and_fixes(matches)
+    rag_context, rag_sources = knowledge_context_for_chat(query, user)
 
     # AI enhancement path — activated automatically when a real provider is configured
     ai_enhanced = False
@@ -198,6 +233,7 @@ def run_error_assistant(data, user):
         "extracted_error_code": error_code,
         "extracted_machine": machine_name or None,
         "ai_enhanced": ai_enhanced,
+        "rag_source_count": len(rag_sources),
     }
 
     logger.info(
@@ -214,6 +250,9 @@ def run_error_assistant(data, user):
             "matches": matches,
             "causes": causes,
             "fixes": fixes,
+            "sources": rag_sources,
+            "rag_context": rag_context,
+            "action_preview": _task_draft_from_fault(query, user, causes, fixes),
             "diagnostics": diagnostics,
         },
         None,

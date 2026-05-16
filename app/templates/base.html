@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Maintenance Assistant{% endblock %}</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b7cff'/%3E%3Ctext x='32' y='39' text-anchor='middle' font-family='Arial,sans-serif' font-size='22' font-weight='800' fill='white'%3EMA%3C/text%3E%3C/svg%3E">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}?v=20260511-dashboard-actions1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}?v=20260516-chat-history-layout1">
   </head>
   <body class="app-body min-h-screen text-slate-900 antialiased">
     <div class="app-shell-layout min-h-screen lg:grid lg:grid-cols-[268px_minmax(0,1fr)]">
@@ -186,7 +186,7 @@
             Frag mich nach Fehlercodes, Maschinenstoerungen oder heutigen Aufgaben.
           </div>
         </div>
-        <div class="chat-history-panel" data-chat-history-panel>
+        <div class="chat-history-panel" data-chat-history-panel hidden>
           <input class="input input-bordered w-full" data-chat-history-search autocomplete="off" placeholder="Historie durchsuchen">
           <div class="chat-history-list" data-chat-history-list></div>
         </div>
@@ -202,6 +202,6 @@
     <script src="{{ url_for('static', filename='auth.js') }}?v=20260510-feature-registry1"></script>
     <script src="{{ url_for('static', filename='core/api-client.js') }}?v=20260511-api-client1"></script>
     <script src="{{ url_for('static', filename='app.js') }}?v=20260511-dashboard-actions1"></script>
-    <script src="{{ url_for('static', filename='chat.js') }}?v=20260511-chat-suggestions-counts1"></script>
+    <script src="{{ url_for('static', filename='chat.js') }}?v=20260516-chat-history-layout1"></script>
   </body>
 </html>

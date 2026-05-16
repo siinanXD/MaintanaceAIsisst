@@ -18,16 +18,27 @@ from app.security import roles_required
 from app.services.ai_audit_service import ai_analytics_summary
 from app.services.ai_history_service import paginated_chat_history, parse_limit_offset
 from app.services.audit_service import audit_log_query, create_audit_log
+from app.services.background_job_service import (
+    enqueue_rag_reindex_job,
+    list_background_jobs,
+)
 from app.services.backup_service import (
     backup_path_for,
     create_backup,
     list_backups,
     restore_backup,
 )
+from app.services.database_schema_service import (
+    database_schema_error_payload,
+    database_schema_status,
+)
 from app.services.knowledge_service import (
     delete_knowledge_document,
+    knowledge_index_status,
     list_knowledge_documents,
     reindex_all_knowledge,
+    reindex_knowledge_document,
+    reindex_stale_knowledge,
     upload_knowledge_document,
 )
 from app.services.mail_service import mail_config_status
@@ -292,6 +303,9 @@ def ai_summary():
 @roles_required(Role.MASTER_ADMIN)
 def ai_chats():
     """Return searchable AI chat contents for master administrators."""
+    schema_status = database_schema_status()
+    if not schema_status["ok"]:
+        return jsonify(database_schema_error_payload(schema_status)), 503
     try:
         result = paginated_chat_history(current_admin_user(), request.args, include_all=True)
     except ValueError as exc:
@@ -337,6 +351,9 @@ def upload_ai_knowledge():
 @roles_required(Role.MASTER_ADMIN)
 def ai_knowledge():
     """Return filtered local knowledge documents."""
+    schema_status = database_schema_status()
+    if not schema_status["ok"]:
+        return jsonify(database_schema_error_payload(schema_status)), 503
     try:
         limit, offset = parse_limit_offset(request.args, default_limit=50)
     except ValueError as exc:
@@ -353,11 +370,87 @@ def ai_knowledge():
     )
 
 
+@admin_bp.get("/ai/knowledge/status")
+@roles_required(Role.MASTER_ADMIN)
+def ai_knowledge_status():
+    """Return RAG index status and searchable source diagnostics."""
+    schema_status = database_schema_status()
+    if not schema_status["ok"]:
+        return jsonify(database_schema_error_payload(schema_status)), 503
+    return success_response(knowledge_index_status(), message="Knowledge status loaded")
+
+
+@admin_bp.get("/jobs")
+@roles_required(Role.MASTER_ADMIN)
+def admin_background_jobs():
+    """Return background jobs for admin observability."""
+    schema_status = database_schema_status()
+    if not schema_status["ok"]:
+        return jsonify(database_schema_error_payload(schema_status)), 503
+    try:
+        limit, offset = parse_limit_offset(request.args, default_limit=20)
+    except ValueError as exc:
+        return error_response(str(exc), 400)
+    query = list_background_jobs(request.args)
+    total = query.count()
+    jobs = query.offset(offset).limit(limit).all()
+    return success_response(
+        {
+            "items": [job.to_dict() for job in jobs],
+            "pagination": {"limit": limit, "offset": offset, "total": total},
+        },
+        message="Background jobs loaded",
+    )
+
+
+@admin_bp.post("/ai/knowledge/reindex/jobs")
+@roles_required(Role.MASTER_ADMIN)
+def queue_ai_knowledge_reindex_job():
+    """Queue a background job for a RAG reindex workflow."""
+    schema_status = database_schema_status()
+    if not schema_status["ok"]:
+        return jsonify(database_schema_error_payload(schema_status)), 503
+    data = request.get_json(silent=True) or {}
+    try:
+        job = enqueue_rag_reindex_job(
+            mode=data.get("mode", "stale"),
+            document_id=data.get("document_id"),
+            user=current_admin_user(),
+        )
+    except ValueError as exc:
+        return error_response(str(exc), 400)
+    return success_response(job.to_dict(), 202, "Background job queued")
+
+
 @admin_bp.post("/ai/knowledge/reindex")
 @roles_required(Role.MASTER_ADMIN)
 def reindex_ai_knowledge():
     """Rebuild the local knowledge index."""
-    return success_response(reindex_all_knowledge(), message="Knowledge reindexed")
+    schema_status = database_schema_status()
+    if not schema_status["ok"]:
+        return jsonify(database_schema_error_payload(schema_status)), 503
+    mode = str(request.args.get("mode") or "all").strip().lower()
+    if mode == "stale":
+        result = reindex_stale_knowledge()
+    elif mode == "all":
+        result = reindex_all_knowledge()
+    else:
+        return error_response("mode must be 'all' or 'stale'", 400)
+    return success_response(result, message="Knowledge reindexed")
+
+
+@admin_bp.post("/ai/knowledge/<int:document_id>/reindex")
+@roles_required(Role.MASTER_ADMIN)
+def reindex_ai_knowledge_document(document_id):
+    """Reindex one local knowledge document."""
+    schema_status = database_schema_status()
+    if not schema_status["ok"]:
+        return jsonify(database_schema_error_payload(schema_status)), 503
+    document = db.get_or_404(KnowledgeDocument, document_id)
+    return success_response(
+        reindex_knowledge_document(document),
+        message="Knowledge document reindexed",
+    )
 
 
 @admin_bp.delete("/ai/knowledge/<int:document_id>")

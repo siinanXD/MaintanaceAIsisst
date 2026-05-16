@@ -207,3 +207,5 @@ def test_errors_page_contains_similar_errors_ui(client):
     assert response.status_code == 200
     assert "data-similar-errors-panel" in html
     assert "data-similar-errors-list" in html
+    assert "data-error-rag-sources" in html
+    assert "data-error-action-preview" in html

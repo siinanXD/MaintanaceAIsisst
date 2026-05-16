@@ -25,7 +25,9 @@ def _column_exists(table_name, column_name):
     """Return whether a column exists on an existing table."""
     if not _table_exists(table_name):
         return False
-    return column_name in {column["name"] for column in inspect(op.get_bind()).get_columns(table_name)}
+    return column_name in {
+        column["name"] for column in inspect(op.get_bind()).get_columns(table_name)
+    }
 
 
 def _index_names(table_name):

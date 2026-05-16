@@ -22,6 +22,9 @@
   body.high-contrast .hero-command-panel,
   body.high-contrast .priority-insight,
   body.high-contrast .knowledge-block,
+  body.high-contrast .rag-source-panel,
+  body.high-contrast .rag-source-chip,
+  body.high-contrast .ai-action-preview,
   body.high-contrast .ai-response,
   body.high-contrast .kpi-card,
   body.high-contrast .dashboard-section,
@@ -62,6 +65,7 @@
   body.high-contrast .resource-card-subtitle,
   body.high-contrast .resource-label,
   body.high-contrast .resource-value,
+  body.high-contrast .rag-source-chip small,
   body.high-contrast .timeline-summary {
     @apply text-slate-200;
   }
@@ -1066,6 +1070,54 @@
     @apply my-4 rounded-2xl border border-cyan-100 bg-cyan-50 p-4 text-sm font-medium leading-6 text-slate-700;
   }
 
+  .rag-source-panel {
+    @apply mt-4 rounded-2xl border border-cyan-100 bg-white p-3;
+  }
+
+  .rag-source-title {
+    @apply block text-xs font-black uppercase tracking-wide text-slate-500;
+  }
+
+  .rag-source-list {
+    @apply mt-3 grid grid-cols-1 gap-2 md:grid-cols-2;
+  }
+
+  .rag-source-chip {
+    @apply block rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm no-underline transition hover:border-cyan-200 hover:bg-cyan-50;
+  }
+
+  .rag-source-chip span {
+    @apply block text-xs font-black uppercase tracking-wide text-cyan-700;
+  }
+
+  .rag-source-chip strong {
+    @apply mt-1 block break-words text-sm font-black leading-5 text-slate-950;
+  }
+
+  .rag-source-chip small {
+    @apply mt-1 block text-xs font-semibold leading-4 text-slate-500;
+  }
+
+  .ai-action-preview {
+    @apply mt-4 flex flex-col gap-3 rounded-2xl border border-cyan-200 bg-cyan-50 p-3 sm:flex-row sm:items-center sm:justify-between;
+  }
+
+  .ai-action-preview strong {
+    @apply block text-sm font-black text-slate-950;
+  }
+
+  .ai-action-preview span {
+    @apply mt-1 block text-sm font-semibold leading-5 text-slate-600;
+  }
+
+  .maintenance-recommendation-grid {
+    @apply mt-4;
+  }
+
+  .maintenance-recommendation-card {
+    @apply min-h-0 gap-4;
+  }
+
   .task-detail-modal:not([hidden]) {
     @apply pointer-events-auto visible opacity-100;
   }
@@ -1175,7 +1227,7 @@
   }
 
   .chat-panel-body {
-    @apply flex-1 space-y-3 overflow-y-auto p-3 sm:p-4;
+    @apply min-h-0 flex-1 space-y-3 overflow-y-auto p-3 sm:p-4;
   }
 
   .chat-message {
@@ -1231,6 +1283,35 @@
     @apply flex flex-wrap gap-2 border-t border-slate-100 px-3 py-2 sm:px-4;
   }
 
+  .chat-history-panel {
+    @apply shrink-0 border-t border-slate-100 bg-white px-3 py-2 sm:px-4;
+  }
+
+  .chat-history-panel[hidden] {
+    @apply hidden;
+  }
+
+  .chat-history-panel .input {
+    @apply h-10 min-h-10 rounded-xl text-sm;
+  }
+
+  .chat-history-list {
+    @apply mt-2 grid max-h-28 gap-1 overflow-y-auto pr-1;
+    scrollbar-gutter: stable;
+  }
+
+  .chat-history-item {
+    @apply grid w-full min-w-0 gap-0.5 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-left transition hover:border-blue-200 hover:bg-blue-50;
+  }
+
+  .chat-history-item strong {
+    @apply min-w-0 truncate text-sm font-black leading-5 text-slate-950;
+  }
+
+  .chat-history-item small {
+    @apply min-w-0 truncate text-xs font-semibold leading-4 text-slate-500;
+  }
+
   .chat-suggestion {
     @apply rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700;
   }
@@ -1257,7 +1338,7 @@
   }
 
   .chat-panel-form {
-    @apply flex gap-2 border-t border-slate-200 p-3 sm:p-4;
+    @apply shrink-0 flex gap-2 border-t border-slate-200 bg-white p-3 sm:p-4;
   }
 
   .mobile-primary-card {

@@ -55,6 +55,19 @@
     </form>
   </details>
 
+  <article class="card app-card lg:col-span-12" data-maintenance-recommendations-panel>
+    <div class="card-body">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">PrÃ¤ventive Wartung</h2>
+          <p class="panel-meta" data-maintenance-recommendations-summary>RAG-basierte Hinweise aus sichtbarer Historie werden geladen.</p>
+        </div>
+        <span class="badge badge-ai">AI</span>
+      </div>
+      <div class="resource-card-grid maintenance-recommendation-grid" data-maintenance-recommendations-list></div>
+    </div>
+  </article>
+
   <article class="card app-card lg:col-span-12" data-machine-history-panel hidden>
     <div class="card-body">
       <div class="panel-header">
@@ -72,6 +85,7 @@
         <button class="btn btn-primary" type="submit">Fragen</button>
       </form>
       <div class="ai-response" data-machine-assistant-answer></div>
+      <div class="rag-source-panel" data-machine-assistant-sources hidden></div>
       <div class="timeline-list" data-machine-history-list></div>
     </div>
   </article>
