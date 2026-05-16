@@ -21,14 +21,24 @@ coverage.xml
 
 # App data
 instance/
-data/
+/data/*
+!/data/.gitkeep
 /documents/
 manuals/
 logs/
+/backups/
+/knowledge/
 
 # Database files
 *.sqlite
+*.sqlite3
 *.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
 
 # Node / Tailwind
 node_modules/
@@ -47,6 +57,18 @@ Thumbs.db
 
 # Misc
 .claude/
+.codex/
 .codex_deps/
+.cursor/
+.continue/
+.aider*
+.windsurf/
+.gemini/
+.roo/
+.kilocode/
 .tmp/
+tmp/
+temp/
 *.log
+*.tmp
+*.bak
