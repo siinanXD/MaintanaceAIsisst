@@ -14,8 +14,11 @@ class ChatMessage(db.Model):
     message = db.Column(db.Text, nullable=False)
     response = db.Column(db.Text, nullable=False)
     response_type = db.Column(db.String(80), nullable=False, default="assistant")
+    session_id = db.Column(db.String(120), nullable=False, default="")
     diagnostics_json = db.Column(db.Text, nullable=False, default="{}")
     source_count = db.Column(db.Integer, nullable=False, default=0)
+    confidence_score = db.Column(db.Integer)
+    confidence_level = db.Column(db.String(40), nullable=False, default="")
     audit_event_id = db.Column(db.Integer, db.ForeignKey("ai_audit_event.id"))
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
 
@@ -24,6 +27,7 @@ class ChatMessage(db.Model):
 
     __table_args__ = (
         db.Index("ix_chat_message_user_created", "user_id", "created_at"),
+        db.Index("ix_chat_message_user_session_created", "user_id", "session_id", "created_at"),
         db.Index("ix_chat_message_created", "created_at"),
     )
 
@@ -43,8 +47,11 @@ class ChatMessage(db.Model):
             "message": self.message,
             "response": self.response,
             "response_type": self.response_type,
+            "session_id": self.session_id,
             "diagnostics": self.diagnostics(),
             "source_count": self.source_count,
+            "confidence_score": self.confidence_score,
+            "confidence_level": self.confidence_level,
             "audit_event_id": self.audit_event_id,
             "created_at": self.created_at.isoformat(),
         }
@@ -181,6 +188,9 @@ class AIAuditEvent(db.Model):
     requested_scopes = db.Column(db.Text, nullable=False, default="[]")
     allowed_scopes = db.Column(db.Text, nullable=False, default="[]")
     source_count = db.Column(db.Integer, nullable=False, default=0)
+    confidence_score = db.Column(db.Integer)
+    confidence_level = db.Column(db.String(40), nullable=False, default="")
+    retrieval_explainability_json = db.Column(db.Text, nullable=False, default="{}")
     error_category = db.Column(db.String(120), nullable=False, default="")
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
 
@@ -191,6 +201,12 @@ class AIAuditEvent(db.Model):
         db.Index("ix_ai_audit_event_workflow_created", "workflow", "created_at"),
         db.Index("ix_ai_audit_event_status_created", "status", "created_at"),
     )
+
+    def retrieval_explainability(self):
+        """Return stored retrieval explainability as safe metadata."""
+        from app.services.retrieval_explainability_service import explainability_from_json
+
+        return explainability_from_json(self.retrieval_explainability_json)
 
     def to_dict(self):
         """Return a JSON-serializable audit event without prompts or answers."""
@@ -213,6 +229,9 @@ class AIAuditEvent(db.Model):
             "requested_scopes": _loads_json_list(self.requested_scopes),
             "allowed_scopes": _loads_json_list(self.allowed_scopes),
             "source_count": self.source_count,
+            "confidence_score": self.confidence_score,
+            "confidence_level": self.confidence_level,
+            "retrieval_explainability": self.retrieval_explainability(),
             "error_category": self.error_category,
             "created_at": self.created_at.isoformat(),
         }
@@ -232,6 +251,9 @@ class KnowledgeDocument(db.Model):
     department = db.Column(db.String(120), nullable=False, default="")
     status = db.Column(db.String(40), nullable=False, default="pending", index=True)
     quality_status = db.Column(db.String(40), nullable=False, default="draft")
+    last_confirmed_at = db.Column(db.DateTime)
+    confirmation_count = db.Column(db.Integer, nullable=False, default=0)
+    aging_checked_at = db.Column(db.DateTime)
     is_public = db.Column(db.Boolean, nullable=False, default=True)
     chunk_count = db.Column(db.Integer, nullable=False, default=0)
     error_message = db.Column(db.Text, nullable=False, default="")
@@ -271,6 +293,13 @@ class KnowledgeDocument(db.Model):
             "department": self.department,
             "status": self.status,
             "quality_status": self.quality_status,
+            "last_confirmed_at": (
+                self.last_confirmed_at.isoformat() if self.last_confirmed_at else None
+            ),
+            "confirmation_count": self.confirmation_count,
+            "aging_checked_at": (
+                self.aging_checked_at.isoformat() if self.aging_checked_at else None
+            ),
             "is_public": self.is_public,
             "chunk_count": self.chunk_count,
             "error_message": self.error_message,
@@ -296,6 +325,7 @@ class KnowledgeChunk(db.Model):
     chunk_index = db.Column(db.Integer, nullable=False)
     text = db.Column(db.Text, nullable=False)
     token_text = db.Column(db.Text, nullable=False, default="")
+    entities_json = db.Column(db.Text, nullable=False, default="{}")
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
 
     document = db.relationship("KnowledgeDocument", back_populates="chunks")
@@ -308,6 +338,12 @@ class KnowledgeChunk(db.Model):
         ),
     )
 
+    def entities(self):
+        """Return stored technical entities as a normalized dictionary."""
+        from app.services.technical_entity_service import entities_from_json
+
+        return entities_from_json(self.entities_json)
+
     def to_dict(self):
         """Return a JSON-serializable knowledge chunk."""
         return {
@@ -315,6 +351,7 @@ class KnowledgeChunk(db.Model):
             "document_id": self.document_id,
             "chunk_index": self.chunk_index,
             "text": self.text,
+            "entities": self.entities(),
             "created_at": self.created_at.isoformat(),
         }
 

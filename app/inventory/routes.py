@@ -19,6 +19,58 @@ from app.services.operations_tracking_service import record_event
 inventory_bp = Blueprint("inventory", __name__)
 
 
+def filtered_inventory_query():
+    """Return inventory materials filtered by supported request arguments."""
+    query = InventoryMaterial.query
+    site_id = request.args.get("site_id", type=int)
+    if site_id is not None:
+        query = query.filter(InventoryMaterial.site_id == site_id)
+    machine_id = request.args.get("machine_id", type=int)
+    if machine_id is not None:
+        query = query.filter(InventoryMaterial.machine_id == machine_id)
+    return query
+
+
+def material_dashboard_status(material):
+    """Return the dashboard stock status bucket for an inventory material."""
+    quantity = int(material.quantity or 0)
+    if quantity <= 3:
+        return "critical"
+    if quantity <= 10:
+        return "low"
+    return "ok"
+
+
+def inventory_status_counts(materials):
+    """Return dashboard stock status counts for inventory materials."""
+    counts = {"critical": 0, "low": 0, "ok": 0}
+    for material in materials:
+        counts[material_dashboard_status(material)] += 1
+    return counts
+
+
+def top_inventory_shortages(materials, limit=3):
+    """Return the lowest-quantity materials for dashboard shortage chips."""
+    ordered_materials = sorted(
+        materials,
+        key=lambda material: (
+            int(material.quantity or 0),
+            material.name.lower(),
+            material.id,
+        ),
+    )
+    return [
+        {
+            "id": material.id,
+            "name": material.name,
+            "quantity": int(material.quantity or 0),
+            "min_quantity": int(material.min_quantity or 0),
+            "criticality": material.criticality,
+        }
+        for material in ordered_materials[:limit]
+    ]
+
+
 def parse_int(value, field_name, default=0):
     """Parse a non-negative integer from an inventory payload field."""
     try:
@@ -59,15 +111,9 @@ def site_for_payload(data, machine=None):
 @dashboard_permission_required("inventory", "view")
 def list_materials():
     """Return inventory materials, optionally paginated for large stock catalogs."""
-    query = InventoryMaterial.query.options(selectinload(InventoryMaterial.machine)).order_by(
+    query = filtered_inventory_query().options(selectinload(InventoryMaterial.machine)).order_by(
         InventoryMaterial.name.asc(), InventoryMaterial.id.asc()
     )
-    site_id = request.args.get("site_id", type=int)
-    if site_id is not None:
-        query = query.filter(InventoryMaterial.site_id == site_id)
-    machine_id = request.args.get("machine_id", type=int)
-    if machine_id is not None:
-        query = query.filter(InventoryMaterial.machine_id == machine_id)
     return optional_paginated_response(
         query,
         lambda material: material.to_dict(),
@@ -87,32 +133,30 @@ def inventory_summary():
         "no",
         "off",
     }
-    totals_query = db.session.query(
+    base_query = filtered_inventory_query()
+    totals_query = base_query.with_entities(
         func.count(InventoryMaterial.id),
         func.coalesce(func.sum(InventoryMaterial.quantity), 0),
         func.coalesce(func.sum(InventoryMaterial.quantity * InventoryMaterial.unit_cost), 0.0),
     )
-    site_id = request.args.get("site_id", type=int)
-    if site_id is not None:
-        totals_query = totals_query.filter(InventoryMaterial.site_id == site_id)
-    machine_id = request.args.get("machine_id", type=int)
-    if machine_id is not None:
-        totals_query = totals_query.filter(InventoryMaterial.machine_id == machine_id)
     totals = totals_query.one()
+    dashboard_materials = base_query.order_by(
+        InventoryMaterial.quantity.asc(),
+        InventoryMaterial.name.asc(),
+        InventoryMaterial.id.asc(),
+    ).all()
     payload = {
         "material_count": int(totals[0] or 0),
         "total_quantity": int(totals[1] or 0),
         "total_value": round(float(totals[2] or 0.0), 2),
+        "status_counts": inventory_status_counts(dashboard_materials),
+        "top_shortages": top_inventory_shortages(dashboard_materials),
     }
     if include_materials:
-        materials = InventoryMaterial.query.options(
-            selectinload(InventoryMaterial.machine)
-        ).order_by(InventoryMaterial.name.asc(), InventoryMaterial.id.asc())
-        if site_id is not None:
-            materials = materials.filter(InventoryMaterial.site_id == site_id)
-        if machine_id is not None:
-            materials = materials.filter(InventoryMaterial.machine_id == machine_id)
-        materials = materials.all()
+        materials = base_query.options(selectinload(InventoryMaterial.machine)).order_by(
+            InventoryMaterial.name.asc(),
+            InventoryMaterial.id.asc(),
+        ).all()
         payload["materials"] = [material.to_dict() for material in materials]
     return jsonify(payload)
 

@@ -2846,7 +2846,10 @@ OPENAPI_SPEC["components"]["schemas"].update(
                 "message": {"type": "string", "example": "Was ist ein User?"},
                 "response": {"type": "string", "example": "Ein User ist ein Benutzerkonto."},
                 "response_type": {"type": "string", "example": "general_chat"},
+                "session_id": {"type": "string", "example": "chat-widget"},
                 "source_count": {"type": "integer", "example": 1},
+                "confidence_score": {"type": "integer", "example": 72},
+                "confidence_level": {"type": "string", "example": "high"},
                 "audit_event_id": {"type": "integer", "example": 44},
                 "created_at": {"type": "string", "format": "date-time"},
             },
@@ -2857,6 +2860,9 @@ OPENAPI_SPEC["components"]["schemas"].update(
                 "workflow": {"type": "string", "example": "general_chat"},
                 "status": {"type": "string", "example": "openai_error"},
                 "error_category": {"type": "string", "example": "rate_limit"},
+                "confidence_score": {"type": "integer", "example": 72},
+                "confidence_level": {"type": "string", "example": "high"},
+                "retrieval_explainability": {"type": "object"},
                 "total_tokens": {"type": "integer", "example": 842},
                 "estimated_cost_usd": {"type": "number", "example": 0.0012},
             },
@@ -2869,6 +2875,17 @@ OPENAPI_SPEC["components"]["schemas"].update(
                 "title": {"type": "string", "example": "CNC Manual"},
                 "status": {"type": "string", "example": "indexed"},
                 "quality_status": {"type": "string", "example": "draft"},
+                "last_confirmed_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "nullable": True,
+                },
+                "confirmation_count": {"type": "integer", "example": 2},
+                "aging_checked_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "nullable": True,
+                },
                 "chunk_count": {"type": "integer", "example": 18},
                 "department": {"type": "string", "example": "Produktion"},
             },
@@ -3257,6 +3274,26 @@ OPENAPI_SPEC["paths"].update(
                 "responses": {"200": {"description": "Knowledge status loaded"}},
             }
         },
+        "/api/v1/admin/ai/retrieval-telemetry": {
+            "get": {
+                "tags": ["Admin"],
+                "summary": "Inspect retrieval telemetry and quality analytics",
+                "security": [{"bearerAuth": []}],
+                "parameters": [
+                    {
+                        "name": "days",
+                        "in": "query",
+                        "schema": {"type": "integer", "default": 30},
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "schema": {"type": "integer", "default": 10},
+                    },
+                ],
+                "responses": {"200": {"description": "Retrieval telemetry loaded"}},
+            }
+        },
         "/api/v1/admin/ai/knowledge-gaps": {
             "get": {
                 "tags": ["Admin"],
@@ -3286,6 +3323,22 @@ OPENAPI_SPEC["paths"].update(
                 "tags": ["Admin"],
                 "summary": "Queue a RAG reindex background job",
                 "security": [{"bearerAuth": []}],
+                "responses": {"202": {"description": "Background job queued"}},
+            }
+        },
+        "/api/v1/admin/ai/knowledge/aging/jobs": {
+            "post": {
+                "tags": ["Admin"],
+                "summary": "Queue a knowledge aging review background job",
+                "security": [{"bearerAuth": []}],
+                "requestBody": {
+                    "required": False,
+                    "content": {
+                        "application/json": {
+                            "example": {"dry_run": True, "limit": 100}
+                        }
+                    },
+                },
                 "responses": {"202": {"description": "Background job queued"}},
             }
         },

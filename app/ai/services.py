@@ -22,6 +22,7 @@ from app.models import (
 )
 from app.security import employee_access_level, has_dashboard_permission
 from app.services.ai_audit_service import ai_analytics_summary, create_ai_audit_event
+from app.services.ai_confidence_service import attach_confidence_to_result
 from app.services.ai_history_service import save_chat_exchange
 from app.services.ai_prompting import (
     permission_denied_answer,
@@ -30,6 +31,7 @@ from app.services.ai_prompting import (
 from app.services.ai_retrieval import allowed_ai_scopes, retrieve_ai_context
 from app.services.ai_routing import local_metadata, workflow_profile
 from app.services.ai_service import AIServiceError, MockAIProvider, get_ai_provider
+from app.services.conversation_context_service import conversation_context_for_chat
 from app.services.document_service import visible_documents_query
 from app.services.error_service import search_errors
 from app.services.knowledge_service import knowledge_sources_for_chat
@@ -43,6 +45,7 @@ from app.services.order_planning_service import (
 )
 from app.services.rag_service import build_rag_context
 from app.services.recurring_issue_service import analyze_recurring_issues
+from app.services.retrieval_explainability_service import retrieval_explainability_summary
 from app.services.retrieval_service import knowledge_context_for_chat
 from app.services.task_service import visible_tasks_query
 
@@ -589,6 +592,7 @@ def answer_count_question(message, user, requested_scopes, allowed_scopes):
         },
         requested_scopes or {scope},
         allowed_scopes,
+        message=message,
     )
 
 
@@ -671,12 +675,20 @@ def attach_audit_metadata(
     requested_scopes=None,
     allowed_scopes=None,
     workflow=None,
+    message="",
+    conversation_context=None,
 ):
     """Attach source diagnostics and metadata-only audit id to a chat result."""
+    diagnostics = result.setdefault("diagnostics", ai_diagnostics("local_answer"))
+    if conversation_context is not None:
+        diagnostics["conversation_context"] = conversation_context.diagnostics()
+        diagnostics["session_id"] = conversation_context.session_id
+    result = attach_confidence_to_result(message, result)
     diagnostics = result.setdefault("diagnostics", ai_diagnostics("local_answer"))
     sources = result.get("sources") or []
     diagnostics["source_count"] = len(sources)
     diagnostics["scopes"] = sorted(requested_scopes or [])
+    diagnostics["retrieval_explainability"] = retrieval_explainability_summary(sources)
     event_id = create_ai_audit_event(
         user,
         workflow or result.get("type", "assistant"),
@@ -1204,12 +1216,19 @@ def _wants_document_review(text):
     )
 
 
-def answer_chat(message, user):
+def answer_chat(message, user, session_id=""):
     """Route the user message to the correct assistant behavior."""
+    conversation_context = conversation_context_for_chat(user, message, session_id)
     requested_scopes = detect_requested_scopes(message)
+    if conversation_context.applied:
+        requested_scopes |= set(conversation_context.suggested_scopes)
     allowed_scopes = allowed_ai_scopes(user)
     if should_use_general_hybrid_mode(message, requested_scopes):
-        knowledge_context, knowledge_sources = knowledge_context_for_chat(message, user)
+        knowledge_context, knowledge_sources = knowledge_context_for_chat(
+            message,
+            user,
+            conversation_context=conversation_context,
+        )
         answer, diagnostics = openai_general_answer(message, knowledge_context)
         return attach_audit_metadata(
             user,
@@ -1223,6 +1242,8 @@ def answer_chat(message, user):
             requested_scopes,
             allowed_scopes,
             workflow="general_chat",
+            message=message,
+            conversation_context=conversation_context,
         )
 
     blocked_scopes = blocked_requested_scopes(user, requested_scopes)
@@ -1239,6 +1260,7 @@ def answer_chat(message, user):
             },
             requested_scopes,
             allowed_scopes,
+            message=message,
         )
 
     if looks_like_today_tasks_question(message):
@@ -1255,6 +1277,7 @@ def answer_chat(message, user):
                 },
                 requested_scopes,
                 allowed_scopes,
+                message=message,
             )
         answer, data = format_tasks_today(user)
         retrieval = retrieve_ai_context(message, user, {"tasks"})
@@ -1269,6 +1292,7 @@ def answer_chat(message, user):
             },
             requested_scopes or {"tasks"},
             allowed_scopes,
+            message=message,
         )
 
     if looks_like_employee_count_question(message):
@@ -1285,6 +1309,7 @@ def answer_chat(message, user):
             },
             requested_scopes or {"employees"},
             allowed_scopes,
+            message=message,
         )
 
     count_result = answer_count_question(
@@ -1313,6 +1338,7 @@ def answer_chat(message, user):
                 },
                 requested_scopes or REQUIRED_ORDER_PLANNING_SCOPES,
                 allowed_scopes,
+                message=message,
             )
         return attach_audit_metadata(
             user,
@@ -1325,23 +1351,35 @@ def answer_chat(message, user):
             },
             requested_scopes or REQUIRED_ORDER_PLANNING_SCOPES,
             allowed_scopes,
+            message=message,
         )
 
-    retrieval = build_rag_context(message, user, requested_scopes)
+    retrieval = build_rag_context(
+        message,
+        user,
+        requested_scopes,
+        conversation_context=conversation_context,
+    )
     answer, diagnostics = openai_assistant_answer(message, retrieval["context"])
     if not answer:
         logger.warning("ai_fallback workflow=chat type=assistant")
+        retrieval_message = conversation_context.retrieval_query(message)
         if looks_like_error_question(message) and has_dashboard_permission(
             user,
             "errors",
             "view",
         ):
-            entries = search_errors(extract_error_query(message), user)
+            entries = search_errors(extract_error_query(retrieval_message), user)
             answer = fallback_error_answer(entries)
         else:
             answer = fallback_general_answer(retrieval["data"], blocked_scopes)
         diagnostics = diagnostics or ai_diagnostics("fallback_used", fallback_used=True)
-    response_type = "error_help" if looks_like_error_question(message) else "assistant"
+    retrieval_message = conversation_context.retrieval_query(message)
+    response_type = (
+        "error_help"
+        if looks_like_error_question(retrieval_message)
+        else "assistant"
+    )
     response_data = (
         retrieval["data"].get("errors", []) if response_type == "error_help" else retrieval["data"]
     )
@@ -1360,13 +1398,15 @@ def answer_chat(message, user):
         result,
         retrieval["requested_scopes"],
         retrieval["allowed_scopes"],
+        message=message,
+        conversation_context=conversation_context,
     )
 
 
-def save_chat_message(user, message, response):
+def save_chat_message(user, message, response, session_id=""):
     """Persist a chat message and its assistant response in the database."""
     result = response if isinstance(response, dict) else {"answer": response}
-    chat = save_chat_exchange(user, message, result)
+    chat = save_chat_exchange(user, message, result, session_id=session_id)
     db.session.add(chat)
 
     try:

@@ -39,6 +39,14 @@ from app.services.document_service import (
 from app.services.knowledge_quality_service import (
     default_quality_status_for_source,
     mark_quality_outdated_if_reviewed,
+    retrieval_quality_gate_for_document,
+)
+from app.services.retrieval_scoring_service import HybridRetrievalScorer
+from app.services.technical_entity_service import (
+    entities_to_json,
+    entity_token_text,
+    extract_technical_entities,
+    load_technical_entity_catalog,
 )
 
 logger = logging.getLogger(__name__)
@@ -377,12 +385,22 @@ def rebuild_chunks(document, text):
     KnowledgeChunk.query.filter(KnowledgeChunk.document_id == document.id).delete()
     chunks = chunk_text(text)
     chunk_objects = []
+    entity_catalog = load_technical_entity_catalog()
+    source_metadata = document_entity_metadata(document)
     for index, chunk in enumerate(chunks):
+        entities = extract_technical_entities(
+            chunk,
+            metadata=source_metadata,
+            catalog=entity_catalog,
+        )
         chunk_object = KnowledgeChunk(
             document_id=document.id,
             chunk_index=index,
             text=chunk,
-            token_text=" ".join(sorted(tokens(chunk))),
+            token_text=" ".join(
+                sorted(tokens(f"{chunk} {entity_token_text(entities)}")),
+            ),
+            entities_json=entities_to_json(entities),
             created_at=utc_now(),
         )
         db.session.add(chunk_object)
@@ -424,6 +442,8 @@ def sync_vector_store_document(document, chunks):
 
 def chunk_vector_metadata(document, chunk):
     """Return metadata stored with an external vector record."""
+    quality_gate = retrieval_quality_gate_for_document(document)
+    entities = chunk.entities()
     return {
         "type": "knowledge",
         "id": document.id,
@@ -437,6 +457,125 @@ def chunk_vector_metadata(document, chunk):
         "department": document.department,
         "url": source_url(document),
         "updated_at": document.updated_at.isoformat() if document.updated_at else "",
+        "quality_status": quality_gate.status,
+        "quality_gate": quality_gate.reason,
+        "quality_score_multiplier": quality_gate.score_multiplier,
+        "technical_entities": entities,
+        "technical_entities_json": entities_to_json(entities),
+    }
+
+
+def document_entity_metadata(document):
+    """Return source-level metadata used to enrich every chunk entity payload."""
+    metadata = {
+        "title": document.title,
+        "department": document.department,
+        "source_type": document.source_type,
+    }
+    source_metadata = _source_entity_metadata(document)
+    metadata.update(source_metadata)
+    return metadata
+
+
+def _source_entity_metadata(document):
+    """Return entity-relevant metadata from a structured knowledge source."""
+    if not document.source_id:
+        return {}
+    if document.source_type == "generated_document":
+        return _generated_document_entity_metadata(document.source_id)
+    if document.source_type == "error_entry":
+        return _error_entry_entity_metadata(document.source_id)
+    if document.source_type == "machine":
+        return _machine_entity_metadata(document.source_id)
+    if document.source_type == "inventory_material":
+        return _inventory_entity_metadata(document.source_id)
+    if document.source_type == "maintenance_plan":
+        return _maintenance_plan_entity_metadata(document.source_id)
+    if document.source_type == "machine_manual":
+        return _machine_manual_entity_metadata(document.source_id)
+    if document.source_type == "manual_training":
+        return _manual_training_entity_metadata(document.source_id)
+    return {}
+
+
+def _generated_document_entity_metadata(document_id):
+    """Return entity metadata for a generated document source."""
+    source = db.session.get(GeneratedDocument, document_id)
+    if not source:
+        return {}
+    return {
+        "machine": source.machine,
+        "department": source.department,
+        "document_type": source.document_type,
+    }
+
+
+def _error_entry_entity_metadata(error_id):
+    """Return entity metadata for an error catalog source."""
+    entry = db.session.get(ErrorEntry, error_id)
+    if not entry:
+        return {}
+    return {
+        "machine": entry.machine,
+        "error_code": entry.error_code,
+        "department": entry.department.name if entry.department else "",
+    }
+
+
+def _machine_entity_metadata(machine_id):
+    """Return entity metadata for a machine source."""
+    machine = db.session.get(Machine, machine_id)
+    if not machine:
+        return {}
+    return {
+        "machine": machine.name,
+        "component": machine.produced_item,
+    }
+
+
+def _inventory_entity_metadata(material_id):
+    """Return entity metadata for an inventory source."""
+    material = db.session.get(InventoryMaterial, material_id)
+    if not material:
+        return {}
+    return {
+        "inventory_part": material.name,
+        "manufacturer": material.manufacturer,
+        "machine": material.machine.name if material.machine else "",
+    }
+
+
+def _maintenance_plan_entity_metadata(plan_id):
+    """Return entity metadata for a maintenance-plan source."""
+    plan = db.session.get(MaintenancePlan, plan_id)
+    if not plan:
+        return {}
+    return {
+        "machine": plan.machine.name if plan.machine else "",
+        "department": plan.department.name if plan.department else "",
+    }
+
+
+def _machine_manual_entity_metadata(manual_id):
+    """Return entity metadata for an uploaded machine manual source."""
+    manual = db.session.get(MachineManual, manual_id)
+    if not manual:
+        return {}
+    return {
+        "machine": manual.machine.name if manual.machine else "",
+        "department": manual.department,
+    }
+
+
+def _manual_training_entity_metadata(entry_id):
+    """Return entity metadata for manual assistant training."""
+    entry = db.session.get(AssistantTrainingEntry, entry_id)
+    if not entry:
+        return {}
+    return {
+        "department": entry.department,
+        "category": entry.category,
+        "keywords": entry.keywords,
     }
 
 
@@ -464,6 +603,7 @@ def search_knowledge_chunks(query_text, user, limit=MAX_RETRIEVAL_CHUNKS):
     query_tokens = tokens(query_text)
     if not query_tokens:
         return []
+    scorer = HybridRetrievalScorer(query_text=query_text)
 
     chunks = (
         KnowledgeChunk.query.join(KnowledgeDocument)
@@ -480,8 +620,15 @@ def search_knowledge_chunks(query_text, user, limit=MAX_RETRIEVAL_CHUNKS):
         overlap = query_tokens & tokens(chunk.token_text or chunk.text)
         if not overlap:
             continue
-        score = len(overlap) * 25
-        ranked.append((score, chunk))
+        score = scorer.score_text_result(
+            text=chunk.text,
+            document=document,
+            chunk_id=chunk.id,
+            token_text=chunk.token_text,
+        )
+        if not score.allowed or score.final_score <= 0:
+            continue
+        ranked.append((score.final_score, chunk))
     ranked.sort(key=lambda item: (item[0], item[1].document.updated_at), reverse=True)
     return [chunk_payload(chunk, score) for score, chunk in ranked[:limit]]
 
@@ -653,6 +800,7 @@ def knowledge_index_status():
         errors=errors,
         total_chunks=total_chunks,
     )
+    lifecycle = knowledge_lifecycle_overview(documents)
     return {
         "documents": len(documents),
         "indexed": indexed,
@@ -672,7 +820,8 @@ def knowledge_index_status():
         "readiness_score": readiness_score,
         "readiness_reasons": readiness_reasons,
         "problem_documents": _problem_knowledge_documents(documents),
-        "lifecycle": knowledge_lifecycle_overview(documents),
+        "lifecycle": lifecycle,
+        "aging": lifecycle.get("aging", {}),
         "diagnostics": {
             "rag_enabled": bool(current_app.config.get("RAG_ENABLED", True)),
             "vector_store": current_app.config.get("RAG_VECTOR_STORE", "local"),

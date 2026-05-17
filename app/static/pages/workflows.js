@@ -4060,10 +4060,33 @@
       return item;
     }
 
+    function inventoryCountsFromSummary(summary, materials) {
+      const counts = summary && summary.status_counts;
+      if (counts) {
+        return {
+          critical: Number(counts.critical || 0),
+          low: Number(counts.low || 0),
+          ok: Number(counts.ok || 0)
+        };
+      }
+      return inventoryStatusCounts(materials);
+    }
+
+    function inventoryShortagesFromSummary(summary, materials) {
+      if (summary && Array.isArray(summary.top_shortages)) {
+        return summary.top_shortages;
+      }
+      return materials
+        .slice()
+        .sort((first, second) => Number(first.quantity || 0) - Number(second.quantity || 0))
+        .slice(0, 3);
+    }
+
     function renderInventorySummary(summary) {
       if (!inventoryStats) return;
       const materials = Array.isArray(summary.materials) ? summary.materials : [];
-      const counts = inventoryStatusCounts(materials);
+      const counts = inventoryCountsFromSummary(summary, materials);
+      const shortages = inventoryShortagesFromSummary(summary, materials);
       inventoryStats.innerHTML = "";
       inventoryStats.append(
         inventoryMetric("Kritisch", String(counts.critical), "Artikel"),
@@ -4073,18 +4096,14 @@
       );
       if (!inventoryShortages) return;
       inventoryShortages.innerHTML = "";
-      materials
-        .slice()
-        .sort((first, second) => Number(first.quantity || 0) - Number(second.quantity || 0))
-        .slice(0, 3)
-        .forEach((material) => {
-          const item = document.createElement("span");
-          const amount = document.createElement("strong");
-          amount.textContent = String(material.quantity || 0) + " Stk.";
-          item.append(document.createTextNode(material.name || "Material"), amount);
-          inventoryShortages.appendChild(item);
-        });
-      if (!materials.length) {
+      shortages.forEach((material) => {
+        const item = document.createElement("span");
+        const amount = document.createElement("strong");
+        amount.textContent = String(material.quantity || 0) + " Stk.";
+        item.append(document.createTextNode(material.name || "Material"), amount);
+        inventoryShortages.appendChild(item);
+      });
+      if (!shortages.length) {
         inventoryShortages.appendChild(emptyDashboardMessage("Keine Lagerdaten verfügbar."));
       }
     }
@@ -4389,27 +4408,7 @@
       });
     }
 
-    async function loadDailyBriefing() {
-      if (!briefingList) return;
-      let briefing = null;
-      try {
-        briefing = await Promise.race([
-          api("/api/v1/ai/daily-briefing"),
-          new Promise((resolve) => {
-            window.setTimeout(() => {
-              resolve({
-                summary: "Briefing wird später aktualisiert.",
-                sections: []
-              });
-            }, 5000);
-          })
-        ]);
-      } catch (error) {
-        if (briefingSummary) briefingSummary.textContent = "Briefing konnte nicht geladen werden.";
-        briefingList.innerHTML = "";
-        briefingList.appendChild(rowLikeStat("Status", "Nicht verfügbar"));
-        return;
-      }
+    function renderDailyBriefing(briefing) {
       briefing.sections = Array.isArray(briefing.sections) ? briefing.sections : [];
       if (briefingSummary) briefingSummary.textContent = briefing.summary;
       briefingList.innerHTML = "";
@@ -4425,6 +4424,25 @@
           briefingList.appendChild(briefingItem(section, item));
         });
       });
+    }
+
+    async function loadDailyBriefing() {
+      if (!briefingList) return;
+      const pendingTimer = window.setTimeout(() => {
+        if (briefingSummary) briefingSummary.textContent = "Briefing wird aktualisiert.";
+        briefingList.innerHTML = "";
+        briefingList.appendChild(rowLikeStat("Status", "Aktualisierung läuft"));
+      }, 5000);
+      try {
+        const briefing = await api("/api/v1/ai/daily-briefing");
+        window.clearTimeout(pendingTimer);
+        renderDailyBriefing(briefing);
+      } catch (error) {
+        window.clearTimeout(pendingTimer);
+        if (briefingSummary) briefingSummary.textContent = "Briefing konnte nicht geladen werden.";
+        briefingList.innerHTML = "";
+        briefingList.appendChild(rowLikeStat("Status", "Nicht verfügbar"));
+      }
     }
 
     async function setupDashboardCalendarFilter() {

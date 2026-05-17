@@ -38,6 +38,7 @@ def test_openapi_json_documents_core_endpoints(client):
     assert "/api/v1/admin/ai/knowledge/upload" in paths
     assert "/api/v1/admin/ai/knowledge" in paths
     assert "/api/v1/admin/ai/knowledge/status" in paths
+    assert "/api/v1/admin/ai/retrieval-telemetry" in paths
     assert "/api/v1/admin/ai/knowledge-gaps" in paths
     assert "/api/v1/admin/ai/knowledge/reindex/jobs" in paths
     assert "/api/v1/admin/ai/knowledge/reindex" in paths
@@ -105,6 +106,9 @@ def test_openapi_examples_are_present(client):
     ]
     assert spec["components"]["schemas"]["MachineManual"]["properties"]["download_url"]["example"]
     assert spec["components"]["schemas"]["ChatHistoryEntry"]["properties"]["response_type"][
+        "example"
+    ]
+    assert spec["components"]["schemas"]["ChatHistoryEntry"]["properties"]["session_id"][
         "example"
     ]
     assert spec["components"]["schemas"]["AIAuditEvent"]["properties"]["error_category"]["example"]

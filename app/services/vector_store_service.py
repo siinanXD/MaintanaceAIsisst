@@ -12,6 +12,8 @@ from app.models import GeneratedDocument, KnowledgeChunk, KnowledgeDocument
 from app.services.chunking_service import token_set
 from app.services.embedding_service import get_embedding_provider
 from app.services.knowledge_service import can_user_read_knowledge_document
+from app.services.retrieval_scoring_service import HybridRetrievalScorer
+from app.services.technical_entity_service import entities_from_json, entities_to_json
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +104,11 @@ class SqlAlchemyKnowledgeVectorStore(BaseVectorStore):
             DEFAULT_RAG_MIN_SCORE,
         )
         query_vector = self.embedding_provider.embed_text(query_text)
+        scorer = HybridRetrievalScorer(
+            query_text=query_text,
+            query_vector=query_vector,
+            embedding_provider=self.embedding_provider,
+        )
         chunks = (
             KnowledgeChunk.query.join(KnowledgeDocument)
             .filter(KnowledgeDocument.status == "indexed")
@@ -117,14 +124,18 @@ class SqlAlchemyKnowledgeVectorStore(BaseVectorStore):
                 continue
             if not can_user_read_knowledge_document(user, document):
                 continue
-            score = _local_score(query_tokens, query_vector, chunk, self.embedding_provider)
-            if score < min_score:
+            score = scorer.score_chunk(chunk, document)
+            if not score.allowed or score.final_score < min_score:
                 continue
             results.append(
                 VectorSearchResult(
                     text=chunk.text,
-                    score=score,
-                    metadata=_knowledge_metadata(document, chunk),
+                    score=score.final_score,
+                    metadata=_knowledge_metadata(
+                        document,
+                        chunk,
+                        score=score,
+                    ),
                 )
             )
 
@@ -195,6 +206,7 @@ class ChromaVectorStore(BaseVectorStore):
         )
         return _filter_visible_results(
             _chroma_results(response),
+            query_text=query_text,
             user=user,
             filters=filters,
             limit=limit_value,
@@ -219,31 +231,9 @@ def get_vector_store():
     return SqlAlchemyKnowledgeVectorStore()
 
 
-def _local_score(query_tokens, query_vector, chunk, embedding_provider):
-    """Return a combined lexical and vector score for a local knowledge chunk."""
-    chunk_tokens = token_set(chunk.token_text or chunk.text)
-    overlap_score = len(query_tokens & chunk_tokens) * 25
-    vector_score = max(
-        0.0,
-        _cosine_similarity(query_vector, embedding_provider.embed_text(chunk.text)),
-    )
-    return overlap_score + round(vector_score * 100, 2)
-
-
-def _cosine_similarity(left, right):
-    """Return cosine similarity for two numeric vectors."""
-    if not left or not right or len(left) != len(right):
-        return 0.0
-    numerator = sum(a * b for a, b in zip(left, right, strict=True))
-    left_length = sum(a * a for a in left) ** 0.5
-    right_length = sum(b * b for b in right) ** 0.5
-    if left_length <= 0 or right_length <= 0:
-        return 0.0
-    return numerator / (left_length * right_length)
-
-
-def _knowledge_metadata(document, chunk):
+def _knowledge_metadata(document, chunk, score=None):
     """Return metadata for a persisted knowledge chunk."""
+    entities = _chunk_entities(chunk)
     metadata = {
         "type": "knowledge",
         "id": document.id,
@@ -257,8 +247,27 @@ def _knowledge_metadata(document, chunk):
         "department": document.department,
         "url": _source_url(document),
         "updated_at": document.updated_at.isoformat(),
+        "technical_entities": entities,
+        "technical_entities_json": entities_to_json(entities),
     }
+    if score is not None:
+        score_metadata = score.metadata()
+        metadata["score_debug"] = score_metadata
+        metadata["score_components"] = score_metadata["components"]
+        metadata["score_signals"] = score_metadata["signals"]
+        metadata["quality_status"] = score_metadata["signals"].get("quality_status")
+        metadata["quality_gate"] = score_metadata["signals"].get("quality_gate")
+        metadata["quality_score_multiplier"] = score_metadata["signals"].get(
+            "quality_multiplier"
+        )
     return metadata
+
+
+def _chunk_entities(chunk):
+    """Return technical entities from a real or lightweight chunk object."""
+    if hasattr(chunk, "entities"):
+        return chunk.entities()
+    return entities_from_json(getattr(chunk, "entities_json", "{}"))
 
 
 def _source_url(document):
@@ -342,11 +351,9 @@ def _chroma_results(response):
     return results
 
 
-def _filter_visible_results(results, user=None, filters=None, limit=None):
+def _filter_visible_results(results, query_text, user=None, filters=None, limit=None):
     """Return Chroma results still visible according to database permissions."""
-    if user is None:
-        return results[:limit] if limit else results
-
+    scorer = HybridRetrievalScorer(query_text=query_text)
     visible = []
     for result in results:
         document_id = result.metadata.get("id")
@@ -358,20 +365,36 @@ def _filter_visible_results(results, user=None, filters=None, limit=None):
             continue
         if not _matches_filters(document, filters):
             continue
-        if not can_user_read_knowledge_document(user, document):
+        if user is not None and not can_user_read_knowledge_document(user, document):
+            continue
+        score = scorer.score_text_result(
+            text=result.text,
+            document=document,
+            chunk_id=result.metadata.get("chunk_id"),
+            semantic_similarity=result.score,
+        )
+        if not score.allowed:
             continue
         merged_metadata = dict(result.metadata)
-        merged_metadata.update(_knowledge_metadata(document, _chunk_for_metadata(result)))
+        merged_metadata.update(
+            _knowledge_metadata(
+                document,
+                _chunk_for_metadata(result),
+                score=score,
+            )
+        )
         visible.append(
             VectorSearchResult(
                 text=result.text,
-                score=result.score,
+                score=score.final_score,
                 metadata=merged_metadata,
             )
         )
-        if limit and len(visible) >= limit:
-            break
-    return visible
+    visible.sort(
+        key=lambda item: (item.score, item.metadata.get("updated_at", "")),
+        reverse=True,
+    )
+    return visible[:limit] if limit else visible
 
 
 def _chunk_for_metadata(result):
@@ -382,6 +405,7 @@ def _chunk_for_metadata(result):
         {
             "id": result.metadata.get("chunk_id"),
             "chunk_index": result.metadata.get("chunk_index", 0),
+            "entities_json": result.metadata.get("technical_entities_json", "{}"),
         },
     )()
 

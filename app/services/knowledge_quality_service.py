@@ -1,6 +1,7 @@
 """Quality-status workflow for AI knowledge documents."""
 
 import logging
+from dataclasses import dataclass
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -21,11 +22,100 @@ AI_SUGGESTED_SOURCE_TYPES = {"generated_document"}
 TECHNICIAN_STATUSES = {"technician_confirmed", "outdated"}
 
 
+@dataclass(frozen=True)
+class RetrievalQualityGate:
+    """Describe how a knowledge quality status affects retrieval."""
+
+    status: str
+    allowed: bool
+    score_multiplier: float
+    reason: str
+
+
+RETRIEVAL_QUALITY_GATES = {
+    "admin_approved": RetrievalQualityGate(
+        status="admin_approved",
+        allowed=True,
+        score_multiplier=1.0,
+        reason="admin_approved",
+    ),
+    "technician_confirmed": RetrievalQualityGate(
+        status="technician_confirmed",
+        allowed=True,
+        score_multiplier=1.0,
+        reason="technician_confirmed",
+    ),
+    "ai_suggested": RetrievalQualityGate(
+        status="ai_suggested",
+        allowed=True,
+        score_multiplier=0.45,
+        reason="ai_suggested_weighted",
+    ),
+    "outdated": RetrievalQualityGate(
+        status="outdated",
+        allowed=True,
+        score_multiplier=0.35,
+        reason="outdated_weighted",
+    ),
+    "draft": RetrievalQualityGate(
+        status="draft",
+        allowed=True,
+        score_multiplier=0.15,
+        reason="draft_strongly_weighted",
+    ),
+    "rejected": RetrievalQualityGate(
+        status="rejected",
+        allowed=False,
+        score_multiplier=0.0,
+        reason="rejected_blocked",
+    ),
+}
+UNKNOWN_RETRIEVAL_QUALITY_GATE = RetrievalQualityGate(
+    status="unknown",
+    allowed=False,
+    score_multiplier=0.0,
+    reason="unknown_quality_status_blocked",
+)
+
+
 def default_quality_status_for_source(source_type):
     """Return the initial quality status for a knowledge source type."""
     if str(source_type or "").strip() in AI_SUGGESTED_SOURCE_TYPES:
         return "ai_suggested"
     return "draft"
+
+
+def retrieval_quality_gate_for_status(status):
+    """Return the retrieval gate rule for a quality status."""
+    normalized_status = str(status or "").strip().lower()
+    return RETRIEVAL_QUALITY_GATES.get(
+        normalized_status,
+        UNKNOWN_RETRIEVAL_QUALITY_GATE,
+    )
+
+
+def retrieval_quality_gate_for_document(document):
+    """Return the retrieval gate rule for a knowledge document."""
+    if document is None:
+        return UNKNOWN_RETRIEVAL_QUALITY_GATE
+    return retrieval_quality_gate_for_status(getattr(document, "quality_status", ""))
+
+
+def is_retrievable_by_quality(document):
+    """Return whether a knowledge document passes the retrieval quality gate."""
+    return retrieval_quality_gate_for_document(document).allowed
+
+
+def apply_retrieval_quality_score(score, document):
+    """Return a retrieval score adjusted by the document quality gate."""
+    gate = retrieval_quality_gate_for_document(document)
+    if not gate.allowed:
+        return 0.0
+    try:
+        numeric_score = float(score)
+    except (TypeError, ValueError):
+        return 0.0
+    return round(max(0.0, numeric_score) * gate.score_multiplier, 2)
 
 
 def change_knowledge_quality_status(document, requested_status, user):
@@ -37,6 +127,10 @@ def change_knowledge_quality_status(document, requested_status, user):
             document.source_type
         )
         document.quality_status = next_status
+        if next_status in {"technician_confirmed", "admin_approved"}:
+            from app.services.knowledge_aging_service import record_knowledge_confirmation
+
+            record_knowledge_confirmation(document)
         document.updated_at = utc_now()
         db.session.commit()
         logger.info(

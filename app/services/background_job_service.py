@@ -10,6 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.domain_models.common import utc_now
 from app.extensions import db
 from app.models import BackgroundJob, KnowledgeDocument
+from app.services.knowledge_aging_service import mark_outdated_knowledge_by_age
 from app.services.knowledge_service import (
     reindex_all_knowledge,
     reindex_knowledge_document,
@@ -19,6 +20,7 @@ from app.services.knowledge_service import (
 logger = logging.getLogger(__name__)
 
 JOB_RAG_REINDEX = "rag_reindex"
+JOB_KNOWLEDGE_AGING = "knowledge_aging"
 QUEUED = "queued"
 RUNNING = "running"
 DONE = "done"
@@ -34,17 +36,31 @@ def enqueue_rag_reindex_job(mode="stale", document_id=None, user=None):
     payload = {"mode": normalized_mode}
     if document_id is not None:
         payload["document_id"] = int(document_id)
-    existing = existing_active_reindex_job(payload)
+    existing = existing_active_job(JOB_RAG_REINDEX, payload)
     if existing:
-        logger.info(
-            "background_job_deduplicated id=%s type=%s payload=%s",
-            existing.id,
-            existing.job_type,
-            payload,
-        )
+        _log_deduplicated_job(existing, payload)
         return existing
+    job = _create_background_job(JOB_RAG_REINDEX, payload, user)
+    logger.info("background_job_queued id=%s type=%s payload=%s", job.id, job.job_type, payload)
+    return job
+
+
+def enqueue_knowledge_aging_job(dry_run=False, limit=None, user=None):
+    """Queue a knowledge aging review job and return the persisted job."""
+    payload = validate_knowledge_aging_payload(dry_run=dry_run, limit=limit)
+    existing = existing_active_job(JOB_KNOWLEDGE_AGING, payload)
+    if existing:
+        _log_deduplicated_job(existing, payload)
+        return existing
+    job = _create_background_job(JOB_KNOWLEDGE_AGING, payload, user)
+    logger.info("background_job_queued id=%s type=%s payload=%s", job.id, job.job_type, payload)
+    return job
+
+
+def _create_background_job(job_type, payload, user=None):
+    """Persist one queued background job with a normalized payload."""
     job = BackgroundJob(
-        job_type=JOB_RAG_REINDEX,
+        job_type=job_type,
         status=QUEUED,
         payload_json=json.dumps(payload, sort_keys=True),
         result_json="{}",
@@ -55,16 +71,20 @@ def enqueue_rag_reindex_job(mode="stale", document_id=None, user=None):
     )
     db.session.add(job)
     db.session.commit()
-    logger.info("background_job_queued id=%s type=%s payload=%s", job.id, job.job_type, payload)
     return job
 
 
 def existing_active_reindex_job(payload):
     """Return an already queued or running RAG reindex job for the payload."""
+    return existing_active_job(JOB_RAG_REINDEX, payload)
+
+
+def existing_active_job(job_type, payload):
+    """Return an already queued or running background job for the payload."""
     payload_json = json.dumps(payload, sort_keys=True)
     return (
         BackgroundJob.query.filter(
-            BackgroundJob.job_type == JOB_RAG_REINDEX,
+            BackgroundJob.job_type == job_type,
             BackgroundJob.status.in_((QUEUED, RUNNING)),
             BackgroundJob.payload_json == payload_json,
         )
@@ -81,6 +101,20 @@ def validate_reindex_mode(mode, document_id=None):
     if normalized not in {"all", "stale"}:
         raise ValueError("mode must be 'all' or 'stale'")
     return normalized
+
+
+def validate_knowledge_aging_payload(dry_run=False, limit=None):
+    """Return a normalized knowledge aging job payload or raise ValueError."""
+    payload = {"dry_run": _parse_bool(dry_run, "dry_run")}
+    if limit not in (None, ""):
+        try:
+            parsed_limit = int(limit)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("limit must be a positive integer") from exc
+        if parsed_limit < 1:
+            raise ValueError("limit must be a positive integer")
+        payload["limit"] = parsed_limit
+    return payload
 
 
 def list_background_jobs(args):
@@ -228,6 +262,8 @@ def execute_job(job):
     """Execute a supported background job and return its result payload."""
     if job.job_type == JOB_RAG_REINDEX:
         return execute_rag_reindex_job(job.payload())
+    if job.job_type == JOB_KNOWLEDGE_AGING:
+        return execute_knowledge_aging_job(job.payload())
     raise ValueError(f"Unsupported background job type: {job.job_type}")
 
 
@@ -242,6 +278,18 @@ def execute_rag_reindex_job(payload):
     if mode == "all":
         return reindex_all_knowledge()
     return reindex_stale_knowledge()
+
+
+def execute_knowledge_aging_job(payload):
+    """Execute a knowledge aging job from a stored payload."""
+    normalized = validate_knowledge_aging_payload(
+        dry_run=payload.get("dry_run", False),
+        limit=payload.get("limit"),
+    )
+    return mark_outdated_knowledge_by_age(
+        dry_run=normalized["dry_run"],
+        limit=normalized.get("limit"),
+    )
 
 
 def mark_job_failed(job, exc):
@@ -260,3 +308,28 @@ def mark_job_failed(job, exc):
     except SQLAlchemyError:
         db.session.rollback()
         logger.exception("background_job_failure_persist_failed id=%s", job.id)
+
+
+def _parse_bool(value, field_name):
+    """Return a normalized boolean payload value or raise ValueError."""
+    if isinstance(value, bool):
+        return value
+    if value in (None, ""):
+        return False
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "off"}:
+            return False
+    raise ValueError(f"{field_name} must be a boolean")
+
+
+def _log_deduplicated_job(job, payload):
+    """Log that an equivalent active background job already exists."""
+    logger.info(
+        "background_job_deduplicated id=%s type=%s payload=%s",
+        job.id,
+        job.job_type,
+        payload,
+    )

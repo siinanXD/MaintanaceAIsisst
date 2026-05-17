@@ -1,5 +1,5 @@
 (function () {
-  const STATIC_VERSION = "20260516-a11y-polish1";
+  const STATIC_VERSION = "20260517-dashboard-refresh1";
   const WORKFLOW_MODULE_URL = "/static/pages/workflows.js?v=" + STATIC_VERSION;
   const PAGE_MODULE_URLS = {
     "/login": "/static/pages/login.js?v=" + STATIC_VERSION

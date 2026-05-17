@@ -18,7 +18,7 @@ def request_shutdown(_signum, _frame):
 
 
 def worker_enabled(app):
-    """Return whether the RAG reindex worker loop should process jobs."""
+    """Return whether the background worker loop should process jobs."""
     return bool(app.config.get("WORKER_RAG_REINDEX_ENABLED", False))
 
 
@@ -46,7 +46,7 @@ def run_worker():
     app = create_app()
     interval = poll_seconds(app)
     logger.info(
-        "worker_started rag_reindex_enabled=%s poll_seconds=%s",
+        "worker_started background_jobs_enabled=%s poll_seconds=%s",
         worker_enabled(app),
         interval,
     )

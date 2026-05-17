@@ -3,7 +3,14 @@
 from collections import Counter
 
 from app.models import AIFeedback, KnowledgeDocument, KnowledgeGap
-from app.services.knowledge_quality_service import KNOWLEDGE_QUALITY_STATUSES
+from app.services.knowledge_aging_service import (
+    knowledge_aging_state,
+    knowledge_aging_summary,
+)
+from app.services.knowledge_quality_service import (
+    KNOWLEDGE_QUALITY_STATUSES,
+    retrieval_quality_gate_for_document,
+)
 
 INDEXED_STATUS = "indexed"
 APPROVED_QUALITY_STATUS = "admin_approved"
@@ -69,11 +76,11 @@ LIFECYCLE_STEP_DEFINITIONS = (
     {
         "key": "rag_usage",
         "label": "RAG nutzt Wissen",
-        "status": "partial",
+        "status": "available",
         "services": ["knowledge_service", "retrieval_service", "vector_store_service"],
         "notes": (
-            "RAG nutzt indexierte und sichtbare Quellen; Quality-Gating wird "
-            "aktuell nur ausgewertet, nicht erzwungen."
+            "RAG nutzt indexierte und sichtbare Quellen mit zentralem "
+            "Quality-Gate im Retrieval."
         ),
     },
     {
@@ -84,6 +91,16 @@ LIFECYCLE_STEP_DEFINITIONS = (
         "notes": (
             "AI-Antwortfeedback wird mit Frage, Antwort, Quellen und "
             "Review-Status gespeichert."
+        ),
+    },
+    {
+        "key": "aging_review",
+        "label": "Aging-Review",
+        "status": "available",
+        "services": ["knowledge_aging_service", "background_job_service"],
+        "notes": (
+            "Alte oder lange nicht bestaetigte KnowledgeDocuments koennen "
+            "als outdated markiert und im Retrieval schwaecher gewichtet werden."
         ),
     },
     {
@@ -112,15 +129,36 @@ def knowledge_lifecycle_overview(documents=None):
     indexed_documents = [
         document for document in document_items if document.status == INDEXED_STATUS
     ]
-    approved_indexed = [
+    admin_approved_indexed = [
         document
         for document in indexed_documents
         if document.quality_status == APPROVED_QUALITY_STATUS
     ]
-    non_approved_indexed = len(indexed_documents) - len(approved_indexed)
+    quality_allowed_indexed = [
+        document
+        for document in indexed_documents
+        if retrieval_quality_gate_for_document(document).allowed
+    ]
+    quality_weighted_indexed = [
+        document
+        for document in quality_allowed_indexed
+        if retrieval_quality_gate_for_document(document).score_multiplier < 1
+    ]
+    quality_blocked_indexed = [
+        document
+        for document in indexed_documents
+        if not retrieval_quality_gate_for_document(document).allowed
+    ]
+    full_strength_indexed = [
+        document
+        for document in indexed_documents
+        if retrieval_quality_gate_for_document(document).score_multiplier == 1
+    ]
+    non_approved_indexed = len(indexed_documents) - len(admin_approved_indexed)
     problem_count = sum(
         1 for document in document_items if document.status in PROBLEM_INDEX_STATUSES
     )
+    aging_summary = knowledge_aging_summary(document_items)
     return {
         "documents": len(document_items),
         "indexed_documents": len(indexed_documents),
@@ -134,14 +172,20 @@ def knowledge_lifecycle_overview(documents=None):
         "knowledge_gaps_open": _open_gap_count(),
         "status_counts": status_counts,
         "quality_status_counts": quality_status_counts,
-        "review_queue": _review_queue(quality_status_counts),
+        "review_queue": _review_queue(quality_status_counts, aging_summary),
+        "aging": aging_summary,
         "rag_quality_gate": {
-            "enabled": False,
-            "approved_indexed_documents": len(approved_indexed),
+            "enabled": True,
+            "approved_indexed_documents": len(full_strength_indexed),
+            "admin_approved_indexed_documents": len(admin_approved_indexed),
             "non_approved_indexed_documents": non_approved_indexed,
+            "quality_allowed_indexed_documents": len(quality_allowed_indexed),
+            "quality_weighted_indexed_documents": len(quality_weighted_indexed),
+            "quality_blocked_indexed_documents": len(quality_blocked_indexed),
             "reason": (
-                "RAG verwendet aktuell indexierte und sichtbare Knowledge-Dokumente; "
-                "admin_approved wird ausgewertet, aber nicht als Abrufbedingung erzwungen."
+                "RAG blockiert rejected, verwendet admin_approved und "
+                "technician_confirmed mit voller Staerke und gewichtet "
+                "ai_suggested, draft sowie outdated niedriger."
             ),
         },
         "steps": knowledge_lifecycle_steps(),
@@ -149,6 +193,7 @@ def knowledge_lifecycle_overview(documents=None):
             quality_status_counts,
             problem_count,
             non_approved_indexed,
+            aging_summary,
         ),
     }
 
@@ -157,6 +202,7 @@ def knowledge_lifecycle_document_state(document):
     """Return the lifecycle state for one knowledge document."""
     if not isinstance(document, KnowledgeDocument):
         raise ValueError("document must be a KnowledgeDocument")
+    aging_state = knowledge_aging_state(document)
     return {
         "id": document.id,
         "source_type": document.source_type,
@@ -168,8 +214,10 @@ def knowledge_lifecycle_document_state(document):
         "approved_for_quality": document.quality_status == APPROVED_QUALITY_STATUS,
         "needs_indexing": document.status in {"pending", "stale"},
         "needs_attention": document.status in PROBLEM_INDEX_STATUSES
-        or document.quality_status in DRAFT_QUALITY_STATUSES | {"outdated"},
-        "next_action": _document_next_action(document),
+        or document.quality_status in DRAFT_QUALITY_STATUSES | {"outdated"}
+        or aging_state.should_mark_outdated,
+        "aging": aging_state.to_dict(),
+        "next_action": _document_next_action(document, aging_state),
     }
 
 
@@ -198,12 +246,14 @@ def _draft_count(quality_status_counts):
     return sum(quality_status_counts.get(status, 0) for status in DRAFT_QUALITY_STATUSES)
 
 
-def _review_queue(quality_status_counts):
+def _review_queue(quality_status_counts, aging_summary=None):
     """Return counts for the editorial review handoff."""
+    aging_summary = aging_summary or {}
     return {
         "needs_technician_review": _draft_count(quality_status_counts),
         "needs_admin_approval": quality_status_counts.get("technician_confirmed", 0),
         "needs_refresh": quality_status_counts.get("outdated", 0),
+        "needs_aging_review": int(aging_summary.get("stale_candidates") or 0),
         "rejected": quality_status_counts.get("rejected", 0),
     }
 
@@ -218,9 +268,11 @@ def _open_gap_count():
     return KnowledgeGap.query.filter(KnowledgeGap.status == "open").count()
 
 
-def _next_actions(quality_status_counts, problem_count, non_approved_indexed):
+def _next_actions(quality_status_counts, problem_count, non_approved_indexed, aging_summary):
     """Return compact admin actions derived from the lifecycle counters."""
     actions = []
+    if aging_summary.get("stale_candidates"):
+        actions.append("Aging-Review ausfuehren und alte Eintraege neu bestaetigen.")
     if problem_count:
         actions.append("Indexprobleme in Knowledge-Dokumenten pruefen.")
     if _draft_count(quality_status_counts):
@@ -230,18 +282,20 @@ def _next_actions(quality_status_counts, problem_count, non_approved_indexed):
     if quality_status_counts.get("outdated", 0):
         actions.append("Veraltete Eintraege aktualisieren und neu indexieren.")
     if non_approved_indexed:
-        actions.append("RAG-Qualitaetsgate fachlich entscheiden, bevor es erzwungen wird.")
+        actions.append("Nicht admin-freigegebene RAG-Quellen fachlich reviewen.")
     if not actions:
         actions.append("Lifecycle ist aktuell ohne offene Review- oder Indexsignale.")
     return actions
 
 
-def _document_next_action(document):
+def _document_next_action(document, aging_state=None):
     """Return the recommended next lifecycle action for one knowledge document."""
     if document.status in {"pending", "stale"}:
         return "reindex"
     if document.status in {"error", "no_text"}:
         return "fix_source"
+    if aging_state is not None and aging_state.should_mark_outdated:
+        return "aging_review"
     if document.quality_status in DRAFT_QUALITY_STATUSES:
         return "technician_review"
     if document.quality_status == "technician_confirmed":

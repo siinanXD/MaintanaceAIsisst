@@ -34,6 +34,7 @@ from app.services.assistant_training_service import (
 )
 from app.services.audit_service import audit_log_query, create_audit_log
 from app.services.background_job_service import (
+    enqueue_knowledge_aging_job,
     enqueue_rag_reindex_job,
     list_background_jobs,
 )
@@ -61,6 +62,7 @@ from app.services.knowledge_service import (
 from app.services.mail_service import mail_config_status
 from app.services.notification_service import delivery_query, send_test_email
 from app.services.operations_tracking_service import aggregate_operations, record_event
+from app.services.retrieval_telemetry_service import retrieval_quality_analytics
 from app.services.site_service import create_site, list_sites, update_site
 
 admin_bp = Blueprint("admin", __name__)
@@ -115,6 +117,20 @@ def find_employee(employee_id):
     if not employee:
         raise ValueError("employee_id does not reference an existing employee")
     return employee
+
+
+def parse_retrieval_telemetry_args(args):
+    """Return validated retrieval telemetry query arguments."""
+    try:
+        days = int(args.get("days", 30))
+        limit = int(args.get("limit", 10))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("days and limit must be integers") from exc
+    if days < 1 or days > 365:
+        raise ValueError("days must be an integer between 1 and 365")
+    if limit < 1 or limit > 50:
+        raise ValueError("limit must be an integer between 1 and 50")
+    return days, limit
 
 
 def user_audit_payload(user):
@@ -408,6 +424,20 @@ def ai_summary():
     return jsonify(ai_analytics_summary(days))
 
 
+@admin_bp.get("/ai/retrieval-telemetry")
+@roles_required(Role.MASTER_ADMIN)
+def ai_retrieval_telemetry():
+    """Return retrieval telemetry and quality analytics for administrators."""
+    try:
+        days, limit = parse_retrieval_telemetry_args(request.args)
+    except ValueError as exc:
+        return error_response(str(exc), 400)
+    return success_response(
+        retrieval_quality_analytics(days=days, limit=limit),
+        message="Retrieval telemetry loaded",
+    )
+
+
 @admin_bp.get("/ai/chats")
 @roles_required(Role.MASTER_ADMIN)
 def ai_chats():
@@ -678,6 +708,36 @@ def queue_ai_knowledge_reindex_job():
         return error_response(str(exc), 400)
     record_event(
         "rag.reindex_queued",
+        "ai",
+        entity_type="background_job",
+        entity_id=job.id,
+        user=actor,
+        source="admin",
+        metadata={"job_type": job.job_type, "status": job.status},
+        commit=True,
+    )
+    return success_response(job.to_dict(), 202, "Background job queued")
+
+
+@admin_bp.post("/ai/knowledge/aging/jobs")
+@roles_required(Role.MASTER_ADMIN)
+def queue_ai_knowledge_aging_job():
+    """Queue a background job for knowledge aging review."""
+    schema_status = database_schema_status()
+    if not schema_status["ok"]:
+        return jsonify(database_schema_error_payload(schema_status)), 503
+    actor = current_admin_user()
+    data = request.get_json(silent=True) or {}
+    try:
+        job = enqueue_knowledge_aging_job(
+            dry_run=data.get("dry_run", False),
+            limit=data.get("limit"),
+            user=actor,
+        )
+    except ValueError as exc:
+        return error_response(str(exc), 400)
+    record_event(
+        "rag.knowledge_aging_queued",
         "ai",
         entity_type="background_job",
         entity_id=job.id,

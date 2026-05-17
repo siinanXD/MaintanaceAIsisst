@@ -398,7 +398,10 @@ def test_machine_and_inventory_lists_support_optional_pagination(
     assert legacy_materials.status_code == 200
     assert isinstance(legacy_materials.get_json(), list)
     assert paged_materials.get_json()["data"]["pagination"]["total"] >= 1
-    assert "materials" not in compact_summary.get_json()
+    compact_payload = compact_summary.get_json()
+    assert "materials" not in compact_payload
+    assert compact_payload["status_counts"] == {"critical": 0, "low": 1, "ok": 0}
+    assert compact_payload["top_shortages"][0]["name"] == "Paginated Lager"
 
 
 def test_inventory_forecast_respects_task_department_visibility(

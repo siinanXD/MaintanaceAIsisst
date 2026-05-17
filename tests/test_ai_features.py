@@ -1,5 +1,6 @@
 """Tests for AI feature endpoints and services."""
 
+import json
 from datetime import date, timedelta
 from io import BytesIO
 
@@ -13,17 +14,22 @@ from app.models import (
     ChatMessage,
     EmployeeMachineQualification,
     GeneratedDocument,
+    KnowledgeChunk,
     KnowledgeDocument,
     KnowledgeGap,
     Priority,
     Role,
     Task,
+    User,
 )
 from app.services.ai_audit_service import ai_analytics_summary, create_ai_audit_event
+from app.services.ai_confidence_service import calculate_ai_confidence
 from app.services.ai_routing import estimate_cost_usd, workflow_profile
 from app.services.ai_service import AIServiceError
+from app.services.conversation_context_service import conversation_context_for_chat
 from app.services.document_service import document_path
 from app.services.knowledge_service import register_source_document
+from app.services.retrieval_telemetry_service import retrieval_quality_analytics
 
 
 def test_ai_chat_returns_today_tasks_without_openai(
@@ -165,6 +171,8 @@ def test_ai_chat_returns_sources_and_audit_metadata(
     assert payload["chat_message_id"]
     assert payload["sources"][0]["type"] == "machine"
     assert payload["diagnostics"]["source_count"] == len(payload["sources"])
+    assert payload["diagnostics"]["confidence_score"] == payload["confidence"]["score"]
+    assert payload["diagnostics"]["confidence_level"] == payload["confidence"]["level"]
 
     with app.app_context():
         event = db.session.get(AIAuditEvent, audit_id)
@@ -173,10 +181,154 @@ def test_ai_chat_returns_sources_and_audit_metadata(
         assert chat_message is not None
         assert event.workflow == "assistant"
         assert event.source_count == len(payload["sources"])
+        assert event.confidence_score == payload["confidence"]["score"]
+        assert event.confidence_level == payload["confidence"]["level"]
+        assert event.retrieval_explainability()["source_count"] == len(payload["sources"])
         assert chat_message.audit_event_id == audit_id
         assert chat_message.source_count == len(payload["sources"])
+        assert chat_message.confidence_score == payload["confidence"]["score"]
+        assert chat_message.confidence_level == payload["confidence"]["level"]
         assert not hasattr(event, "prompt")
         assert not hasattr(event, "response")
+
+
+def test_ai_confidence_scores_high_for_strong_sourced_context(app, make_user):
+    """Verify strong sources, quality, machine match, and feedback yield high confidence."""
+    user = make_user(username="ai_confidence_high_user")
+    sources = [
+        {
+            "type": "knowledge",
+            "id": 11,
+            "chunk_id": 101,
+            "title": "Presse 3 E104",
+            "score": 120,
+            "quality_status": "admin_approved",
+            "machine_match": 1.0,
+        },
+        {"type": "error", "id": 12, "title": "E104", "score": 95},
+        {"type": "machine", "id": 13, "title": "Presse 3", "score": 88},
+    ]
+    with app.app_context():
+        db.session.add(
+            AIFeedback(
+                user_id=user["id"],
+                prompt="Fehler E104 Presse 3",
+                response="Sensor reinigen",
+                response_type="assistant",
+                rating="helpful",
+                sources_json=json.dumps([sources[0]], ensure_ascii=True),
+                source_count=1,
+            ),
+        )
+        db.session.commit()
+
+        confidence = calculate_ai_confidence(
+            "Was hilft bei Fehler E104 an Presse 3?",
+            sources,
+            response_type="assistant",
+        ).to_dict()
+
+    assert confidence["level"] == "high"
+    assert confidence["score"] >= 70
+    assert confidence["factors"]["feedback"] > 0.58
+    assert "hallucination detection" in confidence["method"]
+
+
+def test_ai_audit_stores_sanitized_retrieval_explainability(app, make_user):
+    """Verify audit explainability keeps scores and source ids but no sensitive text."""
+    user = make_user(username="ai_explainability_audit_user")
+    raw_explainability = {
+        "source_count": 1,
+        "explained_source_count": 1,
+        "averages": {
+            "semantic_similarity": 0.82,
+            "lexical_score": 41.2,
+            "machine_match": 0.9,
+            "feedback_influence": 4.0,
+            "recency_influence": 2.0,
+        },
+        "quality_status_counts": {"admin_approved": 1},
+        "machine_match_count": 1,
+        "feedback_influenced_count": 1,
+        "recency_influenced_count": 1,
+        "sources": [
+            {
+                "type": "knowledge",
+                "id": 7,
+                "chunk_id": 70,
+                "score": 118,
+                "title": "Sensitive source title",
+                "prompt": "Sensitive prompt",
+                "context": "Sensitive retrieved content",
+                "explainability": {
+                    "semantic_similarity": 0.82,
+                    "lexical_score": 41.2,
+                    "lexical_similarity": 0.75,
+                    "machine_match": 0.9,
+                    "quality_status": "admin_approved",
+                    "feedback_influence": 4.0,
+                    "recency_influence": 2.0,
+                },
+            },
+        ],
+    }
+
+    with app.app_context():
+        event_id = create_ai_audit_event(
+            db.session.get(User, user["id"]),
+            "assistant",
+            {
+                "status": "local_answer",
+                "retrieval_explainability": raw_explainability,
+            },
+            source_count=1,
+        )
+        event = db.session.get(AIAuditEvent, event_id)
+        explainability = event.retrieval_explainability()
+
+    stored_json = json.dumps(explainability, ensure_ascii=True)
+    assert explainability["explained_source_count"] == 1
+    assert explainability["sources"][0]["type"] == "knowledge"
+    assert explainability["sources"][0]["id"] == 7
+    assert explainability["sources"][0]["explainability"]["semantic_similarity"] == 0.82
+    assert "Sensitive" not in stored_json
+    assert "prompt" not in stored_json
+    assert "context" not in stored_json
+
+
+def test_ai_chat_marks_and_persists_low_confidence_answers(
+    app,
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify weak answers are visibly marked and persisted with low confidence."""
+    user = make_user(
+        username="ai_confidence_low_user",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Wie behebe ich Stoerung QX999 an Maschine Omega?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["confidence"]["level"] == "low"
+    assert payload["diagnostics"]["confidence_level"] == "low"
+    assert payload["answer"].startswith("## Niedrige Confidence")
+    assert payload["confidence"]["warning"]
+
+    with app.app_context():
+        event = db.session.get(AIAuditEvent, payload["diagnostics"]["audit_event_id"])
+        chat_message = db.session.get(ChatMessage, payload["chat_message_id"])
+
+    assert event.confidence_level == "low"
+    assert chat_message.confidence_level == "low"
+    assert chat_message.confidence_score == payload["confidence"]["score"]
 
 
 def test_ai_chat_tracks_knowledge_gap_when_no_sources_match(
@@ -516,6 +668,193 @@ def test_ai_chat_general_openai_error_returns_short_tracked_message(
     assert "Quelle:" not in payload["answer"]
 
 
+def test_ai_chat_uses_short_session_context_for_references(
+    app,
+    client,
+    make_user,
+    auth_headers,
+    monkeypatch,
+):
+    """Verify referential chat turns receive bounded same-session context."""
+    captured = {}
+
+    class ContextAwareProvider:
+        """Fake provider that records the prompt context."""
+
+        name = "openai"
+        last_call_metadata = {
+            "provider": "openai",
+            "workflow": "chat",
+            "model": "test-context-model",
+        }
+
+        def answer_question(self, question, context, workflow="chat"):
+            """Record contextual prompt inputs and return a deterministic answer."""
+            captured["question"] = question
+            captured["context"] = context
+            captured["workflow"] = workflow
+            return "## Antwort\n- **Status:** Kontext verstanden"
+
+        def answer_general_question(self, question):
+            """Record unexpected general fallback calls."""
+            captured["general_question"] = question
+            return "## Antwort\n- **Status:** Allgemein"
+
+    admin = make_user(
+        username="ai_context_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    with app.app_context():
+        db.session.add(
+            ChatMessage(
+                user_id=admin["id"],
+                session_id="ctx-main",
+                message="Fehler E104 an Presse 3: Was ist die L\u00f6sung?",
+                response=(
+                    "## Fehlerhilfe\n"
+                    "- **Pr\u00fcfung:** Sensor reinigen und Abstand kontrollieren."
+                ),
+                response_type="error_help",
+                diagnostics_json=json.dumps({"scopes": ["errors", "machines"]}),
+                source_count=1,
+            )
+        )
+        db.session.commit()
+
+    monkeypatch.setattr(
+        "app.ai.services.get_ai_provider",
+        lambda: ContextAwareProvider(),
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(admin["username"]),
+        json={
+            "message": "Was war die vorherige L\u00f6sung fuer den Fehler von eben?",
+            "session_id": "ctx-main",
+        },
+    )
+
+    payload = response.get_json()
+    context_diagnostics = payload["diagnostics"]["conversation_context"]
+    with app.app_context():
+        saved = db.session.get(ChatMessage, payload["chat_message_id"])
+
+    assert response.status_code == 200
+    assert captured["workflow"] == "chat"
+    assert "Kurzzeit-Gespraechskontext" in captured["context"]
+    assert "Presse 3" in captured["context"]
+    assert "E104" in captured["context"]
+    assert "Sensor reinigen" in captured["context"]
+    assert context_diagnostics["reference_detected"] is True
+    assert context_diagnostics["applied"] is True
+    assert context_diagnostics["message_count"] == 1
+    assert saved.session_id == "ctx-main"
+
+
+def test_ai_chat_context_is_scoped_to_session(
+    app,
+    client,
+    make_user,
+    auth_headers,
+    monkeypatch,
+):
+    """Verify prior messages from another session are not used as memory."""
+    captured = {}
+
+    class GeneralProvider:
+        """Fake provider that records whether context was supplied."""
+
+        name = "openai"
+        last_call_metadata = {
+            "provider": "openai",
+            "workflow": "general_chat",
+            "model": "test-context-model",
+        }
+
+        def answer_question(self, question, context, workflow="chat"):
+            """Record contextual calls."""
+            captured["context"] = context
+            return "## Antwort\n- **Status:** Kontext"
+
+        def answer_general_question(self, question):
+            """Record general calls when no context is available."""
+            captured["general_question"] = question
+            return "## Antwort\n- **Status:** Kein Kontext"
+
+    user = make_user(username="ai_context_session_user")
+    with app.app_context():
+        db.session.add(
+            ChatMessage(
+                user_id=user["id"],
+                session_id="other-session",
+                message="Fehler E999 an Presse 9",
+                response="- **Pruefung:** Andere Maschine pruefen.",
+                response_type="error_help",
+                diagnostics_json=json.dumps({"scopes": ["errors", "machines"]}),
+                source_count=1,
+            )
+        )
+        db.session.commit()
+
+    monkeypatch.setattr("app.ai.services.get_ai_provider", lambda: GeneralProvider())
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={
+            "message": "Was war die vorherige L\u00f6sung?",
+            "session_id": "current-session",
+        },
+    )
+
+    payload = response.get_json()
+    context_diagnostics = payload["diagnostics"]["conversation_context"]
+
+    assert response.status_code == 200
+    assert "general_question" in captured
+    assert "context" not in captured
+    assert context_diagnostics["reference_detected"] is True
+    assert context_diagnostics["applied"] is False
+    assert context_diagnostics["message_count"] == 0
+
+
+def test_conversation_context_rechecks_permissions_for_legacy_scoped_messages(
+    app,
+    make_user,
+    set_dashboard_permission,
+):
+    """Verify legacy unscoped chat history is inferred and permission-filtered."""
+    user = make_user(username="ai_context_permission_user", role=Role.INSTANDHALTUNG)
+    set_dashboard_permission(user["username"], "errors", can_view=False)
+
+    with app.app_context():
+        db.session.add(
+            ChatMessage(
+                user_id=user["id"],
+                session_id="legacy-denied",
+                message="Fehler E104 an Presse 3",
+                response="Sensor reinigen und Abstand kontrollieren.",
+                response_type="error_help",
+                diagnostics_json="{}",
+                source_count=1,
+            )
+        )
+        db.session.commit()
+
+        context = conversation_context_for_chat(
+            db.session.get(User, user["id"]),
+            "Was war der Fehler von eben?",
+            "legacy-denied",
+        )
+
+    assert context.reference_detected is True
+    assert context.applied is False
+    assert context.message_count == 0
+    assert context.error_codes == ()
+
+
 def test_ai_chat_general_model_error_is_diagnosed(
     client,
     make_user,
@@ -648,6 +987,180 @@ def test_ai_analytics_summary_reports_ops_readiness(app, make_user):
     assert summary["top_errors"][0] == {"error_category": "rate_limit", "count": 1}
     assert summary["readiness"]["status"] == "critical"
     assert summary["readiness"]["reasons"]
+    assert "retrieval_quality" in summary
+
+
+def test_retrieval_quality_analytics_aggregates_prompt_safe_signals(app, make_user):
+    """Verify retrieval telemetry aggregates quality signals without raw content."""
+    user = make_user(username="retrieval_telemetry_user")
+
+    with app.app_context():
+        used_document = KnowledgeDocument(
+            source_type="upload",
+            title="Telemetry Used Source",
+            original_filename="used.txt",
+            relative_path="uploads/used.txt",
+            content_type="text/plain",
+            department="Produktion",
+            status="indexed",
+            quality_status="admin_approved",
+            is_public=True,
+            chunk_count=1,
+        )
+        unused_document = KnowledgeDocument(
+            source_type="upload",
+            title="Telemetry Unused Source",
+            original_filename="unused.txt",
+            relative_path="uploads/unused.txt",
+            content_type="text/plain",
+            department="Produktion",
+            status="indexed",
+            quality_status="admin_approved",
+            is_public=True,
+            chunk_count=1,
+        )
+        db.session.add_all([used_document, unused_document])
+        db.session.flush()
+        used_chunk = KnowledgeChunk(
+            document_id=used_document.id,
+            chunk_index=0,
+            text="Sensitive used chunk text must not appear in telemetry.",
+            token_text="telemetry used",
+        )
+        unused_chunk = KnowledgeChunk(
+            document_id=unused_document.id,
+            chunk_index=0,
+            text="Sensitive unused chunk text must not appear in telemetry.",
+            token_text="telemetry unused",
+        )
+        db.session.add_all([used_chunk, unused_chunk])
+        db.session.flush()
+        used_document_id = used_document.id
+        used_chunk_id = used_chunk.id
+        unused_chunk_id = unused_chunk.id
+        source_payload = {
+            "type": "knowledge",
+            "id": used_document_id,
+            "chunk_id": used_chunk_id,
+            "score": 12,
+            "explainability": {
+                "quality_status": "admin_approved",
+                "final_score": 12,
+            },
+        }
+        create_ai_audit_event(
+            user=type("UserStub", (), {"id": user["id"]})(),
+            workflow="general_chat",
+            diagnostics={
+                "status": "openai_used",
+                "confidence_score": 82,
+                "retrieval_explainability": {
+                    "source_count": 1,
+                    "explained_source_count": 1,
+                    "sources": [source_payload],
+                },
+            },
+            source_count=1,
+        )
+        create_ai_audit_event(
+            user=type("UserStub", (), {"id": user["id"]})(),
+            workflow="general_chat",
+            diagnostics={
+                "status": "local_answer",
+                "confidence_score": 18,
+            },
+            source_count=0,
+        )
+        db.session.add(
+            AIFeedback(
+                user_id=user["id"],
+                prompt="Sensitive prompt must not appear.",
+                response="Sensitive answer must not appear.",
+                response_type="assistant",
+                rating="not_helpful",
+                sources_json=json.dumps(
+                    [
+                        {
+                            "type": "knowledge",
+                            "id": used_document_id,
+                            "chunk_id": used_chunk_id,
+                            "title": used_document.title,
+                            "score": 12,
+                        }
+                    ],
+                    ensure_ascii=True,
+                ),
+                source_count=1,
+            )
+        )
+        db.session.add(
+            KnowledgeGap(
+                question="Sensitive gap question must not appear.",
+                question_hash="a" * 64,
+                occurrence_count=4,
+                status="open",
+                machine="Presse 3",
+                department="Produktion",
+                user_id=user["id"],
+            )
+        )
+        db.session.commit()
+
+        telemetry = retrieval_quality_analytics(days=30, limit=5)
+
+    top_source = telemetry["source_usage"]["top_sources"][0]
+    poor_source = telemetry["poor_sources"][0]
+    top_gap = telemetry["knowledge_gaps"]["top_gaps"][0]
+    unused_sample = telemetry["unused_chunks"]["sample"]
+    telemetry_text = json.dumps(telemetry, ensure_ascii=True)
+
+    assert top_source["id"] == used_document_id
+    assert top_source["audit_uses"] == 1
+    assert poor_source["not_helpful_feedback"] == 1
+    assert telemetry["unsuccessful_questions"]["no_source_events"] == 1
+    assert telemetry["unsuccessful_questions"]["low_confidence_events"] == 1
+    assert top_gap["question_hash"] == "a" * 64
+    assert "question" not in top_gap
+    assert telemetry["negative_feedback"]["total"] == 1
+    assert any(item["chunk_id"] == unused_chunk_id for item in unused_sample)
+    assert "Sensitive prompt" not in telemetry_text
+    assert "Sensitive answer" not in telemetry_text
+    assert "Sensitive used chunk text" not in telemetry_text
+
+
+def test_admin_retrieval_telemetry_endpoint_is_admin_only(
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify retrieval telemetry is exposed only to master admins."""
+    admin = make_user(
+        username="retrieval_telemetry_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    user = make_user(username="retrieval_telemetry_regular")
+
+    forbidden_response = client.get(
+        "/api/v1/admin/ai/retrieval-telemetry",
+        headers=auth_headers(user["username"]),
+    )
+    admin_response = client.get(
+        "/api/v1/admin/ai/retrieval-telemetry?days=30&limit=5",
+        headers=auth_headers(admin["username"]),
+    )
+
+    payload = admin_response.get_json()["data"]
+    assert forbidden_response.status_code == 403
+    assert admin_response.status_code == 200
+    assert set(payload.keys()) >= {
+        "source_usage",
+        "poor_sources",
+        "unsuccessful_questions",
+        "knowledge_gaps",
+        "negative_feedback",
+        "unused_chunks",
+    }
 
 
 def test_ai_chat_history_is_user_scoped_and_admin_searchable(
@@ -1415,8 +1928,9 @@ def test_knowledge_lifecycle_status_covers_training_rag_feedback_flow(
     assert lifecycle["indexed_documents"] >= 1
     assert lifecycle["drafts"] >= 1
     assert lifecycle["feedback_open"] >= 1
-    assert lifecycle["rag_quality_gate"]["enabled"] is False
+    assert lifecycle["rag_quality_gate"]["enabled"] is True
     assert lifecycle["rag_quality_gate"]["non_approved_indexed_documents"] >= 1
+    assert lifecycle["rag_quality_gate"]["quality_weighted_indexed_documents"] >= 1
     assert {"draft_creation", "rag_usage", "feedback", "knowledge_gaps"} <= step_keys
 
 
@@ -2083,6 +2597,9 @@ def test_dashboard_contains_daily_briefing_and_priority_ui(client):
     assert "partially_helpful" in chat_script
     assert "chat_message_id" in chat_script
     assert "/api/v1/ai/feedback" in chat_script
+    assert "maintenance_ai_chat_session_id" in chat_script
+    assert "session_id: chatSessionId()" in chat_script
+    assert "resetChatSession()" in chat_script
 
 
 def test_admin_users_page_contains_ai_analytics_ui(client):

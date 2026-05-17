@@ -11,6 +11,7 @@ from app.security import current_user, has_dashboard_permission, roles_required
 from app.services.ai_feedback_service import record_ai_feedback
 from app.services.ai_history_service import paginated_chat_history
 from app.services.chat_template_service import chat_templates_for_user
+from app.services.conversation_context_service import normalize_session_id
 from app.services.error_assistant_service import run_error_assistant
 from app.services.knowledge_gap_service import maybe_track_knowledge_gap
 from app.services.operations_tracking_service import record_event
@@ -30,8 +31,9 @@ def chat():
         return error_response("message is required", 400)
 
     user = current_user()
-    result = answer_chat(message, user)
-    chat_message = save_chat_message(user, message, result)
+    session_id = normalize_session_id(data.get("session_id"))
+    result = answer_chat(message, user, session_id=session_id)
+    chat_message = save_chat_message(user, message, result, session_id=session_id)
     if chat_message:
         result["chat_message_id"] = chat_message.id
     maybe_track_knowledge_gap(message, user, result)

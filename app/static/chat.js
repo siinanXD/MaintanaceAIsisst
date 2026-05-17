@@ -9,12 +9,19 @@
   const historyPanel = document.querySelector("[data-chat-history-panel]");
   const historySearch = document.querySelector("[data-chat-history-search]");
   const historyList = document.querySelector("[data-chat-history-list]");
+  const historyCount = document.querySelector("[data-chat-history-count]");
+  const chatInput = form ? form.querySelector("input") : null;
   let chatTemplateItems = [];
   let isTemplateLoading = false;
   let hasHydratedPanel = false;
   let isSending = false;
+  let hasSubmittedMessage = false;
+  let hasTypedInCurrentChat = false;
   let lastFocusedElement = null;
   const CHAT_OPEN_KEY = "maintenance_chat_open";
+  const CHAT_SESSION_KEY = "maintenance_ai_chat_session_id";
+  let fallbackChatSessionId = "";
+  let warnedChatSessionStorage = false;
 
   if (!widget || !toggle || !panel || !form || !messages) {
     return;
@@ -22,6 +29,63 @@
 
   function isOpen() {
     return widget.classList.contains("is-open");
+  }
+
+  /**
+   * Return a compact random identifier for one browser chat session.
+   */
+  function buildChatSessionId() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+      return window.crypto.randomUUID();
+    }
+    return "chat-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+  }
+
+  /**
+   * Warn once when sessionStorage is unavailable and fall back in memory.
+   */
+  function warnChatSessionStorage(error) {
+    if (warnedChatSessionStorage) return;
+    warnedChatSessionStorage = true;
+    if (window.console && typeof window.console.warn === "function") {
+      window.console.warn("Chat session storage is unavailable; using an in-memory session id.", error);
+    }
+  }
+
+  /**
+   * Return the current short-term chat session id without replaying history.
+   */
+  function chatSessionId() {
+    try {
+      const existing = window.sessionStorage.getItem(CHAT_SESSION_KEY);
+      if (existing) {
+        fallbackChatSessionId = existing;
+        return existing;
+      }
+      const next = buildChatSessionId();
+      window.sessionStorage.setItem(CHAT_SESSION_KEY, next);
+      fallbackChatSessionId = next;
+      return next;
+    } catch (error) {
+      warnChatSessionStorage(error);
+      if (!fallbackChatSessionId) {
+        fallbackChatSessionId = buildChatSessionId();
+      }
+      return fallbackChatSessionId;
+    }
+  }
+
+  /**
+   * Start a new short-term chat session for the next request.
+   */
+  function resetChatSession() {
+    const next = buildChatSessionId();
+    fallbackChatSessionId = next;
+    try {
+      window.sessionStorage.setItem(CHAT_SESSION_KEY, next);
+    } catch (error) {
+      warnChatSessionStorage(error);
+    }
   }
 
   function hydrateChatPanel() {
@@ -33,8 +97,7 @@
   }
 
   function focusChatInput() {
-    const input = form.querySelector("input");
-    if (input) input.focus();
+    if (chatInput) chatInput.focus();
   }
 
   function focusableChatElements() {
@@ -280,6 +343,9 @@
     if (!historyList) return;
     historyList.innerHTML = "";
     const historyItems = items || [];
+    if (historyCount) {
+      historyCount.textContent = String(historyItems.length);
+    }
     if (historyPanel) {
       historyPanel.hidden = historyItems.length === 0;
     }
@@ -390,7 +456,7 @@
         "Authorization": "Bearer " + token,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ message })
+      body: JSON.stringify({ message, session_id: chatSessionId() })
     });
 
     if (!response.ok) {
@@ -529,6 +595,9 @@
 
   function clearChat() {
     messages.innerHTML = "";
+    hasSubmittedMessage = false;
+    hasTypedInCurrentChat = false;
+    resetChatSession();
     const initial = document.createElement("div");
     initial.className = "chat-message is-assistant";
     initial.textContent = "Frag mich nach Tasks, Fehlern, Maschinen, Lager, Dokumenten oder Schichtplanung.";
@@ -581,6 +650,13 @@
     return fallbackChatSuggestionsForUser();
   }
 
+  function updateSuggestionVisibility(items) {
+    if (!suggestions) return;
+    const hasSuggestions = Array.isArray(items) && items.length > 0;
+    const hasInputText = chatInput && chatInput.value.trim().length > 0;
+    suggestions.hidden = !hasSuggestions || hasInputText || hasSubmittedMessage || hasTypedInCurrentChat;
+  }
+
   async function loadChatTemplates() {
     const token = window.localStorage.getItem("maintenance_access_token");
     if (!token || isTemplateLoading) return;
@@ -607,7 +683,7 @@
     if (!chatTemplateItems.length && shouldLoadRemote) {
       loadChatTemplates();
     }
-    suggestions.hidden = items.length === 0;
+    updateSuggestionVisibility(items);
     items.forEach((item) => {
       const template = normalizeTemplateItem(item);
       const chip = document.createElement("button");
@@ -621,10 +697,10 @@
       chip.title = template.message;
       chip.addEventListener("click", () => {
         suggestions.hidden = true;
-        const input = form.querySelector("input");
-        if (input) {
-          input.value = template.message;
-          input.focus();
+        if (chatInput) {
+          chatInput.value = template.message;
+          chatInput.focus();
+          updateSuggestionVisibility(items);
         }
       });
       suggestions.appendChild(chip);
@@ -678,11 +754,12 @@
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (isSending) return;
-    const input = form.querySelector("input");
+    const input = chatInput || form.querySelector("input");
     const message = input.value.trim();
     if (!message) return;
 
     input.value = "";
+    hasSubmittedMessage = true;
     setChatFormBusy(true);
     if (suggestions) suggestions.hidden = true;
     appendMessage(message, "user");
@@ -735,6 +812,14 @@
     historySearch.addEventListener("input", () => {
       window.clearTimeout(historySearch._timer);
       historySearch._timer = window.setTimeout(loadChatHistory, 250);
+    });
+  }
+  if (chatInput) {
+    chatInput.addEventListener("input", () => {
+      if (chatInput.value.trim()) {
+        hasTypedInCurrentChat = true;
+      }
+      updateSuggestionVisibility(chatSuggestionsForUser());
     });
   }
   window.maintenanceChat = {

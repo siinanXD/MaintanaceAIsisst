@@ -63,9 +63,12 @@ REQUIRED_TABLE_COLUMNS = {
         "rejection_comment",
     },
     "chat_message": {
+        "session_id",
         "response_type",
         "diagnostics_json",
         "source_count",
+        "confidence_score",
+        "confidence_level",
         "audit_event_id",
     },
     "ai_feedback": {
@@ -82,6 +85,9 @@ REQUIRED_TABLE_COLUMNS = {
         "title",
         "status",
         "quality_status",
+        "last_confirmed_at",
+        "confirmation_count",
+        "aging_checked_at",
         "is_public",
         "chunk_count",
         "error_message",
@@ -91,6 +97,7 @@ REQUIRED_TABLE_COLUMNS = {
         "chunk_index",
         "text",
         "token_text",
+        "entities_json",
     },
     "knowledge_gap": {
         "question",
@@ -116,6 +123,11 @@ REQUIRED_TABLE_COLUMNS = {
         "started_at",
         "finished_at",
         "created_by",
+    },
+    "ai_audit_event": {
+        "confidence_score",
+        "confidence_level",
+        "retrieval_explainability_json",
     },
     "assistant_training_entry": {
         "title",
@@ -208,6 +220,21 @@ LOCAL_DEV_SCHEMA_COLUMNS = {
         sa.Column("source_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("review_status", sa.String(length=40), nullable=False, server_default="open"),
     ),
+    "chat_message": (
+        sa.Column("session_id", sa.String(length=120), nullable=False, server_default=""),
+        sa.Column("confidence_score", sa.Integer(), nullable=True),
+        sa.Column("confidence_level", sa.String(length=40), nullable=False, server_default=""),
+    ),
+    "ai_audit_event": (
+        sa.Column("confidence_score", sa.Integer(), nullable=True),
+        sa.Column("confidence_level", sa.String(length=40), nullable=False, server_default=""),
+        sa.Column(
+            "retrieval_explainability_json",
+            sa.Text(),
+            nullable=False,
+            server_default="{}",
+        ),
+    ),
     "knowledge_document": (
         sa.Column(
             "quality_status",
@@ -215,6 +242,12 @@ LOCAL_DEV_SCHEMA_COLUMNS = {
             nullable=False,
             server_default="draft",
         ),
+        sa.Column("last_confirmed_at", sa.DateTime(), nullable=True),
+        sa.Column("confirmation_count", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("aging_checked_at", sa.DateTime(), nullable=True),
+    ),
+    "knowledge_chunk": (
+        sa.Column("entities_json", sa.Text(), nullable=False, server_default="{}"),
     ),
     "shift_plan": (
         sa.Column("coverage_percent", sa.Float(), nullable=False, server_default="0"),

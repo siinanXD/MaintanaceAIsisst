@@ -3,17 +3,21 @@
 from flask import current_app, has_app_context
 
 from app.services.ai_retrieval import retrieve_ai_context
+from app.services.retrieval_explainability_service import explainability_from_metadata
 from app.services.vector_store_service import get_vector_store
 
 
-def retrieve_context(message, user, requested_scopes=None):
+def retrieve_context(message, user, requested_scopes=None, conversation_context=None):
     """Return permission-aware structured and vector retrieval context."""
-    structured = retrieve_ai_context(message, user, requested_scopes)
+    retrieval_message = _retrieval_message(message, conversation_context)
+    structured = retrieve_ai_context(retrieval_message, user, requested_scopes)
     if not is_rag_enabled():
+        structured["context"] = _prompt_context(structured.get("context", ""), conversation_context)
         return structured
 
-    vector_results = retrieve_vector_chunks(message, user)
+    vector_results = retrieve_vector_chunks(retrieval_message, user)
     if not vector_results:
+        structured["context"] = _prompt_context(structured.get("context", ""), conversation_context)
         return structured
 
     vector_context = _vector_context(vector_results)
@@ -24,7 +28,7 @@ def retrieve_context(message, user, requested_scopes=None):
     data = dict(structured.get("data") or {})
     data["knowledge"] = vector_sources
     return {
-        "context": context,
+        "context": _prompt_context(context, conversation_context),
         "sources": sources,
         "data": data,
         "allowed_scopes": structured.get("allowed_scopes", []),
@@ -44,12 +48,13 @@ def retrieve_vector_chunks(message, user, limit=None, filters=None):
     )
 
 
-def knowledge_context_for_chat(message, user, limit=None):
+def knowledge_context_for_chat(message, user, limit=None, conversation_context=None):
     """Return RAG knowledge context and public sources for chat workflows."""
-    vector_results = retrieve_vector_chunks(message, user, limit=limit)
+    retrieval_message = _retrieval_message(message, conversation_context)
+    vector_results = retrieve_vector_chunks(retrieval_message, user, limit=limit)
     if not vector_results:
-        return "", []
-    return _vector_context(vector_results), [
+        return _prompt_context("", conversation_context), []
+    return _prompt_context(_vector_context(vector_results), conversation_context), [
         _source_from_result(result) for result in vector_results
     ]
 
@@ -72,14 +77,16 @@ def _vector_context(results):
         title = metadata.get("title") or "Wissensquelle"
         source_id = metadata.get("id") or metadata.get("source_id") or ""
         document_type = metadata.get("document_type") or metadata.get("source_type") or ""
+        machine_context = _machine_context_line(metadata)
+        block_lines = [
+            f"Quelle: Wissen #{source_id} - {title}",
+            f"Dokumenttyp: {document_type}",
+        ]
+        if machine_context:
+            block_lines.append(machine_context)
+        block_lines.append(result.text)
         blocks.append(
-            "\n".join(
-                [
-                    f"Quelle: Wissen #{source_id} - {title}",
-                    f"Dokumenttyp: {document_type}",
-                    result.text,
-                ]
-            )
+            "\n".join(block_lines)
         )
     return "\n\n".join(blocks)
 
@@ -87,7 +94,9 @@ def _vector_context(results):
 def _source_from_result(result):
     """Return a public source payload for one vector-search result."""
     metadata = result.metadata
-    return {
+    score_signals = metadata.get("score_signals") or {}
+    explainability = explainability_from_metadata(metadata, result.score)
+    source = {
         "type": metadata.get("type", "knowledge"),
         "id": metadata.get("id"),
         "chunk_id": metadata.get("chunk_id"),
@@ -96,7 +105,16 @@ def _source_from_result(result):
         "url": metadata.get("url", "/admin/ai"),
         "reason": f"{int(result.score)} RAG-Trefferpunkte",
         "score": int(result.score),
+        "quality_status": explainability.get("quality_status")
+        or metadata.get("quality_status")
+        or score_signals.get("quality_status"),
+        "machine_match": explainability.get("machine_match", 0),
+        "machine_match_reasons": explainability.get("machine_match_reasons", []),
+        "explainability": explainability,
     }
+    if _score_debug_enabled() and metadata.get("score_debug"):
+        source["score_debug"] = metadata["score_debug"]
+    return source
 
 
 def _deduplicate_sources(sources):
@@ -110,3 +128,42 @@ def _deduplicate_sources(sources):
         seen.add(key)
         unique_sources.append(source)
     return unique_sources
+
+
+def _score_debug_enabled():
+    """Return whether retrieval score debug fields should be exposed."""
+    if not has_app_context():
+        return False
+    return bool(current_app.config.get("RAG_SCORE_DEBUG", False))
+
+
+def _retrieval_message(message, conversation_context):
+    """Return a query string enriched by short-term conversation context."""
+    if conversation_context is None:
+        return message
+    return conversation_context.retrieval_query(message)
+
+
+def _prompt_context(context, conversation_context):
+    """Return retrieval context with optional conversation memory prepended."""
+    if conversation_context is None:
+        return context
+    return conversation_context.prompt_context(context)
+
+
+def _machine_context_line(metadata):
+    """Return an optional context line explaining machine-aware retrieval signals."""
+    signals = metadata.get("score_signals") or {}
+    reasons = signals.get("machine_match_reasons") or []
+    if not reasons:
+        return ""
+    labels = {
+        "same_machine": "gleiche Maschine",
+        "same_machine_series": "gleiche Maschinenserie",
+        "same_area": "gleicher Bereich",
+        "same_manufacturer": "gleicher Hersteller",
+        "same_error_code": "gleicher Fehlercode",
+        "similar_error_code": "aehnlicher Fehlercode",
+    }
+    reason_text = ", ".join(labels.get(reason, reason) for reason in reasons)
+    return f"Maschinenkontext: {reason_text}"

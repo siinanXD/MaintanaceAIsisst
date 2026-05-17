@@ -8,6 +8,8 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
 from app.models import AIAuditEvent, AIFeedback
+from app.services.retrieval_explainability_service import explainability_to_json
+from app.services.retrieval_telemetry_service import retrieval_quality_analytics
 
 
 def create_ai_audit_event(
@@ -20,6 +22,7 @@ def create_ai_audit_event(
 ):
     """Persist one metadata-only AI event and return its id."""
     diagnostics = diagnostics or {}
+    confidence = diagnostics.get("confidence") or {}
     event = AIAuditEvent(
         user_id=getattr(user, "id", None),
         workflow=workflow,
@@ -38,6 +41,15 @@ def create_ai_audit_event(
         requested_scopes=_json_list(requested_scopes),
         allowed_scopes=_json_list(allowed_scopes),
         source_count=int(source_count or 0),
+        confidence_score=_optional_int_value(
+            diagnostics.get("confidence_score") or confidence.get("score"),
+        ),
+        confidence_level=str(
+            diagnostics.get("confidence_level") or confidence.get("level") or "",
+        )[:40],
+        retrieval_explainability_json=explainability_to_json(
+            diagnostics.get("retrieval_explainability") or {},
+        ),
         error_category=str(diagnostics.get("error") or "")[:120],
     )
     db.session.add(event)
@@ -123,6 +135,7 @@ def ai_analytics_summary(days=7):
             "helpful_rate": helpful_rate,
             "latest": [item.to_dict() for item in feedback_entries[:5]],
         },
+        "retrieval_quality": retrieval_quality_analytics(days=days),
         "latest_events": [event.to_dict() for event in events[:10]],
     }
 
@@ -261,6 +274,16 @@ def _int_value(value):
         return int(value or 0)
     except (TypeError, ValueError):
         return 0
+
+
+def _optional_int_value(value):
+    """Return an optional integer for audit metadata."""
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _float_value(value):

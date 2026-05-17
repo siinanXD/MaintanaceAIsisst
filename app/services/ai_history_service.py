@@ -3,18 +3,30 @@
 import json
 
 from app.models import ChatMessage
+from app.services.conversation_context_service import normalize_session_id
 
 
-def save_chat_exchange(user, message, result):
+def save_chat_exchange(user, message, result, session_id=""):
     """Persist one chat exchange with safe response metadata."""
     diagnostics = result.get("diagnostics") or {}
+    confidence = diagnostics.get("confidence") or {}
+    normalized_session_id = normalize_session_id(
+        session_id or diagnostics.get("session_id") or "",
+    )
     chat = ChatMessage(
         user_id=user.id,
         message=str(message or "")[:8000],
         response=str(result.get("answer") or "")[:16000],
         response_type=str(result.get("type") or "assistant")[:80],
+        session_id=normalized_session_id,
         diagnostics_json=json.dumps(diagnostics, ensure_ascii=True),
         source_count=len(result.get("sources") or []),
+        confidence_score=_optional_int(
+            diagnostics.get("confidence_score") or confidence.get("score"),
+        ),
+        confidence_level=str(
+            diagnostics.get("confidence_level") or confidence.get("level") or "",
+        )[:40],
         audit_event_id=diagnostics.get("audit_event_id"),
     )
     return chat
@@ -68,3 +80,13 @@ def parse_limit_offset(args, default_limit=30, max_limit=200):
     except (TypeError, ValueError) as exc:
         raise ValueError("limit and offset must be integers") from exc
     return limit, offset
+
+
+def _optional_int(value):
+    """Return an optional integer for persisted diagnostics."""
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None

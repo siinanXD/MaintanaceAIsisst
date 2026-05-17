@@ -4,7 +4,7 @@ from datetime import timedelta
 
 from app.domain_models.common import utc_now
 from app.extensions import db
-from app.models import BackgroundJob
+from app.models import BackgroundJob, KnowledgeChunk, KnowledgeDocument
 
 
 def test_admin_can_queue_and_list_rag_reindex_jobs(client, make_user, auth_headers):
@@ -54,6 +54,27 @@ def test_rag_reindex_job_validates_mode(app, client, make_user, auth_headers):
         assert BackgroundJob.query.count() == 0
 
 
+def test_admin_can_queue_knowledge_aging_job(client, make_user, auth_headers):
+    """Verify admins can queue knowledge aging background jobs."""
+    admin = make_user(
+        username="job_aging_admin",
+        role="master_admin",
+        department_name=None,
+    )
+
+    queue_response = client.post(
+        "/api/v1/admin/ai/knowledge/aging/jobs",
+        headers=auth_headers(admin["username"]),
+        json={"dry_run": True, "limit": 5},
+    )
+
+    queued_job = queue_response.get_json()["data"]
+    assert queue_response.status_code == 202
+    assert queued_job["job_type"] == "knowledge_aging"
+    assert queued_job["payload"]["dry_run"] is True
+    assert queued_job["payload"]["limit"] == 5
+
+
 def test_worker_marks_failed_rag_document_job(app, make_user):
     """Verify missing document jobs end in failed state after max attempts."""
     from app.services.background_job_service import enqueue_rag_reindex_job, process_background_job
@@ -71,6 +92,56 @@ def test_worker_marks_failed_rag_document_job(app, make_user):
 
     assert job.status == "failed"
     assert "Knowledge document not found" in job.error_message
+
+
+def test_worker_processes_knowledge_aging_job(app):
+    """Verify knowledge aging jobs mark old reviewed documents as outdated."""
+    from app.services.background_job_service import (
+        enqueue_knowledge_aging_job,
+        process_background_job,
+    )
+
+    with app.app_context():
+        app.config["KNOWLEDGE_AGING_STALE_DAYS"] = 30
+        old_timestamp = utc_now() - timedelta(days=120)
+        document = KnowledgeDocument(
+            source_type="upload",
+            title="Job Aging AG900",
+            original_filename="job-aging.txt",
+            relative_path="uploads/job-aging.txt",
+            content_type="text/plain",
+            department="Produktion",
+            status="indexed",
+            quality_status="admin_approved",
+            last_confirmed_at=old_timestamp,
+            confirmation_count=1,
+            is_public=True,
+            chunk_count=1,
+            created_at=old_timestamp,
+            updated_at=old_timestamp,
+        )
+        db.session.add(document)
+        db.session.flush()
+        db.session.add(
+            KnowledgeChunk(
+                document_id=document.id,
+                chunk_index=0,
+                text="AG900 Hydraulik Servo Ablauf pruefen.",
+                token_text="ag900 hydraulik servo ablauf pruefen",
+                created_at=old_timestamp,
+            )
+        )
+        db.session.commit()
+
+        job = enqueue_knowledge_aging_job(user=None)
+        result = process_background_job(job)
+        job = db.session.get(BackgroundJob, job.id)
+        refreshed = db.session.get(KnowledgeDocument, document.id)
+
+    assert result["processed"] is True
+    assert job.status == "done"
+    assert job.result()["documents"] == 1
+    assert refreshed.quality_status == "outdated"
 
 
 def test_worker_claims_each_job_once(app):

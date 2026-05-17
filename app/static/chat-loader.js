@@ -1,5 +1,5 @@
 (function () {
-  const CHAT_MODULE_URL = "/static/chat.js?v=20260516-performance1";
+  const CHAT_MODULE_URL = "/static/chat.js?v=20260517-dashboard-refresh1";
   const CHAT_OPEN_KEY = "maintenance_chat_open";
   let chatImportPromise = null;
 
