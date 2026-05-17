@@ -11,6 +11,7 @@ from app.models import (
     AssistantTrainingEntry,
     Employee,
     KnowledgeDocument,
+    KnowledgeGap,
     Role,
     Site,
     User,
@@ -46,6 +47,8 @@ from app.services.database_schema_service import (
     database_schema_error_payload,
     database_schema_status,
 )
+from app.services.knowledge_gap_service import list_knowledge_gaps
+from app.services.knowledge_quality_service import change_knowledge_quality_status
 from app.services.knowledge_service import (
     delete_knowledge_document,
     knowledge_index_status,
@@ -439,6 +442,31 @@ def ai_events():
     )
 
 
+@admin_bp.get("/ai/knowledge-gaps")
+@roles_required(Role.MASTER_ADMIN)
+def ai_knowledge_gaps():
+    """Return open or historical AI knowledge gaps for administrators."""
+    schema_status = database_schema_status()
+    if not schema_status["ok"]:
+        return jsonify(database_schema_error_payload(schema_status)), 503
+    try:
+        limit, offset = parse_limit_offset(request.args, default_limit=20)
+    except ValueError as exc:
+        return error_response(str(exc), 400)
+    query = list_knowledge_gaps(request.args)
+    total = query.count()
+    gaps = query.offset(offset).limit(limit).all()
+    open_count = KnowledgeGap.query.filter_by(status="open").count()
+    return success_response(
+        {
+            "items": [gap.to_dict() for gap in gaps],
+            "open_count": open_count,
+            "pagination": {"limit": limit, "offset": offset, "total": total},
+        },
+        message="Knowledge gaps loaded",
+    )
+
+
 @admin_bp.get("/ai/training")
 @roles_required(Role.MASTER_ADMIN)
 def ai_training_entries():
@@ -707,6 +735,39 @@ def reindex_ai_knowledge_document(document_id):
         commit=True,
     )
     return success_response(result, message="Knowledge document reindexed")
+
+
+@admin_bp.put("/ai/knowledge/<int:document_id>/quality-status")
+@roles_required(Role.MASTER_ADMIN, Role.INSTANDHALTUNG)
+def update_ai_knowledge_quality_status(document_id):
+    """Update the editorial quality status for one knowledge document."""
+    schema_status = database_schema_status()
+    if not schema_status["ok"]:
+        return jsonify(database_schema_error_payload(schema_status)), 503
+    document = db.get_or_404(KnowledgeDocument, document_id)
+    actor = current_admin_user()
+    data = request.get_json(silent=True) or {}
+    result, error, status = change_knowledge_quality_status(
+        document,
+        data.get("quality_status") or data.get("status"),
+        actor,
+    )
+    if error:
+        return service_error_response(error, status)
+    record_event(
+        "rag.knowledge_quality_status_updated",
+        "ai",
+        entity_type="knowledge_document",
+        entity_id=document_id,
+        user=actor,
+        source="admin",
+        metadata={
+            "source_type": document.source_type,
+            "quality_status": result.get("quality_status"),
+        },
+        commit=True,
+    )
+    return success_response(result, status, "Knowledge quality status updated")
 
 
 @admin_bp.delete("/ai/knowledge/<int:document_id>")

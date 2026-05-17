@@ -42,6 +42,7 @@ from app.services.order_planning_service import (
     plan_order,
 )
 from app.services.rag_service import build_rag_context
+from app.services.recurring_issue_service import analyze_recurring_issues
 from app.services.retrieval_service import knowledge_context_for_chat
 from app.services.task_service import visible_tasks_query
 
@@ -729,6 +730,7 @@ def daily_briefing(user):
         sections.append(inventory_briefing_section(user))
     if has_dashboard_permission(user, "errors", "view"):
         sections.append(error_briefing_section(user))
+        sections.append(recurring_issue_briefing_section(user))
     if has_dashboard_permission(user, "documents", "view"):
         sections.append(document_briefing_section(user))
     sections.append(rag_briefing_section(user))
@@ -840,6 +842,30 @@ def error_briefing_section(user):
         "title": "Neue Fehler",
         "count": len(items),
         "items": items,
+    }
+
+
+def recurring_issue_briefing_section(user):
+    """Return recurring error trends as briefing items."""
+    trends = analyze_recurring_issues(user, days=30, min_occurrences=2, limit=3)
+    items = [
+        {
+            "title": f"{item['affected_machine']} {item['error_code']}".strip(),
+            "severity": item["risk_level"],
+            "summary": item["recommendation"],
+            "url": "/errors",
+            "occurrence_count": item["occurrence_count"],
+        }
+        for item in trends.get("items", [])
+    ]
+    if not items:
+        return None
+    return {
+        "type": "recurring_issues",
+        "title": "Wiederkehrende Fehler",
+        "count": len(items),
+        "items": items,
+        "diagnostics": trends.get("diagnostics", {}),
     }
 
 
@@ -1345,9 +1371,11 @@ def save_chat_message(user, message, response):
 
     try:
         db.session.commit()
+        return chat
     except SQLAlchemyError:
         db.session.rollback()
         logger.exception("ai_chat_save_failed user_id=%s", user.id)
+        return None
 
 
 def with_knowledge_context(retrieval, message, user):

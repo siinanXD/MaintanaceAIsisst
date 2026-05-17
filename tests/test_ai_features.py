@@ -8,18 +8,22 @@ import pytest
 from app.extensions import db
 from app.models import (
     AIAuditEvent,
+    AIFeedback,
     AssistantTrainingEntry,
+    ChatMessage,
     EmployeeMachineQualification,
     GeneratedDocument,
     KnowledgeDocument,
+    KnowledgeGap,
     Priority,
     Role,
     Task,
 )
-from app.services.ai_audit_service import create_ai_audit_event
+from app.services.ai_audit_service import ai_analytics_summary, create_ai_audit_event
 from app.services.ai_routing import estimate_cost_usd, workflow_profile
 from app.services.ai_service import AIServiceError
 from app.services.document_service import document_path
+from app.services.knowledge_service import register_source_document
 
 
 def test_ai_chat_returns_today_tasks_without_openai(
@@ -158,16 +162,114 @@ def test_ai_chat_returns_sources_and_audit_metadata(
     payload = response.get_json()
     audit_id = payload["diagnostics"]["audit_event_id"]
     assert response.status_code == 200
+    assert payload["chat_message_id"]
     assert payload["sources"][0]["type"] == "machine"
     assert payload["diagnostics"]["source_count"] == len(payload["sources"])
 
     with app.app_context():
         event = db.session.get(AIAuditEvent, audit_id)
+        chat_message = db.session.get(ChatMessage, payload["chat_message_id"])
         assert event is not None
+        assert chat_message is not None
         assert event.workflow == "assistant"
         assert event.source_count == len(payload["sources"])
+        assert chat_message.audit_event_id == audit_id
+        assert chat_message.source_count == len(payload["sources"])
         assert not hasattr(event, "prompt")
         assert not hasattr(event, "response")
+
+
+def test_ai_chat_tracks_knowledge_gap_when_no_sources_match(
+    app,
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify unanswered AI questions create an open knowledge-gap entry."""
+    user = make_user(
+        username="ai_gap_user",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Wie behebe ich Stoerung QX999 an Maschine Omega?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["knowledge_gap"]["status"] == "open"
+    assert payload["knowledge_gap"]["machine"] == "Maschine Omega"
+    assert payload["diagnostics"]["knowledge_gap_created"] is True
+    with app.app_context():
+        gap = KnowledgeGap.query.one()
+        assert gap.question == "Wie behebe ich Stoerung QX999 an Maschine Omega?"
+        assert gap.department == "Instandhaltung"
+        assert gap.status == "open"
+        assert gap.occurrence_count == 1
+
+
+def test_ai_chat_does_not_track_gap_for_sourced_answer(
+    app,
+    client,
+    make_user,
+    make_error_entry,
+    auth_headers,
+):
+    """Verify sourced AI answers do not create unnecessary knowledge gaps."""
+    user = make_user(
+        username="ai_gap_sourced_user",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    make_error_entry(
+        "Anlage 4",
+        "E104",
+        "Sensor erkennt Produkt nicht",
+        department_name="Instandhaltung",
+        description="Sensor Signal fehlt sporadisch an Anlage 4.",
+        solution="Sensor reinigen und Abstand pruefen.",
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Was hilft bei Fehler E104 an Anlage 4?"},
+    )
+
+    assert response.status_code == 200
+    assert "knowledge_gap" not in response.get_json()
+    with app.app_context():
+        assert KnowledgeGap.query.count() == 0
+
+
+def test_ai_chat_deduplicates_recent_knowledge_gaps(
+    app,
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify repeated unanswered questions update one recent open gap."""
+    user = make_user(
+        username="ai_gap_duplicate_user",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    headers = auth_headers(user["username"])
+    message = "Warum faellt Anlage Delta mit Fehler X999 aus?"
+
+    first_response = client.post("/api/v1/ai/chat", headers=headers, json={"message": message})
+    second_response = client.post("/api/v1/ai/chat", headers=headers, json={"message": message})
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert first_response.get_json()["knowledge_gap"]["created"] is True
+    assert second_response.get_json()["knowledge_gap"]["created"] is False
+    with app.app_context():
+        gap = KnowledgeGap.query.one()
+        assert gap.occurrence_count == 2
 
 
 def test_ai_chat_returns_task_action_preview_without_writing(
@@ -493,6 +595,61 @@ def test_admin_ai_summary_is_admin_only(
     }
 
 
+def test_ai_analytics_summary_reports_ops_readiness(app, make_user):
+    """Verify AI summary exposes demo-ready operational KPIs."""
+    user = make_user(username="ai_ops_summary_user")
+    with app.app_context():
+        actor = type("UserRef", (), {"id": user["id"]})()
+        create_ai_audit_event(
+            actor,
+            "task_suggestion",
+            {
+                "status": "openai_used",
+                "input_tokens": 80,
+                "cached_tokens": 20,
+                "output_tokens": 20,
+                "total_tokens": 100,
+                "latency_ms": 200,
+                "estimated_cost_usd": 0.01,
+            },
+        )
+        create_ai_audit_event(
+            actor,
+            "general_chat",
+            {
+                "status": "openai_error",
+                "error": "rate_limit",
+                "fallback_used": True,
+                "input_tokens": 40,
+                "output_tokens": 10,
+                "total_tokens": 50,
+                "latency_ms": 1200,
+                "estimated_cost_usd": 0.005,
+            },
+        )
+        create_ai_audit_event(
+            actor,
+            "general_chat",
+            {
+                "status": "local_answer",
+                "fallback_used": True,
+            },
+        )
+        db.session.commit()
+
+        summary = ai_analytics_summary(days=7)
+
+    assert summary["fallback_rate"] == 0.67
+    assert summary["error_rate"] == 0.33
+    assert summary["cache_rate"] == 0.17
+    assert summary["cost_per_1k_tokens"] == 0.1
+    assert summary["top_workflows"][0]["workflow"] == "general_chat"
+    assert summary["top_workflows"][0]["errors"] == 1
+    assert summary["top_errors"][0] == {"error_category": "rate_limit", "count": 1}
+    assert summary["readiness"]["status"] == "critical"
+    assert summary["readiness"]["reasons"]
+
+
 def test_ai_chat_history_is_user_scoped_and_admin_searchable(
     client,
     make_user,
@@ -689,8 +846,13 @@ def test_admin_training_crud_marks_knowledge_stale_and_deletes_document(
 
     assert forbidden_response.status_code == 403
     assert invalid_response.status_code == 400
+    assert invalid_response.get_json()["missing_information"]["status"] == "needs_information"
     assert create_response.status_code == 201
     assert create_response.get_json()["data"]["keywords"] == "Hydraulikfilter, X900, Filterpflege"
+    assert (
+        create_response.get_json()["data"]["missing_information"]["status"]
+        == "needs_information"
+    )
     assert update_response.status_code == 200
     assert update_response.get_json()["data"]["priority"] == 90
     assert list_response.get_json()["data"]["pagination"]["total"] == 1
@@ -716,6 +878,156 @@ def test_admin_training_crud_marks_knowledge_stale_and_deletes_document(
             ).first()
             is None
         )
+
+
+def test_admin_training_missing_information_complete_state(
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify complete manual knowledge entries do not need follow-up prompts."""
+    admin = make_user(
+        username="training_prompt_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+
+    response = client.post(
+        "/api/v1/admin/ai/training",
+        headers=auth_headers(admin["username"]),
+        json={
+            "title": "Maschine 3 E104 Sensor Signal",
+            "question": "Was tun bei E104 an Maschine 3, wenn der Sensor kein Signal meldet?",
+            "answer": (
+                "Maschine 3 sichern, Sensor gereinigt, Kabel geprueft und "
+                "Probelauf erfolgreich. Stoerung behoben."
+            ),
+            "keywords": ["Maschine 3", "E104", "Sensor"],
+            "category": "stoerung",
+            "department": "Instandhaltung",
+            "priority": 80,
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.get_json()["data"]["missing_information"]["status"] == "complete"
+    assert response.get_json()["data"]["missing_information"]["missing_fields"] == []
+
+
+def test_generated_knowledge_documents_default_to_ai_suggested(app):
+    """Verify generated knowledge is never implicitly admin-approved."""
+    with app.app_context():
+        register_source_document(
+            source_type="generated_document",
+            source_id=99,
+            title="AI Wartungsbericht",
+            department="Instandhaltung",
+            url_path="/documents",
+        )
+        db.session.commit()
+
+        document = KnowledgeDocument.query.filter_by(
+            source_type="generated_document",
+            source_id=99,
+        ).one()
+        assert document.quality_status == "ai_suggested"
+
+
+def test_master_admin_can_update_knowledge_quality_status(
+    app,
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify master admins can approve a knowledge document explicitly."""
+    admin = make_user(
+        username="knowledge_quality_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    with app.app_context():
+        document = KnowledgeDocument(
+            source_type="upload",
+            title="Hydraulik Anleitung",
+            original_filename="hydraulik.txt",
+            content_type="text/plain",
+            department="Instandhaltung",
+            status="indexed",
+            quality_status="draft",
+        )
+        db.session.add(document)
+        db.session.commit()
+        document_id = document.id
+
+    response = client.put(
+        f"/api/v1/admin/ai/knowledge/{document_id}/quality-status",
+        headers=auth_headers(admin["username"]),
+        json={"quality_status": "admin_approved"},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["data"]["quality_status"] == "admin_approved"
+    with app.app_context():
+        assert db.session.get(KnowledgeDocument, document_id).quality_status == "admin_approved"
+
+
+def test_technician_quality_status_permissions_are_scoped(
+    app,
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify technicians can confirm local knowledge but cannot approve it."""
+    technician = make_user(
+        username="knowledge_quality_tech",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    with app.app_context():
+        own_document = KnowledgeDocument(
+            source_type="upload",
+            title="Eigener Eintrag",
+            original_filename="own.txt",
+            content_type="text/plain",
+            department="Instandhaltung",
+            status="indexed",
+            quality_status="draft",
+        )
+        foreign_document = KnowledgeDocument(
+            source_type="upload",
+            title="Fremder Eintrag",
+            original_filename="foreign.txt",
+            content_type="text/plain",
+            department="Produktion",
+            status="indexed",
+            quality_status="draft",
+        )
+        db.session.add_all([own_document, foreign_document])
+        db.session.commit()
+        own_id = own_document.id
+        foreign_id = foreign_document.id
+
+    headers = auth_headers(technician["username"])
+    confirm_response = client.put(
+        f"/api/v1/admin/ai/knowledge/{own_id}/quality-status",
+        headers=headers,
+        json={"quality_status": "technician_confirmed"},
+    )
+    approve_response = client.put(
+        f"/api/v1/admin/ai/knowledge/{own_id}/quality-status",
+        headers=headers,
+        json={"quality_status": "admin_approved"},
+    )
+    foreign_response = client.put(
+        f"/api/v1/admin/ai/knowledge/{foreign_id}/quality-status",
+        headers=headers,
+        json={"quality_status": "outdated"},
+    )
+
+    assert confirm_response.status_code == 200
+    assert confirm_response.get_json()["data"]["quality_status"] == "technician_confirmed"
+    assert approve_response.status_code == 403
+    assert foreign_response.status_code == 403
 
 
 def test_manual_training_rag_respects_active_state_and_department(
@@ -991,6 +1303,27 @@ def test_knowledge_status_reports_rag_index_diagnostics(
         "/api/v1/admin/ai/knowledge/reindex",
         headers=auth_headers(admin["username"]),
     )
+    with client.application.app_context():
+        db.session.add(
+            KnowledgeDocument(
+                source_type="upload",
+                title="Fehlerhafte RAG Quelle",
+                original_filename="broken.txt",
+                status="error",
+                error_message="Text konnte nicht extrahiert werden.",
+                created_by=admin["id"],
+            )
+        )
+        db.session.add(
+            KnowledgeDocument(
+                source_type="manual_training",
+                title="Veraltete Trainingsquelle",
+                original_filename="",
+                status="stale",
+                created_by=admin["id"],
+            )
+        )
+        db.session.commit()
 
     response = client.get(
         "/api/v1/admin/ai/knowledge/status",
@@ -1007,7 +1340,84 @@ def test_knowledge_status_reports_rag_index_diagnostics(
     assert "pending" in payload
     assert payload["diagnostics"]["rag_enabled"] is True
     assert payload["diagnostics"]["vector_store"] == "local"
+    assert 0 <= payload["readiness_score"] < 100
+    assert payload["readiness_reasons"]
+    assert any(item["status"] == "error" for item in payload["problem_documents"])
+    assert any(item["status"] == "stale" for item in payload["problem_documents"])
     assert any(item["source_type"] == "task" for item in payload["source_types"])
+
+
+def test_knowledge_lifecycle_status_covers_training_rag_feedback_flow(
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify the lifecycle read model covers draft, RAG use, and feedback review."""
+    admin = make_user(
+        username="knowledge_lifecycle_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    user = make_user(
+        username="knowledge_lifecycle_user",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+    admin_headers = auth_headers(admin["username"])
+    user_headers = auth_headers(user["username"])
+
+    create_response = client.post(
+        "/api/v1/admin/ai/training",
+        headers=admin_headers,
+        json={
+            "title": "Lifecycle Filterpflege",
+            "question": "Was ist bei Lifecycle Filterpflege wichtig?",
+            "answer": (
+                "Lifecycle Filterpflege taeglich pruefen und Druckverlust "
+                "dokumentieren."
+            ),
+            "keywords": "Lifecycle, Filterpflege, Druckverlust",
+            "department": "Produktion",
+        },
+    )
+    reindex_response = client.post(
+        "/api/v1/admin/ai/knowledge/reindex?mode=stale",
+        headers=admin_headers,
+    )
+    chat_response = client.post(
+        "/api/v1/ai/chat",
+        headers=user_headers,
+        json={"message": "Was ist bei Lifecycle Filterpflege wichtig?"},
+    )
+    chat_payload = chat_response.get_json()
+    feedback_response = client.post(
+        "/api/v1/ai/feedback",
+        headers=user_headers,
+        json={
+            "chat_message_id": chat_payload["chat_message_id"],
+            "rating": "helpful",
+            "sources": chat_payload["sources"],
+        },
+    )
+    status_response = client.get(
+        "/api/v1/admin/ai/knowledge/status",
+        headers=admin_headers,
+    )
+
+    lifecycle = status_response.get_json()["data"]["lifecycle"]
+    step_keys = {step["key"] for step in lifecycle["steps"]}
+    assert create_response.status_code == 201
+    assert reindex_response.status_code == 200
+    assert chat_response.status_code == 200
+    assert any(source["type"] == "knowledge" for source in chat_payload["sources"])
+    assert feedback_response.status_code == 201
+    assert status_response.status_code == 200
+    assert lifecycle["indexed_documents"] >= 1
+    assert lifecycle["drafts"] >= 1
+    assert lifecycle["feedback_open"] >= 1
+    assert lifecycle["rag_quality_gate"]["enabled"] is False
+    assert lifecycle["rag_quality_gate"]["non_approved_indexed_documents"] >= 1
+    assert {"draft_creation", "rag_usage", "feedback", "knowledge_gaps"} <= step_keys
 
 
 def test_task_update_marks_rag_source_stale_and_reindex_recovers(
@@ -1341,6 +1751,102 @@ def test_ai_feedback_validates_rating_and_required_text(
     assert valid_response.get_json()["rating"] == "helpful"
 
 
+def test_ai_feedback_links_chat_message_without_sources(
+    app,
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify feedback can reference a saved chat answer even without sources."""
+    user = make_user(username="ai_feedback_chat_user")
+    headers = auth_headers(user["username"])
+    chat_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={"message": "Was ist Predictive Maintenance?"},
+    )
+    chat_payload = chat_response.get_json()
+
+    feedback_response = client.post(
+        "/api/v1/ai/feedback",
+        headers=headers,
+        json={
+            "chat_message_id": chat_payload["chat_message_id"],
+            "rating": "partially_helpful",
+            "comment": "Teilweise gut, Quellen fehlen.",
+        },
+    )
+    feedback_payload = feedback_response.get_json()
+
+    with app.app_context():
+        feedback_entry = db.session.get(AIFeedback, feedback_payload["id"])
+        stored_prompt = feedback_entry.prompt
+        stored_source_count = feedback_entry.source_count
+        stored_sources = feedback_entry.sources()
+
+    assert chat_response.status_code == 200
+    assert feedback_response.status_code == 201
+    assert feedback_payload["rating"] == "partially_helpful"
+    assert feedback_payload["chat_message_id"] == chat_payload["chat_message_id"]
+    assert feedback_payload["audit_event_id"] == chat_payload["diagnostics"]["audit_event_id"]
+    assert feedback_payload["source_count"] == 0
+    assert stored_prompt == "Was ist Predictive Maintenance?"
+    assert stored_source_count == 0
+    assert stored_sources == []
+
+
+def test_ai_feedback_stores_source_and_chunk_metadata(
+    app,
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify feedback stores source and chunk links without mutating knowledge."""
+    user = make_user(username="ai_feedback_sources_user")
+    with app.app_context():
+        event_id = create_ai_audit_event(
+            user=type("UserStub", (), {"id": user["id"]})(),
+            workflow="assistant",
+            diagnostics={"status": "local_answer"},
+            source_count=1,
+        )
+        db.session.commit()
+
+    response = client.post(
+        "/api/v1/ai/feedback",
+        headers=auth_headers(user["username"]),
+        json={
+            "prompt": "Wie behebe ich E104?",
+            "response": "Sensor pruefen.",
+            "rating": "not_helpful",
+            "audit_event_id": event_id,
+            "sources": [
+                {
+                    "type": "knowledge",
+                    "id": 7,
+                    "chunk_id": 13,
+                    "title": "Sensor Manual",
+                    "module": "knowledge",
+                    "score": 42,
+                }
+            ],
+        },
+    )
+    payload = response.get_json()
+
+    with app.app_context():
+        feedback_entry = db.session.get(AIFeedback, payload["id"])
+        stored_source = feedback_entry.sources()[0]
+        stored_audit_event_id = feedback_entry.audit_event_id
+
+    assert response.status_code == 201
+    assert payload["source_count"] == 1
+    assert payload["review_status"] == "open"
+    assert stored_source["id"] == 7
+    assert stored_source["chunk_id"] == 13
+    assert stored_audit_event_id == event_id
+
+
 def test_ai_status_is_admin_only_and_redacted(client, make_user, auth_headers):
     """Verify AI status requires admin access and never exposes API keys."""
     admin = make_user(
@@ -1407,6 +1913,50 @@ def test_daily_briefing_respects_permissions_and_uses_local_fallback(
     assert "tasks" in section_types
     assert "errors" in section_types
     assert "documents" not in section_types
+
+
+def test_daily_briefing_includes_recurring_issue_trends(
+    client,
+    make_user,
+    make_error_entry,
+    auth_headers,
+):
+    """Verify daily briefing surfaces recurring visible error trends."""
+    user = make_user(
+        username="briefing_recurring_issue_user",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    make_error_entry(
+        "Anlage Trend",
+        "TR104",
+        "Sensor Signal fehlt",
+        department_name="Instandhaltung",
+        description="Sensor Signal fehlt sporadisch.",
+        solution="Sensor reinigen",
+    )
+    make_error_entry(
+        "Anlage Trend",
+        "TR104",
+        "Sensor erkennt Produkt nicht",
+        department_name="Instandhaltung",
+        description="Sensor meldet kein Signal.",
+        solution="Sensor reinigen",
+    )
+
+    response = client.get(
+        "/api/v1/ai/daily-briefing",
+        headers=auth_headers(user["username"]),
+    )
+
+    payload = response.get_json()
+    recurring_section = next(
+        section for section in payload["sections"] if section["type"] == "recurring_issues"
+    )
+    assert response.status_code == 200
+    assert recurring_section["count"] == 1
+    assert recurring_section["items"][0]["occurrence_count"] == 2
+    assert "Anlage Trend" in recurring_section["items"][0]["title"]
 
 
 def test_daily_briefing_includes_rag_knowledge_section_after_reindex(
@@ -1530,6 +2080,9 @@ def test_dashboard_contains_daily_briefing_and_priority_ui(client):
     assert "chatSuggestionsForUser" in chat_script
     assert "setChatFormBusy" in chat_script
     assert "suggestions.hidden = true" in chat_script
+    assert "partially_helpful" in chat_script
+    assert "chat_message_id" in chat_script
+    assert "/api/v1/ai/feedback" in chat_script
 
 
 def test_admin_users_page_contains_ai_analytics_ui(client):
@@ -1567,20 +2120,45 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
     assert page_response.status_code == 200
     assert script_response.status_code == 200
     assert "data-admin-ai-page" in html
+    assert "data-ai-health-panel" in html
+    assert "data-ai-workflows" in html
+    assert "data-ai-top-errors" in html
     assert "data-ai-chat-search" in html
     assert "data-ai-training-form" in html
     assert "data-ai-training-search" in html
     assert "data-ai-knowledge-upload" in html
+    assert "data-ai-knowledge-search" in html
     assert "data-ai-knowledge-source" in html
+    assert "data-ai-knowledge-quality" in html
+    assert "data-knowledge-origin-legend" in html
+    assert "is-source-automatic" in html
+    assert "is-source-manual" in html
+    assert "is-source-prebuilt" in html
+    assert "data-knowledge-lifecycle-panel" in html
+    assert 'data-lifecycle-kpi="drafts"' in html
+    assert 'data-lifecycle-kpi="non_approved_indexed_documents"' in html
+    assert "data-knowledge-lifecycle-review" in html
+    assert "data-knowledge-lifecycle-gate" in html
+    assert "data-knowledge-lifecycle-actions" in html
+    assert "data-knowledge-lifecycle-steps" in html
+    assert "Qualität" in html
+    assert "data-ai-knowledge-gaps" in html
+    assert "data-ai-knowledge-gap-count" in html
     assert "data-rag-source-status" in html
     assert "data-rag-diagnostics" in html
-    assert "data-rag-kpi=\"searchable_documents\"" in html
-    assert "data-rag-kpi=\"stale\"" in html
+    assert "data-rag-readiness-score" in html
+    assert "data-rag-readiness-reasons" in html
+    assert "data-rag-problem-documents" in html
+    assert 'data-rag-kpi="searchable_documents"' in html
+    assert 'data-rag-kpi="stale"' in html
     assert "data-ai-reindex-stale" in html
     assert "data-ai-queue-stale" in html
     assert "data-ai-jobs" in html
+    assert "data-ai-job-status" in html
+    assert "data-queue-knowledge" in script
     assert "/api/v1/admin/ai/events" in source
     assert "/api/v1/admin/ai/chats" in source
+    assert "/api/v1/admin/ai/knowledge-gaps" in source
     assert "/api/v1/admin/jobs" in source
     assert "/api/v1/admin/ai/knowledge/upload" in source
     assert "/api/v1/admin/ai/knowledge/status" in source
@@ -1588,7 +2166,46 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
     assert "/api/v1/admin/ai/knowledge/reindex?mode=stale" in source
     assert "/api/v1/admin/ai/training" in source
     assert "manual_training" in source
+    assert "knowledgeOriginKind" in script
+    assert "knowledgeOriginClass" in script
+    assert "knowledgeSourceCell" in script
+    assert "data-knowledge-origin" in script
+    assert "knowledgeQualityStatus" in script
+    assert "qualityStatusLabel" in script
+    assert "knowledgeQualitySelect" in script
+    assert "data-update-knowledge-quality" in script
+    assert "/quality-status" in source
     assert "/reindex" in source
+
+
+def test_admin_can_list_knowledge_gaps(app, client, make_user, auth_headers):
+    """Verify master admins can inspect tracked knowledge gaps."""
+    admin = make_user(
+        username="knowledge_gap_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    with app.app_context():
+        gap = KnowledgeGap(
+            question="Wie behebe ich Fehler X?",
+            question_hash="abc",
+            context_text="Keine Quellen",
+            machine="Anlage X",
+            department="Instandhaltung",
+            status="open",
+        )
+        db.session.add(gap)
+        db.session.commit()
+
+    response = client.get(
+        "/api/v1/admin/ai/knowledge-gaps",
+        headers=auth_headers(admin["username"]),
+    )
+
+    payload = response.get_json()["data"]
+    assert response.status_code == 200
+    assert payload["open_count"] == 1
+    assert payload["items"][0]["question"] == "Wie behebe ich Fehler X?"
 
 
 def test_document_path_rejects_storage_escape(app):

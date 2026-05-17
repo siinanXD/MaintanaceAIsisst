@@ -12,6 +12,7 @@ from app.security import (
     dashboard_permission_required,
     same_department_or_admin,
 )
+from app.services.maintenance_tag_service import suggest_tags_for_task_payload
 from app.services.operations_tracking_service import record_event
 from app.services.task_service import (
     create_task,
@@ -25,6 +26,13 @@ from app.services.task_service import (
 from app.services.workflow_service import complete_task_workflow
 
 tasks_bp = Blueprint("tasks", __name__)
+
+
+def task_payload_with_tags(task):
+    """Return a task payload enriched with local maintenance tag suggestions."""
+    payload = task.to_dict()
+    payload["tag_suggestions"] = suggest_tags_for_task_payload(payload)
+    return payload
 
 
 @tasks_bp.get("")
@@ -60,7 +68,7 @@ def add_task():
     task, error, status = create_task(request.get_json(silent=True) or {}, current_user())
     if error:
         return service_error_response(error, status)
-    return jsonify(task.to_dict()), status
+    return jsonify(task_payload_with_tags(task)), status
 
 
 @tasks_bp.post("/suggest")
@@ -80,9 +88,7 @@ def suggest_task():
         department=user.department,
         source="ai",
         metadata={
-            "has_title": bool(suggestion.get("title"))
-            if isinstance(suggestion, dict)
-            else False,
+            "has_title": bool(suggestion.get("title")) if isinstance(suggestion, dict) else False,
         },
         commit=True,
     )
@@ -147,7 +153,7 @@ def edit_task(task_id):
     updated, error, status = update_task(task, request.get_json(silent=True) or {}, current_user())
     if error:
         return service_error_response(error, status)
-    return jsonify(updated.to_dict())
+    return jsonify(task_payload_with_tags(updated))
 
 
 @tasks_bp.post("/<int:task_id>/start")
@@ -163,7 +169,7 @@ def start_task_endpoint(task_id):
     updated, error, status = start_task(task, current_user())
     if error:
         return service_error_response(error, status)
-    return success_response(updated.to_dict(), status, "Task started")
+    return success_response(task_payload_with_tags(updated), status, "Task started")
 
 
 @tasks_bp.post("/<int:task_id>/complete")
@@ -183,7 +189,7 @@ def complete_task_endpoint(task_id):
     )
     if error:
         return service_error_response(error, status)
-    payload = updated.to_dict()
+    payload = task_payload_with_tags(updated)
     if document:
         payload["generated_document"] = document.to_dict()
     return success_response(payload, status, "Task completed")

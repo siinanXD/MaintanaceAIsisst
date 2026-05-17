@@ -66,21 +66,47 @@ class AIFeedback(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    chat_message_id = db.Column(db.Integer, db.ForeignKey("chat_message.id"))
+    audit_event_id = db.Column(db.Integer)
     prompt = db.Column(db.Text, nullable=False)
     response = db.Column(db.Text, nullable=False)
+    response_type = db.Column(db.String(80), nullable=False, default="")
     rating = db.Column(db.String(40), nullable=False)
     comment = db.Column(db.Text, nullable=False, default="")
+    sources_json = db.Column(db.Text, nullable=False, default="[]")
+    source_count = db.Column(db.Integer, nullable=False, default=0)
+    review_status = db.Column(db.String(40), nullable=False, default="open", index=True)
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
 
     user = db.relationship("User")
+    chat_message = db.relationship("ChatMessage", foreign_keys=[chat_message_id])
+
+    __table_args__ = (
+        db.Index("ix_ai_feedback_user_created", "user_id", "created_at"),
+        db.Index("ix_ai_feedback_rating_created", "rating", "created_at"),
+    )
+
+    def sources(self):
+        """Return stored answer sources as a safe list."""
+        try:
+            data = json.loads(self.sources_json or "[]")
+        except (TypeError, json.JSONDecodeError):
+            return []
+        return data if isinstance(data, list) else []
 
     def to_dict(self):
         """Return a JSON-serializable representation of the feedback."""
         return {
             "id": self.id,
             "user_id": self.user_id,
+            "chat_message_id": self.chat_message_id,
+            "audit_event_id": self.audit_event_id,
+            "response_type": self.response_type,
             "rating": self.rating,
             "comment": self.comment,
+            "source_count": self.source_count,
+            "sources": self.sources(),
+            "review_status": self.review_status,
             "created_at": self.created_at.isoformat(),
         }
 
@@ -205,6 +231,7 @@ class KnowledgeDocument(db.Model):
     file_size = db.Column(db.Integer, nullable=False, default=0)
     department = db.Column(db.String(120), nullable=False, default="")
     status = db.Column(db.String(40), nullable=False, default="pending", index=True)
+    quality_status = db.Column(db.String(40), nullable=False, default="draft")
     is_public = db.Column(db.Boolean, nullable=False, default=True)
     chunk_count = db.Column(db.Integer, nullable=False, default=0)
     error_message = db.Column(db.Text, nullable=False, default="")
@@ -223,6 +250,11 @@ class KnowledgeDocument(db.Model):
     __table_args__ = (
         db.Index("ix_knowledge_document_source_status", "source_type", "status"),
         db.Index("ix_knowledge_document_department_status", "department", "status"),
+        db.Index(
+            "ix_knowledge_document_quality_status",
+            "quality_status",
+            "updated_at",
+        ),
         db.Index("ix_knowledge_document_updated", "updated_at"),
     )
 
@@ -238,6 +270,7 @@ class KnowledgeDocument(db.Model):
             "file_size": self.file_size,
             "department": self.department,
             "status": self.status,
+            "quality_status": self.quality_status,
             "is_public": self.is_public,
             "chunk_count": self.chunk_count,
             "error_message": self.error_message,
@@ -283,6 +316,54 @@ class KnowledgeChunk(db.Model):
             "chunk_index": self.chunk_index,
             "text": self.text,
             "created_at": self.created_at.isoformat(),
+        }
+
+
+class KnowledgeGap(db.Model):
+    """Unanswered or low-confidence AI question requiring knowledge follow-up."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    question = db.Column(db.Text, nullable=False)
+    question_hash = db.Column(db.String(64), nullable=False, index=True)
+    context_text = db.Column(db.Text, nullable=False, default="")
+    machine = db.Column(db.String(160), nullable=False, default="")
+    department = db.Column(db.String(120), nullable=False, default="")
+    status = db.Column(db.String(40), nullable=False, default="open", index=True)
+    occurrence_count = db.Column(db.Integer, nullable=False, default=1)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+    task_id = db.Column(db.Integer, db.ForeignKey("task.id"))
+    audit_event_id = db.Column(db.Integer, db.ForeignKey("ai_audit_event.id"))
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    last_seen_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+    user = db.relationship("User", foreign_keys=[user_id])
+    task = db.relationship("Task", foreign_keys=[task_id])
+    audit_event = db.relationship("AIAuditEvent", foreign_keys=[audit_event_id])
+
+    __table_args__ = (
+        db.Index("ix_knowledge_gap_status_last_seen", "status", "last_seen_at"),
+        db.Index("ix_knowledge_gap_hash_status", "question_hash", "status"),
+        db.Index("ix_knowledge_gap_department_status", "department", "status"),
+    )
+
+    def to_dict(self):
+        """Return a JSON-serializable knowledge-gap payload."""
+        return {
+            "id": self.id,
+            "question": self.question,
+            "context": self.context_text,
+            "machine": self.machine,
+            "department": self.department,
+            "status": self.status,
+            "occurrence_count": self.occurrence_count,
+            "user_id": self.user_id,
+            "created_by": self.user.username if self.user else None,
+            "task_id": self.task_id,
+            "audit_event_id": self.audit_event_id,
+            "created_at": self.created_at.isoformat(),
+            "last_seen_at": self.last_seen_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
         }
 
 

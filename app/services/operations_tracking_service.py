@@ -236,9 +236,7 @@ def inventory_metrics(args, user):
     items = query.all()
     low_stock = [item for item in items if item.min_quantity and item.quantity < item.min_quantity]
     critical_low = [
-        item
-        for item in low_stock
-        if item.criticality in {"critical", "high", "urgent"}
+        item for item in low_stock if item.criticality in {"critical", "high", "urgent"}
     ]
     return {
         "material_count": len(items),
@@ -341,6 +339,9 @@ def ai_quality_metrics(args, user, start_at=None, end_at=None):
         "positive_feedback": sum(1 for item in feedback if item.rating in {"positive", "helpful"}),
         "negative_feedback": sum(
             1 for item in feedback if item.rating in {"negative", "not_helpful"}
+        ),
+        "partial_feedback": sum(
+            1 for item in feedback if item.rating == "partially_helpful"
         ),
     }
 

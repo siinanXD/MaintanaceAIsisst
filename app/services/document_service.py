@@ -207,6 +207,7 @@ def summarize_generated_document(document):
     document.summary = summary
     document.summary_status = status
     db.session.commit()
+    _process_generated_document_knowledge(document)
     return document.to_dict(), None, 200
 
 
@@ -263,6 +264,7 @@ def upload_machine_manual(file_storage, user, machine_id=None, department=""):
     db.session.flush()
     manual.current_version_id = version.id
     db.session.commit()
+    _process_machine_manual_knowledge(manual, user)
     return manual.to_dict(), None, 201
 
 
@@ -295,6 +297,7 @@ def analyze_machine_manual(manual):
     manual.analysis = analysis
     manual.analysis_status = "local_answer"
     db.session.commit()
+    _process_machine_manual_knowledge(manual)
     return manual.to_dict(), None, 200
 
 
@@ -313,11 +316,13 @@ def summarize_machine_manual(manual):
     manual.summary = summary
     manual.summary_status = status
     db.session.commit()
+    _process_machine_manual_knowledge(manual)
     return manual.to_dict(), None, 200
 
 
 def delete_machine_manual(manual):
     """Delete a manual record and its stored file if present."""
+    _delete_machine_manual_knowledge(manual)
     try:
         path = manual_path(manual)
     except ValueError:
@@ -329,6 +334,63 @@ def delete_machine_manual(manual):
             logger.warning("manual_file_delete_failed manual_id=%s error=%s", manual.id, exc)
     db.session.delete(manual)
     db.session.commit()
+
+
+def _process_generated_document_knowledge(document, user=None):
+    """Best-effort sync of a generated document into the knowledge index."""
+    try:
+        from app.services.document_knowledge_processing_service import (
+            process_generated_document_for_knowledge,
+        )
+
+        _result, error, _status = process_generated_document_for_knowledge(document, user=user)
+    except Exception:
+        logger.exception(
+            "generated_document_knowledge_processing_failed document_id=%s",
+            getattr(document, "id", None),
+        )
+        return
+    if error:
+        logger.warning(
+            "generated_document_knowledge_processing_error document_id=%s error=%s",
+            getattr(document, "id", None),
+            error,
+        )
+
+
+def _process_machine_manual_knowledge(manual, user=None):
+    """Best-effort sync of a machine manual into the knowledge index."""
+    try:
+        from app.services.document_knowledge_processing_service import (
+            process_machine_manual_for_knowledge,
+        )
+
+        _result, error, _status = process_machine_manual_for_knowledge(manual, user=user)
+    except Exception:
+        logger.exception(
+            "machine_manual_knowledge_processing_failed manual_id=%s",
+            getattr(manual, "id", None),
+        )
+        return
+    if error:
+        logger.warning(
+            "machine_manual_knowledge_processing_error manual_id=%s error=%s",
+            getattr(manual, "id", None),
+            error,
+        )
+
+
+def _delete_machine_manual_knowledge(manual):
+    """Best-effort deletion of knowledge chunks linked to a machine manual."""
+    try:
+        from app.services.knowledge_service import delete_source_knowledge_document
+
+        delete_source_knowledge_document("machine_manual", manual.id)
+    except Exception:
+        logger.exception(
+            "machine_manual_knowledge_delete_failed manual_id=%s",
+            getattr(manual, "id", None),
+        )
 
 
 def review_document_quality(document):
@@ -972,6 +1034,7 @@ def generate_maintenance_report(task, user, payload=None):
     db.session.flush()
     document.current_version_id = version.id
     db.session.commit()
+    _process_generated_document_knowledge(document, user)
     return document
 
 

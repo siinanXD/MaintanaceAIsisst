@@ -1,6 +1,10 @@
 """Tests for error catalog workflows."""
 
-from app.models import Role
+from datetime import UTC, datetime, timedelta
+
+from app.extensions import db
+from app.models import ErrorEntry, Role, User
+from app.services.recurring_issue_service import analyze_recurring_issues
 
 
 def test_error_entry_create_search_update_and_delete(client, make_user, auth_headers):
@@ -54,6 +58,37 @@ def test_error_entry_validates_required_fields(client, make_user, auth_headers):
     assert response.status_code == 400
     assert response.get_json()["error"] == "missing_fields_error_code_title"
     assert "Missing fields" in response.get_json()["message"]
+    assert response.get_json()["missing_information"]["status"] == "needs_information"
+    assert "error_code" in response.get_json()["missing_information"]["missing_fields"]
+
+
+def test_error_entry_reports_complete_missing_information_state(client, make_user, auth_headers):
+    """Verify complete error payloads do not request follow-up information."""
+    user = make_user(
+        username="error_complete_prompts",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+
+    response = client.post(
+        "/api/v1/errors",
+        headers=auth_headers(user["username"]),
+        json={
+            "machine": "Maschine 3",
+            "error_code": "E104",
+            "title": "Sensor meldet kein Signal",
+            "description": "Maschine 3 zeigt E104 und der Sensor meldet kein Signal.",
+            "possible_causes": "Sensor verschmutzt oder Kabel locker.",
+            "solution": "Sensor gereinigt, Kabel geprueft und Probelauf erfolgreich.",
+            "department": "Instandhaltung",
+            "previous_checks": "Sensor gereinigt und Kabel geprueft.",
+            "solution_result": "Probelauf erfolgreich, Stoerung behoben.",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.get_json()["missing_information"]["status"] == "complete"
+    assert response.get_json()["missing_information"]["missing_fields"] == []
 
 
 def test_error_entry_rejects_other_department_writes(
@@ -133,6 +168,8 @@ def test_error_analysis_validates_input_and_uses_mock_fallback(
     assert valid_response.status_code == 200
     assert valid_response.get_json()["department"] == "Instandhaltung"
     assert "Sensor" in valid_response.get_json()["possible_causes"]
+    assert valid_response.get_json()["missing_information"]["status"] == "needs_information"
+    assert "error_code" in valid_response.get_json()["missing_information"]["missing_fields"]
 
 
 def test_similar_errors_respects_department_and_sorts_matches(
@@ -197,6 +234,104 @@ def test_similar_errors_rejects_empty_and_invalid_limit(client, make_user, auth_
 
     assert empty_response.status_code == 400
     assert invalid_limit.status_code == 400
+
+
+def test_recurring_issue_trends_group_similar_errors(
+    app,
+    make_user,
+    make_error_entry,
+):
+    """Verify recurring issue trends group similar visible fault entries."""
+    user = make_user(
+        username="recurring_issue_user",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    entry_ids = [
+        make_error_entry(
+            "Anlage 4",
+            "E104",
+            "Sensor Signal fehlt",
+            department_name="Instandhaltung",
+            description="Sensor Signal fehlt sporadisch an Zufuehrung.",
+            solution="Sensor reinigen",
+        ),
+        make_error_entry(
+            "Anlage 4",
+            "E104",
+            "Sensor erkennt Produkt nicht",
+            department_name="Instandhaltung",
+            description="Sensor meldet kein Signal an Zufuehrung.",
+            solution="Sensor reinigen",
+        ),
+        make_error_entry(
+            "Anlage 4",
+            "E104",
+            "Sensor Stoerung wiederholt",
+            department_name="Instandhaltung",
+            description="Produkt wird sporadisch nicht erkannt.",
+            solution="Sensor reinigen",
+        ),
+    ]
+
+    with app.app_context():
+        now = datetime.now(UTC)
+        entries = ErrorEntry.query.filter(ErrorEntry.id.in_(entry_ids)).all()
+        for index, entry in enumerate(entries):
+            entry.created_at = now - timedelta(days=index * 2)
+        entries[0].repeat_count = 1
+        db.session.commit()
+
+        result = analyze_recurring_issues(
+            User.query.filter_by(username=user["username"]).one(),
+            days=14,
+            min_occurrences=2,
+            limit=5,
+        )
+
+    assert result["count"] == 1
+    assert result["items"][0]["occurrence_count"] == 4
+    assert result["items"][0]["affected_machine"] == "Anlage 4"
+    assert result["items"][0]["error_code"] == "E104"
+    assert result["items"][0]["common_solution"] == "Sensor reinigen"
+    assert "Knowledge-Base" in result["items"][0]["recommendation"]
+
+
+def test_recurring_issue_trends_ignore_unrelated_single_entries(
+    app,
+    make_user,
+    make_error_entry,
+):
+    """Verify unrelated one-off errors are not reported as recurring trends."""
+    user = make_user(
+        username="recurring_issue_empty_user",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    make_error_entry(
+        "Anlage 1",
+        "E100",
+        "Temperatur hoch",
+        department_name="Instandhaltung",
+        description="Spindeltemperatur hoch.",
+    )
+    make_error_entry(
+        "Anlage 2",
+        "H200",
+        "Hydraulikdruck niedrig",
+        department_name="Instandhaltung",
+        description="Druck faellt ab.",
+    )
+
+    with app.app_context():
+        result = analyze_recurring_issues(
+            User.query.filter_by(username=user["username"]).one(),
+            days=30,
+            min_occurrences=2,
+        )
+
+    assert result["count"] == 0
+    assert result["items"] == []
 
 
 def test_errors_page_contains_similar_errors_ui(client):

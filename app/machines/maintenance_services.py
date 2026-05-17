@@ -8,6 +8,7 @@ from app.extensions import db
 from app.models import ErrorEntry, Machine, MaintenancePlan, Priority, Role, Task, TaskStatus
 from app.security import has_dashboard_permission
 from app.services.error_service import visible_errors_query
+from app.services.recurring_issue_service import analyze_recurring_issues
 from app.services.retrieval_service import knowledge_context_for_chat
 from app.services.task_service import (
     get_department_for_payload,
@@ -228,20 +229,32 @@ def recommend_preventive_maintenance(user, limit=5):
         return None, {"error": "limit must be an integer between 1 and 20"}, 400
 
     machine_signals = _machine_signal_map(user)
+    recurring_trends = analyze_recurring_issues(user, days=30, min_occurrences=2, limit=20)
     recommendations = [
-        _preventive_recommendation(machine, signals, user)
+        _preventive_recommendation(
+            machine,
+            signals,
+            user,
+            _matching_recurring_trend(machine, recurring_trends.get("items", [])),
+        )
         for machine, signals in machine_signals.items()
         if _signal_score(signals) >= 2
+        or _matching_recurring_trend(machine, recurring_trends.get("items", []))
     ]
     recommendations.sort(
         key=lambda item: (item["score"], item["source_counts"]["errors"]),
         reverse=True,
     )
-    return {
-        "items": recommendations[:limit_value],
-        "count": min(len(recommendations), limit_value),
-        "total_candidates": len(recommendations),
-    }, None, 200
+    return (
+        {
+            "items": recommendations[:limit_value],
+            "count": min(len(recommendations), limit_value),
+            "total_candidates": len(recommendations),
+            "recurring_issues": recurring_trends,
+        },
+        None,
+        200,
+    )
 
 
 def _machine_signal_map(user):
@@ -278,24 +291,27 @@ def _signal_score(signals):
     return len(signals["tasks"]) + (len(signals["errors"]) * 2)
 
 
-def _preventive_recommendation(machine, signals, user):
+def _preventive_recommendation(machine, signals, user, recurring_trend=None):
     """Return one preventive maintenance recommendation for a machine."""
-    score = min(100, _signal_score(signals) * 20)
+    recurring_score = (recurring_trend or {}).get("occurrence_count", 0) * 15
+    score = min(100, (_signal_score(signals) * 20) + recurring_score)
     query = f"{machine.name} Wartung Stoerung Fehler wiederkehrend"
     _context, rag_sources = knowledge_context_for_chat(query, user, limit=3)
     return {
         "machine": machine.to_dict(),
         "score": score,
         "risk_level": _preventive_risk_level(score),
-        "reason": _preventive_reason(signals),
-        "recommended_action": _preventive_action(machine, signals),
+        "reason": _preventive_reason(signals, recurring_trend),
+        "recommended_action": _preventive_action(machine, signals, recurring_trend),
         "source_counts": {
             "tasks": len(signals["tasks"]),
             "errors": len(signals["errors"]),
             "rag_sources": len(rag_sources),
+            "recurring_issues": 1 if recurring_trend else 0,
         },
         "evidence": _preventive_evidence(signals),
         "sources": rag_sources,
+        "recurring_issue": recurring_trend,
     }
 
 
@@ -310,16 +326,23 @@ def _preventive_risk_level(score):
     return "low"
 
 
-def _preventive_reason(signals):
+def _preventive_reason(signals, recurring_trend=None):
     """Return a concise German reason for recurring signals."""
+    if recurring_trend:
+        return (
+            f"{recurring_trend['occurrence_count']} Vorkommen im Fehlertrend plus "
+            f"{len(signals['tasks'])} Tasks und {len(signals['errors'])} Fehler."
+        )
     return (
         f"{len(signals['tasks'])} sichtbare Tasks und "
         f"{len(signals['errors'])} Fehler deuten auf wiederkehrende Themen hin."
     )
 
 
-def _preventive_action(machine, signals):
+def _preventive_action(machine, signals, recurring_trend=None):
     """Return a practical next action for preventive maintenance."""
+    if recurring_trend:
+        return recurring_trend["recommendation"]
     if signals["errors"]:
         return (
             f"Wartungsplan fuer {machine.name} pruefen: Fehlerursachen buendeln, "
@@ -354,3 +377,14 @@ def _preventive_evidence(signals):
         for entry in signals["errors"][:3]
     ]
     return task_items + error_items
+
+
+def _matching_recurring_trend(machine, trends):
+    """Return a recurring trend matching the machine, if available."""
+    machine_name = machine.name.strip().lower()
+    for trend in trends:
+        if trend.get("machine_id") == machine.id:
+            return trend
+        if str(trend.get("affected_machine") or "").strip().lower() == machine_name:
+            return trend
+    return None

@@ -3,9 +3,21 @@
 import os
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
+from pathlib import Path
 
 from app.extensions import db
-from app.models import DocumentApprovalEvent, DocumentVersion, GeneratedDocument, Role
+from app.models import (
+    DocumentApprovalEvent,
+    DocumentVersion,
+    GeneratedDocument,
+    KnowledgeChunk,
+    KnowledgeDocument,
+    Role,
+)
+from app.services.document_knowledge_processing_service import (
+    process_document_for_knowledge,
+    process_generated_document_for_knowledge,
+)
 
 # ---------------------------------------------------------------------------
 # GET /api/documents — list + filters
@@ -532,6 +544,111 @@ def test_manual_upload_analyze_summarize_download_and_delete(
     assert summarize_response.status_code == 200
     assert summarize_response.get_json()["data"]["summary_status"] == "local_answer"
     assert delete_response.status_code == 204
+
+
+def test_manual_upload_processes_searchable_knowledge_chunks(
+    client,
+    app,
+    make_user,
+    make_machine,
+    auth_headers,
+):
+    """Verify manual uploads are automatically summarized and indexed for RAG."""
+    admin = make_user(
+        username="manual_rag_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    machine_id = make_machine(name="RAG Presse 4")
+    headers = auth_headers(admin["username"])
+
+    upload_response = client.post(
+        "/api/v1/documents/manuals",
+        headers=headers,
+        data={
+            "machine_id": str(machine_id),
+            "department": "Instandhaltung",
+            "file": (
+                BytesIO(
+                    b"RAG Presse 4 Wartung taeglich pruefen.\n"
+                    b"Fehlercode E-10 Sensor reinigen und Filter tauschen."
+                ),
+                "rag-manual.txt",
+            ),
+        },
+        content_type="multipart/form-data",
+    )
+    manual = upload_response.get_json()["data"]
+
+    with app.app_context():
+        knowledge_document = KnowledgeDocument.query.filter_by(
+            source_type="machine_manual",
+            source_id=manual["id"],
+        ).first()
+        chunks = KnowledgeChunk.query.filter_by(document_id=knowledge_document.id).all()
+
+    assert upload_response.status_code == 201
+    assert manual["summary_status"] == "local_answer"
+    assert knowledge_document.status == "indexed"
+    assert knowledge_document.chunk_count >= 1
+    assert knowledge_document.department == "Instandhaltung"
+    assert chunks
+    assert "Fehlercode E-10" in chunks[0].text
+
+
+def test_document_knowledge_processing_handles_empty_document(
+    app,
+    make_user,
+    make_task,
+):
+    """Verify empty generated documents create no-text knowledge records without errors."""
+    admin = make_user(
+        username="empty_doc_rag_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    task_id = make_task("Leerer Bericht", creator_username=admin["username"])
+    relative_path = "empty/maintenance_report.html"
+
+    with app.app_context():
+        file_path = Path(app.config["DOCUMENTS_FOLDER"]) / relative_path
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text("", encoding="utf-8")
+        document = GeneratedDocument(
+            task_id=task_id,
+            document_type="maintenance_report",
+            title="Leerer Wartungsbericht",
+            relative_path=relative_path,
+            department="Instandhaltung",
+            machine="",
+            created_by=admin["id"],
+            created_at=datetime.now(UTC),
+        )
+        db.session.add(document)
+        db.session.commit()
+
+        result, error, status = process_generated_document_for_knowledge(document)
+        knowledge_document = KnowledgeDocument.query.filter_by(
+            source_type="generated_document",
+            source_id=document.id,
+        ).first()
+
+    assert error is None
+    assert status == 200
+    assert result["status"] == "no_text"
+    assert result["metadata"]["has_text"] is False
+    assert knowledge_document.status == "no_text"
+    assert knowledge_document.chunk_count == 0
+
+
+def test_document_knowledge_processing_rejects_invalid_input(app):
+    """Verify invalid document-processing input returns a structured service error."""
+    with app.app_context():
+        result, error, status = process_document_for_knowledge(None, "generated_document")
+
+    assert result is None
+    assert error == {"error": "document is required"}
+    assert status == 400
 
 
 def test_manual_upload_validation_and_permissions(

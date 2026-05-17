@@ -441,24 +441,29 @@
       type: data.type || null,
       prompt: message,
       sources: data.sources || [],
-      action_preview: data.action_preview || null
+      action_preview: data.action_preview || null,
+      chat_message_id: data.chat_message_id || null,
+      audit_event_id: diagnostics.audit_event_id || null
     };
   }
 
-  async function sendFeedback(prompt, response, rating, comment) {
+  async function sendFeedback(feedback) {
     const token = window.localStorage.getItem("maintenance_access_token");
     if (!token) return;
-    await fetch("/api/v1/ai/feedback", {
+    const response = await fetch("/api/v1/ai/feedback", {
       method: "POST",
       headers: {
         "Authorization": "Bearer " + token,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ prompt, response, rating, comment: comment || "" })
+      body: JSON.stringify(feedback)
     });
+    if (!response.ok) {
+      throw new Error("feedback_failed");
+    }
   }
 
-  function addFeedbackButtons(bubble, prompt, response) {
+  function addFeedbackButtons(bubble, result) {
     const actions = document.createElement("div");
     actions.className = "chat-feedback";
     actions.setAttribute("aria-label", "Antwort bewerten");
@@ -466,6 +471,10 @@
     helpful.type = "button";
     helpful.textContent = "Hilfreich";
     helpful.setAttribute("aria-pressed", "false");
+    const partial = document.createElement("button");
+    partial.type = "button";
+    partial.textContent = "Teilweise";
+    partial.setAttribute("aria-pressed", "false");
     const notHelpful = document.createElement("button");
     notHelpful.type = "button";
     notHelpful.textContent = "Nicht hilfreich";
@@ -473,17 +482,31 @@
     const comment = document.createElement("input");
     comment.className = "input input-bordered";
     comment.placeholder = "Optionaler Kommentar";
-    [helpful, notHelpful].forEach((button) => {
+    [helpful, partial, notHelpful].forEach((button) => {
       button.className = "chat-feedback-button";
     });
     async function storeFeedback(rating) {
-      const selectedButton = rating === "helpful" ? helpful : notHelpful;
+      const selectedButton = rating === "helpful"
+        ? helpful
+        : rating === "partially_helpful"
+          ? partial
+          : notHelpful;
       selectedButton.setAttribute("aria-pressed", "true");
       helpful.disabled = true;
+      partial.disabled = true;
       notHelpful.disabled = true;
       comment.disabled = true;
       try {
-        await sendFeedback(prompt, response, rating, comment.value);
+        await sendFeedback({
+          chat_message_id: result.chat_message_id,
+          audit_event_id: result.audit_event_id,
+          prompt: result.prompt || "",
+          response: result.answer || "",
+          response_type: result.type || "assistant",
+          rating,
+          comment: comment.value,
+          sources: result.sources || []
+        });
         actions.textContent = "Feedback gespeichert.";
       } catch (error) {
         actions.textContent = "Feedback konnte nicht gespeichert werden.";
@@ -495,7 +518,10 @@
     notHelpful.addEventListener("click", async () => {
       await storeFeedback("not_helpful");
     });
-    actions.append(comment, helpful, notHelpful);
+    partial.addEventListener("click", async () => {
+      await storeFeedback("partially_helpful");
+    });
+    actions.append(comment, helpful, partial, notHelpful);
     bubble.appendChild(actions);
   }
 
@@ -675,7 +701,7 @@
         result.sources,
         result.action_preview
       );
-      addFeedbackButtons(loading, result.prompt || message, result.answer);
+      addFeedbackButtons(loading, result);
       loading.classList.remove("is-loading");
     } catch (error) {
       updateAssistantMessage(

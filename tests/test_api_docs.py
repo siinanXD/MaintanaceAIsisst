@@ -19,6 +19,7 @@ def test_openapi_json_documents_core_endpoints(client):
     assert "/api/v1/errors/similar" in paths
     assert "/api/v1/ai/daily-briefing" in paths
     assert "/api/v1/ai/order-plan" in paths
+    assert "/api/v1/ai/feedback" in paths
     assert "/api/v1/ai/chat/history" in paths
     assert "/api/v1/sites" in paths
     assert "/api/v1/operations/summary" in paths
@@ -37,9 +38,11 @@ def test_openapi_json_documents_core_endpoints(client):
     assert "/api/v1/admin/ai/knowledge/upload" in paths
     assert "/api/v1/admin/ai/knowledge" in paths
     assert "/api/v1/admin/ai/knowledge/status" in paths
+    assert "/api/v1/admin/ai/knowledge-gaps" in paths
     assert "/api/v1/admin/ai/knowledge/reindex/jobs" in paths
     assert "/api/v1/admin/ai/knowledge/reindex" in paths
     assert "/api/v1/admin/ai/knowledge/{id}/reindex" in paths
+    assert "/api/v1/admin/ai/knowledge/{id}/quality-status" in paths
     assert "/api/v1/admin/ai/knowledge/{id}" in paths
     assert "/api/v1/machines/{machine_id}/assistant" in paths
     assert "/api/v1/inventory/forecast" in paths
@@ -106,10 +109,13 @@ def test_openapi_examples_are_present(client):
     ]
     assert spec["components"]["schemas"]["AIAuditEvent"]["properties"]["error_category"]["example"]
     assert spec["components"]["schemas"]["KnowledgeDocument"]["properties"]["status"]["example"]
-    assert spec["components"]["schemas"]["Site"]["properties"]["code"]["example"]
-    assert spec["components"]["schemas"]["OperationalEvent"]["properties"]["actor_hash"][
+    assert spec["components"]["schemas"]["KnowledgeDocument"]["properties"]["quality_status"][
         "example"
     ]
+    assert spec["components"]["schemas"]["KnowledgeGap"]["properties"]["status"]["example"]
+    assert spec["components"]["schemas"]["MissingInformation"]["properties"]["questions"]
+    assert spec["components"]["schemas"]["Site"]["properties"]["code"]["example"]
+    assert spec["components"]["schemas"]["OperationalEvent"]["properties"]["actor_hash"]["example"]
     assert spec["components"]["schemas"]["OperationsSummary"]["properties"]["tasks"]
 
 

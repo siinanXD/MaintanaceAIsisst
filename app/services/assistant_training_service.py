@@ -11,6 +11,8 @@ from app.services.knowledge_service import (
     delete_source_knowledge_document,
     mark_training_entry_knowledge_stale,
 )
+from app.services.maintenance_tag_service import suggest_tags_for_knowledge_payload
+from app.services.missing_information_service import missing_information_for_knowledge_entry
 
 MAX_TITLE_LENGTH = 220
 MAX_QUESTION_LENGTH = 1000
@@ -61,10 +63,20 @@ def create_training_entry(data, user):
         db.session.flush()
         mark_training_entry_knowledge_stale(entry)
         db.session.commit()
-        return entry.to_dict(), None, 201
+        result = entry.to_dict()
+        result["missing_information"] = missing_information_for_knowledge_entry(result, user)
+        result["tag_suggestions"] = suggest_tags_for_knowledge_payload(result)
+        return result, None, 201
     except ValueError as exc:
         db.session.rollback()
-        return None, {"error": str(exc)}, 400
+        return (
+            None,
+            {
+                "error": str(exc),
+                "missing_information": missing_information_for_knowledge_entry(data, user),
+            },
+            400,
+        )
     except SQLAlchemyError:
         db.session.rollback()
         return None, {"error": "Database error while saving training entry"}, 500
@@ -81,10 +93,22 @@ def update_training_entry(entry, data):
         entry.updated_at = utc_now()
         mark_training_entry_knowledge_stale(entry)
         db.session.commit()
-        return entry.to_dict(), None, 200
+        result = entry.to_dict()
+        result["missing_information"] = missing_information_for_knowledge_entry(result)
+        result["tag_suggestions"] = suggest_tags_for_knowledge_payload(result)
+        return result, None, 200
     except ValueError as exc:
         db.session.rollback()
-        return None, {"error": str(exc)}, 400
+        payload = entry.to_dict()
+        payload.update(data if isinstance(data, dict) else {})
+        return (
+            None,
+            {
+                "error": str(exc),
+                "missing_information": missing_information_for_knowledge_entry(payload),
+            },
+            400,
+        )
     except SQLAlchemyError:
         db.session.rollback()
         return None, {"error": "Database error while updating training entry"}, 500

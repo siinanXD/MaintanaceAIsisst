@@ -17,6 +17,7 @@ from app.services.knowledge_service import (
     delete_source_knowledge_document,
     mark_task_knowledge_stale,
 )
+from app.services.maintenance_tag_service import suggest_tags_for_task_payload
 from app.services.operations_tracking_service import record_event
 
 logger = logging.getLogger(__name__)
@@ -484,6 +485,12 @@ def suggest_task_from_text(data, user):
         "status": "local_answer",
         "rag_source_count": len(rag_sources),
     }
+    normalized["tag_suggestions"] = suggest_tags_for_task_payload(
+        {
+            **normalized,
+            "text": text,
+        }
+    )
     return normalized, None, 200
 
 

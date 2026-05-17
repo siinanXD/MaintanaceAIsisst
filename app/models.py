@@ -8,6 +8,7 @@ from app.domain_models.ai import (
     ChatMessage,
     KnowledgeChunk,
     KnowledgeDocument,
+    KnowledgeGap,
 )
 from app.domain_models.common import Priority, Role, TaskStatus, utc_now
 from app.domain_models.documents import (
@@ -54,6 +55,7 @@ __all__ = [
     "InventoryMaterial",
     "KnowledgeChunk",
     "KnowledgeDocument",
+    "KnowledgeGap",
     "Machine",
     "MachineManual",
     "MachineManualVersion",

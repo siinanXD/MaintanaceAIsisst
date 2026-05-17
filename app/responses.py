@@ -36,6 +36,11 @@ def service_error_response(error, status_code=400):
     """Return a normalized error response from a service error payload."""
     if isinstance(error, dict):
         message = error.get("message") or error.get("error") or "Request failed"
+        payload = error_payload(message)
+        for key, value in error.items():
+            if key not in {"error", "message"}:
+                payload[key] = value
+        return jsonify(payload), status_code
     else:
         message = error or "Request failed"
     return error_response(message, status_code)

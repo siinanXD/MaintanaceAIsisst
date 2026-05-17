@@ -19,6 +19,8 @@ from app.services.error_service import (
     visible_errors_query,
 )
 from app.services.knowledge_service import delete_source_knowledge_document
+from app.services.maintenance_tag_service import suggest_tags_for_error_payload
+from app.services.missing_information_service import missing_information_for_error_entry
 from app.services.operations_tracking_service import record_event
 
 errors_bp = Blueprint("errors", __name__)
@@ -42,10 +44,18 @@ def list_errors():
 @dashboard_permission_required("errors", "write")
 def add_error():
     """Create an error catalog entry in an allowed department."""
-    entry, error, status = create_error_entry(request.get_json(silent=True) or {}, current_user())
+    data = request.get_json(silent=True) or {}
+    user = current_user()
+    entry, error, status = create_error_entry(data, user)
     if error:
         return service_error_response(error, status)
-    return jsonify(entry.to_dict()), status
+    payload = entry.to_dict()
+    payload["missing_information"] = missing_information_for_error_entry(
+        {**data, **payload},
+        user,
+    )
+    payload["tag_suggestions"] = suggest_tags_for_error_payload({**data, **payload})
+    return jsonify(payload), status
 
 
 @errors_bp.post("/analyze")
@@ -99,14 +109,22 @@ def edit_error(error_id):
     entry = db.get_or_404(ErrorEntry, error_id)
     if not same_department_or_admin(entry):
         return error_response("Forbidden", 403)
+    data = request.get_json(silent=True) or {}
+    user = current_user()
     updated, error, status = update_error_entry(
         entry,
-        request.get_json(silent=True) or {},
-        current_user(),
+        data,
+        user,
     )
     if error:
         return service_error_response(error, status)
-    return jsonify(updated.to_dict())
+    payload = updated.to_dict()
+    payload["missing_information"] = missing_information_for_error_entry(
+        {**payload, **data},
+        user,
+    )
+    payload["tag_suggestions"] = suggest_tags_for_error_payload({**payload, **data})
+    return jsonify(payload)
 
 
 @errors_bp.delete("/<int:error_id>")

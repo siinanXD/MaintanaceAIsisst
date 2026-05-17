@@ -28,3 +28,15 @@ def test_local_development_schema_adds_missing_tracking_columns(app):
         status = database_schema_status()
 
     assert status["missing_columns"].get("task") is None
+
+
+def test_local_development_schema_adds_missing_ai_feedback_columns(app):
+    """Verify local startup can repair additive AI feedback columns."""
+    with app.app_context():
+        db.session.execute(db.text("ALTER TABLE ai_feedback DROP COLUMN sources_json"))
+        db.session.commit()
+
+        ensure_local_development_schema()
+        status = database_schema_status()
+
+    assert status["missing_columns"].get("ai_feedback") is None

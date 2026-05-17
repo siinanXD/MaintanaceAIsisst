@@ -32,16 +32,13 @@ def list_employees():
         limit — items per page, 1-100 (default 20)
     """
     access_level = employee_access_level(current_user())
-    query = (
-        Employee.query.options(
-            joinedload(Employee.favorite_machine_rel),
-            selectinload(Employee.documents),
-            selectinload(Employee.machine_qualifications).joinedload(
-                EmployeeMachineQualification.machine
-            ),
-        )
-        .order_by(Employee.name.asc(), Employee.id.asc())
-    )
+    query = Employee.query.options(
+        joinedload(Employee.favorite_machine_rel),
+        selectinload(Employee.documents),
+        selectinload(Employee.machine_qualifications).joinedload(
+            EmployeeMachineQualification.machine
+        ),
+    ).order_by(Employee.name.asc(), Employee.id.asc())
     return paginate_query(query, lambda e: e.to_dict(access_level))
 
 

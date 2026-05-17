@@ -56,6 +56,9 @@ OPENAPI_SPEC = {
                     "success": {"type": "boolean", "example": False},
                     "message": {"type": "string", "example": "Invalid credentials"},
                     "error": {"type": "string", "example": "invalid_credentials"},
+                    "missing_information": {
+                        "$ref": "#/components/schemas/MissingInformation",
+                    },
                 },
             },
             "Pagination": {
@@ -344,6 +347,9 @@ OPENAPI_SPEC = {
                         ),
                     },
                     "department": {"$ref": "#/components/schemas/Department"},
+                    "missing_information": {
+                        "$ref": "#/components/schemas/MissingInformation",
+                    },
                 },
             },
             "ErrorCreateRequest": {
@@ -1581,6 +1587,19 @@ OPENAPI_SPEC = {
                                     "title": "Temperaturwarnung Spindel",
                                     "possible_causes": "Kuehlung, Sensor oder Lager.",
                                     "solution": "Kuehlung pruefen und Probelauf dokumentieren.",
+                                    "missing_information": {
+                                        "status": "needs_information",
+                                        "missing_fields": ["previous_checks"],
+                                        "questions": [
+                                            {
+                                                "field": "previous_checks",
+                                                "question": (
+                                                    "Was wurde bereits geprueft, gemessen, "
+                                                    "gereinigt oder getauscht?"
+                                                ),
+                                            }
+                                        ],
+                                    },
                                 }
                             }
                         },
@@ -2585,7 +2604,11 @@ OPENAPI_SPEC = {
             },
             "post": {
                 "tags": ["Documents"],
-                "summary": "Upload a machine manual",
+                "summary": "Upload and auto-index a machine manual",
+                "description": (
+                    "Stores the file, extracts text when possible, creates a summary "
+                    "and indexes searchable RAG chunks."
+                ),
                 "security": [{"bearerAuth": []}],
                 "requestBody": {
                     "required": True,
@@ -2845,8 +2868,59 @@ OPENAPI_SPEC["components"]["schemas"].update(
                 "source_type": {"type": "string", "example": "upload"},
                 "title": {"type": "string", "example": "CNC Manual"},
                 "status": {"type": "string", "example": "indexed"},
+                "quality_status": {"type": "string", "example": "draft"},
                 "chunk_count": {"type": "integer", "example": 18},
                 "department": {"type": "string", "example": "Produktion"},
+            },
+        },
+        "MissingInformation": {
+            "type": "object",
+            "properties": {
+                "entry_type": {"type": "string", "example": "error_entry"},
+                "status": {"type": "string", "example": "needs_information"},
+                "missing_fields": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "example": ["machine", "error_code", "previous_checks"],
+                },
+                "detected_fields": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "example": ["symptoms", "affected_area"],
+                },
+                "completion_ratio": {"type": "number", "example": 0.5},
+                "questions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "field": {"type": "string", "example": "machine"},
+                            "label": {"type": "string", "example": "Maschine oder Anlage"},
+                            "question": {
+                                "type": "string",
+                                "example": "Welche Maschine, Anlage oder Linie ist betroffen?",
+                            },
+                            "required": {"type": "boolean", "example": True},
+                        },
+                    },
+                },
+                "summary": {
+                    "type": "string",
+                    "example": "Es fehlen gezielte Angaben zu: Maschine oder Anlage.",
+                },
+            },
+        },
+        "KnowledgeGap": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "integer", "example": 3},
+                "question": {"type": "string", "example": "Wie behebe ich Fehler X999?"},
+                "context": {"type": "string", "example": "Quellen: 0"},
+                "machine": {"type": "string", "example": "Anlage 4"},
+                "department": {"type": "string", "example": "Instandhaltung"},
+                "status": {"type": "string", "example": "open"},
+                "occurrence_count": {"type": "integer", "example": 2},
+                "last_seen_at": {"type": "string", "format": "date-time"},
             },
         },
         "ChatTemplate": {
@@ -2912,6 +2986,9 @@ OPENAPI_SPEC["components"]["schemas"].update(
                 "department": {"type": "string", "example": "Instandhaltung"},
                 "is_active": {"type": "boolean", "example": True},
                 "priority": {"type": "integer", "example": 50},
+                "missing_information": {
+                    "$ref": "#/components/schemas/MissingInformation",
+                },
             },
         },
     }
@@ -2933,6 +3010,38 @@ OPENAPI_SPEC["paths"].update(
                 "summary": "Load permission-aware chat templates",
                 "security": [{"bearerAuth": []}],
                 "responses": {"200": {"description": "Chat templates loaded"}},
+            }
+        },
+        "/api/v1/ai/feedback": {
+            "post": {
+                "tags": ["AI"],
+                "summary": "Store feedback for an AI answer",
+                "security": [{"bearerAuth": []}],
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "example": {
+                                "chat_message_id": 42,
+                                "rating": "partially_helpful",
+                                "comment": "Quelle passt, Antwort war zu knapp.",
+                                "sources": [
+                                    {
+                                        "type": "knowledge",
+                                        "id": 7,
+                                        "chunk_id": 13,
+                                        "title": "CNC Manual",
+                                    }
+                                ],
+                            }
+                        }
+                    },
+                },
+                "responses": {
+                    "201": {"description": "Feedback saved"},
+                    "400": {"$ref": "#/components/responses/ValidationError"},
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                },
             }
         },
         "/api/v1/ai/order-plan": {
@@ -3127,7 +3236,7 @@ OPENAPI_SPEC["paths"].update(
         "/api/v1/admin/ai/knowledge/upload": {
             "post": {
                 "tags": ["Admin"],
-                "summary": "Upload and index a knowledge document",
+                "summary": "Upload, chunk and index a knowledge document",
                 "security": [{"bearerAuth": []}],
                 "responses": {"201": {"description": "Knowledge document uploaded"}},
             }
@@ -3146,6 +3255,14 @@ OPENAPI_SPEC["paths"].update(
                 "summary": "Inspect RAG index status and source diagnostics",
                 "security": [{"bearerAuth": []}],
                 "responses": {"200": {"description": "Knowledge status loaded"}},
+            }
+        },
+        "/api/v1/admin/ai/knowledge-gaps": {
+            "get": {
+                "tags": ["Admin"],
+                "summary": "List AI knowledge gaps from unanswered questions",
+                "security": [{"bearerAuth": []}],
+                "responses": {"200": {"description": "Knowledge gaps loaded"}},
             }
         },
         "/api/v1/admin/jobs": {
@@ -3186,6 +3303,26 @@ OPENAPI_SPEC["paths"].update(
                 "summary": "Reindex one knowledge document",
                 "security": [{"bearerAuth": []}],
                 "responses": {"200": {"description": "Knowledge document reindexed"}},
+            }
+        },
+        "/api/v1/admin/ai/knowledge/{id}/quality-status": {
+            "put": {
+                "tags": ["Admin"],
+                "summary": "Update the quality workflow status for one knowledge document",
+                "security": [{"bearerAuth": []}],
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "example": {"quality_status": "technician_confirmed"}
+                        }
+                    },
+                },
+                "responses": {
+                    "200": {"description": "Knowledge quality status updated"},
+                    "400": {"$ref": "#/components/responses/ValidationError"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                },
             }
         },
         "/api/v1/admin/ai/knowledge/{id}": {

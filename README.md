@@ -29,6 +29,9 @@ A modular Flask application for industrial maintenance teams. Manages tasks, err
 - Department-scoped task and error catalog management
 - AI-assisted task suggestions from free text, with priority scoring
 - Similar-error detection to avoid duplicate catalog entries
+- Recurring fault trend detection for preventive recommendations and briefings
+- Structured follow-up prompts for incomplete fault and knowledge entries
+- Local maintenance tag suggestions from seeded categories for faults, tasks and knowledge drafts
 - Automatic HTML maintenance reports on task completion
 - Server-side PDF export, versioning, approval workflow, and summaries for reports
 - Machine manual upload, text extraction, analysis, and searchable metadata
@@ -41,6 +44,7 @@ A modular Flask application for industrial maintenance teams. Manages tasks, err
 - Transparent OpenAI diagnostics for rate limits, invalid keys, blocked models, timeouts, and connection errors
 - Searchable chat history for users and master-admin-wide AI audit views
 - Local RAG v1 knowledge base for TXT/HTML/PDF maintenance documents
+- Knowledge quality workflow from draft and AI suggestion to technician/admin review
 
 **Workforce & Production**
 - Employee management with qualifications and preferred machine
@@ -288,6 +292,9 @@ Current implementation:
 - `vector_store_service.py` abstracts vector backends. It uses the existing SQLAlchemy knowledge chunks locally and can switch to Chroma.
 - `retrieval_service.py` combines permission-aware structured retrieval with RAG knowledge chunks.
 - `rag_service.py` owns the high-level RAG context pipeline so future LangChain or LangGraph orchestration can be added without changing API routes.
+- `knowledge_gap_service.py` records open `KnowledgeGap` entries when AI chat cannot find reliable RAG/source context; recent duplicate questions are folded into one gap.
+- `maintenance_tag_service.py` provides the seeded maintenance taxonomy for Fehlerarten, Ursachen, Loesungen, Maschinenbereiche and Risiko/Prioritaet, and returns local keyword-based tag suggestions without requiring an AI key.
+- Generated maintenance reports and uploaded machine manuals are processed automatically into `KnowledgeDocument` rows, summaries, metadata hints and searchable `KnowledgeChunk` records.
 - `POST /api/v1/admin/ai/knowledge/reindex` runs the current ingestion workflow and registers generated reports, error catalog entries, tasks, maintenance plans, machine manuals, and shift handovers as RAG sources.
 - `POST /api/v1/admin/ai/knowledge/reindex?mode=stale` reindexes only pending or stale RAG documents.
 - `POST /api/v1/admin/ai/knowledge/{id}/reindex` reindexes one document for granular admin recovery.
@@ -295,8 +302,35 @@ Current implementation:
 - `POST /api/v1/machines/{machine_id}/assistant` enriches the machine-specific history with matching RAG sources and returns source metadata alongside the answer.
 - `POST /api/v1/ai/error-assistant` returns catalog matches, RAG sources, and a read-only task draft for fault-to-task workflows.
 - `POST /api/v1/tasks/suggest` can attach RAG source metadata to AI task drafts without persisting anything.
+- `GET /api/v1/admin/ai/knowledge-gaps` lists unanswered or low-confidence AI questions for admin documentation follow-up.
 - `GET /api/v1/ai/daily-briefing` can include an `AI-Wissenskontext` section from visible RAG sources.
 - `GET /api/v1/machines/maintenance-recommendations` returns read-only preventive maintenance recommendations from visible task/error history.
+
+### Automated Knowledge Lifecycle
+
+The knowledge lifecycle is consolidated around existing services instead of a
+separate monolith:
+
+1. Sources are created in tasks, errors, documents, manuals, handovers or
+   manual AI training.
+2. `knowledge_service.py` and `document_knowledge_processing_service.py`
+   register them as `KnowledgeDocument` rows with `draft` or `ai_suggested`
+   quality status.
+3. Existing similarity and retrieval services find related error entries or RAG
+   chunks; missing-information prompts come from `missing_information_service.py`.
+4. Technicians and master admins move entries through `technician_confirmed`,
+   `admin_approved`, `outdated` or `rejected` via
+   `knowledge_quality_service.py`.
+5. Indexed and visible knowledge chunks are used by RAG. The admin status API
+   exposes a `lifecycle` section with review queues, open feedback, open
+   knowledge gaps and the current RAG quality-gate state.
+6. `ai_feedback_service.py` stores answer feedback for review, and
+   `knowledge_gap_service.py` deduplicates unanswered or low-confidence AI
+   questions into open knowledge gaps.
+
+Current limitation: RAG retrieval still uses all indexed and visible
+`KnowledgeDocument` rows. The `admin_approved` quality gate is surfaced in
+status diagnostics, but is not enforced during retrieval yet.
 
 Initial RAG-ready data sources:
 - `ErrorEntry`: error code, machine, title, description, possible causes, solution, department, `machine_id`.

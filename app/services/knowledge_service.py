@@ -36,6 +36,10 @@ from app.services.document_service import (
     html_to_text,
     visible_documents_query,
 )
+from app.services.knowledge_quality_service import (
+    default_quality_status_for_source,
+    mark_quality_outdated_if_reviewed,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +113,7 @@ def upload_knowledge_document(file_storage, user, department=""):
         file_size=len(raw_content),
         department=str(department or "").strip()[:120],
         status="pending",
+        quality_status=default_quality_status_for_source("upload"),
         is_public=True,
         created_by=user.id,
         created_at=utc_now(),
@@ -307,9 +312,7 @@ def machine_manual_text(manual_id):
     manual = db.session.get(MachineManual, manual_id)
     if not manual:
         return ""
-    extracted_text = (
-        manual.current_version.extracted_text if manual.current_version else ""
-    )
+    extracted_text = manual.current_version.extracted_text if manual.current_version else ""
     return "\n".join(
         part
         for part in (
@@ -542,9 +545,7 @@ def can_read_maintenance_plan(user, plan_id):
     from app.machines.maintenance_services import visible_maintenance_plans_query
 
     return (
-        visible_maintenance_plans_query(user)
-        .filter(MaintenancePlan.id == plan_id)
-        .first()
+        visible_maintenance_plans_query(user).filter(MaintenancePlan.id == plan_id).first()
         is not None
     )
 
@@ -606,6 +607,7 @@ def list_knowledge_documents(args):
     query = KnowledgeDocument.query
     q = str(args.get("q") or "").strip()
     status = str(args.get("status") or "").strip()
+    quality_status = str(args.get("quality_status") or "").strip()
     source_type = str(args.get("source_type") or "").strip()
     if q:
         pattern = f"%{q}%"
@@ -616,6 +618,8 @@ def list_knowledge_documents(args):
         )
     if status:
         query = query.filter(KnowledgeDocument.status == status)
+    if quality_status:
+        query = query.filter(KnowledgeDocument.quality_status == quality_status)
     if source_type:
         query = query.filter(KnowledgeDocument.source_type == source_type)
     return query.order_by(KnowledgeDocument.updated_at.desc(), KnowledgeDocument.id.desc())
@@ -623,6 +627,8 @@ def list_knowledge_documents(args):
 
 def knowledge_index_status():
     """Return admin-facing RAG index status and searchable source diagnostics."""
+    from app.services.knowledge_lifecycle_service import knowledge_lifecycle_overview
+
     documents = KnowledgeDocument.query.order_by(KnowledgeDocument.id.asc()).all()
     status_counts = {}
     source_counts = {}
@@ -641,6 +647,12 @@ def knowledge_index_status():
     indexed = status_counts.get("indexed", 0)
     errors = status_counts.get("error", 0)
     total_chunks = sum(document.chunk_count or 0 for document in documents)
+    readiness_score, readiness_reasons = _rag_readiness(
+        documents=documents,
+        indexed=indexed,
+        errors=errors,
+        total_chunks=total_chunks,
+    )
     return {
         "documents": len(documents),
         "indexed": indexed,
@@ -657,6 +669,10 @@ def knowledge_index_status():
             searchable_by_source,
             chunks_by_source,
         ),
+        "readiness_score": readiness_score,
+        "readiness_reasons": readiness_reasons,
+        "problem_documents": _problem_knowledge_documents(documents),
+        "lifecycle": knowledge_lifecycle_overview(documents),
         "diagnostics": {
             "rag_enabled": bool(current_app.config.get("RAG_ENABLED", True)),
             "vector_store": current_app.config.get("RAG_VECTOR_STORE", "local"),
@@ -669,6 +685,58 @@ def knowledge_index_status():
             "ready": bool(indexed and total_chunks and current_app.config.get("RAG_ENABLED", True)),
         },
     }
+
+
+def _rag_readiness(documents, indexed, errors, total_chunks):
+    """Return a RAG readiness score and admin-facing reasons."""
+    if not current_app.config.get("RAG_ENABLED", True):
+        return 0, ["RAG ist deaktiviert."]
+    if not documents:
+        return 0, ["Keine Wissensdokumente indexiert."]
+
+    stale = sum(1 for document in documents if document.status == "stale")
+    pending = sum(1 for document in documents if document.status == "pending")
+    no_text = sum(1 for document in documents if document.status == "no_text")
+    score = 100
+    reasons = []
+    if not indexed or not total_chunks:
+        score = min(score, 30)
+        reasons.append("Keine durchsuchbaren RAG-Chunks vorhanden.")
+    if errors:
+        score -= min(40, round((errors / len(documents)) * 100))
+        reasons.append(f"{errors} Wissensdokumente haben Indexfehler.")
+    if stale:
+        score -= min(25, round((stale / len(documents)) * 60))
+        reasons.append(f"{stale} Wissensdokumente sind veraltet.")
+    if pending:
+        score -= min(20, round((pending / len(documents)) * 50))
+        reasons.append(f"{pending} Wissensdokumente warten auf Indexierung.")
+    if no_text:
+        score -= min(15, round((no_text / len(documents)) * 40))
+        reasons.append(f"{no_text} Wissensdokumente enthalten keinen lesbaren Text.")
+    if not reasons:
+        reasons.append("RAG-Index ist bereit.")
+    return max(0, min(100, score)), reasons
+
+
+def _problem_knowledge_documents(documents, limit=10):
+    """Return recent knowledge documents that need admin attention."""
+    problem_statuses = {"error", "stale", "pending", "no_text"}
+    problem_documents = [
+        document for document in documents if document.status in problem_statuses
+    ]
+    problem_documents.sort(key=lambda document: document.updated_at, reverse=True)
+    return [
+        {
+            "id": document.id,
+            "title": document.title,
+            "source_type": document.source_type,
+            "status": document.status,
+            "error_message": document.error_message,
+            "updated_at": document.updated_at.isoformat(),
+        }
+        for document in problem_documents[:limit]
+    ]
 
 
 def reindex_all_knowledge():
@@ -734,6 +802,7 @@ def ensure_generated_documents_registered():
                 content_type="text/html",
                 department=document.department or "",
                 status="pending",
+                quality_status=default_quality_status_for_source("generated_document"),
                 is_public=True,
                 created_by=document.created_by,
                 created_at=utc_now(),
@@ -908,8 +977,7 @@ def ensure_assistant_training_entries_registered():
 def existing_source_ids(source_type):
     """Return registered source ids for a knowledge source type."""
     return {
-        item.source_id
-        for item in KnowledgeDocument.query.filter_by(source_type=source_type).all()
+        item.source_id for item in KnowledgeDocument.query.filter_by(source_type=source_type).all()
     }
 
 
@@ -934,6 +1002,7 @@ def register_source_document(
             content_type="text/plain",
             department=str(department or "")[:120],
             status="pending",
+            quality_status=default_quality_status_for_source(source_type),
             is_public=True,
             created_by=created_by,
             created_at=created_at or utc_now(),
@@ -990,6 +1059,7 @@ def mark_task_knowledge_stale(task):
     document.department = task.department.name if task.department else ""
     document.relative_path = f"/api/v1/tasks/{task.id}"
     document.status = "stale"
+    mark_quality_outdated_if_reviewed(document)
     document.error_message = "Task wurde geaendert und muss neu indexiert werden."
     document.updated_at = utc_now()
 
@@ -1004,6 +1074,7 @@ def mark_training_entry_knowledge_stale(entry):
     document.department = entry.department
     document.relative_path = "/admin/ai"
     document.status = "stale"
+    mark_quality_outdated_if_reviewed(document)
     document.error_message = "Trainingseintrag wurde geaendert und muss neu indexiert werden."
     document.updated_at = utc_now()
 
@@ -1018,6 +1089,7 @@ def mark_error_entry_knowledge_stale(entry):
     document.department = entry.department.name if entry.department else ""
     document.relative_path = f"/api/v1/errors/{entry.id}"
     document.status = "stale"
+    mark_quality_outdated_if_reviewed(document)
     document.error_message = "Fehlerkatalogeintrag wurde geaendert und muss neu indexiert werden."
     document.updated_at = utc_now()
 

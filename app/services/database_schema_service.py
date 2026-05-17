@@ -68,11 +68,20 @@ REQUIRED_TABLE_COLUMNS = {
         "source_count",
         "audit_event_id",
     },
+    "ai_feedback": {
+        "chat_message_id",
+        "audit_event_id",
+        "response_type",
+        "sources_json",
+        "source_count",
+        "review_status",
+    },
     "knowledge_document": {
         "source_type",
         "source_id",
         "title",
         "status",
+        "quality_status",
         "is_public",
         "chunk_count",
         "error_message",
@@ -82,6 +91,18 @@ REQUIRED_TABLE_COLUMNS = {
         "chunk_index",
         "text",
         "token_text",
+    },
+    "knowledge_gap": {
+        "question",
+        "question_hash",
+        "context_text",
+        "machine",
+        "department",
+        "status",
+        "occurrence_count",
+        "user_id",
+        "audit_event_id",
+        "last_seen_at",
     },
     "background_job": {
         "job_type",
@@ -136,9 +157,7 @@ REQUIRED_TABLE_COLUMNS = {
 }
 
 LOCAL_DEV_SCHEMA_COLUMNS = {
-    "department": (
-        sa.Column("site_id", sa.Integer(), nullable=True),
-    ),
+    "department": (sa.Column("site_id", sa.Integer(), nullable=True),),
     "task": (
         sa.Column("planned_minutes", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("actual_minutes", sa.Integer(), nullable=False, server_default="0"),
@@ -181,6 +200,22 @@ LOCAL_DEV_SCHEMA_COLUMNS = {
         ),
         sa.Column("quality_checked_at", sa.DateTime(), nullable=True),
     ),
+    "ai_feedback": (
+        sa.Column("chat_message_id", sa.Integer(), nullable=True),
+        sa.Column("audit_event_id", sa.Integer(), nullable=True),
+        sa.Column("response_type", sa.String(length=80), nullable=False, server_default=""),
+        sa.Column("sources_json", sa.Text(), nullable=False, server_default="[]"),
+        sa.Column("source_count", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("review_status", sa.String(length=40), nullable=False, server_default="open"),
+    ),
+    "knowledge_document": (
+        sa.Column(
+            "quality_status",
+            sa.String(length=40),
+            nullable=False,
+            server_default="draft",
+        ),
+    ),
     "shift_plan": (
         sa.Column("coverage_percent", sa.Float(), nullable=False, server_default="0"),
         sa.Column("conflict_count", sa.Integer(), nullable=False, server_default="0"),
@@ -208,9 +243,7 @@ def database_schema_status():
                 missing_tables.append(table_name)
                 continue
 
-            existing_columns = {
-                column["name"] for column in inspector.get_columns(table_name)
-            }
+            existing_columns = {column["name"] for column in inspector.get_columns(table_name)}
             missing = sorted(expected_columns - existing_columns)
             if missing:
                 missing_columns[table_name] = missing
@@ -241,9 +274,7 @@ def ensure_local_development_schema():
         for table_name, columns in LOCAL_DEV_SCHEMA_COLUMNS.items():
             if table_name not in table_names:
                 continue
-            existing_columns = {
-                column["name"] for column in inspector.get_columns(table_name)
-            }
+            existing_columns = {column["name"] for column in inspector.get_columns(table_name)}
             for column in columns:
                 if column.name in existing_columns:
                     continue

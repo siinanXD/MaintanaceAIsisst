@@ -666,6 +666,50 @@
     color: #64748b;
   }
 
+  .status-pill.is-source-automatic {
+    border-color: #bfdbfe;
+    background: #eff6ff;
+    color: #1d4ed8;
+  }
+
+  .status-pill.is-source-manual {
+    border-color: #b7e2c6;
+    background: #ecfdf3;
+    color: #178b45;
+  }
+
+  .status-pill.is-source-prebuilt {
+    border-color: #fed7aa;
+    background: #fff7ed;
+    color: #c2410c;
+  }
+
+  .knowledge-origin-legend,
+  .knowledge-source-cell {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  .knowledge-origin-legend {
+    width: 100%;
+    justify-content: flex-end;
+    margin-top: 0.55rem;
+  }
+
+  .data-table tbody tr[data-knowledge-origin="automatic"] td:first-child {
+    border-left: 3px solid #60a5fa;
+  }
+
+  .data-table tbody tr[data-knowledge-origin="manual"] td:first-child {
+    border-left: 3px solid #22c55e;
+  }
+
+  .data-table tbody tr[data-knowledge-origin="prebuilt"] td:first-child {
+    border-left: 3px solid #f97316;
+  }
+
   .admin-empty {
     border: 1px dashed #c9d5e4;
     border-radius: 0.55rem;

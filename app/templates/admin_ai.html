@@ -18,12 +18,57 @@
     </div>
   </div>
 
+  <section class="panel" data-ai-health-panel>
+    <div class="panel-header">
+      <h3>AI Ops Cockpit</h3>
+      <span class="panel-meta">Betrieb, RAG und Queue auf einen Blick</span>
+    </div>
+    <div class="dashboard-grid dashboard-grid-4">
+      <article class="metric-card" data-ai-health="ai">
+        <span>AI Betrieb</span>
+        <strong data-ai-health-label>--</strong>
+        <small data-ai-health-detail>Noch nicht geladen</small>
+      </article>
+      <article class="metric-card" data-ai-health="rag">
+        <span>RAG Readiness</span>
+        <strong data-ai-health-label>--</strong>
+        <small data-ai-health-detail>Noch nicht geladen</small>
+      </article>
+      <article class="metric-card" data-ai-health="queue">
+        <span>Job Queue</span>
+        <strong data-ai-health-label>--</strong>
+        <small data-ai-health-detail>Noch nicht geladen</small>
+      </article>
+    </div>
+  </section>
+
   <div class="dashboard-grid dashboard-grid-4" data-ai-kpis>
     <article class="metric-card"><span>Events</span><strong data-ai-kpi="events_total">0</strong></article>
-    <article class="metric-card"><span>Fallbacks</span><strong data-ai-kpi="fallback_count">0</strong></article>
+    <article class="metric-card"><span>Fallback-Rate</span><strong data-ai-kpi="fallback_rate">0%</strong></article>
+    <article class="metric-card"><span>Fehler-Rate</span><strong data-ai-kpi="error_rate">0%</strong></article>
+    <article class="metric-card"><span>AI Latenz</span><strong data-ai-kpi="average_latency_ms">0 ms</strong></article>
     <article class="metric-card"><span>Tokens</span><strong data-ai-kpi="total_tokens">0</strong></article>
     <article class="metric-card"><span>Kosten USD</span><strong data-ai-kpi="estimated_cost_usd">0</strong></article>
+    <article class="metric-card"><span>Cache-Rate</span><strong data-ai-kpi="cache_rate">0%</strong></article>
+    <article class="metric-card"><span>Kosten / 1k</span><strong data-ai-kpi="cost_per_1k_tokens">0</strong></article>
   </div>
+
+  <section class="panel">
+    <div class="panel-header">
+      <h3>Workflow-Kosten und Fehler</h3>
+      <span class="panel-meta">Metadata-only Auswertung ohne Prompt- oder Antworttexte</span>
+    </div>
+    <div class="content-grid two-columns">
+      <div class="table-wrap">
+        <table class="data-table">
+          <caption>AI-Workflows nach Events, Fehlern, Fallbacks, Tokens und Kosten</caption>
+          <thead><tr><th scope="col">Workflow</th><th scope="col">Events</th><th scope="col">Fallback</th><th scope="col">Fehler</th><th scope="col">Tokens</th><th scope="col">Kosten</th><th scope="col">Latenz</th></tr></thead>
+          <tbody data-ai-workflows></tbody>
+        </table>
+      </div>
+      <div class="stats-list" data-ai-top-errors></div>
+    </div>
+  </section>
 
   <section class="panel">
     <div class="panel-header">
@@ -37,10 +82,40 @@
       <article class="metric-card"><span>Ausstehend</span><strong data-rag-kpi="pending">0</strong></article>
       <article class="metric-card"><span>Durchsuchbar</span><strong data-rag-kpi="searchable_documents">0</strong></article>
       <article class="metric-card"><span>Chunks</span><strong data-rag-kpi="chunks">0</strong></article>
+      <article class="metric-card"><span>Readiness</span><strong data-rag-readiness-score>0</strong></article>
     </div>
     <div class="content-grid two-columns mt-4">
       <div class="stats-list" data-rag-source-status></div>
       <div class="stats-list" data-rag-diagnostics></div>
+    </div>
+    <div class="content-grid two-columns mt-4">
+      <div class="stats-list" data-rag-readiness-reasons></div>
+      <div class="stats-list" data-rag-problem-documents></div>
+    </div>
+  </section>
+
+  <section class="panel" data-knowledge-lifecycle-panel>
+    <div class="panel-header">
+      <h3>Knowledge Lifecycle</h3>
+      <span class="badge badge-ai" data-knowledge-lifecycle-state>Noch nicht geladen</span>
+    </div>
+    <div class="dashboard-grid dashboard-grid-4">
+      <article class="metric-card"><span>Drafts</span><strong data-lifecycle-kpi="drafts">0</strong></article>
+      <article class="metric-card"><span>Techniker OK</span><strong data-lifecycle-kpi="technician_confirmed">0</strong></article>
+      <article class="metric-card"><span>Admin frei</span><strong data-lifecycle-kpi="admin_approved">0</strong></article>
+      <article class="metric-card"><span>Problemquellen</span><strong data-lifecycle-kpi="problem_documents">0</strong></article>
+      <article class="metric-card"><span>Feedback offen</span><strong data-lifecycle-kpi="feedback_open">0</strong></article>
+      <article class="metric-card"><span>Gaps offen</span><strong data-lifecycle-kpi="knowledge_gaps_open">0</strong></article>
+      <article class="metric-card"><span>Review offen</span><strong data-lifecycle-kpi="needs_admin_approval">0</strong></article>
+      <article class="metric-card"><span>Nicht freigegeben</span><strong data-lifecycle-kpi="non_approved_indexed_documents">0</strong></article>
+    </div>
+    <div class="content-grid two-columns mt-4">
+      <div class="stats-list" data-knowledge-lifecycle-review></div>
+      <div class="stats-list" data-knowledge-lifecycle-gate></div>
+    </div>
+    <div class="content-grid two-columns mt-4">
+      <div class="stats-list" data-knowledge-lifecycle-actions></div>
+      <div class="stats-list" data-knowledge-lifecycle-steps></div>
     </div>
   </section>
 
@@ -66,10 +141,17 @@
     <div class="dashboard-grid dashboard-grid-4">
       <article class="metric-card"><span>DB Latenz</span><strong data-ops-kpi="database_latency_ms">0 ms</strong></article>
       <article class="metric-card"><span>Queue</span><strong data-ops-kpi="queue_length">0</strong></article>
+      <article class="metric-card"><span>Laufend</span><strong data-ops-kpi="running_jobs">0</strong></article>
+      <article class="metric-card"><span>Fehlgeschlagen</span><strong data-ops-kpi="failed_jobs">0</strong></article>
       <article class="metric-card"><span>AI Latenz</span><strong data-ops-kpi="ai_latency_ms">0 ms</strong></article>
       <article class="metric-card"><span>RAG stale</span><strong data-ops-kpi="rag_stale_ratio">0%</strong></article>
+      <article class="metric-card"><span>&Auml;ltester Job</span><strong data-ops-kpi="oldest_queued_age">0 s</strong></article>
+      <article class="metric-card"><span>Job Dauer</span><strong data-ops-kpi="job_avg_duration">0 s</strong></article>
     </div>
-    <div class="stats-list mt-4" data-ops-slow-endpoints></div>
+    <div class="content-grid two-columns mt-4">
+      <div class="stats-list" data-ai-job-status></div>
+      <div class="stats-list" data-ops-slow-endpoints></div>
+    </div>
   </section>
 
   <div class="content-grid two-columns">
@@ -102,6 +184,20 @@
       <div class="stack" data-ai-chats></div>
     </section>
   </div>
+
+  <section class="panel">
+    <div class="panel-header">
+      <h3>Knowledge Gaps</h3>
+      <span class="panel-meta" data-ai-knowledge-gap-count>0 offen</span>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <caption>Offene Wissenslücken aus AI-Fragen ohne belastbare Quellen</caption>
+        <thead><tr><th scope="col">Frage</th><th scope="col">Bereich</th><th scope="col">Maschine</th><th scope="col">Status</th><th scope="col">Treffer</th><th scope="col">Zuletzt</th></tr></thead>
+        <tbody data-ai-knowledge-gaps></tbody>
+      </table>
+    </div>
+  </section>
 
   <section class="panel admin-training-panel">
     <div class="panel-header">
@@ -160,6 +256,7 @@
     <div class="panel-header">
       <h3>Wissensdatenbank</h3>
       <div class="toolbar">
+        <input class="input input-bordered" data-ai-knowledge-search placeholder="Wissen durchsuchen">
         <select class="input input-bordered" data-ai-knowledge-source>
           <option value="">Alle Quellen</option>
           <option value="upload">Uploads</option>
@@ -181,17 +278,31 @@
           <option value="error">Fehler</option>
           <option value="no_text">Ohne Text</option>
         </select>
+        <select class="input input-bordered" data-ai-knowledge-quality aria-label="Wissen nach Qualitätsstatus filtern">
+          <option value="">Alle Qualitätsstatus</option>
+          <option value="draft">Draft</option>
+          <option value="ai_suggested">AI-Vorschlag</option>
+          <option value="technician_confirmed">Techniker bestaetigt</option>
+          <option value="admin_approved">Admin freigegeben</option>
+          <option value="outdated">Veraltet</option>
+          <option value="rejected">Abgelehnt</option>
+        </select>
         <form class="inline-form" data-ai-knowledge-upload>
           <input class="input input-bordered" name="department" placeholder="Abteilung optional">
           <input class="input input-bordered" name="file" type="file" accept=".pdf,.txt,.html,.htm">
           <button class="btn btn-secondary" type="submit">Hochladen</button>
         </form>
       </div>
+      <div class="knowledge-origin-legend" data-knowledge-origin-legend aria-label="Herkunft der Wissensquellen">
+        <span class="status-pill is-source-automatic">Automatisch</span>
+        <span class="status-pill is-source-manual">Manuell</span>
+        <span class="status-pill is-source-prebuilt">Vorgefertigt</span>
+      </div>
     </div>
     <div class="table-wrap">
         <table class="data-table">
-        <caption>Wissensdatenbank mit Quelle, Indexstatus, Chunks und Abteilung</caption>
-        <thead><tr><th scope="col">Titel</th><th scope="col">Quelle</th><th scope="col">Status</th><th scope="col">Chunks</th><th scope="col">Abteilung</th><th scope="col">Aktionen</th></tr></thead>
+        <caption>Wissensdatenbank mit Quelle, Indexstatus, Qualität, Chunks und Abteilung</caption>
+        <thead><tr><th scope="col">Titel</th><th scope="col">Quelle</th><th scope="col">Index</th><th scope="col">Qualität</th><th scope="col">Chunks</th><th scope="col">Abteilung</th><th scope="col">Aktionen</th></tr></thead>
         <tbody data-ai-knowledge></tbody>
       </table>
     </div>

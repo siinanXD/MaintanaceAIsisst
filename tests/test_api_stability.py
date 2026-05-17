@@ -128,10 +128,7 @@ def test_new_ai_frontend_routes_exist(app, client):
 def test_scalability_migration_contains_composite_indexes():
     """Verify the multi-site scalability migration includes critical indexes."""
     migration = (
-        REPO_ROOT
-        / "migrations"
-        / "versions"
-        / "d1e2f3a4b5c6_add_scalability_indexes.py"
+        REPO_ROOT / "migrations" / "versions" / "d1e2f3a4b5c6_add_scalability_indexes.py"
     ).read_text(encoding="utf-8")
 
     assert "ix_task_department_status_due" in migration
@@ -143,10 +140,7 @@ def test_scalability_migration_contains_composite_indexes():
 def test_operations_migration_contains_site_and_event_tables():
     """Verify the operations migration creates site and KPI tracking structures."""
     migration = (
-        REPO_ROOT
-        / "migrations"
-        / "versions"
-        / "e2f3a4b5c6d7_add_sites_operations_tracking.py"
+        REPO_ROOT / "migrations" / "versions" / "e2f3a4b5c6d7_add_sites_operations_tracking.py"
     ).read_text(encoding="utf-8")
 
     assert "op.create_table(" in migration

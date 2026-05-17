@@ -24,9 +24,7 @@ def plan_order(data, user):
         return None, {"error": error}, 400
 
     missing_scopes = sorted(
-        scope
-        for scope in REQUIRED_SCOPES
-        if not has_dashboard_permission(user, scope, "view")
+        scope for scope in REQUIRED_SCOPES if not has_dashboard_permission(user, scope, "view")
     )
     if missing_scopes or employee_access_level(user) == "none":
         return (
@@ -79,9 +77,7 @@ def format_order_plan_answer(plan):
 
     material_status = recommended["material_check"]["status"]
     staff_status = recommended["staffing"]["status"]
-    blocker_lines = [
-        f"- {blocker}" for blocker in recommended.get("blockers", [])[:4]
-    ]
+    blocker_lines = [f"- {blocker}" for blocker in recommended.get("blockers", [])[:4]]
     blockers = "\n".join(blocker_lines) if blocker_lines else "- Keine harten Blocker erkannt."
     assigned_names = ", ".join(
         employee["name"] for employee in recommended["staffing"]["assigned_employees"]
@@ -131,10 +127,7 @@ def _normalize_order_payload(data, user):
     """Validate and normalize order planning input data."""
     payload = data if isinstance(data, dict) else {}
     product = str(
-        payload.get("product")
-        or payload.get("produced_item")
-        or payload.get("item")
-        or ""
+        payload.get("product") or payload.get("produced_item") or payload.get("item") or ""
     ).strip()
     if not product:
         return None, "product is required"
@@ -322,10 +315,7 @@ def _material_requirements_for_machine(machine, payload):
             for material in [_find_material(item, machine)]
             if material
         ]
-    return [
-        {"material": material, "quantity_per_unit": 1}
-        for material in machine.materials
-    ]
+    return [{"material": material, "quantity_per_unit": 1} for material in machine.materials]
 
 
 def _find_material(requirement, machine):
@@ -341,9 +331,7 @@ def _find_material(requirement, machine):
     name = requirement.get("name")
     if not name:
         return None
-    linked = [
-        material for material in machine.materials if material.name.lower() == name.lower()
-    ]
+    linked = [material for material in machine.materials if material.name.lower() == name.lower()]
     if linked:
         return linked[0]
     return InventoryMaterial.query.filter(InventoryMaterial.name.ilike(name)).first()
@@ -434,9 +422,7 @@ def _candidate_blockers(material_check, staffing):
     blockers = []
     if material_check["status"] == "shortage":
         for item in material_check["missing"]:
-            blockers.append(
-                f"{item['material']['name']}: {item['shortage']} Stueck fehlen"
-            )
+            blockers.append(f"{item['material']['name']}: {item['shortage']} Stueck fehlen")
     elif material_check["status"] == "unknown":
         blockers.append(material_check["message"])
     if staffing["status"] != "covered":
@@ -447,9 +433,7 @@ def _candidate_blockers(material_check, staffing):
 def _summary(payload, recommended, candidates):
     """Return a compact planning summary."""
     if not candidates:
-        return (
-            f"Keine passende Maschine fuer {payload['product']} gefunden."
-        )
+        return f"Keine passende Maschine fuer {payload['product']} gefunden."
     if recommended and recommended["status"] == "feasible":
         return (
             f"Auftrag fuer {payload['quantity']}x {payload['product']} ist planbar "
@@ -472,9 +456,7 @@ def _rag_query(payload):
 def _tokens(value):
     """Return lowercase matching tokens for simple product-machine matching."""
     return {
-        token
-        for token in str(value or "").lower().replace("-", " ").split()
-        if len(token) >= 3
+        token for token in str(value or "").lower().replace("-", " ").split() if len(token) >= 3
     }
 
 

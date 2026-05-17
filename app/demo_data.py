@@ -21,6 +21,7 @@ from app.models import (
 )
 from app.permissions import upsert_default_permissions
 from app.services.document_service import generate_maintenance_report
+from app.services.maintenance_tag_service import seed_maintenance_tag_library
 
 DEMO_PASSWORD = "Demo1234!"
 COMPANY_DOMAIN = "fertigungs-gmbh.de"
@@ -1141,6 +1142,9 @@ def seed_demo_data():
     db.session.flush()
     for user in users.values():
         upsert_default_permissions(user)
+    tag_summary = seed_maintenance_tag_library(
+        created_by=users["admin"].id if users.get("admin") else None,
+    )
     machines = _seed_machines()
     db.session.flush()
     _seed_inventory(machines)
@@ -1158,6 +1162,7 @@ def seed_demo_data():
         "tasks": Task.query.count(),
         "errors": ErrorEntry.query.count(),
         "documents": GeneratedDocument.query.count(),
+        "maintenance_tag_entries": tag_summary["created"],
         "password": DEMO_PASSWORD,
     }
 

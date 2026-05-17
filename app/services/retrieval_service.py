@@ -18,11 +18,7 @@ def retrieve_context(message, user, requested_scopes=None):
 
     vector_context = _vector_context(vector_results)
     structured_context = structured.get("context", "")
-    context = (
-        f"{structured_context}\n\n{vector_context}"
-        if structured_context
-        else vector_context
-    )
+    context = f"{structured_context}\n\n{vector_context}" if structured_context else vector_context
     vector_sources = [_source_from_result(result) for result in vector_results]
     sources = _deduplicate_sources((structured.get("sources") or []) + vector_sources)
     data = dict(structured.get("data") or {})

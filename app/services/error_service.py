@@ -14,6 +14,8 @@ from app.extensions import db
 from app.models import Department, ErrorEntry, Machine, Role
 from app.services.ai_service import AIServiceError, MockAIProvider, get_ai_provider
 from app.services.knowledge_service import mark_error_entry_knowledge_stale
+from app.services.maintenance_tag_service import suggest_tags_for_error_payload
+from app.services.missing_information_service import missing_information_for_error_entry
 from app.services.operations_tracking_service import record_event
 
 logger = logging.getLogger(__name__)
@@ -99,7 +101,14 @@ def create_error_entry(data, user):
     required = ["machine", "error_code", "title"]
     missing = [field for field in required if not data.get(field)]
     if missing:
-        return None, {"error": f"Missing fields: {', '.join(missing)}"}, 400
+        return (
+            None,
+            {
+                "error": f"Missing fields: {', '.join(missing)}",
+                "missing_information": missing_information_for_error_entry(data, user),
+            },
+            400,
+        )
 
     try:
         department = department_from_payload(data, user)
@@ -330,7 +339,21 @@ def analyze_error_description(data, user):
         )
         analysis = MockAIProvider().analyze_error(description, user_context)
 
-    return normalize_error_analysis(analysis, description, user), None, 200
+    normalized = normalize_error_analysis(analysis, description, user)
+    normalized["missing_information"] = missing_information_for_error_entry(
+        {
+            "description": description,
+            "department": normalized.get("department"),
+        },
+        user,
+    )
+    normalized["tag_suggestions"] = suggest_tags_for_error_payload(
+        {
+            **normalized,
+            "description": description,
+        }
+    )
+    return normalized, None, 200
 
 
 # ---------------------------------------------------------------------------

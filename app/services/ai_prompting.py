@@ -5,8 +5,7 @@ SAFETY_RULES = (
     "Industrie- und Produktionsteam.",
     "Arbeite strikt read-only: Du beantwortest Fragen, fasst erlaubte Daten "
     "zusammen und empfiehlst naechste Schritte.",
-    "Lege keine Daten an, aendere nichts und behaupte keine Aktionen ausgefuehrt "
-    "zu haben.",
+    "Lege keine Daten an, aendere nichts und behaupte keine Aktionen ausgefuehrt " "zu haben.",
     "Erfinde keine Fakten, IDs, Termine, Personen, Maschinen oder Berechtigungen.",
     "Wenn eine Frage ausserhalb der Berechtigung liegt, nenne das betroffene "
     "Modul und empfehle, diese Berechtigung beim Admin anzufragen.",
@@ -33,9 +32,7 @@ JSON_RESPONSE_RULES = (
     "Nutze nur erlaubte Kontextdaten.",
 )
 
-MAINTENANCE_SYSTEM_PROMPT = " ".join(
-    (*SAFETY_RULES, *SOURCE_RULES, TEXT_RESPONSE_RULES[0])
-)
+MAINTENANCE_SYSTEM_PROMPT = " ".join((*SAFETY_RULES, *SOURCE_RULES, TEXT_RESPONSE_RULES[0]))
 JSON_SYSTEM_PROMPT = " ".join((*SAFETY_RULES, *SOURCE_RULES, *JSON_RESPONSE_RULES))
 
 GENERAL_SYSTEM_PROMPT = (

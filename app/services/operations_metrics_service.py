@@ -87,9 +87,7 @@ def background_job_metrics():
         "queue_length": status_counts.get("queued", 0),
         "running": status_counts.get("running", 0),
         "failed": status_counts.get("failed", 0),
-        "oldest_queued_age_seconds": _age_seconds(oldest_queued.created_at)
-        if oldest_queued
-        else 0,
+        "oldest_queued_age_seconds": _age_seconds(oldest_queued.created_at) if oldest_queued else 0,
         "recent_avg_duration_seconds": round(sum(durations) / len(durations), 2)
         if durations
         else 0,

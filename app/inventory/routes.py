@@ -59,9 +59,8 @@ def site_for_payload(data, machine=None):
 @dashboard_permission_required("inventory", "view")
 def list_materials():
     """Return inventory materials, optionally paginated for large stock catalogs."""
-    query = (
-        InventoryMaterial.query.options(selectinload(InventoryMaterial.machine))
-        .order_by(InventoryMaterial.name.asc(), InventoryMaterial.id.asc())
+    query = InventoryMaterial.query.options(selectinload(InventoryMaterial.machine)).order_by(
+        InventoryMaterial.name.asc(), InventoryMaterial.id.asc()
     )
     site_id = request.args.get("site_id", type=int)
     if site_id is not None:
@@ -106,10 +105,9 @@ def inventory_summary():
         "total_value": round(float(totals[2] or 0.0), 2),
     }
     if include_materials:
-        materials = (
-            InventoryMaterial.query.options(selectinload(InventoryMaterial.machine))
-            .order_by(InventoryMaterial.name.asc(), InventoryMaterial.id.asc())
-        )
+        materials = InventoryMaterial.query.options(
+            selectinload(InventoryMaterial.machine)
+        ).order_by(InventoryMaterial.name.asc(), InventoryMaterial.id.asc())
         if site_id is not None:
             materials = materials.filter(InventoryMaterial.site_id == site_id)
         if machine_id is not None:
@@ -205,9 +203,7 @@ def update_material(material_id):
     except ValueError as exc:
         return error_response(str(exc), 400)
     event_type = (
-        "inventory.quantity_changed"
-        if old_quantity != material.quantity
-        else "inventory.updated"
+        "inventory.quantity_changed" if old_quantity != material.quantity else "inventory.updated"
     )
     record_event(
         event_type,
