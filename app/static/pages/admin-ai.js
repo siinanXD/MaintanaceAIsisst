@@ -189,6 +189,346 @@
     return "is-muted";
   }
 
+  function networkTypeLabel(type) {
+    const labels = {
+      machine: "Maschine",
+      error: "Fehler",
+      solution: "Loesung",
+      document: "Dokument",
+      inventory_part: "Inventar",
+      recurring_issue: "Wiederkehrender Fehler",
+      knowledge_gap: "Knowledge-Gap",
+      component: "Komponente",
+      sensor: "Sensor"
+    };
+    return labels[type] || text(type);
+  }
+
+  function queryTypeLabel(type) {
+    const labels = {
+      error_analysis: "Fehleranalyse",
+      machine_question: "Maschinenfrage",
+      inventory_question: "Inventarfrage",
+      task_question: "Taskfrage",
+      document_question: "Dokumentfrage",
+      safety_question: "Sicherheitsfrage",
+      general_question: "Allgemein",
+      knowledge_gap: "Wissensluecke",
+      trend_history_question: "Trend/Historie"
+    };
+    return labels[type] || text(type);
+  }
+
+  function networkTypeColor(type) {
+    const colors = {
+      machine: "#2563eb",
+      error: "#dc2626",
+      solution: "#16a34a",
+      document: "#7c3aed",
+      inventory_part: "#ca8a04",
+      recurring_issue: "#ea580c",
+      knowledge_gap: "#be123c",
+      component: "#0f766e",
+      sensor: "#4f46e5"
+    };
+    return colors[type] || "#475569";
+  }
+
+  function truncateLabel(value, maxLength) {
+    const label = text(value);
+    if (label.length <= maxLength) return label;
+    return label.slice(0, maxLength - 3).trim() + "...";
+  }
+
+  function networkNodeRadius(node) {
+    const weight = Number(node.weight || 0);
+    return Math.max(9, Math.min(22, 8 + Math.sqrt(weight) * 3));
+  }
+
+  function networkNodeMap(nodes) {
+    const map = {};
+    (nodes || []).forEach((node) => {
+      map[node.id] = node;
+    });
+    return map;
+  }
+
+  function networkPositions(nodes) {
+    const width = 920;
+    const height = 520;
+    const center = { x: width / 2, y: height / 2 };
+    const ringByType = {
+      document: 0,
+      machine: 1,
+      error: 1,
+      recurring_issue: 1,
+      solution: 2,
+      inventory_part: 2,
+      knowledge_gap: 2,
+      component: 3,
+      sensor: 3
+    };
+    const ringRadii = [72, 154, 218, 252];
+    const rings = [[], [], [], []];
+    const positions = {};
+    nodes.forEach((node) => {
+      const ring = ringByType[node.type] == null ? 3 : ringByType[node.type];
+      rings[ring].push(node);
+    });
+    rings.forEach((ringNodes, ringIndex) => {
+      if (!ringNodes.length) return;
+      ringNodes.sort((left, right) => String(left.id).localeCompare(String(right.id)));
+      ringNodes.forEach((node, index) => {
+        const angle = (-Math.PI / 2) + (2 * Math.PI * index) / ringNodes.length;
+        const radius = ringRadii[ringIndex];
+        positions[node.id] = {
+          x: center.x + Math.cos(angle) * radius,
+          y: center.y + Math.sin(angle) * radius
+        };
+      });
+    });
+    return { positions, width, height };
+  }
+
+  function metadataValue(value) {
+    if (value == null || value === "") return "-";
+    if (typeof value === "object") return JSON.stringify(value);
+    return String(value);
+  }
+
+  function renderKnowledgeNetworkStats(stats) {
+    const target = root.querySelector("[data-knowledge-network-stats]");
+    if (!target) return;
+    target.innerHTML = "";
+    [
+      ["Nodes", stats.node_count || 0],
+      ["Edges", stats.edge_count || 0],
+      ["Roh-Nodes", stats.raw_node_count || 0],
+      ["Zeitraum", (stats.window_days || 30) + " Tage"]
+    ].forEach(([label, value]) => {
+      const card = document.createElement("article");
+      const span = document.createElement("span");
+      const strong = document.createElement("strong");
+      card.className = "metric-card";
+      span.textContent = label;
+      strong.textContent = numberText(value).replace(" Tage", "") + (label === "Zeitraum" ? " Tage" : "");
+      card.append(span, strong);
+      target.appendChild(card);
+    });
+  }
+
+  function renderKnowledgeNetworkLegend(payload) {
+    const target = root.querySelector("[data-knowledge-network-legend]");
+    if (!target) return;
+    target.innerHTML = "";
+    const stats = payload.stats || {};
+    const nodesByType = stats.nodes_by_type || {};
+    Object.keys(nodesByType).sort().forEach((type) => {
+      target.appendChild(statusRow(
+        networkTypeLabel(type),
+        nodesByType[type] + " Nodes"
+      ));
+    });
+    if (!Object.keys(nodesByType).length) {
+      target.appendChild(statusRow("Legende", "Keine Netzwerkdaten vorhanden"));
+    }
+    const privacy = payload.privacy || {};
+    target.appendChild(statusRow("Privacy", privacy.mode || "metadata_only"));
+  }
+
+  function renderKnowledgeNetworkDetail(node, payload) {
+    const target = root.querySelector("[data-knowledge-network-detail]");
+    if (!target) return;
+    target.innerHTML = "";
+    if (!node) {
+      target.appendChild(statusRow("Auswahl", "Node anklicken"));
+      return;
+    }
+    const edges = payload.edges || [];
+    const nodes = networkNodeMap(payload.nodes || []);
+    const connected = edges.filter((edge) => edge.source === node.id || edge.target === node.id);
+    target.append(
+      statusRow("Titel", node.title || node.label),
+      statusRow("Typ", networkTypeLabel(node.type)),
+      statusRow("Gewicht", Number(node.weight || 0).toFixed(1)),
+      statusRow("Evidenz", node.evidence_count || 0),
+      statusRow("Status", node.status || node.quality_status || "-"),
+      statusRow("Quelle", node.source_type ? sourceTypeLabel(node.source_type) : "-")
+    );
+    Object.keys(node.metadata || {}).slice(0, 8).forEach((key) => {
+      target.appendChild(statusRow(key, truncateLabel(metadataValue(node.metadata[key]), 80)));
+    });
+    if (connected.length) {
+      connected.slice(0, 8).forEach((edge) => {
+        const otherId = edge.source === node.id ? edge.target : edge.source;
+        const other = nodes[otherId];
+        target.appendChild(statusRow(
+          edge.label || edge.type,
+          other ? truncateLabel(other.label, 42) : otherId
+        ));
+      });
+    } else {
+      target.appendChild(statusRow("Verbindungen", "keine sichtbaren Kanten"));
+    }
+  }
+
+  function renderKnowledgeNetworkCanvas(payload) {
+    const container = root.querySelector("[data-knowledge-network-canvas]");
+    if (!container) return;
+    container.innerHTML = "";
+    const nodes = payload.nodes || [];
+    const edges = payload.edges || [];
+    if (!nodes.length) {
+      container.appendChild(statusRow("Knowledge Network", "Keine Daten fuer diesen Filter."));
+      renderKnowledgeNetworkDetail(null, payload);
+      return;
+    }
+
+    const svgNamespace = "http://www.w3.org/2000/svg";
+    const layout = networkPositions(nodes);
+    const svg = document.createElementNS(svgNamespace, "svg");
+    svg.setAttribute("viewBox", "0 0 " + layout.width + " " + layout.height);
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", "Knowledge Network");
+    svg.style.width = "100%";
+    svg.style.minHeight = "440px";
+    svg.style.display = "block";
+    svg.style.background = "#f8fafc";
+    svg.style.border = "1px solid #e2e8f0";
+    svg.style.borderRadius = "8px";
+
+    edges.forEach((edge) => {
+      const sourcePosition = layout.positions[edge.source];
+      const targetPosition = layout.positions[edge.target];
+      if (!sourcePosition || !targetPosition) return;
+      const line = document.createElementNS(svgNamespace, "line");
+      line.setAttribute("x1", sourcePosition.x);
+      line.setAttribute("y1", sourcePosition.y);
+      line.setAttribute("x2", targetPosition.x);
+      line.setAttribute("y2", targetPosition.y);
+      line.setAttribute("stroke", edge.type === "source_relation" ? "#64748b" : "#cbd5e1");
+      line.setAttribute("stroke-width", Math.max(1, Math.min(5, Number(edge.weight || 1) / 3)));
+      line.setAttribute("stroke-opacity", edge.type === "source_relation" ? "0.7" : "0.45");
+      const title = document.createElementNS(svgNamespace, "title");
+      title.textContent = edge.label + " (" + Number(edge.weight || 0).toFixed(1) + ")";
+      line.appendChild(title);
+      svg.appendChild(line);
+    });
+
+    nodes.forEach((node) => {
+      const position = layout.positions[node.id];
+      if (!position) return;
+      const group = document.createElementNS(svgNamespace, "g");
+      const circle = document.createElementNS(svgNamespace, "circle");
+      const label = document.createElementNS(svgNamespace, "text");
+      const title = document.createElementNS(svgNamespace, "title");
+      group.setAttribute("tabindex", "0");
+      group.setAttribute("role", "button");
+      group.dataset.networkNodeId = node.id;
+      circle.setAttribute("cx", position.x);
+      circle.setAttribute("cy", position.y);
+      circle.setAttribute("r", networkNodeRadius(node));
+      circle.setAttribute("fill", networkTypeColor(node.type));
+      circle.setAttribute("fill-opacity", "0.88");
+      circle.setAttribute("stroke", "#ffffff");
+      circle.setAttribute("stroke-width", "2");
+      label.setAttribute("x", position.x);
+      label.setAttribute("y", position.y + networkNodeRadius(node) + 14);
+      label.setAttribute("text-anchor", "middle");
+      label.setAttribute("font-size", "11");
+      label.setAttribute("fill", "#0f172a");
+      label.textContent = truncateLabel(node.label, 22);
+      title.textContent = node.title || node.label;
+      group.append(circle, label, title);
+      group.addEventListener("click", () => {
+        svg.querySelectorAll("[data-network-node-id] circle").forEach((item) => {
+          item.setAttribute("stroke", "#ffffff");
+          item.setAttribute("stroke-width", "2");
+        });
+        circle.setAttribute("stroke", "#020617");
+        circle.setAttribute("stroke-width", "4");
+        renderKnowledgeNetworkDetail(node, payload);
+      });
+      group.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        group.dispatchEvent(new Event("click"));
+      });
+      svg.appendChild(group);
+    });
+    container.appendChild(svg);
+    renderKnowledgeNetworkDetail(nodes[0], payload);
+  }
+
+  function renderKnowledgeNetwork(payload) {
+    renderKnowledgeNetworkStats(payload.stats || {});
+    renderKnowledgeNetworkLegend(payload);
+    renderKnowledgeNetworkCanvas(payload);
+  }
+
+  async function loadKnowledgeNetwork() {
+    const query = root.querySelector("[data-knowledge-network-search]").value;
+    const source = root.querySelector("[data-knowledge-network-source]").value;
+    const quality = root.querySelector("[data-knowledge-network-quality]").value;
+    const focus = root.querySelector("[data-knowledge-network-focus]").value;
+    const params = new URLSearchParams({
+      limit: "120",
+      q: query,
+      source_type: source,
+      quality_status: quality,
+      focus
+    });
+    const data = await api("/api/v1/admin/ai/knowledge-network?" + params.toString());
+    renderKnowledgeNetwork(data);
+  }
+
+  function renderRetrievalDebug(data) {
+    const tbody = root.querySelector("[data-retrieval-debug-rows]");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+    const items = data.items || [];
+    if (!items.length) {
+      const row = document.createElement("tr");
+      const empty = document.createElement("td");
+      empty.colSpan = 7;
+      empty.textContent = "Keine Retrieval-Debug-Daten fuer diesen Filter.";
+      row.appendChild(empty);
+      tbody.appendChild(row);
+      return;
+    }
+    items.forEach((item) => {
+      const row = document.createElement("tr");
+      const conflicts = item.conflicts || {};
+      const safety = item.safety || {};
+      const sourceText = (item.used_sources || []).length + " Quellen";
+      const conflictText = conflicts.has_conflicts
+        ? conflicts.count + " Konflikte"
+        : (safety.safety_relevant ? "Safety " + safety.risk_level : "-");
+      row.append(
+        cell(dateTimeText(item.created_at)),
+        cell(truncateLabel(item.user_question, 80)),
+        cell(queryTypeLabel(item.query_type)),
+        cell(sourceText),
+        cell(text(item.confidence && item.confidence.score) + " / " + text(item.confidence && item.confidence.level)),
+        cell(conflictText),
+        cell(text(item.retrieval_duration_ms) + " ms")
+      );
+      tbody.appendChild(row);
+    });
+  }
+
+  async function loadRetrievalDebug() {
+    const query = root.querySelector("[data-retrieval-debug-search]").value;
+    const queryType = root.querySelector("[data-retrieval-debug-type]").value;
+    const params = new URLSearchParams({
+      limit: "20",
+      q: query,
+      query_type: queryType
+    });
+    const data = await api("/api/v1/admin/ai/retrieval-debug?" + params.toString());
+    renderRetrievalDebug(data);
+  }
+
   function lifecycleStepStatusLabel(status) {
     const labels = {
       available: "vorhanden",
@@ -851,6 +1191,8 @@
       loadKnowledgeGaps(),
       loadTraining(),
       loadKnowledge(),
+      loadKnowledgeNetwork(),
+      loadRetrievalDebug(),
       loadKnowledgeStatus(),
       loadJobs(),
       loadOperationsMetrics()
@@ -875,6 +1217,23 @@
   root.querySelector("[data-ai-knowledge-source]").addEventListener("change", loadKnowledge);
   root.querySelector("[data-ai-knowledge-status]").addEventListener("change", loadKnowledge);
   root.querySelector("[data-ai-knowledge-quality]").addEventListener("change", loadKnowledge);
+  root.querySelector("[data-knowledge-network-search]").addEventListener("input", () => {
+    window.clearTimeout(root._knowledgeNetworkTimer);
+    root._knowledgeNetworkTimer = window.setTimeout(loadKnowledgeNetwork, 250);
+  });
+  root.querySelector("[data-knowledge-network-focus]").addEventListener("input", () => {
+    window.clearTimeout(root._knowledgeNetworkFocusTimer);
+    root._knowledgeNetworkFocusTimer = window.setTimeout(loadKnowledgeNetwork, 250);
+  });
+  root.querySelector("[data-knowledge-network-source]").addEventListener("change", loadKnowledgeNetwork);
+  root.querySelector("[data-knowledge-network-quality]").addEventListener("change", loadKnowledgeNetwork);
+  root.querySelector("[data-knowledge-network-refresh]").addEventListener("click", loadKnowledgeNetwork);
+  root.querySelector("[data-retrieval-debug-search]").addEventListener("input", () => {
+    window.clearTimeout(root._retrievalDebugTimer);
+    root._retrievalDebugTimer = window.setTimeout(loadRetrievalDebug, 250);
+  });
+  root.querySelector("[data-retrieval-debug-type]").addEventListener("change", loadRetrievalDebug);
+  root.querySelector("[data-retrieval-debug-refresh]").addEventListener("click", loadRetrievalDebug);
   root.querySelector("[data-ai-training-form]").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -893,7 +1252,7 @@
       });
       resetTrainingForm();
       setAdminMessage("Training gespeichert. Bitte veraltete Quellen indexieren.");
-      await Promise.all([loadTraining(), loadKnowledge(), loadKnowledgeStatus()]);
+      await Promise.all([loadTraining(), loadKnowledge(), loadKnowledgeNetwork(), loadKnowledgeStatus()]);
     } catch (error) {
       setAdminMessage(error.message, true);
     } finally {
@@ -908,7 +1267,13 @@
       setAdminMessage(
         "Indexiert: " + result.indexed + " Dokumente, " + result.chunks + " Chunks."
       );
-      await Promise.all([loadKnowledge(), loadKnowledgeStatus(), loadJobs(), loadOperationsMetrics()]);
+      await Promise.all([
+        loadKnowledge(),
+        loadKnowledgeNetwork(),
+        loadKnowledgeStatus(),
+        loadJobs(),
+        loadOperationsMetrics()
+      ]);
     } catch (error) {
       setAdminMessage(error.message, true);
     } finally {
@@ -955,7 +1320,13 @@
       await api("/api/v1/admin/ai/knowledge/upload", { method: "POST", body: formData });
       event.currentTarget.reset();
       setAdminMessage("Dokument hochgeladen und indexiert.");
-      await Promise.all([loadKnowledge(), loadKnowledgeStatus(), loadJobs(), loadOperationsMetrics()]);
+      await Promise.all([
+        loadKnowledge(),
+        loadKnowledgeNetwork(),
+        loadKnowledgeStatus(),
+        loadJobs(),
+        loadOperationsMetrics()
+      ]);
     } catch (error) {
       setAdminMessage(error.message, true);
     } finally {
@@ -971,7 +1342,12 @@
           method: "DELETE"
         });
         setAdminMessage("Training gelöscht.");
-        await Promise.all([loadTraining(), loadKnowledge(), loadKnowledgeStatus()]);
+        await Promise.all([
+          loadTraining(),
+          loadKnowledge(),
+          loadKnowledgeNetwork(),
+          loadKnowledgeStatus()
+        ]);
       } catch (error) {
         setAdminMessage(error.message, true);
       } finally {
@@ -1002,7 +1378,12 @@
           "Knowledge #" + documentItem.id + " ist "
           + qualityStatusLabel(documentItem.quality_status) + "."
         );
-        await Promise.all([loadKnowledge(), loadKnowledgeStatus(), loadOperationsMetrics()]);
+        await Promise.all([
+          loadKnowledge(),
+          loadKnowledgeNetwork(),
+          loadKnowledgeStatus(),
+          loadOperationsMetrics()
+        ]);
       } catch (error) {
         setAdminMessage(error.message, true);
       } finally {
@@ -1023,7 +1404,13 @@
         setAdminMessage(
           "Dokument " + documentItem.id + " ist " + documentItem.status + "."
         );
-        await Promise.all([loadKnowledge(), loadKnowledgeStatus(), loadJobs(), loadOperationsMetrics()]);
+        await Promise.all([
+          loadKnowledge(),
+          loadKnowledgeNetwork(),
+          loadKnowledgeStatus(),
+          loadJobs(),
+          loadOperationsMetrics()
+        ]);
       } catch (error) {
         setAdminMessage(error.message, true);
       } finally {
@@ -1058,7 +1445,13 @@
     try {
       await api("/api/v1/admin/ai/knowledge/" + button.dataset.deleteKnowledge, { method: "DELETE" });
       setAdminMessage("Dokument gelöscht.");
-      await Promise.all([loadKnowledge(), loadKnowledgeStatus(), loadJobs(), loadOperationsMetrics()]);
+      await Promise.all([
+        loadKnowledge(),
+        loadKnowledgeNetwork(),
+        loadKnowledgeStatus(),
+        loadJobs(),
+        loadOperationsMetrics()
+      ]);
     } catch (error) {
       setAdminMessage(error.message, true);
     } finally {

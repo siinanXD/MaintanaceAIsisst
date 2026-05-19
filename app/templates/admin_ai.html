@@ -119,6 +119,80 @@
     </div>
   </section>
 
+  <section class="panel" data-knowledge-network-panel>
+    <div class="panel-header">
+      <div>
+        <h3>Knowledge Network</h3>
+        <p class="panel-meta">Read-only Sicht auf Maschinen, Fehler, Dokumente, Inventar, Trends und Knowledge-Gaps.</p>
+      </div>
+      <div class="toolbar">
+        <input class="input input-bordered" data-knowledge-network-search placeholder="Netzwerk durchsuchen">
+        <select class="input input-bordered" data-knowledge-network-source aria-label="Netzwerk nach Quelle filtern">
+          <option value="">Alle Quellen</option>
+          <option value="upload">Uploads</option>
+          <option value="manual_training">Manuelles Training</option>
+          <option value="generated_document">Berichte</option>
+          <option value="error_entry">Fehlerkatalog</option>
+          <option value="task">Tasks</option>
+          <option value="machine">Maschinen</option>
+          <option value="inventory_material">Inventar</option>
+          <option value="maintenance_plan">Wartungspläne</option>
+          <option value="machine_manual">Maschinenhandbücher</option>
+          <option value="shift_handover">Schichtübergaben</option>
+        </select>
+        <select class="input input-bordered" data-knowledge-network-quality aria-label="Netzwerk nach Qualität filtern">
+          <option value="">Alle Qualitätsstatus</option>
+          <option value="draft">Draft</option>
+          <option value="ai_suggested">AI-Vorschlag</option>
+          <option value="technician_confirmed">Techniker bestaetigt</option>
+          <option value="admin_approved">Admin freigegeben</option>
+          <option value="outdated">Veraltet</option>
+          <option value="rejected">Abgelehnt</option>
+        </select>
+        <input class="input input-bordered" data-knowledge-network-focus placeholder="Fokus optional">
+        <button class="btn btn-secondary" type="button" data-knowledge-network-refresh>Aktualisieren</button>
+      </div>
+    </div>
+    <div class="dashboard-grid dashboard-grid-4" data-knowledge-network-stats></div>
+    <div class="content-grid two-columns mt-4">
+      <div class="stats-list" data-knowledge-network-canvas aria-label="Knowledge-Network Visualisierung"></div>
+      <aside class="stats-list" data-knowledge-network-detail aria-label="Knowledge-Network Details"></aside>
+    </div>
+    <div class="stats-list mt-4" data-knowledge-network-legend aria-label="Knowledge-Network Legende"></div>
+  </section>
+
+  <section class="panel" data-retrieval-debug-panel>
+    <div class="panel-header">
+      <div>
+        <h3>Retrieval Debug</h3>
+        <p class="panel-meta">Read-only Nachvollziehbarkeit ohne Roh-Prompts, Antworten oder Chunk-Volltexte.</p>
+      </div>
+      <div class="toolbar">
+        <input class="input input-bordered" data-retrieval-debug-search placeholder="Fragen filtern">
+        <select class="input input-bordered" data-retrieval-debug-type aria-label="Nach Query-Typ filtern">
+          <option value="">Alle Query-Typen</option>
+          <option value="error_analysis">Fehleranalyse</option>
+          <option value="machine_question">Maschinenfrage</option>
+          <option value="inventory_question">Inventarfrage</option>
+          <option value="task_question">Taskfrage</option>
+          <option value="document_question">Dokumentfrage</option>
+          <option value="safety_question">Sicherheitsfrage</option>
+          <option value="knowledge_gap">Wissenslücke</option>
+          <option value="trend_history_question">Trend/Historie</option>
+          <option value="general_question">Allgemein</option>
+        </select>
+        <button class="btn btn-secondary" type="button" data-retrieval-debug-refresh>Aktualisieren</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <caption>Prompt-sichere Retrieval-Debug-Daten mit Query-Typ, Quellen, Confidence und Konflikten</caption>
+        <thead><tr><th scope="col">Zeit</th><th scope="col">Frage</th><th scope="col">Typ</th><th scope="col">Quellen</th><th scope="col">Confidence</th><th scope="col">Konflikte</th><th scope="col">Dauer</th></tr></thead>
+        <tbody data-retrieval-debug-rows></tbody>
+      </table>
+    </div>
+  </section>
+
   <section class="panel">
     <div class="panel-header">
       <h3>Background Jobs</h3>

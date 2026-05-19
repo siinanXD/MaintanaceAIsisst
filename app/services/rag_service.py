@@ -30,6 +30,13 @@ def build_rag_context(message, user, requested_scopes=None, conversation_context
         "source_count": len(retrieval.get("sources") or []),
         "knowledge_source_count": _knowledge_source_count(retrieval.get("sources") or []),
         "explainability": retrieval_explainability_summary(retrieval.get("sources") or []),
+        "query_understanding": retrieval.get("query_understanding") or {},
+        "safety": retrieval.get("safety") or {},
+        "conflicts": retrieval.get("conflicts") or {},
+        "context_builder": retrieval.get("context_builder") or {},
+        "knowledge_links": retrieval.get("knowledge_links") or {},
+        "incident_timeline": retrieval.get("timeline_context") or {},
+        "retrieval_duration_ms": retrieval.get("retrieval_duration_ms", 0),
     }
     if conversation_context is not None:
         retrieval["rag"]["conversation_context"] = conversation_context.diagnostics()

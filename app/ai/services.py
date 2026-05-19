@@ -30,10 +30,16 @@ from app.services.ai_prompting import (
 )
 from app.services.ai_retrieval import allowed_ai_scopes, retrieve_ai_context
 from app.services.ai_routing import local_metadata, workflow_profile
+from app.services.ai_safety_service import (
+    apply_safety_payload_warning,
+    apply_safety_warning,
+    assess_ai_safety,
+)
 from app.services.ai_service import AIServiceError, MockAIProvider, get_ai_provider
 from app.services.conversation_context_service import conversation_context_for_chat
 from app.services.document_service import visible_documents_query
 from app.services.error_service import search_errors
+from app.services.incident_timeline_service import daily_briefing_timeline_section
 from app.services.knowledge_service import knowledge_sources_for_chat
 from app.services.order_planning_service import (
     REQUIRED_SCOPES as REQUIRED_ORDER_PLANNING_SCOPES,
@@ -43,6 +49,7 @@ from app.services.order_planning_service import (
     order_planning_payload_from_message,
     plan_order,
 )
+from app.services.query_understanding_service import classify_query
 from app.services.rag_service import build_rag_context
 from app.services.recurring_issue_service import analyze_recurring_issues
 from app.services.retrieval_explainability_service import retrieval_explainability_summary
@@ -680,15 +687,48 @@ def attach_audit_metadata(
 ):
     """Attach source diagnostics and metadata-only audit id to a chat result."""
     diagnostics = result.setdefault("diagnostics", ai_diagnostics("local_answer"))
+    rag = result.get("rag") or {}
     if conversation_context is not None:
         diagnostics["conversation_context"] = conversation_context.diagnostics()
         diagnostics["session_id"] = conversation_context.session_id
+    query_understanding = rag.get("query_understanding")
+    if not query_understanding:
+        query_understanding = classify_query(message, requested_scopes).to_dict()
+    diagnostics["query_understanding"] = query_understanding
+    safety = rag.get("safety")
+    if not safety:
+        safety_assessment = assess_ai_safety(message)
+        safety = safety_assessment.to_dict()
+    diagnostics["safety"] = safety
+    if rag.get("conflicts"):
+        diagnostics["source_conflicts"] = rag["conflicts"]
+    if rag.get("context_builder"):
+        diagnostics["context_builder"] = rag["context_builder"]
+    if rag.get("retrieval_duration_ms") is not None:
+        diagnostics["retrieval_duration_ms"] = rag.get("retrieval_duration_ms")
+    if rag.get("knowledge_links"):
+        diagnostics["knowledge_links"] = rag.get("knowledge_links")
     result = attach_confidence_to_result(message, result)
     diagnostics = result.setdefault("diagnostics", ai_diagnostics("local_answer"))
     sources = result.get("sources") or []
+    safety_assessment = assess_ai_safety(message, query_understanding=None, sources=sources)
+    if safety.get("safety_relevant"):
+        safety_assessment = assess_ai_safety(message, sources=sources)
+    result["answer"] = apply_safety_warning(result.get("answer"), safety_assessment)
+    result["answer"] = apply_safety_payload_warning(result.get("answer"), safety)
     diagnostics["source_count"] = len(sources)
     diagnostics["scopes"] = sorted(requested_scopes or [])
     diagnostics["retrieval_explainability"] = retrieval_explainability_summary(sources)
+    diagnostics["retrieval_explainability"].update(
+        {
+            "query_understanding": diagnostics.get("query_understanding") or {},
+            "safety": diagnostics.get("safety") or {},
+            "conflicts": diagnostics.get("source_conflicts") or {},
+            "context_builder": diagnostics.get("context_builder") or {},
+            "knowledge_links": diagnostics.get("knowledge_links") or {},
+            "retrieval_duration_ms": diagnostics.get("retrieval_duration_ms", 0),
+        }
+    )
     event_id = create_ai_audit_event(
         user,
         workflow or result.get("type", "assistant"),
@@ -743,6 +783,7 @@ def daily_briefing(user):
     if has_dashboard_permission(user, "errors", "view"):
         sections.append(error_briefing_section(user))
         sections.append(recurring_issue_briefing_section(user))
+        sections.append(daily_briefing_timeline_section(user))
     if has_dashboard_permission(user, "documents", "view"):
         sections.append(document_briefing_section(user))
     sections.append(rag_briefing_section(user))
@@ -1390,6 +1431,7 @@ def answer_chat(message, user, session_id=""):
         "diagnostics": diagnostics,
         "data": response_data,
         "sources": retrieval["sources"],
+        "rag": retrieval.get("rag", {}),
     }
     if action_preview:
         result["action_preview"] = action_preview

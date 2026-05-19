@@ -1638,6 +1638,41 @@ OPENAPI_SPEC = {
                 },
             }
         },
+        "/api/v1/ai/incident-timeline": {
+            "get": {
+                "tags": ["AI"],
+                "summary": "Get a permission-aware incident timeline",
+                "security": [{"bearerAuth": []}],
+                "parameters": [
+                    {
+                        "name": "days",
+                        "in": "query",
+                        "schema": {"type": "integer", "default": 30},
+                    },
+                    {
+                        "name": "machine_id",
+                        "in": "query",
+                        "schema": {"type": "integer"},
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "schema": {"type": "integer", "default": 60},
+                    },
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Incident timeline loaded",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/IncidentTimeline"}
+                            }
+                        },
+                    },
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                },
+            }
+        },
         "/api/v1/machines/{machine_id}/assistant": {
             "post": {
                 "tags": ["AI", "Machines"],
@@ -2940,6 +2975,84 @@ OPENAPI_SPEC["components"]["schemas"].update(
                 "last_seen_at": {"type": "string", "format": "date-time"},
             },
         },
+        "KnowledgeNetwork": {
+            "type": "object",
+            "properties": {
+                "nodes": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string", "example": "machine:1"},
+                            "type": {"type": "string", "example": "machine"},
+                            "label": {"type": "string", "example": "Anlage 4"},
+                            "title": {"type": "string", "example": "Anlage 4"},
+                            "url": {"type": "string", "example": "/machines"},
+                            "weight": {"type": "number", "example": 12.5},
+                            "evidence_count": {"type": "integer", "example": 3},
+                            "metadata": {"type": "object"},
+                            "explainability": {"type": "object"},
+                        },
+                    },
+                },
+                "edges": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string", "example": "document-1-machine-1"},
+                            "source": {"type": "string", "example": "document:1"},
+                            "target": {"type": "string", "example": "machine:1"},
+                            "type": {"type": "string", "example": "source_relation"},
+                            "label": {"type": "string", "example": "direct source"},
+                            "weight": {"type": "number", "example": 9.0},
+                            "evidence_count": {"type": "integer", "example": 1},
+                            "explainability": {"type": "object"},
+                        },
+                    },
+                },
+                "stats": {"type": "object"},
+                "filters": {"type": "object"},
+                "explainability": {"type": "object"},
+                "privacy": {
+                    "type": "object",
+                    "example": {"mode": "metadata_only", "omitted": ["chunk_text"]},
+                },
+            },
+        },
+        "RetrievalDebug": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "chat_message_id": {"type": "integer", "example": 12},
+                            "audit_event_id": {"type": "integer", "example": 44},
+                            "user_question": {"type": "string", "example": "Warum F-900?"},
+                            "query_type": {"type": "string", "example": "error_analysis"},
+                            "used_sources": {"type": "array", "items": {"type": "object"}},
+                            "confidence": {"type": "object"},
+                            "conflicts": {"type": "object"},
+                            "safety": {"type": "object"},
+                            "retrieval_duration_ms": {"type": "integer", "example": 42},
+                        },
+                    },
+                },
+                "privacy": {"type": "object"},
+            },
+        },
+        "IncidentTimeline": {
+            "type": "object",
+            "properties": {
+                "items": {"type": "array", "items": {"type": "object"}},
+                "sequences": {"type": "array", "items": {"type": "object"}},
+                "stats": {"type": "object"},
+                "filters": {"type": "object"},
+                "explainability": {"type": "object"},
+            },
+        },
         "ChatTemplate": {
             "type": "object",
             "properties": {
@@ -3274,6 +3387,47 @@ OPENAPI_SPEC["paths"].update(
                 "responses": {"200": {"description": "Knowledge status loaded"}},
             }
         },
+        "/api/v1/admin/ai/knowledge-network": {
+            "get": {
+                "tags": ["Admin"],
+                "summary": "Inspect the read-only maintenance knowledge network",
+                "security": [{"bearerAuth": []}],
+                "parameters": [
+                    {"name": "q", "in": "query", "schema": {"type": "string"}},
+                    {
+                        "name": "source_type",
+                        "in": "query",
+                        "schema": {"type": "string"},
+                    },
+                    {
+                        "name": "quality_status",
+                        "in": "query",
+                        "schema": {"type": "string"},
+                    },
+                    {
+                        "name": "days",
+                        "in": "query",
+                        "schema": {"type": "integer", "default": 30},
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "schema": {"type": "integer", "default": 120},
+                    },
+                    {"name": "focus", "in": "query", "schema": {"type": "string"}},
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Knowledge network loaded",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/KnowledgeNetwork"}
+                            }
+                        },
+                    }
+                },
+            }
+        },
         "/api/v1/admin/ai/retrieval-telemetry": {
             "get": {
                 "tags": ["Admin"],
@@ -3292,6 +3446,41 @@ OPENAPI_SPEC["paths"].update(
                     },
                 ],
                 "responses": {"200": {"description": "Retrieval telemetry loaded"}},
+            }
+        },
+        "/api/v1/admin/ai/retrieval-debug": {
+            "get": {
+                "tags": ["Admin"],
+                "summary": "Inspect prompt-safe retrieval debug records",
+                "security": [{"bearerAuth": []}],
+                "parameters": [
+                    {"name": "q", "in": "query", "schema": {"type": "string"}},
+                    {
+                        "name": "query_type",
+                        "in": "query",
+                        "schema": {"type": "string"},
+                    },
+                    {
+                        "name": "days",
+                        "in": "query",
+                        "schema": {"type": "integer", "default": 30},
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "schema": {"type": "integer", "default": 30},
+                    },
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Retrieval debug loaded",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/RetrievalDebug"}
+                            }
+                        },
+                    }
+                },
             }
         },
         "/api/v1/admin/ai/knowledge-gaps": {

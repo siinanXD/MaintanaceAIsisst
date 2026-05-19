@@ -103,7 +103,7 @@ def sanitize_audit_explainability(value):
     """Return prompt-free explainability metadata safe for AIAuditEvent storage."""
     if not isinstance(value, dict):
         return retrieval_explainability_summary([])
-    return {
+    payload = {
         "source_count": _int_value(value.get("source_count")),
         "explained_source_count": _int_value(value.get("explained_source_count")),
         "averages": _average_payload(value.get("averages")),
@@ -116,6 +116,21 @@ def sanitize_audit_explainability(value):
             for source in _list_value(value.get("sources"))[:MAX_AUDIT_SOURCES]
         ],
     }
+    if "query_understanding" in value:
+        payload["query_understanding"] = _sanitize_query_understanding(
+            value.get("query_understanding"),
+        )
+    if "safety" in value:
+        payload["safety"] = _sanitize_safety(value.get("safety"))
+    if "conflicts" in value:
+        payload["conflicts"] = _sanitize_conflicts(value.get("conflicts"))
+    if "context_builder" in value:
+        payload["context_builder"] = _sanitize_context_builder(value.get("context_builder"))
+    if "knowledge_links" in value:
+        payload["knowledge_links"] = _sanitize_knowledge_links(value.get("knowledge_links"))
+    if "retrieval_duration_ms" in value:
+        payload["retrieval_duration_ms"] = _int_value(value.get("retrieval_duration_ms"))
+    return payload
 
 
 def explainability_to_json(value):
@@ -210,6 +225,139 @@ def _sanitize_audit_source(source):
         "chunk_id": _optional_int(source.get("chunk_id")),
         "score": _rounded_float(source.get("score"), 2),
         "explainability": _normalize_explainability(source.get("explainability")),
+    }
+
+
+def _sanitize_query_understanding(value):
+    """Return safe query-understanding metadata for audit storage."""
+    if not isinstance(value, dict):
+        return {}
+    return {
+        "query_type": str(value.get("query_type") or "")[:80],
+        "confidence": _rounded_float(value.get("confidence"), 4),
+        "is_safety": bool(value.get("is_safety")),
+        "secondary_types": _string_list(value.get("secondary_types")),
+        "signals": _string_list(value.get("signals")),
+        "recommended_scopes": _string_list(value.get("recommended_scopes")),
+        "retrieval_strategy": _safe_strategy(value.get("retrieval_strategy")),
+        "provider": str(value.get("provider") or "")[:80],
+    }
+
+
+def _sanitize_safety(value):
+    """Return safe safety metadata for audit storage."""
+    if not isinstance(value, dict):
+        return {}
+    return {
+        "safety_relevant": bool(value.get("safety_relevant")),
+        "risk_level": str(value.get("risk_level") or "")[:80],
+        "categories": _string_list(value.get("categories")),
+        "warnings": _string_list(value.get("warnings")),
+        "blocked_actions": _string_list(value.get("blocked_actions")),
+        "signals": _string_list(value.get("signals")),
+    }
+
+
+def _sanitize_conflicts(value):
+    """Return source-conflict metadata without sensitive content."""
+    if not isinstance(value, dict):
+        return {}
+    conflicts = []
+    for conflict in _list_value(value.get("conflicts"))[:8]:
+        if not isinstance(conflict, dict):
+            continue
+        conflicts.append(
+            {
+                "type": str(conflict.get("type") or "")[:80],
+                "reason": str(conflict.get("reason") or "")[:220],
+                "signals": _string_list(conflict.get("signals")),
+                "sources": [
+                    _sanitize_conflict_source(source)
+                    for source in _list_value(conflict.get("sources"))[:5]
+                ],
+            }
+        )
+    return {
+        "has_conflicts": bool(value.get("has_conflicts")),
+        "count": _int_value(value.get("count")),
+        "summary": str(value.get("summary") or "")[:220],
+        "conflicts": conflicts,
+    }
+
+
+def _sanitize_context_builder(value):
+    """Return context-builder diagnostics without context text."""
+    if not isinstance(value, dict):
+        return {}
+    return {
+        "sections": [
+            {
+                "key": str(section.get("key") or "")[:80],
+                "title": str(section.get("title") or "")[:120],
+                "priority": _int_value(section.get("priority")),
+                "source_count": _int_value(section.get("source_count")),
+                "chars": _int_value(section.get("chars")),
+            }
+            for section in _list_value(value.get("sections"))[:12]
+            if isinstance(section, dict)
+        ],
+        "stats": _mapping(value.get("stats")),
+        "explainability": _mapping(value.get("explainability")),
+    }
+
+
+def _sanitize_knowledge_links(value):
+    """Return linked-source metadata without chunk content."""
+    if not isinstance(value, dict):
+        return {}
+    links = []
+    for link in _list_value(value.get("links"))[:12]:
+        if not isinstance(link, dict):
+            continue
+        links.append(
+            {
+                "type": str(link.get("type") or "")[:80],
+                "id": _optional_int(link.get("id")),
+                "source_type": str(link.get("source_type") or "")[:80],
+                "source_id": _optional_int(link.get("source_id")),
+                "quality_status": str(link.get("quality_status") or "")[:80],
+                "score": _int_value(link.get("score")),
+                "reasons": _string_list(link.get("reasons")),
+            }
+        )
+    return {
+        "links": links,
+        "source_document_ids": [
+            _optional_int(item)
+            for item in _list_value(value.get("source_document_ids"))[:12]
+        ],
+    }
+
+
+def _sanitize_conflict_source(source):
+    """Return a safe conflict source reference."""
+    if not isinstance(source, dict):
+        return {}
+    return {
+        "type": str(source.get("type") or "")[:80],
+        "id": _optional_int(source.get("id")),
+        "chunk_id": _optional_int(source.get("chunk_id")),
+        "score": _rounded_float(source.get("score"), 2),
+        "quality_status": str(source.get("quality_status") or "")[:80],
+    }
+
+
+def _safe_strategy(value):
+    """Return safe retrieval-strategy metadata."""
+    if not isinstance(value, dict):
+        return {}
+    return {
+        "top_k": _int_value(value.get("top_k")),
+        "source_types": _string_list(value.get("source_types")),
+        "scope_weights": _mapping(value.get("scope_weights")),
+        "prompt_rules": _string_list(value.get("prompt_rules")),
+        "prefer_structured": bool(value.get("prefer_structured")),
+        "prefer_confirmed": bool(value.get("prefer_confirmed")),
     }
 
 

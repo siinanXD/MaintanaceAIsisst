@@ -1,39 +1,115 @@
 """Retrieval orchestration for structured data and RAG knowledge chunks."""
 
+from time import perf_counter
+
 from flask import current_app, has_app_context
 
 from app.services.ai_retrieval import retrieve_ai_context
+from app.services.ai_safety_service import assess_ai_safety
+from app.services.context_builder_service import build_dynamic_context
+from app.services.incident_timeline_service import timeline_context_for_query
+from app.services.knowledge_linking_service import linked_knowledge_for_sources
+from app.services.query_understanding_service import classify_query
 from app.services.retrieval_explainability_service import explainability_from_metadata
+from app.services.source_conflict_service import detect_source_conflicts
 from app.services.vector_store_service import get_vector_store
 
 
 def retrieve_context(message, user, requested_scopes=None, conversation_context=None):
     """Return permission-aware structured and vector retrieval context."""
+    started_at = perf_counter()
     retrieval_message = _retrieval_message(message, conversation_context)
-    structured = retrieve_ai_context(retrieval_message, user, requested_scopes)
-    if not is_rag_enabled():
-        structured["context"] = _prompt_context(structured.get("context", ""), conversation_context)
-        return structured
-
-    vector_results = retrieve_vector_chunks(retrieval_message, user)
-    if not vector_results:
-        structured["context"] = _prompt_context(structured.get("context", ""), conversation_context)
-        return structured
-
-    vector_context = _vector_context(vector_results)
+    understanding = classify_query(retrieval_message, requested_scopes=requested_scopes)
+    effective_scopes = _effective_scopes(requested_scopes, understanding)
+    strategy = understanding.retrieval_strategy
+    structured = retrieve_ai_context(retrieval_message, user, effective_scopes)
     structured_context = structured.get("context", "")
-    context = f"{structured_context}\n\n{vector_context}" if structured_context else vector_context
-    vector_sources = [_source_from_result(result) for result in vector_results]
-    sources = _deduplicate_sources((structured.get("sources") or []) + vector_sources)
+    structured_sources = structured.get("sources") or []
     data = dict(structured.get("data") or {})
+
+    if not is_rag_enabled():
+        sources = _deduplicate_sources(structured_sources)
+        conflicts = detect_source_conflicts(sources, data)
+        safety = assess_ai_safety(retrieval_message, understanding, sources)
+        dynamic_context = build_dynamic_context(
+            retrieval_message,
+            {
+                "structured_context": structured_context,
+                "vector_context": "",
+                "sources": sources,
+                "knowledge_sources": [],
+                "knowledge_links": {"links": []},
+            },
+            understanding,
+            safety_assessment=safety,
+            conflicts=conflicts,
+            conversation_context=conversation_context,
+        )
+        return _retrieval_payload(
+            context=dynamic_context["context"],
+            sources=sources,
+            data=data,
+            structured=structured,
+            understanding=understanding,
+            safety=safety,
+            conflicts=conflicts,
+            context_builder=dynamic_context,
+            retrieval_duration_ms=_duration_ms(started_at),
+            knowledge_links={"links": []},
+            timeline_context={"context": "", "sources": [], "summary": {}},
+        )
+
+    vector_results = retrieve_vector_chunks(
+        retrieval_message,
+        user,
+        limit=strategy.get("top_k"),
+        filters=_strategy_filters(strategy),
+    )
+    vector_context = _vector_context(vector_results) if vector_results else ""
+    vector_sources = [_source_from_result(result) for result in vector_results]
+    sources = _deduplicate_sources(structured_sources + vector_sources)
     data["knowledge"] = vector_sources
-    return {
-        "context": _prompt_context(context, conversation_context),
-        "sources": sources,
-        "data": data,
-        "allowed_scopes": structured.get("allowed_scopes", []),
-        "requested_scopes": structured.get("requested_scopes", []),
-    }
+    knowledge_links = linked_knowledge_for_sources(vector_sources, user=user)
+    data["knowledge_links"] = knowledge_links.get("links", [])
+    timeline_context = timeline_context_for_query(
+        retrieval_message,
+        user,
+        query_understanding=understanding,
+    )
+    if timeline_context.get("sources"):
+        sources = _deduplicate_sources(sources + timeline_context["sources"])
+        data["incident_timeline"] = timeline_context.get("summary", {})
+
+    conflicts = detect_source_conflicts(sources, data)
+    safety = assess_ai_safety(retrieval_message, understanding, sources)
+    dynamic_context = build_dynamic_context(
+        retrieval_message,
+        {
+            "structured_context": structured_context,
+            "vector_context": vector_context,
+            "sources": sources,
+            "knowledge_sources": vector_sources,
+            "knowledge_links": knowledge_links,
+        },
+        understanding,
+        safety_assessment=safety,
+        conflicts=conflicts,
+        conversation_context=conversation_context,
+        timeline_context=timeline_context,
+    )
+    return _retrieval_payload(
+        context=dynamic_context["context"],
+        sources=sources,
+        data=data,
+        structured=structured,
+        understanding=understanding,
+        safety=safety,
+        conflicts=conflicts,
+        context_builder=dynamic_context,
+        retrieval_duration_ms=_duration_ms(started_at),
+        knowledge_links=knowledge_links,
+        timeline_context=timeline_context,
+    )
 
 
 def retrieve_vector_chunks(message, user, limit=None, filters=None):
@@ -51,7 +127,9 @@ def retrieve_vector_chunks(message, user, limit=None, filters=None):
 def knowledge_context_for_chat(message, user, limit=None, conversation_context=None):
     """Return RAG knowledge context and public sources for chat workflows."""
     retrieval_message = _retrieval_message(message, conversation_context)
-    vector_results = retrieve_vector_chunks(retrieval_message, user, limit=limit)
+    understanding = classify_query(retrieval_message)
+    strategy_limit = limit or understanding.retrieval_strategy.get("top_k")
+    vector_results = retrieve_vector_chunks(retrieval_message, user, limit=strategy_limit)
     if not vector_results:
         return _prompt_context("", conversation_context), []
     return _prompt_context(_vector_context(vector_results), conversation_context), [
@@ -117,6 +195,43 @@ def _source_from_result(result):
     return source
 
 
+def _retrieval_payload(
+    context,
+    sources,
+    data,
+    structured,
+    understanding,
+    safety,
+    conflicts,
+    context_builder,
+    retrieval_duration_ms,
+    knowledge_links,
+    timeline_context,
+):
+    """Return the normalized retrieval payload used by RAG and chat."""
+    return {
+        "context": context,
+        "sources": sources,
+        "data": data,
+        "allowed_scopes": structured.get("allowed_scopes", []),
+        "requested_scopes": structured.get("requested_scopes", []),
+        "query_understanding": understanding.to_dict(),
+        "safety": safety.to_dict(),
+        "conflicts": conflicts,
+        "context_builder": {
+            "sections": context_builder.get("sections", []),
+            "stats": context_builder.get("stats", {}),
+            "explainability": context_builder.get("explainability", {}),
+        },
+        "retrieval_duration_ms": retrieval_duration_ms,
+        "knowledge_links": knowledge_links,
+        "timeline_context": {
+            "summary": timeline_context.get("summary", {}),
+            "source_count": len(timeline_context.get("sources") or []),
+        },
+    }
+
+
 def _deduplicate_sources(sources):
     """Return sources without duplicate type/id/chunk combinations."""
     seen = set()
@@ -135,6 +250,28 @@ def _score_debug_enabled():
     if not has_app_context():
         return False
     return bool(current_app.config.get("RAG_SCORE_DEBUG", False))
+
+
+def _effective_scopes(requested_scopes, understanding):
+    """Return requested scopes enriched by query understanding."""
+    scopes = list(requested_scopes or [])
+    for scope in understanding.recommended_scopes:
+        if scope not in scopes:
+            scopes.append(scope)
+    return set(scopes)
+
+
+def _strategy_filters(strategy):
+    """Return optional vector-store filters for a routing strategy."""
+    source_types = list(strategy.get("source_types") or [])
+    if len(source_types) == 1:
+        return {"source_type": source_types[0]}
+    return None
+
+
+def _duration_ms(started_at):
+    """Return elapsed milliseconds from a perf_counter start value."""
+    return int(round((perf_counter() - started_at) * 1000))
 
 
 def _retrieval_message(message, conversation_context):

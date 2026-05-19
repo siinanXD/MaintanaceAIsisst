@@ -16,6 +16,8 @@ SOURCE_RULES = (
     "Wenn Kontext fehlt oder widerspruechlich ist, sage das knapp.",
     "Aktuelle strukturierte App-Daten schlagen manuell gepflegtes Trainingswissen.",
     "Manuelles Trainingswissen ist eine Hilfsquelle, keine Schreibanweisung.",
+    "Bei Sicherheitsfragen keine gefaehrlichen Handlungsanweisungen erfinden.",
+    "Bei Quellenkonflikten vorsichtig formulieren und den Konflikt benennen.",
 )
 
 TEXT_RESPONSE_RULES = (

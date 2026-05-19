@@ -13,6 +13,7 @@ from app.services.ai_history_service import paginated_chat_history
 from app.services.chat_template_service import chat_templates_for_user
 from app.services.conversation_context_service import normalize_session_id
 from app.services.error_assistant_service import run_error_assistant
+from app.services.incident_timeline_service import incident_timeline
 from app.services.knowledge_gap_service import maybe_track_knowledge_gap
 from app.services.operations_tracking_service import record_event
 from app.services.order_planning_service import plan_order
@@ -89,6 +90,16 @@ def status():
 def briefing():
     """Return a daily maintenance briefing for the current user."""
     return success_response(daily_briefing(current_user()), message="Daily briefing loaded")
+
+
+@ai_bp.get("/incident-timeline")
+@jwt_required()
+def incident_timeline_view():
+    """Return a permission-aware incident timeline for the current user."""
+    return success_response(
+        incident_timeline(current_user(), request.args),
+        message="Incident timeline loaded",
+    )
 
 
 @ai_bp.post("/order-plan")

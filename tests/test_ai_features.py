@@ -2658,6 +2658,14 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
     assert "data-knowledge-lifecycle-gate" in html
     assert "data-knowledge-lifecycle-actions" in html
     assert "data-knowledge-lifecycle-steps" in html
+    assert "data-knowledge-network-panel" in html
+    assert "data-knowledge-network-canvas" in html
+    assert "data-knowledge-network-detail" in html
+    assert "data-knowledge-network-legend" in html
+    assert "data-knowledge-network-search" in html
+    assert "data-retrieval-debug-panel" in html
+    assert "data-retrieval-debug-rows" in html
+    assert "data-retrieval-debug-type" in html
     assert "Qualität" in html
     assert "data-ai-knowledge-gaps" in html
     assert "data-ai-knowledge-gap-count" in html
@@ -2679,6 +2687,8 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
     assert "/api/v1/admin/jobs" in source
     assert "/api/v1/admin/ai/knowledge/upload" in source
     assert "/api/v1/admin/ai/knowledge/status" in source
+    assert "/api/v1/admin/ai/knowledge-network" in source
+    assert "/api/v1/admin/ai/retrieval-debug" in source
     assert "/api/v1/admin/ai/knowledge/reindex/jobs" in source
     assert "/api/v1/admin/ai/knowledge/reindex?mode=stale" in source
     assert "/api/v1/admin/ai/training" in source
@@ -2689,6 +2699,10 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
     assert "data-knowledge-origin" in script
     assert "knowledgeQualityStatus" in script
     assert "qualityStatusLabel" in script
+    assert "renderKnowledgeNetwork" in script
+    assert "networkPositions" in script
+    assert "loadRetrievalDebug" in script
+    assert "queryTypeLabel" in script
     assert "knowledgeQualitySelect" in script
     assert "data-update-knowledge-quality" in script
     assert "/quality-status" in source

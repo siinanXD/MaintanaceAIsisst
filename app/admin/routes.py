@@ -24,6 +24,7 @@ from app.permissions import (
 )
 from app.responses import error_response, service_error_response, success_response
 from app.security import roles_required
+from app.services.admin_retrieval_debug_service import retrieval_debug_items
 from app.services.ai_audit_service import ai_analytics_summary
 from app.services.ai_history_service import paginated_chat_history, parse_limit_offset
 from app.services.assistant_training_service import (
@@ -49,6 +50,7 @@ from app.services.database_schema_service import (
     database_schema_status,
 )
 from app.services.knowledge_gap_service import list_knowledge_gaps
+from app.services.knowledge_network_service import knowledge_network
 from app.services.knowledge_quality_service import change_knowledge_quality_status
 from app.services.knowledge_service import (
     delete_knowledge_document,
@@ -438,6 +440,19 @@ def ai_retrieval_telemetry():
     )
 
 
+@admin_bp.get("/ai/retrieval-debug")
+@roles_required(Role.MASTER_ADMIN)
+def ai_retrieval_debug():
+    """Return prompt-safe retrieval debug records for administrators."""
+    schema_status = database_schema_status()
+    if not schema_status["ok"]:
+        return jsonify(database_schema_error_payload(schema_status)), 503
+    return success_response(
+        retrieval_debug_items(request.args),
+        message="Retrieval debug loaded",
+    )
+
+
 @admin_bp.get("/ai/chats")
 @roles_required(Role.MASTER_ADMIN)
 def ai_chats():
@@ -664,6 +679,20 @@ def ai_knowledge_status():
     if not schema_status["ok"]:
         return jsonify(database_schema_error_payload(schema_status)), 503
     return success_response(knowledge_index_status(), message="Knowledge status loaded")
+
+
+@admin_bp.get("/ai/knowledge-network")
+@roles_required(Role.MASTER_ADMIN)
+def ai_knowledge_network():
+    """Return prompt-safe maintenance knowledge network data."""
+    schema_status = database_schema_status()
+    if not schema_status["ok"]:
+        return jsonify(database_schema_error_payload(schema_status)), 503
+    try:
+        result = knowledge_network(request.args, current_admin_user())
+    except ValueError as exc:
+        return error_response(str(exc), 400)
+    return success_response(result, message="Knowledge network loaded")
 
 
 @admin_bp.get("/jobs")

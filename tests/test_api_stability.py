@@ -94,12 +94,15 @@ def test_new_ai_frontend_routes_exist(app, client):
         ("/api/v1/machines/<int:machine_id>/assistant", "POST"),
         ("/api/v1/machines/maintenance-recommendations", "GET"),
         ("/api/v1/ai/daily-briefing", "GET"),
+        ("/api/v1/ai/incident-timeline", "GET"),
         ("/api/v1/ai/chat/templates", "GET"),
         ("/api/v1/ai/error-assistant", "POST"),
         ("/api/v1/admin/ai/training", "GET"),
         ("/api/v1/admin/ai/training", "POST"),
         ("/api/v1/admin/ai/training/<int:entry_id>", "PUT"),
         ("/api/v1/admin/ai/training/<int:entry_id>", "DELETE"),
+        ("/api/v1/admin/ai/knowledge-network", "GET"),
+        ("/api/v1/admin/ai/retrieval-debug", "GET"),
         ("/api/v1/sites", "GET"),
         ("/api/v1/operations/summary", "GET"),
         ("/api/v1/operations/events", "GET"),
@@ -122,6 +125,8 @@ def test_new_ai_frontend_routes_exist(app, client):
     assert "/api/v1/shiftplans/calendar" in script
     assert "/api/v1/ai/daily-briefing" in script
     assert "/api/v1/ai/error-assistant" in script
+    assert "/api/v1/admin/ai/knowledge-network" in script
+    assert "/api/v1/admin/ai/retrieval-debug" in script
     assert "/api/v1/machines/maintenance-recommendations" in script
 
 
