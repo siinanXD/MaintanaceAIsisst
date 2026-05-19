@@ -10,6 +10,8 @@
     "outdated",
     "rejected"
   ];
+  let retrievalDebugItems = [];
+  let selectedRetrievalFlowId = null;
 
   function token() {
     return window.localStorage.getItem("maintenance_access_token");
@@ -217,10 +219,50 @@
       document_question: "Dokumentfrage",
       safety_question: "Sicherheitsfrage",
       general_question: "Allgemein",
-      knowledge_gap: "Wissensluecke",
+      knowledge_gap: "Wissenslücke",
       trend_history_question: "Trend/Historie"
     };
     return labels[type] || text(type);
+  }
+
+  function scoreText(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return "-";
+    if (number > 0 && number <= 1) return Math.round(number * 100) + "%";
+    return Math.round(number).toLocaleString("de-DE");
+  }
+
+  function flowStatusLabel(status) {
+    const labels = {
+      ok: "OK",
+      warning: "Warnung",
+      empty: "Keine Daten",
+      critical: "Kritisch"
+    };
+    return labels[status] || text(status);
+  }
+
+  function flowStatusClass(status) {
+    if (status === "ok") return "is-active";
+    if (status === "warning") return "is-stale";
+    if (status === "critical") return "is-error";
+    return "is-muted";
+  }
+
+  function confidenceLabel(confidence) {
+    const score = confidence && confidence.score != null ? confidence.score : "-";
+    const level = confidence && confidence.level ? confidence.level : "-";
+    return score + " / " + level;
+  }
+
+  function sourceReferenceLabel(source) {
+    if (!source) return "Quelle";
+    if (source.source_label) return source.source_label;
+    let label = text(source.type || "knowledge");
+    if (source.id != null) label += " #" + source.id;
+    if (source.chunk_id != null) label += " / Chunk #" + source.chunk_id;
+    if (source.section_title) label += " - " + truncateLabel(source.section_title, 52);
+    return label;
   }
 
   function networkTypeColor(type) {
@@ -490,24 +532,43 @@
     const tbody = root.querySelector("[data-retrieval-debug-rows]");
     if (!tbody) return;
     tbody.innerHTML = "";
+    retrievalDebugItems = data.items || [];
+    if (
+      retrievalDebugItems.length
+      && !retrievalDebugItems.some((item) => item.chat_message_id === selectedRetrievalFlowId)
+    ) {
+      selectedRetrievalFlowId = retrievalDebugItems[0].chat_message_id;
+    }
+    if (!retrievalDebugItems.length) {
+      selectedRetrievalFlowId = null;
+    }
+    renderRetrievalFlow(selectedRetrievalFlowItem());
     const items = data.items || [];
     if (!items.length) {
       const row = document.createElement("tr");
       const empty = document.createElement("td");
-      empty.colSpan = 7;
-      empty.textContent = "Keine Retrieval-Debug-Daten fuer diesen Filter.";
+      empty.colSpan = 8;
+      empty.textContent = "Keine Retrieval-Debug-Daten für diesen Filter.";
       row.appendChild(empty);
       tbody.appendChild(row);
       return;
     }
     items.forEach((item) => {
       const row = document.createElement("tr");
+      const action = document.createElement("td");
+      const button = document.createElement("button");
       const conflicts = item.conflicts || {};
       const safety = item.safety || {};
       const sourceText = (item.used_sources || []).length + " Quellen";
       const conflictText = conflicts.has_conflicts
         ? conflicts.count + " Konflikte"
         : (safety.safety_relevant ? "Safety " + safety.risk_level : "-");
+      row.className = selectedRetrievalFlowId === item.chat_message_id ? "is-selected" : "";
+      button.type = "button";
+      button.className = "btn btn-ghost btn-sm";
+      button.dataset.retrievalFlowSelect = item.chat_message_id;
+      button.textContent = "Ansehen";
+      action.appendChild(button);
       row.append(
         cell(dateTimeText(item.created_at)),
         cell(truncateLabel(item.user_question, 80)),
@@ -515,10 +576,224 @@
         cell(sourceText),
         cell(text(item.confidence && item.confidence.score) + " / " + text(item.confidence && item.confidence.level)),
         cell(conflictText),
-        cell(text(item.retrieval_duration_ms) + " ms")
+        cell(text(item.retrieval_duration_ms) + " ms"),
+        action
       );
       tbody.appendChild(row);
     });
+  }
+
+  function selectedRetrievalFlowItem() {
+    if (!retrievalDebugItems.length) return null;
+    return (
+      retrievalDebugItems.find((item) => item.chat_message_id === selectedRetrievalFlowId)
+      || retrievalDebugItems[0]
+    );
+  }
+
+  function renderRetrievalFlow(item) {
+    const statusTarget = root.querySelector("[data-retrieval-flow-status]");
+    const durationTarget = root.querySelector("[data-retrieval-flow-duration]");
+    const summaryTarget = root.querySelector("[data-retrieval-flow-summary]");
+    const timelineTarget = root.querySelector("[data-retrieval-flow-timeline]");
+    const sourceMapTarget = root.querySelector("[data-retrieval-flow-source-map]");
+    const answerTarget = root.querySelector("[data-retrieval-flow-answer]");
+    if (!summaryTarget || !timelineTarget || !sourceMapTarget || !answerTarget) return;
+    summaryTarget.innerHTML = "";
+    timelineTarget.innerHTML = "";
+    sourceMapTarget.innerHTML = "";
+    answerTarget.innerHTML = "";
+    if (!item) {
+      if (statusTarget) {
+        statusTarget.textContent = "Keine Daten";
+        statusTarget.className = "badge badge-ai is-muted";
+      }
+      if (durationTarget) durationTarget.textContent = "-";
+      summaryTarget.appendChild(statusRow("Flow", "Noch keine Retrieval-Debug-Daten vorhanden."));
+      return;
+    }
+    const worstStatus = retrievalFlowWorstStatus(item.flow_steps || []);
+    if (statusTarget) {
+      statusTarget.textContent = flowStatusLabel(worstStatus);
+      statusTarget.className = "badge badge-ai " + flowStatusClass(worstStatus);
+    }
+    if (durationTarget) durationTarget.textContent = msText(item.retrieval_duration_ms || 0);
+    renderRetrievalFlowSummary(summaryTarget, item);
+    renderRetrievalFlowTimeline(timelineTarget, item);
+    renderRetrievalFlowSources(sourceMapTarget, item);
+    renderRetrievalFlowAnswer(answerTarget, item);
+  }
+
+  function retrievalFlowWorstStatus(steps) {
+    const order = { ok: 0, empty: 1, warning: 2, critical: 3 };
+    return (steps || []).reduce((worst, step) => (
+      order[step.status] > order[worst] ? step.status : worst
+    ), "ok");
+  }
+
+  function renderRetrievalFlowSummary(target, item) {
+    const question = document.createElement("article");
+    const meta = document.createElement("div");
+    question.className = "retrieval-flow-question";
+    meta.className = "retrieval-flow-meta";
+    const title = document.createElement("span");
+    const textNode = document.createElement("strong");
+    title.textContent = "Userfrage";
+    textNode.textContent = truncateLabel(item.user_question, 180);
+    question.append(title, textNode);
+    [
+      ["Query-Typ", queryTypeLabel(item.query_type)],
+      ["Strukturierte Quellen", numberText((item.structured_sources || []).length)],
+      ["RAG-Chunks", numberText((item.rag_chunks || []).length)],
+      ["Confidence", confidenceLabel(item.confidence)]
+    ].forEach(([label, value]) => {
+      meta.appendChild(statusRow(label, value));
+    });
+    target.append(question, meta);
+  }
+
+  function renderRetrievalFlowTimeline(target, item) {
+    const steps = item.flow_steps || [];
+    if (!steps.length) {
+      target.appendChild(statusRow("Timeline", "Keine Flow-Schritte gespeichert."));
+      return;
+    }
+    steps.forEach((step, index) => {
+      const details = document.createElement("details");
+      const summary = document.createElement("summary");
+      const marker = document.createElement("span");
+      const body = document.createElement("div");
+      const title = document.createElement("strong");
+      const badge = statusPill(flowStatusLabel(step.status), flowStatusClass(step.status));
+      const subtitle = document.createElement("small");
+      details.className = "retrieval-flow-step " + flowStatusClass(step.status);
+      details.open = index < 3 || step.status === "warning" || step.status === "critical";
+      marker.className = "retrieval-flow-step-marker";
+      marker.textContent = String(index + 1);
+      body.className = "retrieval-flow-step-body";
+      title.textContent = step.label;
+      subtitle.textContent = step.summary || "-";
+      body.append(title, subtitle);
+      summary.append(marker, body, badge);
+      details.appendChild(summary);
+      details.appendChild(retrievalFlowMetrics(step.metrics));
+      target.appendChild(details);
+    });
+  }
+
+  function retrievalFlowMetrics(metrics) {
+    const grid = document.createElement("div");
+    grid.className = "retrieval-flow-metrics";
+    const safeMetrics = metrics && typeof metrics === "object" ? metrics : {};
+    const entries = Object.entries(safeMetrics)
+      .filter(([, value]) => value != null && value !== "" && typeof value !== "object")
+      .slice(0, 8);
+    if (!entries.length) {
+      grid.appendChild(statusRow("Details", "Keine zusätzlichen Metriken."));
+      return grid;
+    }
+    entries.forEach(([key, value]) => {
+      grid.appendChild(statusRow(flowMetricLabel(key), flowMetricValue(key, value)));
+    });
+    return grid;
+  }
+
+  function flowMetricLabel(key) {
+    const labels = {
+      query_type: "Query-Typ",
+      query_confidence: "Query Confidence",
+      source_count: "Quellen",
+      chunk_count: "Chunks",
+      candidate_count: "Kandidaten",
+      shown_count: "Sichtbar",
+      reranked_count: "Re-Ranked",
+      top_score: "Top Score",
+      section_count: "Sections",
+      used_chars: "Kontext",
+      max_chars: "Budget",
+      answer_preview_chars: "Antwortvorschau"
+    };
+    return labels[key] || key.replaceAll("_", " ");
+  }
+
+  function flowMetricValue(key, value) {
+    if (key.includes("score") || key.includes("confidence")) return scoreText(value);
+    if (key.includes("chars")) return numberText(value);
+    return text(value);
+  }
+
+  function renderRetrievalFlowSources(target, item) {
+    const heading = document.createElement("div");
+    const title = document.createElement("strong");
+    const meta = document.createElement("span");
+    const list = document.createElement("div");
+    heading.className = "retrieval-flow-card-header";
+    title.textContent = "Quelle → Antwort";
+    meta.textContent = (item.source_answer_links || []).length + " Links";
+    list.className = "retrieval-flow-source-list";
+    heading.append(title, meta);
+    target.appendChild(heading);
+    if (!(item.source_answer_links || []).length) {
+      target.appendChild(statusRow("Quellen", "Keine Quellen im Flow."));
+      return;
+    }
+    (item.source_answer_links || []).slice(0, 8).forEach((link) => {
+      const source = link.source || {};
+      const card = document.createElement("article");
+      const cardTitle = document.createElement("strong");
+      const cardMeta = document.createElement("small");
+      const reasons = document.createElement("div");
+      card.className = "retrieval-flow-source";
+      cardTitle.textContent = sourceReferenceLabel(source);
+      cardMeta.textContent = [
+        "Rank " + text(source.rank),
+        "Score " + scoreText(source.final_score != null ? source.final_score : source.score),
+        source.quality_status ? "Quality " + source.quality_status : ""
+      ].filter(Boolean).join(" · ");
+      reasons.className = "retrieval-flow-badges";
+      (link.reasons || []).forEach((reason) => {
+        reasons.appendChild(statusPill(flowReasonLabel(reason), "is-muted"));
+      });
+      card.append(cardTitle, cardMeta, reasons);
+      list.appendChild(card);
+    });
+    target.appendChild(list);
+  }
+
+  function flowReasonLabel(reason) {
+    const labels = {
+      score_signal: "Score",
+      quality_gate: "Quality Gate",
+      machine_context: "Maschinenkontext",
+      section_context: "Abschnitt",
+      retrieved_context: "Retrieval",
+      used_as_answer_context: "Antwortkontext"
+    };
+    return labels[reason] || text(reason);
+  }
+
+  function renderRetrievalFlowAnswer(target, item) {
+    const heading = document.createElement("div");
+    const title = document.createElement("strong");
+    const meta = document.createElement("span");
+    const answer = document.createElement("p");
+    const checks = document.createElement("div");
+    heading.className = "retrieval-flow-card-header";
+    title.textContent = "Finale Antwort und Safety";
+    meta.textContent = confidenceLabel(item.confidence);
+    answer.className = "retrieval-flow-answer-preview";
+    answer.textContent = item.answer_preview || "Keine Antwortvorschau gespeichert.";
+    checks.className = "retrieval-flow-checks";
+    (item.safety_checks || []).forEach((check) => {
+      checks.appendChild(statusRow(
+        check.label,
+        check.safety_relevant
+          ? "relevant · " + text(check.risk_level || check.action || "-")
+          : "nicht relevant"
+      ));
+    });
+    heading.append(title, meta);
+    target.append(heading, answer, checks);
   }
 
   async function loadRetrievalDebug() {
@@ -1443,6 +1718,19 @@
   });
   root.querySelector("[data-retrieval-debug-type]").addEventListener("change", loadRetrievalDebug);
   root.querySelector("[data-retrieval-debug-refresh]").addEventListener("click", loadRetrievalDebug);
+  root.querySelector("[data-retrieval-debug-rows]").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-retrieval-flow-select]");
+    if (!button) return;
+    selectedRetrievalFlowId = Number(button.dataset.retrievalFlowSelect);
+    renderRetrievalFlow(selectedRetrievalFlowItem());
+    root.querySelectorAll("[data-retrieval-debug-rows] tr").forEach((row) => {
+      const rowButton = row.querySelector("[data-retrieval-flow-select]");
+      row.classList.toggle(
+        "is-selected",
+        Boolean(rowButton) && Number(rowButton.dataset.retrievalFlowSelect) === selectedRetrievalFlowId
+      );
+    });
+  });
   root.querySelector("[data-ai-training-form]").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;

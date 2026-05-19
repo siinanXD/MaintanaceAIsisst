@@ -2835,6 +2835,10 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
     assert "data-retrieval-debug-panel" in html
     assert "data-retrieval-debug-rows" in html
     assert "data-retrieval-debug-type" in html
+    assert "data-retrieval-flow-panel" in html
+    assert "data-retrieval-flow-timeline" in html
+    assert "data-retrieval-flow-source-map" in html
+    assert "data-retrieval-flow-answer" in html
     assert "Qualität" in html
     assert "data-ai-knowledge-gaps" in html
     assert "data-ai-knowledge-gap-count" in html
@@ -2878,6 +2882,9 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
     assert "renderKnowledgeNetwork" in script
     assert "networkPositions" in script
     assert "loadRetrievalDebug" in script
+    assert "renderRetrievalFlow" in script
+    assert "data-retrieval-flow-select" in script
+    assert "flow_steps" in script
     assert "queryTypeLabel" in script
     assert "knowledgeQualitySelect" in script
     assert "data-update-knowledge-quality" in script

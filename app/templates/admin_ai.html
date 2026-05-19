@@ -226,10 +226,31 @@
         <button class="btn btn-secondary" type="button" data-retrieval-debug-refresh>Aktualisieren</button>
       </div>
     </div>
+
+    <section class="retrieval-flow-panel" data-retrieval-flow-panel aria-label="AI Retrieval Flow">
+      <div class="retrieval-flow-header">
+        <div>
+          <span class="section-kicker">Warum diese Antwort?</span>
+          <h4>AI Retrieval Flow</h4>
+          <p class="panel-meta">Prompt-sichere Timeline vom Query-Verst&auml;ndnis bis zur finalen Antwort.</p>
+        </div>
+        <div class="retrieval-flow-header-actions">
+          <span class="badge badge-ai" data-retrieval-flow-status>Noch nicht geladen</span>
+          <span class="panel-meta" data-retrieval-flow-duration>-</span>
+        </div>
+      </div>
+      <div class="retrieval-flow-summary" data-retrieval-flow-summary></div>
+      <div class="retrieval-flow-timeline" data-retrieval-flow-timeline></div>
+      <div class="content-grid two-columns mt-4">
+        <div class="retrieval-flow-source-map" data-retrieval-flow-source-map></div>
+        <div class="retrieval-flow-answer" data-retrieval-flow-answer></div>
+      </div>
+    </section>
+
     <div class="table-wrap">
       <table class="data-table">
         <caption>Prompt-sichere Retrieval-Debug-Daten mit Query-Typ, Quellen, Confidence und Konflikten</caption>
-        <thead><tr><th scope="col">Zeit</th><th scope="col">Frage</th><th scope="col">Typ</th><th scope="col">Quellen</th><th scope="col">Confidence</th><th scope="col">Konflikte</th><th scope="col">Dauer</th></tr></thead>
+        <thead><tr><th scope="col">Zeit</th><th scope="col">Frage</th><th scope="col">Typ</th><th scope="col">Quellen</th><th scope="col">Confidence</th><th scope="col">Konflikte</th><th scope="col">Dauer</th><th scope="col">Flow</th></tr></thead>
         <tbody data-retrieval-debug-rows></tbody>
       </table>
     </div>
