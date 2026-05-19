@@ -1,7 +1,6 @@
 """Local text knowledge base for AI retrieval."""
 
 import logging
-import re
 import uuid
 from pathlib import Path
 
@@ -47,6 +46,7 @@ from app.services.technical_entity_service import (
     extract_technical_entities,
     load_technical_entity_catalog,
 )
+from app.services.text_normalization_service import tokenize_text
 
 logger = logging.getLogger(__name__)
 
@@ -586,15 +586,7 @@ def chunk_text(text, max_chars=1400, overlap=160):
 
 def tokens(value):
     """Return normalized searchable tokens."""
-    return {
-        token
-        for token in re.sub(
-            r"[^a-zA-Z0-9äöüÄÖÜß-]+",
-            " ",
-            str(value or "").lower(),
-        ).split()
-        if len(token) >= 3
-    }
+    return set(tokenize_text(value))
 
 
 def search_knowledge_chunks(query_text, user, limit=MAX_RETRIEVAL_CHUNKS):

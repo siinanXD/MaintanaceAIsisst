@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from math import log2
 
 from app.services.retrieval_service import retrieve_vector_chunks
+from app.services.text_normalization_service import normalize_query
 
 
 @dataclass(frozen=True)
@@ -49,6 +50,7 @@ def _evaluate_query(golden_query, user):
     relevances, covered_units = _relevance_by_rank(retrieved_sources, expected_units)
     return {
         "query": golden_query.query,
+        "normalized_query": normalize_query(golden_query.query),
         "top_k": top_k,
         "expected_count": len(expected_units),
         "expected_hit_count": len(covered_units),

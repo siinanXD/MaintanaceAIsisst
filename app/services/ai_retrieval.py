@@ -1,7 +1,5 @@
 """Permission-aware retrieval helpers for AI assistant context."""
 
-import re
-
 from app.models import (
     Employee,
     ErrorEntry,
@@ -15,6 +13,7 @@ from app.security import employee_access_level, has_dashboard_permission
 from app.services.document_service import visible_documents_query
 from app.services.error_service import visible_errors_query
 from app.services.task_service import visible_tasks_query
+from app.services.text_normalization_service import tokenize_text
 
 MAX_SOURCES = 8
 
@@ -288,11 +287,7 @@ def _rank_records(records, message, text_fn, scope, requested_scopes):
 
 def _tokens(value):
     """Return normalized search tokens for matching."""
-    return {
-        token
-        for token in re.sub(r"[^a-zA-Z0-9äöüÄÖÜß-]+", " ", str(value or "").lower()).split()
-        if len(token) >= 3
-    }
+    return set(tokenize_text(value))
 
 
 def _source(item_type, item_id, title, module, url, context, score, reason):

@@ -70,6 +70,7 @@ def test_golden_retrieval_evaluation_scores_seeded_queries(
     assert result["permission_leak_count"] == 0
     assert result["forbidden_source_hit_count"] == 0
     assert result["no_result_count"] == 2
+    assert filter_query["normalized_query"] == "gev900 filterdruck messpunkt"
     assert filter_query["retrieved_sources"][0]["source_id"] == source_ids["filter"]
     assert training_query["retrieved_sources"][0]["source_type"] == "manual_training"
     assert source_ids["foreign"] not in {

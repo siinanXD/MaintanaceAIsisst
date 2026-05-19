@@ -1,9 +1,13 @@
 """Text chunking helpers for the maintenance RAG pipeline."""
 
-import re
 from dataclasses import dataclass, field
 
 from flask import current_app, has_app_context
+
+from app.services.text_normalization_service import (
+    normalize_text as normalize_retrieval_text,
+)
+from app.services.text_normalization_service import tokenize_text
 
 DEFAULT_CHUNK_SIZE = 1400
 DEFAULT_CHUNK_OVERLAP = 160
@@ -72,20 +76,12 @@ def validate_chunking_config(config):
 
 def normalize_text(value):
     """Return whitespace-normalized text suitable for chunking."""
-    return re.sub(r"\s+", " ", str(value or "")).strip()
+    return normalize_retrieval_text(value, lowercase=False, fold_german=False)
 
 
 def token_set(value):
     """Return normalized retrieval tokens for local matching."""
-    return {
-        token
-        for token in re.sub(
-            r"[^a-zA-Z0-9äöüÄÖÜß-]+",
-            " ",
-            str(value or "").lower(),
-        ).split()
-        if len(token) >= 3
-    }
+    return set(tokenize_text(value))
 
 
 def chunk_text(text, metadata=None, config=None):

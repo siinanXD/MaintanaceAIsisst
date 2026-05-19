@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 
 from flask import current_app, has_app_context
 
+from app.services.text_normalization_service import normalize_query
+
 QUERY_ERROR_ANALYSIS = "error_analysis"
 QUERY_MACHINE = "machine_question"
 QUERY_INVENTORY = "inventory_question"
@@ -337,16 +339,4 @@ def _provider_label():
 
 def _normalized_text(value):
     """Return normalized text for local matching."""
-    text = " ".join(str(value or "").strip().lower().split())
-    replacements = {
-        "ä": "ae",
-        "ö": "oe",
-        "ü": "ue",
-        "ß": "ss",
-        "Ã¤": "ae",
-        "Ã¶": "oe",
-        "Ã¼": "ue",
-    }
-    for source, target in replacements.items():
-        text = text.replace(source, target)
-    return text
+    return normalize_query(value)
