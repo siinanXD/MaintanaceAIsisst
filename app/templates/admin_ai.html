@@ -74,6 +74,23 @@
     </div>
   </section>
 
+  <section class="panel" data-retrieval-evaluation-history-panel>
+    <div class="panel-header">
+      <h3>Golden Eval Historie</h3>
+      <span class="badge badge-ai" data-retrieval-evaluation-status>Noch nicht geladen</span>
+    </div>
+    <div class="dashboard-grid dashboard-grid-4">
+      <article class="metric-card"><span>Recall@K</span><strong data-retrieval-evaluation-kpi="recall_at_k">0%</strong></article>
+      <article class="metric-card"><span>MRR</span><strong data-retrieval-evaluation-kpi="mrr">0%</strong></article>
+      <article class="metric-card"><span>nDCG@K</span><strong data-retrieval-evaluation-kpi="ndcg_at_k">0%</strong></article>
+      <article class="metric-card"><span>Keine Treffer</span><strong data-retrieval-evaluation-kpi="no_result_count">0</strong></article>
+    </div>
+    <div class="content-grid two-columns mt-4">
+      <div class="stats-list" data-retrieval-evaluation-regression></div>
+      <div class="stats-list" data-retrieval-evaluation-runs></div>
+    </div>
+  </section>
+
   <section class="panel">
     <div class="panel-header">
       <h3>Workflow-Kosten und Fehler</h3>

@@ -64,6 +64,7 @@ from app.services.knowledge_service import (
 from app.services.mail_service import mail_config_status
 from app.services.notification_service import delivery_query, send_test_email
 from app.services.operations_tracking_service import aggregate_operations, record_event
+from app.services.retrieval_evaluation_service import retrieval_evaluation_history
 from app.services.retrieval_telemetry_service import retrieval_quality_analytics
 from app.services.site_service import create_site, list_sites, update_site
 
@@ -133,6 +134,17 @@ def parse_retrieval_telemetry_args(args):
     if limit < 1 or limit > 50:
         raise ValueError("limit must be an integer between 1 and 50")
     return days, limit
+
+
+def parse_retrieval_evaluation_history_args(args):
+    """Return validated retrieval evaluation history query arguments."""
+    try:
+        limit = int(args.get("limit", 10))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("limit must be an integer between 1 and 50") from exc
+    if limit < 1 or limit > 50:
+        raise ValueError("limit must be an integer between 1 and 50")
+    return limit
 
 
 def user_audit_payload(user):
@@ -437,6 +449,20 @@ def ai_retrieval_telemetry():
     return success_response(
         retrieval_quality_analytics(days=days, limit=limit),
         message="Retrieval telemetry loaded",
+    )
+
+
+@admin_bp.get("/ai/retrieval-evaluations")
+@roles_required(Role.MASTER_ADMIN)
+def ai_retrieval_evaluations():
+    """Return prompt-safe golden retrieval evaluation history."""
+    try:
+        limit = parse_retrieval_evaluation_history_args(request.args)
+    except ValueError as exc:
+        return error_response(str(exc), 400)
+    return success_response(
+        retrieval_evaluation_history(limit=limit),
+        message="Retrieval evaluation history loaded",
     )
 
 

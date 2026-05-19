@@ -3,8 +3,17 @@
 from dataclasses import dataclass, field
 from math import log2
 
+from sqlalchemy.exc import SQLAlchemyError
+
+from app.extensions import db
+from app.models import RetrievalEvaluationRun
 from app.services.retrieval_service import retrieve_vector_chunks
 from app.services.text_normalization_service import normalize_query
+
+REGRESSION_DROP_THRESHOLD = 0.05
+REGRESSION_COUNT_INCREASE_THRESHOLD = 1
+DEFAULT_HISTORY_LIMIT = 10
+MAX_HISTORY_LIMIT = 50
 
 
 @dataclass(frozen=True)
@@ -37,6 +46,99 @@ def evaluate_golden_queries(golden_queries, user):
         "no_result_count": sum(1 for item in query_results if item["no_result"]),
         "queries": query_results,
     }
+
+
+def evaluate_and_persist_golden_queries(golden_queries, user, commit=True):
+    """Evaluate golden retrieval queries and persist the prompt-safe aggregate run."""
+    result = evaluate_golden_queries(golden_queries, user)
+    run = persist_retrieval_evaluation_result(result, commit=commit)
+    result["evaluation_run"] = run.to_dict()
+    return result
+
+
+def persist_retrieval_evaluation_result(evaluation_result, commit=True):
+    """Persist aggregate retrieval evaluation metrics without query or source details."""
+    if not isinstance(evaluation_result, dict):
+        raise TypeError("evaluation_result must be a dictionary")
+    run = RetrievalEvaluationRun(
+        query_count=_nonnegative_int(evaluation_result.get("query_count")),
+        recall_at_k=_clamped_metric(evaluation_result.get("recall_at_k")),
+        mrr=_clamped_metric(evaluation_result.get("mrr")),
+        ndcg_at_k=_clamped_metric(evaluation_result.get("ndcg_at_k")),
+        permission_leak_count=_nonnegative_int(
+            evaluation_result.get("permission_leak_count")
+        ),
+        forbidden_source_hit_count=_nonnegative_int(
+            evaluation_result.get("forbidden_source_hit_count")
+        ),
+        no_result_count=_nonnegative_int(evaluation_result.get("no_result_count")),
+    )
+    db.session.add(run)
+    if commit:
+        db.session.commit()
+    else:
+        db.session.flush()
+    return run
+
+
+def retrieval_evaluation_history(limit=DEFAULT_HISTORY_LIMIT):
+    """Return recent prompt-safe golden retrieval evaluation runs and regression signals."""
+    try:
+        runs = (
+            RetrievalEvaluationRun.query.order_by(
+                RetrievalEvaluationRun.created_at.desc(),
+                RetrievalEvaluationRun.id.desc(),
+            )
+            .limit(_history_limit(limit))
+            .all()
+        )
+    except SQLAlchemyError as exc:
+        db.session.rollback()
+        return {
+            "runs": [],
+            "latest": None,
+            "previous": None,
+            "regression": detect_retrieval_regression(None, None),
+            "unavailable": True,
+            "error": exc.__class__.__name__,
+            "privacy": _history_privacy_payload(),
+        }
+    payloads = [run.to_dict() for run in runs]
+    latest = payloads[0] if payloads else None
+    previous = payloads[1] if len(payloads) > 1 else None
+    return {
+        "runs": payloads,
+        "latest": latest,
+        "previous": previous,
+        "regression": detect_retrieval_regression(latest, previous),
+        "unavailable": False,
+        "privacy": _history_privacy_payload(),
+    }
+
+
+def detect_retrieval_regression(current_run, previous_run):
+    """Return regression signals between two prompt-safe evaluation run payloads."""
+    current = _run_metrics(current_run)
+    previous = _run_metrics(previous_run)
+    if not current or not previous:
+        return {"regressed": False, "signals": []}
+
+    signals = []
+    for metric in ("recall_at_k", "mrr", "ndcg_at_k"):
+        delta = round(current[metric] - previous[metric], 4)
+        if delta <= -REGRESSION_DROP_THRESHOLD:
+            signals.append(_regression_signal(metric, current[metric], previous[metric], delta))
+
+    for metric in (
+        "permission_leak_count",
+        "forbidden_source_hit_count",
+        "no_result_count",
+    ):
+        delta = current[metric] - previous[metric]
+        if delta >= REGRESSION_COUNT_INCREASE_THRESHOLD:
+            signals.append(_regression_signal(metric, current[metric], previous[metric], delta))
+
+    return {"regressed": bool(signals), "signals": signals}
 
 
 def _evaluate_query(golden_query, user):
@@ -264,3 +366,64 @@ def _positive_int(value, default):
     except (TypeError, ValueError):
         return default
     return parsed if parsed > 0 else default
+
+
+def _clamped_metric(value):
+    """Return a bounded zero-to-one evaluation metric."""
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return round(max(0.0, min(1.0, parsed)), 4)
+
+
+def _nonnegative_int(value):
+    """Return a non-negative integer for persisted evaluation counts."""
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, parsed)
+
+
+def _history_limit(value):
+    """Return a bounded history limit."""
+    return min(MAX_HISTORY_LIMIT, _positive_int(value, default=DEFAULT_HISTORY_LIMIT))
+
+
+def _run_metrics(run):
+    """Return comparable metrics from a model or dictionary payload."""
+    if run is None:
+        return {}
+    payload = run.to_dict() if hasattr(run, "to_dict") else dict(run)
+    return {
+        "recall_at_k": _clamped_metric(payload.get("recall_at_k")),
+        "mrr": _clamped_metric(payload.get("mrr")),
+        "ndcg_at_k": _clamped_metric(payload.get("ndcg_at_k")),
+        "permission_leak_count": _nonnegative_int(payload.get("permission_leak_count")),
+        "forbidden_source_hit_count": _nonnegative_int(
+            payload.get("forbidden_source_hit_count")
+        ),
+        "no_result_count": _nonnegative_int(payload.get("no_result_count")),
+    }
+
+
+def _regression_signal(metric, current, previous, delta):
+    """Return one prompt-safe regression signal payload."""
+    return {
+        "metric": metric,
+        "current": current,
+        "previous": previous,
+        "delta": round(delta, 4) if isinstance(delta, float) else delta,
+        "status": "warning",
+    }
+
+
+def _history_privacy_payload():
+    """Return privacy guarantees for persisted evaluation history."""
+    return {
+        "stores_query_text": False,
+        "stores_expected_sources": False,
+        "stores_retrieved_sources": False,
+        "source": "retrieval_evaluation_run_metrics",
+    }

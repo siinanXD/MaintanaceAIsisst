@@ -1278,6 +1278,7 @@ def test_admin_retrieval_telemetry_endpoint_is_admin_only(
     assert admin_response.status_code == 200
     assert set(payload.keys()) >= {
         "retrieval_slo",
+        "retrieval_evaluation_history",
         "source_usage",
         "poor_sources",
         "unsuccessful_questions",
@@ -2795,6 +2796,10 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
     assert 'data-retrieval-slo-kpi="retrieval_p95_ms"' in html
     assert "data-retrieval-slo-trends" in html
     assert "data-retrieval-slo-warnings" in html
+    assert "data-retrieval-evaluation-history-panel" in html
+    assert 'data-retrieval-evaluation-kpi="recall_at_k"' in html
+    assert "data-retrieval-evaluation-regression" in html
+    assert "data-retrieval-evaluation-runs" in html
     assert "data-ai-workflows" in html
     assert "data-ai-top-errors" in html
     assert "data-ai-chat-search" in html
@@ -2848,6 +2853,7 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
     assert "/api/v1/admin/ai/knowledge/status" in source
     assert "renderVectorStoreStatus" in source
     assert "renderRetrievalSlo" in script
+    assert "renderRetrievalEvaluationHistory" in script
     assert "loadRetrievalTelemetry" in script
     assert "/api/v1/admin/ai/knowledge-network" in source
     assert "/api/v1/admin/ai/retrieval-telemetry" in source

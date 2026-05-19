@@ -14,6 +14,7 @@ from app.domain_models.common import utc_now
 from app.extensions import db
 from app.models import AIAuditEvent, AIFeedback, KnowledgeChunk, KnowledgeDocument, KnowledgeGap
 from app.services.ai_confidence_service import LOW_CONFIDENCE_THRESHOLD
+from app.services.retrieval_evaluation_service import retrieval_evaluation_history
 from app.services.vector_sync_status_service import vector_store_drift_status
 
 DEFAULT_WINDOW_DAYS = 30
@@ -139,6 +140,7 @@ def retrieval_quality_analytics(days=None, limit=None):
             previous_feedback_entries=previous_feedback_entries,
             window_days=window_days,
         ),
+        "retrieval_evaluation_history": retrieval_evaluation_history(limit=item_limit),
         "source_usage": _source_usage_summary(source_stats, item_limit),
         "poor_sources": _poor_source_summary(source_stats, item_limit),
         "unsuccessful_questions": _unsuccessful_question_summary(events),

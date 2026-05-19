@@ -419,6 +419,38 @@ class KnowledgeGap(db.Model):
         }
 
 
+class RetrievalEvaluationRun(db.Model):
+    """Persisted aggregate metrics for one golden retrieval evaluation run."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    query_count = db.Column(db.Integer, nullable=False, default=0)
+    recall_at_k = db.Column(db.Float, nullable=False, default=0.0)
+    mrr = db.Column(db.Float, nullable=False, default=0.0)
+    ndcg_at_k = db.Column(db.Float, nullable=False, default=0.0)
+    permission_leak_count = db.Column(db.Integer, nullable=False, default=0)
+    forbidden_source_hit_count = db.Column(db.Integer, nullable=False, default=0)
+    no_result_count = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+
+    __table_args__ = (
+        db.Index("ix_retrieval_evaluation_run_created", "created_at"),
+    )
+
+    def to_dict(self):
+        """Return a prompt-safe evaluation run payload."""
+        return {
+            "id": self.id,
+            "query_count": self.query_count,
+            "recall_at_k": round(float(self.recall_at_k or 0.0), 4),
+            "mrr": round(float(self.mrr or 0.0), 4),
+            "ndcg_at_k": round(float(self.ndcg_at_k or 0.0), 4),
+            "permission_leak_count": int(self.permission_leak_count or 0),
+            "forbidden_source_hit_count": int(self.forbidden_source_hit_count or 0),
+            "no_result_count": int(self.no_result_count or 0),
+            "created_at": self.created_at.isoformat(),
+        }
+
+
 class BackgroundJob(db.Model):
     """Persisted background job for asynchronous maintenance workflows."""
 

@@ -9,6 +9,7 @@ from app.domain_models.ai import (
     KnowledgeChunk,
     KnowledgeDocument,
     KnowledgeGap,
+    RetrievalEvaluationRun,
 )
 from app.domain_models.common import Priority, Role, TaskStatus, utc_now
 from app.domain_models.documents import (
@@ -65,6 +66,7 @@ __all__ = [
     "OperationalEvent",
     "OperationalKpiAggregate",
     "Priority",
+    "RetrievalEvaluationRun",
     "Role",
     "ShiftHandover",
     "ShiftPlan",

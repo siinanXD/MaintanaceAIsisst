@@ -701,9 +701,85 @@
     }
   }
 
+  function retrievalEvaluationValue(metric, value) {
+    if (metric === "recall_at_k" || metric === "mrr" || metric === "ndcg_at_k") {
+      return percentText(value);
+    }
+    return numberText(value);
+  }
+
+  function retrievalEvaluationLabel(metric) {
+    const labels = {
+      recall_at_k: "Recall@K",
+      mrr: "MRR",
+      ndcg_at_k: "nDCG@K",
+      permission_leak_count: "Permission Leaks",
+      forbidden_source_hit_count: "Verbotene Quellen",
+      no_result_count: "Keine Treffer"
+    };
+    return labels[metric] || text(metric);
+  }
+
+  function renderRetrievalEvaluationHistory(payload) {
+    const history = (payload && payload.retrieval_evaluation_history) || {};
+    const latest = history.latest || {};
+    const regression = history.regression || {};
+    const status = history.unavailable ? "warning" : (regression.regressed ? "warning" : "ok");
+    const statusTarget = root.querySelector("[data-retrieval-evaluation-status]");
+    if (statusTarget) {
+      statusTarget.textContent = history.unavailable ? "Nicht verfügbar" : readinessLabel(status);
+      statusTarget.className = "badge badge-ai " + healthClass(status);
+    }
+
+    root.querySelectorAll("[data-retrieval-evaluation-kpi]").forEach((target) => {
+      const key = target.dataset.retrievalEvaluationKpi;
+      target.textContent = retrievalEvaluationValue(key, latest[key]);
+    });
+
+    const regressionList = root.querySelector("[data-retrieval-evaluation-regression]");
+    if (regressionList) {
+      regressionList.innerHTML = "";
+      const signals = regression.signals || [];
+      if (!latest.id) {
+        regressionList.appendChild(statusRow("Golden Eval", "noch keine Runs gespeichert"));
+      } else if (!signals.length) {
+        regressionList.appendChild(statusRow("Regression", "keine Regression erkannt"));
+      } else {
+        signals.forEach((signal) => {
+          const delta = signal.delta > 0 ? "+" + signal.delta : signal.delta;
+          regressionList.appendChild(statusRow(
+            retrievalEvaluationLabel(signal.metric),
+            retrievalEvaluationValue(signal.metric, signal.current) + " (" + delta + ")"
+          ));
+        });
+      }
+    }
+
+    const runList = root.querySelector("[data-retrieval-evaluation-runs]");
+    if (runList) {
+      runList.innerHTML = "";
+      const runs = history.runs || [];
+      if (!runs.length) {
+        runList.appendChild(statusRow("Historie", "keine gespeicherten Runs"));
+      } else {
+        runs.slice(0, 5).forEach((run) => {
+          runList.appendChild(statusRow(
+            dateTimeText(run.created_at),
+            retrievalEvaluationValue("recall_at_k", run.recall_at_k)
+              + " / "
+              + retrievalEvaluationValue("mrr", run.mrr)
+              + " / "
+              + retrievalEvaluationValue("ndcg_at_k", run.ndcg_at_k)
+          ));
+        });
+      }
+    }
+  }
+
   async function loadRetrievalTelemetry() {
     const telemetry = await api("/api/v1/admin/ai/retrieval-telemetry?days=30&limit=5");
     renderRetrievalSlo(telemetry);
+    renderRetrievalEvaluationHistory(telemetry);
   }
 
   function renderWorkflowMetrics(workflows) {
