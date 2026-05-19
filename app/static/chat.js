@@ -228,6 +228,7 @@
    * Return a compact score label for source and confidence values.
    */
   function scoreLabel(value) {
+    if (value === undefined || value === null || value === "") return "";
     const score = numericValue(value, null);
     if (score === null) return "";
     return Math.round(score > 0 && score <= 1 ? score * 100 : score) + "%";
@@ -244,36 +245,115 @@
       ? rawConfidence
       : confidence.score !== undefined ? confidence.score : source.confidence_score;
     const level = confidence.level || source.confidence_level || "";
-    if (score === undefined && !level) return null;
-    return {
-      score: numericValue(score, 0),
-      level,
+    if ((score === undefined || score === null || score === "") && !level) return null;
+    const payload = {
+      score: score === undefined || score === null || score === "" ? null : numericValue(score, null),
+      level: String(level || "").toLowerCase(),
       warning: confidence.warning || "",
       reasons: Array.isArray(confidence.reasons) ? confidence.reasons : [],
       factors: confidence.factors || {},
       method: confidence.method || ""
     };
+    payload.level = normalizedConfidenceLevel(payload);
+    return payload;
+  }
+
+  /**
+   * Return a normalized high, medium, or low confidence level.
+   */
+  function normalizedConfidenceLevel(confidence) {
+    const level = String((confidence && confidence.level) || "").toLowerCase();
+    if (level === "high" || level === "medium" || level === "low") return level;
+    const score = confidence && confidence.score !== undefined && confidence.score !== null
+      ? numericValue(confidence.score, null)
+      : null;
+    if (score === null) return "";
+    const percent = score > 0 && score <= 1 ? score * 100 : score;
+    if (percent >= 75) return "high";
+    if (percent >= 45) return "medium";
+    return "low";
   }
 
   /**
    * Return a user-facing confidence label.
    */
   function confidenceLevelLabel(level) {
+    const normalized = normalizedConfidenceLevel({ level });
     const labels = {
       high: "Hohe Confidence",
       medium: "Mittlere Confidence",
       low: "Niedrige Confidence"
     };
-    return labels[level] || "Confidence";
+    return labels[normalized] || "Confidence";
+  }
+
+  /**
+   * Return a short trust-oriented confidence explanation.
+   */
+  function confidenceTrustCopy(level) {
+    const normalized = normalizedConfidenceLevel({ level });
+    const labels = {
+      high: "Gut belegt",
+      medium: "Plausibel, prüfen",
+      low: "Vorsichtig nutzen"
+    };
+    return labels[normalized] || "Einordnung prüfen";
+  }
+
+  /**
+   * Return a compact confidence score percentage.
+   */
+  function confidenceScorePercent(confidence) {
+    if (!confidence || confidence.score === undefined || confidence.score === null || confidence.score === "") {
+      return null;
+    }
+    const score = numericValue(confidence.score, null);
+    if (score === null) return null;
+    return Math.round(score > 0 && score <= 1 ? score * 100 : score);
   }
 
   /**
    * Return CSS tone class for confidence and risk indicators.
    */
   function confidenceTone(level) {
-    if (level === "high") return "is-positive";
-    if (level === "low") return "is-risk";
+    const normalized = normalizedConfidenceLevel({ level });
+    if (normalized === "high") return "is-positive";
+    if (normalized === "low") return "is-risk";
     return "is-warning";
+  }
+
+  /**
+   * Return a compact visual high, medium, low confidence meter.
+   */
+  function confidenceMeter(confidence) {
+    const level = normalizedConfidenceLevel(confidence);
+    const percent = confidenceScorePercent(confidence);
+    const meter = document.createElement("div");
+    const scale = document.createElement("div");
+    const labels = {
+      low: "Niedrig",
+      medium: "Mittel",
+      high: "Hoch"
+    };
+    meter.className = "chat-confidence-meter " + confidenceTone(level);
+    meter.setAttribute(
+      "aria-label",
+      [
+        confidenceLevelLabel(level),
+        percent === null ? "" : percent + " Prozent",
+        confidenceTrustCopy(level)
+      ].filter(Boolean).join(", ")
+    );
+    scale.className = "chat-confidence-scale";
+    ["low", "medium", "high"].forEach((segmentLevel) => {
+      const segment = document.createElement("span");
+      segment.className = "chat-confidence-segment is-" + segmentLevel
+        + (segmentLevel === level ? " is-active" : "");
+      segment.textContent = labels[segmentLevel];
+      scale.appendChild(segment);
+    });
+    meter.appendChild(scale);
+    return meter;
   }
 
   /**
@@ -358,6 +438,97 @@
     const directReasons = source && source.machine_match_reasons;
     const reasons = directReasons || explainability.machine_match_reasons || [];
     return machineReasonLabels(reasons);
+  }
+
+  /**
+   * Return a user-facing quality reason for one source.
+   */
+  function sourceQualityReason(source) {
+    const status = (source && source.quality_status) || sourceExplainability(source).quality_status;
+    if (status === "admin_approved") return "freigegebene Quelle";
+    if (status === "technician_confirmed") return "technisch bestätigte Quelle";
+    const label = qualityStatusLabel(status);
+    return label ? "Qualität: " + label : "";
+  }
+
+  /**
+   * Return short source reason labels for answer trust UI.
+   */
+  function sourceReasonLabels(source) {
+    if (!source) return [];
+    const explainability = sourceExplainability(source);
+    const labels = [];
+    const machineReasons = sourceMachineReasons(source);
+    const directReason = boundedText(source.reason, "", 64);
+    const section = source.section_title || source.source_section;
+    if (machineReasons.length || numericValue(explainability.machine_match, 0) > 0) {
+      labels.push("Maschinenbezug");
+    }
+    if (numericValue(explainability.semantic_similarity, 0) > 0) {
+      labels.push("semantisch passend");
+    }
+    if (
+      numericValue(explainability.lexical_score, 0) > 0
+      || numericValue(explainability.lexical_similarity, 0) > 0
+    ) {
+      labels.push("Begriffstreffer");
+    }
+    const qualityReason = sourceQualityReason(source);
+    if (qualityReason) labels.push(qualityReason);
+    if (directReason) labels.push(directReason);
+    if (section) labels.push("Abschnitt: " + boundedText(section, "", 42));
+    return Array.from(new Set(labels.filter(Boolean))).slice(0, 4);
+  }
+
+  /**
+   * Return a compact source title for trust explanations.
+   */
+  function sourceTrustTitle(source) {
+    return boundedText(source && source.title, "sichtbare Quelle", 74);
+  }
+
+  /**
+   * Return concise answer-basis cards from diagnostics and sources.
+   */
+  function answerBasisItems(diagnostics, sources) {
+    const safeSources = Array.isArray(sources) ? sources : [];
+    const topSource = safeSources[0];
+    const machineSource = safeSources.find((source) => (
+      sourceMachineReasons(source).length || isMachineOrErrorSource(source)
+    ));
+    const confidence = confidencePayload(diagnostics);
+    const items = [];
+    if (topSource) {
+      items.push({
+        tone: "is-source",
+        title: "Warum diese Quelle?",
+        value: sourceTrustTitle(topSource),
+        detail: sourceReasonLabels(topSource).join(" - ") || "höchster sichtbarer Retrieval-Treffer"
+      });
+    }
+    if (machineSource) {
+      const reasons = sourceMachineReasons(machineSource);
+      items.push({
+        tone: "is-machine",
+        title: "Warum diese Maschine?",
+        value: sourceTrustTitle(machineSource),
+        detail: reasons.join(" - ") || "Quelle enthält passenden Maschinen- oder Fehlerkontext"
+      });
+    }
+    if (topSource || confidence) {
+      const confidenceReason = confidence && confidence.reasons.length
+        ? boundedText(confidence.reasons[0], "", 120)
+        : "";
+      items.push({
+        tone: "is-solution",
+        title: "Warum diese Lösung?",
+        value: topSource ? "Aus sichtbarem Wartungskontext" : confidenceLevelLabel(confidence.level),
+        detail: confidenceReason || "Antwort basiert auf den bestbewerteten erlaubten Quellen."
+      });
+    }
+    return items.filter((item, index, allItems) => (
+      index === allItems.findIndex((candidate) => candidate.title === item.title)
+    )).slice(0, 3);
   }
 
   /**
@@ -483,9 +654,13 @@
     badges.className = "chat-answer-badges";
     const confidence = confidencePayload(diagnostics);
     if (confidence) {
+      const confidenceLabel = [
+        confidenceLevelLabel(confidence.level),
+        scoreLabel(confidence.score)
+      ].filter(Boolean).join(" - ");
       appendAnswerBadge(
         badges,
-        scoreLabel(confidence.score) + " " + confidenceLevelLabel(confidence.level),
+        confidenceLabel || confidenceLevelLabel(confidence.level),
         confidenceTone(confidence.level)
       );
     }
@@ -506,7 +681,7 @@
    */
   function clearAnswerEvidence(bubble) {
     bubble.querySelectorAll(
-      ".chat-answer-alerts, .chat-answer-insights, .chat-sources, .chat-context-hints, .chat-explainability"
+      ".chat-answer-alerts, .chat-answer-insights, .chat-answer-basis, .chat-sources, .chat-context-hints, .chat-explainability"
     ).forEach((element) => element.remove());
   }
 
@@ -519,10 +694,14 @@
     const items = [];
     if (confidence) {
       items.push({
-        label: "Confidence",
-        value: scoreLabel(confidence.score),
-        meta: confidenceLevelLabel(confidence.level),
-        tone: confidenceTone(confidence.level)
+        label: "Antwortsicherheit",
+        value: confidenceLevelLabel(confidence.level),
+        meta: [
+          scoreLabel(confidence.score),
+          confidenceTrustCopy(confidence.level)
+        ].filter(Boolean).join(" - "),
+        tone: confidenceTone(confidence.level),
+        confidence
       });
     }
     items.push({
@@ -557,10 +736,16 @@
       const label = document.createElement("span");
       const value = document.createElement("strong");
       const meta = document.createElement("small");
+      if (item.confidence) {
+        card.classList.add("chat-confidence-card");
+      }
       label.textContent = item.label;
       value.textContent = item.value;
       meta.textContent = item.meta;
       card.append(label, value, meta);
+      if (item.confidence) {
+        card.appendChild(confidenceMeter(item.confidence));
+      }
       grid.appendChild(card);
     });
     bubble.appendChild(grid);
@@ -570,20 +755,74 @@
    * Render safety and conflict warnings.
    */
   function renderAnswerAlerts(bubble, diagnostics) {
-    const alerts = [
-      ...safetyWarnings(diagnostics).map((message) => ({ message, tone: "is-risk" })),
-      ...conflictWarnings(diagnostics).map((message) => ({ message, tone: "is-warning" }))
-    ];
+    const safetyMessages = safetyWarnings(diagnostics);
+    const conflictMessages = conflictWarnings(diagnostics);
+    const alerts = [];
+    if (safetyMessages.length) {
+      alerts.push({
+        title: "Safety-Hinweis",
+        message: boundedText(safetyMessages.join(" "), "", 280),
+        tone: "is-risk"
+      });
+    }
+    if (conflictMessages.length) {
+      alerts.push({
+        title: "Widerspruch in Quellen",
+        message: boundedText(conflictMessages.join(" "), "", 280),
+        tone: "is-warning"
+      });
+    }
     if (!alerts.length) return;
     const wrapper = document.createElement("div");
     wrapper.className = "chat-answer-alerts";
-    alerts.slice(0, 5).forEach((alert) => {
+    alerts.slice(0, 2).forEach((alert) => {
       const item = document.createElement("div");
+      const title = document.createElement("span");
+      const message = document.createElement("strong");
       item.className = "chat-answer-alert " + alert.tone;
-      item.textContent = alert.message;
+      item.setAttribute("role", alert.tone === "is-risk" ? "alert" : "status");
+      title.className = "chat-answer-alert-title";
+      message.className = "chat-answer-alert-message";
+      title.textContent = alert.title;
+      message.textContent = alert.message;
+      item.append(title, message);
       wrapper.appendChild(item);
     });
     bubble.appendChild(wrapper);
+  }
+
+  /**
+   * Render short explanations for source, machine, and solution choice.
+   */
+  function renderAnswerBasis(bubble, diagnostics, sources) {
+    const items = answerBasisItems(diagnostics, sources);
+    if (!items.length) return;
+    const section = document.createElement("section");
+    const header = document.createElement("div");
+    const title = document.createElement("strong");
+    const meta = document.createElement("span");
+    const list = document.createElement("div");
+    section.className = "chat-answer-basis chat-answer-section";
+    section.setAttribute("aria-label", "Begründung der AI Antwort");
+    header.className = "chat-answer-section-title";
+    title.textContent = "Worauf basiert die Antwort?";
+    meta.textContent = items.length + " Hinweise";
+    header.append(title, meta);
+    list.className = "chat-answer-basis-list";
+    items.forEach((item) => {
+      const card = document.createElement("article");
+      const cardTitle = document.createElement("span");
+      const value = document.createElement("strong");
+      const detail = document.createElement("small");
+      card.className = "chat-answer-basis-card " + item.tone;
+      cardTitle.textContent = item.title;
+      value.textContent = item.value;
+      detail.textContent = item.detail;
+      card.append(cardTitle, value, detail);
+      list.appendChild(card);
+    });
+    section.append(header, list);
+    bubble.appendChild(section);
   }
 
   function appendInlineText(parent, text) {
@@ -723,14 +962,18 @@
     const title = document.createElement("strong");
     const type = document.createElement("small");
     const meta = document.createElement("small");
+    const reason = document.createElement("small");
     item.className = "chat-source-chip";
     if (source && source.url) item.href = source.url;
     title.textContent = boundedText(source && source.title, "Wissensquelle", 72);
     type.textContent = sourceTypeLabel(source) + ((source && source.id) ? " #" + source.id : "");
     meta.textContent = sourcePreviewMeta(source);
+    reason.className = "chat-source-reason";
+    reason.textContent = sourceReasonLabels(source).slice(0, 3).join(" - ");
     item.title = boundedText((source && source.reason) || meta.textContent, "", 180);
     item.append(title, type);
     if (meta.textContent) item.appendChild(meta);
+    if (reason.textContent) item.appendChild(reason);
     return item;
   }
 
@@ -825,7 +1068,7 @@
     const details = document.createElement("details");
     details.className = "chat-explainability chat-answer-section";
     const summary = document.createElement("summary");
-    summary.textContent = "Explainability und Retrieval";
+    summary.textContent = "Warum diese Antwort?";
     const rows = document.createElement("div");
     rows.className = "chat-explainability-grid";
     appendExplainabilityRow(rows, "Query-Typ", queryTypeLabel(diagnostics));
@@ -846,11 +1089,12 @@
         ? source.normalized_score
         : source && source.score;
       const sourceSummary = [
+        sourceTrustTitle(source),
         "Score " + scoreLabel(sourceScore || 0),
         qualityStatusLabel((source && source.quality_status) || sourceExplain.quality_status),
-        sourceMachineReasons(source).join(", ")
+        sourceReasonLabels(source).join(", ")
       ].filter(Boolean).join(" - ");
-      appendExplainabilityRow(rows, "Quelle " + (index + 1), sourceSummary);
+      appendExplainabilityRow(rows, "Warum Quelle " + (index + 1), sourceSummary);
     });
     details.append(summary, rows);
     bubble.appendChild(details);
@@ -866,6 +1110,7 @@
     clearAnswerEvidence(bubble);
     renderAnswerAlerts(bubble, safeDiagnostics);
     renderAnswerInsights(bubble, safeDiagnostics, safeSources);
+    renderAnswerBasis(bubble, safeDiagnostics, safeSources);
     renderSources(bubble, safeSources);
     renderContextHints(bubble, safeDiagnostics, safeSources);
     renderExplainability(bubble, safeDiagnostics, safeSources);

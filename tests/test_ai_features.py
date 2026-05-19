@@ -2767,9 +2767,15 @@ def test_dashboard_contains_daily_briefing_and_priority_ui(client):
     assert "resetChatSession()" in chat_script
     assert "renderAssistantEvidence" in chat_script
     assert "confidencePayload" in chat_script
+    assert "confidenceMeter" in chat_script
+    assert "renderAnswerBasis" in chat_script
     assert "renderExplainability" in chat_script
+    assert "Warum diese Antwort?" in chat_script
     assert "chat-answer-card" in css
     assert "chat-answer-badge" in css
+    assert "chat-confidence-meter" in css
+    assert "chat-answer-basis" in css
+    assert "chat-answer-alert-title" in css
     assert "chat-source-chip" in css
     assert "chat-explainability" in css
 
