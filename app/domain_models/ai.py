@@ -344,9 +344,20 @@ class KnowledgeChunk(db.Model):
 
         return entities_from_json(self.entities_json)
 
+    def retrieval_metadata(self):
+        """Return optional section-aware chunk metadata from the stored JSON payload."""
+        import json
+
+        try:
+            payload = json.loads(self.entities_json or "{}")
+        except (TypeError, json.JSONDecodeError):
+            return {}
+        metadata = payload.get("_chunk_metadata")
+        return metadata if isinstance(metadata, dict) else {}
+
     def to_dict(self):
         """Return a JSON-serializable knowledge chunk."""
-        return {
+        payload = {
             "id": self.id,
             "document_id": self.document_id,
             "chunk_index": self.chunk_index,
@@ -354,6 +365,10 @@ class KnowledgeChunk(db.Model):
             "entities": self.entities(),
             "created_at": self.created_at.isoformat(),
         }
+        metadata = self.retrieval_metadata()
+        if metadata:
+            payload["metadata"] = metadata
+        return payload
 
 
 class KnowledgeGap(db.Model):

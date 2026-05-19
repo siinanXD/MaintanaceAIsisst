@@ -1,5 +1,6 @@
 """Local text knowledge base for AI retrieval."""
 
+import json
 import logging
 import uuid
 from pathlib import Path
@@ -387,14 +388,16 @@ def manual_training_text(entry_id):
 def rebuild_chunks(document, text):
     """Replace all chunks for a knowledge document."""
     KnowledgeChunk.query.filter(KnowledgeChunk.document_id == document.id).delete()
-    chunks = chunk_text(text)
+    chunks = build_text_chunks(text)
     chunk_objects = []
     entity_catalog = load_technical_entity_catalog()
     source_metadata = document_entity_metadata(document)
-    for index, chunk in enumerate(chunks):
+    for index, chunk_payload in enumerate(chunks):
+        chunk = _chunk_payload_text(chunk_payload)
+        chunk_metadata = _chunk_payload_metadata(chunk_payload, index)
         entities = extract_technical_entities(
             chunk,
-            metadata=source_metadata,
+            metadata={**source_metadata, **chunk_metadata},
             catalog=entity_catalog,
         )
         chunk_object = KnowledgeChunk(
@@ -402,9 +405,17 @@ def rebuild_chunks(document, text):
             chunk_index=index,
             text=chunk,
             token_text=" ".join(
-                sorted(tokens(f"{chunk} {entity_token_text(entities)}")),
+                sorted(
+                    tokens(
+                        f"{chunk} {entity_token_text(entities)} "
+                        f"{chunk_metadata.get('section_title', '')}",
+                    )
+                ),
             ),
-            entities_json=entities_to_json(entities),
+            entities_json=_entities_to_json_with_chunk_metadata(
+                entities,
+                chunk_metadata,
+            ),
             created_at=utc_now(),
         )
         db.session.add(chunk_object)
@@ -458,7 +469,7 @@ def chunk_vector_metadata(document, chunk):
     """Return metadata stored with an external vector record."""
     quality_gate = retrieval_quality_gate_for_document(document)
     entities = chunk.entities()
-    return {
+    metadata = {
         "type": "knowledge",
         "id": document.id,
         "chunk_id": chunk.id,
@@ -477,6 +488,72 @@ def chunk_vector_metadata(document, chunk):
         "technical_entities": entities,
         "technical_entities_json": entities_to_json(entities),
     }
+    metadata.update(stored_chunk_metadata(chunk))
+    return metadata
+
+
+def stored_chunk_metadata(chunk):
+    """Return section-aware metadata stored on a knowledge chunk."""
+    reader = getattr(chunk, "retrieval_metadata", None)
+    if not callable(reader):
+        return {}
+    return _safe_chunk_metadata(reader())
+
+
+def _chunk_payload_text(chunk_payload):
+    """Return the chunk text from a chunking-service payload."""
+    if isinstance(chunk_payload, dict):
+        return str(chunk_payload.get("text") or "")
+    return str(chunk_payload or "")
+
+
+def _chunk_payload_metadata(chunk_payload, index):
+    """Return safe metadata from a chunking-service payload."""
+    if not isinstance(chunk_payload, dict):
+        return {"chunk_index": index, "chunk_order": index}
+    metadata = dict(chunk_payload.get("metadata") or {})
+    metadata.setdefault("chunk_index", index)
+    metadata.setdefault("chunk_order", index)
+    return _safe_chunk_metadata(metadata)
+
+
+def _entities_to_json_with_chunk_metadata(entities, chunk_metadata):
+    """Serialize technical entities with optional section-aware chunk metadata."""
+    payload = json.loads(entities_to_json(entities))
+    metadata = _safe_chunk_metadata(chunk_metadata)
+    if metadata:
+        payload["_chunk_metadata"] = metadata
+    return json.dumps(payload, ensure_ascii=True, sort_keys=True)
+
+
+def _safe_chunk_metadata(metadata):
+    """Return bounded chunk metadata safe for vector and audit use."""
+    if not isinstance(metadata, dict):
+        return {}
+    safe = {}
+    for key in (
+        "chunk_index",
+        "chunk_order",
+        "source_offset",
+        "source_section",
+        "section_title",
+    ):
+        value = metadata.get(key)
+        if value in (None, ""):
+            continue
+        if key in {"chunk_index", "chunk_order", "source_offset"}:
+            safe[key] = _optional_int(value)
+            continue
+        safe[key] = str(value)[:180]
+    return {key: value for key, value in safe.items() if value is not None}
+
+
+def _optional_int(value):
+    """Return an integer value when parsing succeeds."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def document_entity_metadata(document):
@@ -647,7 +724,7 @@ def can_user_read_knowledge_document(user, document):
 def chunk_payload(chunk, score):
     """Return an internal retrieval payload for one chunk."""
     document = chunk.document
-    return {
+    payload = {
         "type": "knowledge",
         "id": document.id,
         "chunk_id": chunk.id,
@@ -658,6 +735,8 @@ def chunk_payload(chunk, score):
         "score": int(score),
         "context": chunk.text,
     }
+    payload.update(stored_chunk_metadata(chunk))
+    return payload
 
 
 def source_url(document):

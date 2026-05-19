@@ -11,7 +11,7 @@ from app.extensions import db
 from app.models import GeneratedDocument, KnowledgeChunk, KnowledgeDocument
 from app.services.chunking_service import token_set
 from app.services.embedding_service import get_embedding_provider
-from app.services.knowledge_service import can_user_read_knowledge_document
+from app.services.knowledge_service import can_user_read_knowledge_document, stored_chunk_metadata
 from app.services.retrieval_scoring_service import HybridRetrievalScorer
 from app.services.technical_entity_service import entities_from_json, entities_to_json
 
@@ -50,6 +50,20 @@ class VectorSearchResult:
             "score": self.score,
             "metadata": dict(self.metadata),
         }
+
+
+@dataclass(frozen=True)
+class ChunkMetadataProxy:
+    """Lightweight chunk object used for metadata reconstruction."""
+
+    id: int | str | None = None
+    chunk_index: int | str = 0
+    entities_json: str = "{}"
+    chunk_metadata: dict = field(default_factory=dict)
+
+    def retrieval_metadata(self):
+        """Return section-aware metadata carried by a vector result."""
+        return dict(self.chunk_metadata)
 
 
 class BaseVectorStore(ABC):
@@ -297,6 +311,7 @@ def _knowledge_metadata(document, chunk, score=None):
         metadata["quality_score_multiplier"] = score_metadata["signals"].get(
             "quality_multiplier"
         )
+    metadata.update(stored_chunk_metadata(chunk))
     return metadata
 
 
@@ -436,15 +451,23 @@ def _filter_visible_results(results, query_text, user=None, filters=None, limit=
 
 def _chunk_for_metadata(result):
     """Return a lightweight object exposing chunk metadata fields."""
-    return type(
-        "ChunkMetadata",
-        (),
-        {
-            "id": result.metadata.get("chunk_id"),
-            "chunk_index": result.metadata.get("chunk_index", 0),
-            "entities_json": result.metadata.get("technical_entities_json", "{}"),
-        },
-    )()
+    chunk_metadata = {
+        key: result.metadata.get(key)
+        for key in (
+            "chunk_index",
+            "chunk_order",
+            "source_offset",
+            "source_section",
+            "section_title",
+        )
+        if result.metadata.get(key) not in (None, "")
+    }
+    return ChunkMetadataProxy(
+        id=result.metadata.get("chunk_id"),
+        chunk_index=result.metadata.get("chunk_index", 0),
+        entities_json=result.metadata.get("technical_entities_json", "{}"),
+        chunk_metadata=chunk_metadata,
+    )
 
 
 def _config_value(name, default):

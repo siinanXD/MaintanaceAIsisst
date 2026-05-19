@@ -53,6 +53,10 @@ class RetrievalCandidate:
         _copy_optional(source, self.metadata, "machine_match")
         _copy_optional(source, self.metadata, "machine_match_reasons")
         _copy_optional(source, self.metadata, "explainability")
+        _copy_optional(source, self.metadata, "source_section")
+        _copy_optional(source, self.metadata, "section_title")
+        _copy_optional(source, self.metadata, "source_offset")
+        _copy_optional(source, self.metadata, "chunk_order")
         if self.quality_status:
             source["quality_status"] = self.quality_status
         if include_score_debug:
@@ -142,6 +146,10 @@ def vector_result_candidate(result, include_score_debug=False):
         "machine_match_reasons": explainability.get("machine_match_reasons", []),
         "explainability": explainability,
     }
+    _copy_optional(candidate_metadata, metadata, "source_section")
+    _copy_optional(candidate_metadata, metadata, "section_title")
+    _copy_optional(candidate_metadata, metadata, "source_offset")
+    _copy_optional(candidate_metadata, metadata, "chunk_order")
     if include_score_debug and metadata.get("score_debug"):
         candidate_metadata["score_debug"] = metadata["score_debug"]
     return RetrievalCandidate(

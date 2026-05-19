@@ -199,6 +199,8 @@ def _vector_context(candidates):
             f"Quelle: Wissen #{source_id} - {title}",
             f"Dokumenttyp: {document_type}",
         ]
+        if metadata.get("section_title"):
+            block_lines.append(f"Abschnitt: {metadata['section_title']}")
         if machine_context:
             block_lines.append(machine_context)
         block_lines.append(candidate.content)

@@ -47,6 +47,64 @@ def test_chunk_text_preserves_metadata_and_overlap():
     assert "Hydraulikfilter" in chunks[1]["text"]
 
 
+def test_chunk_text_preserves_section_headings_steps_and_tables():
+    """Verify section-aware chunking keeps headings, steps, and tables together."""
+    text = "\n".join(
+        (
+            "Wartungsschritte:",
+            "1. Anlage stoppen und gegen Wiedereinschalten sichern.",
+            "2. Filter X900 ausbauen und Dichtung pruefen.",
+            "3. Filter X900 einsetzen und Befund dokumentieren.",
+            "",
+            "Ersatzteile:",
+            "| Teil | Menge |",
+            "| Filter X900 | 1 |",
+            "| Dichtung D4 | 1 |",
+        )
+    )
+
+    chunks = chunk_text(
+        text,
+        config=ChunkingConfig(max_chars=220, overlap=40, max_chunks=5),
+    )
+
+    step_chunk = chunks[0]
+    table_chunk = chunks[1]
+    assert step_chunk["metadata"]["section_title"] == "Wartungsschritte"
+    assert "1. Anlage stoppen" in step_chunk["text"]
+    assert "2. Filter X900 ausbauen" in step_chunk["text"]
+    assert "3. Filter X900 einsetzen" in step_chunk["text"]
+    assert table_chunk["metadata"]["section_title"] == "Ersatzteile"
+    assert "| Filter X900 | 1 |" in table_chunk["text"]
+    assert [chunk["metadata"]["chunk_order"] for chunk in chunks] == [0, 1]
+    assert [chunk["metadata"]["source_offset"] for chunk in chunks] == sorted(
+        chunk["metadata"]["source_offset"] for chunk in chunks
+    )
+
+
+def test_chunk_text_keeps_error_code_block_together():
+    """Verify error-code context remains in one chunk when possible."""
+    text = "\n".join(
+        (
+            "Fehlercode E-410",
+            "Ursache: Naeherungsschalter S4 liefert kein Signal.",
+            "Abhilfe: Sensorposition pruefen, Kabel sichtpruefen und Testlauf dokumentieren.",
+            "",
+            "Hinweis:",
+            "Nur freigegebene Ersatzteile verwenden.",
+        )
+    )
+
+    chunks = chunk_text(
+        text,
+        config=ChunkingConfig(max_chars=240, overlap=40, max_chunks=5),
+    )
+
+    assert "Fehlercode E-410" in chunks[0]["text"]
+    assert "Ursache: Naeherungsschalter" in chunks[0]["text"]
+    assert "Abhilfe: Sensorposition" in chunks[0]["text"]
+
+
 def test_chunk_text_rejects_invalid_overlap():
     """Verify invalid chunking settings fail explicitly."""
     with pytest.raises(ValueError, match="overlap"):
@@ -156,6 +214,49 @@ def test_rebuild_chunks_persists_technical_entities(app):
     assert "technical_entities" in metadata
     assert metadata["technical_entities"]["error_codes"] == ["E-10"]
     assert "hydraulikfilter" in chunk.token_text
+
+
+def test_rebuild_chunks_persists_section_metadata(app):
+    """Verify indexed chunks keep section metadata for retrieval explainability."""
+    with app.app_context():
+        document = KnowledgeDocument(
+            source_type="upload",
+            title="Presse 9 Abschnittstest",
+            original_filename="presse-9.txt",
+            relative_path="uploads/presse-9.txt",
+            content_type="text/plain",
+            department="Instandhaltung",
+            status="indexed",
+            is_public=True,
+            chunk_count=0,
+            created_at=utc_now(),
+            updated_at=utc_now(),
+        )
+        db.session.add(document)
+        db.session.flush()
+
+        rebuild_chunks(
+            document,
+            "\n".join(
+                (
+                    "Wartungsschritte:",
+                    "1. Presse 9 stoppen.",
+                    "2. Sensor S12 reinigen.",
+                    "3. Testlauf dokumentieren.",
+                )
+            ),
+        )
+        db.session.commit()
+
+        chunk = KnowledgeChunk.query.filter_by(document_id=document.id).one()
+        chunk_metadata = chunk.retrieval_metadata()
+        vector_metadata = chunk_vector_metadata(document, chunk)
+
+    assert chunk_metadata["section_title"] == "Wartungsschritte"
+    assert chunk_metadata["chunk_order"] == 0
+    assert vector_metadata["section_title"] == "Wartungsschritte"
+    assert vector_metadata["source_section"] == "section-1"
+    assert "wartungsschritte" in chunk.token_text
 
 
 def test_rag_knowledge_context_respects_document_permissions(

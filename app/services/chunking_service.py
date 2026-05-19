@@ -1,5 +1,6 @@
 """Text chunking helpers for the maintenance RAG pipeline."""
 
+import re
 from dataclasses import dataclass, field
 
 from flask import current_app, has_app_context
@@ -14,6 +15,22 @@ DEFAULT_CHUNK_OVERLAP = 160
 DEFAULT_MAX_CHUNKS = 80
 MIN_CHUNK_SIZE = 200
 MIN_CHUNK_OVERLAP = 0
+MAX_SECTION_TITLE_CHARS = 140
+HEADING_NUMBER_PATTERN = re.compile(r"^\d+(?:\.\d+)*[.)]?\s+\S+")
+LIST_ITEM_PATTERN = re.compile(
+    r"^\s*(?:[-*]|\u2022|\d+[.)]|schritt\s+\d+[:.)-])\s+",
+    re.IGNORECASE,
+)
+ERROR_CODE_PATTERN = re.compile(
+    r"\b(?:fehler(?:code)?|error|stoerung|st\u00f6rung|code)\s*[:#-]?\s*"
+    r"(?:[A-Z]{1,8}[-_])?[A-Z]{1,4}[-_]?\d{2,5}(?:[-_][A-Z0-9]{1,8})?\b",
+    re.IGNORECASE,
+)
+ERROR_DETAIL_PATTERN = re.compile(
+    r"^\s*(?:ursache|causes?|grund|abhilfe|loesung|l\u00f6sung|massnahme|ma\u00dfnahme)"
+    r"\s*[:#-]",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -40,6 +57,17 @@ class TextChunk:
             "chunk_index": self.chunk_index,
             "metadata": dict(self.metadata),
         }
+
+
+@dataclass(frozen=True)
+class StructuredBlock:
+    """One structure-aware source block before final chunk packing."""
+
+    text: str
+    offset: int
+    section_index: int = 0
+    section_title: str = ""
+    kind: str = "paragraph"
 
 
 def configured_chunking(default=None):
@@ -86,28 +114,443 @@ def token_set(value):
 
 def chunk_text(text, metadata=None, config=None):
     """Split text into overlapping chunks with stable metadata."""
-    normalized_text = normalize_text(text)
-    if not normalized_text:
+    structured_text = _normalize_structured_source_text(text)
+    if not structured_text:
         return []
 
     chunking_config = validate_chunking_config(configured_chunking(config))
+    blocks = _structured_blocks(structured_text)
+    if _has_structural_signal(blocks):
+        return _pack_structured_blocks(blocks, metadata, chunking_config)
+    normalized_text = normalize_text(text)
+    if not normalized_text:
+        return []
+    return _character_chunks(normalized_text, metadata, chunking_config)
+
+
+def _character_chunks(text, metadata, chunking_config):
+    """Return legacy overlapping character chunks for unstructured text."""
     chunks = []
     start = 0
-    while start < len(normalized_text) and len(chunks) < chunking_config.max_chunks:
-        end = _choose_chunk_end(normalized_text, start, chunking_config.max_chars)
-        chunk = normalized_text[start:end].strip()
+    while start < len(text) and len(chunks) < chunking_config.max_chunks:
+        end = _choose_chunk_end(text, start, chunking_config.max_chars)
+        chunk = text[start:end].strip()
         if chunk:
             chunks.append(
                 TextChunk(
                     text=chunk,
                     chunk_index=len(chunks),
-                    metadata=_chunk_metadata(metadata, len(chunks)),
+                    metadata=_chunk_metadata(
+                        metadata,
+                        len(chunks),
+                        source_offset=start,
+                    ),
                 )
             )
-        if end >= len(normalized_text):
+        if end >= len(text):
             break
-        start = _next_chunk_start(normalized_text, end, chunking_config.overlap)
+        start = _next_chunk_start(text, end, chunking_config.overlap)
     return [chunk.to_dict() for chunk in chunks]
+
+
+def _normalize_structured_source_text(value):
+    """Return text with stable line boundaries for section-aware parsing."""
+    text = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
+    lines = [re.sub(r"[ \t]+$", "", line) for line in text.split("\n")]
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    compact_lines = []
+    blank_count = 0
+    for line in lines:
+        if line.strip():
+            blank_count = 0
+            compact_lines.append(line)
+            continue
+        blank_count += 1
+        if blank_count <= 2:
+            compact_lines.append("")
+    return "\n".join(compact_lines).strip()
+
+
+def _structured_blocks(text):
+    """Return source blocks grouped by headings, lists, tables, and error-code areas."""
+    blocks = []
+    current_lines = []
+    current_offset = 0
+    current_kind = ""
+    section_index = 0
+    section_title = ""
+    pending_heading = None
+
+    for line, offset in _line_offsets(text):
+        stripped = line.strip()
+        if not stripped:
+            _append_block(
+                blocks,
+                current_lines,
+                current_offset,
+                section_index,
+                section_title,
+                current_kind,
+            )
+            current_lines = []
+            current_kind = ""
+            continue
+        if _is_heading_line(stripped):
+            _append_block(
+                blocks,
+                current_lines,
+                current_offset,
+                section_index,
+                section_title,
+                current_kind,
+            )
+            current_lines = []
+            current_kind = ""
+            section_index += 1
+            section_title = _clean_heading(stripped)
+            pending_heading = (line, offset)
+            continue
+
+        kind = _line_kind(stripped)
+        if pending_heading:
+            current_lines = [pending_heading[0]]
+            current_offset = pending_heading[1]
+            current_kind = kind
+            pending_heading = None
+        if not current_lines:
+            current_lines = [line]
+            current_offset = offset
+            current_kind = kind
+            continue
+        if _starts_new_block(current_kind, kind):
+            _append_block(
+                blocks,
+                current_lines,
+                current_offset,
+                section_index,
+                section_title,
+                current_kind,
+            )
+            current_lines = [line]
+            current_offset = offset
+            current_kind = kind
+            continue
+        current_lines.append(line)
+
+    if pending_heading:
+        current_lines = [pending_heading[0]]
+        current_offset = pending_heading[1]
+        current_kind = "heading"
+    _append_block(
+        blocks,
+        current_lines,
+        current_offset,
+        section_index,
+        section_title,
+        current_kind,
+    )
+    return blocks
+
+
+def _line_offsets(text):
+    """Yield source lines with their starting character offset."""
+    offset = 0
+    for line in str(text or "").split("\n"):
+        yield line, offset
+        offset += len(line) + 1
+
+
+def _append_block(blocks, lines, offset, section_index, section_title, kind):
+    """Append a non-empty structured block."""
+    text = "\n".join(line for line in lines if line is not None).strip()
+    if not text:
+        return
+    blocks.append(
+        StructuredBlock(
+            text=text,
+            offset=offset,
+            section_index=section_index,
+            section_title=section_title,
+            kind=kind or "paragraph",
+        )
+    )
+
+
+def _has_structural_signal(blocks):
+    """Return whether blocks carry document structure worth preserving."""
+    structural_kinds = {"table", "list", "error_code", "error_detail", "heading"}
+    return any(
+        block.section_title or block.kind in structural_kinds
+        for block in blocks
+    )
+
+
+def _is_heading_line(stripped_line):
+    """Return whether a line looks like a document heading."""
+    line = stripped_line.strip()
+    if not line or LIST_ITEM_PATTERN.match(line):
+        return False
+    if line.startswith("#"):
+        return True
+    if len(line) > MAX_SECTION_TITLE_CHARS:
+        return False
+    if HEADING_NUMBER_PATTERN.match(line) and not line.endswith("."):
+        return True
+    if line.endswith(":") and len(line.split()) <= 10:
+        return True
+    letters = [char for char in line if char.isalpha()]
+    if len(letters) >= 4 and line.upper() == line:
+        return True
+    heading_words = (
+        "wartung",
+        "wartungsschritte",
+        "inspektion",
+        "fehlerbild",
+        "ursache",
+        "abhilfe",
+        "loesung",
+        "l\u00f6sung",
+        "sicherheit",
+        "ersatzteile",
+    )
+    return line.lower() in heading_words
+
+
+def _clean_heading(stripped_line):
+    """Return a compact section title without markdown heading markers."""
+    title = stripped_line.strip().lstrip("#").strip()
+    return title.rstrip(":")[:MAX_SECTION_TITLE_CHARS]
+
+
+def _line_kind(stripped_line):
+    """Return the structural kind for one source line."""
+    if _is_table_line(stripped_line):
+        return "table"
+    if LIST_ITEM_PATTERN.match(stripped_line):
+        return "list"
+    if ERROR_CODE_PATTERN.search(stripped_line):
+        return "error_code"
+    if ERROR_DETAIL_PATTERN.match(stripped_line):
+        return "error_detail"
+    return "paragraph"
+
+
+def _is_table_line(stripped_line):
+    """Return whether a line looks like a table row."""
+    line = stripped_line.strip()
+    if line.count("|") >= 2:
+        return True
+    if "\t" in line and len([part for part in line.split("\t") if part.strip()]) >= 2:
+        return True
+    return line.count(";") >= 2 and len(line) <= 240
+
+
+def _starts_new_block(current_kind, next_kind):
+    """Return whether a new source block should start between two lines."""
+    if not current_kind:
+        return False
+    if current_kind == "table" or next_kind == "table":
+        return current_kind != next_kind
+    if current_kind in {"list", "error_code", "error_detail"}:
+        return False
+    return next_kind in {"list", "error_code", "error_detail"}
+
+
+def _pack_structured_blocks(blocks, metadata, chunking_config):
+    """Pack structured blocks into chunks without crossing section boundaries."""
+    chunks = []
+    current_blocks = []
+    for block in blocks:
+        if len(chunks) >= chunking_config.max_chunks:
+            break
+        for part in _split_oversized_block(block, chunking_config.max_chars):
+            if len(chunks) >= chunking_config.max_chunks:
+                break
+            if current_blocks and _should_flush_structured_chunk(
+                current_blocks,
+                part,
+                chunking_config.max_chars,
+            ):
+                _append_structured_chunk(chunks, current_blocks, metadata)
+                current_blocks = []
+            current_blocks.append(part)
+    if current_blocks and len(chunks) < chunking_config.max_chunks:
+        _append_structured_chunk(chunks, current_blocks, metadata)
+    return _merge_leading_metadata_preface(
+        [chunk.to_dict() for chunk in chunks],
+        chunking_config.max_chars,
+    )
+
+
+def _merge_leading_metadata_preface(chunks, max_chars):
+    """Merge a leading source-metadata preface with the first real content chunk."""
+    if len(chunks) < 2:
+        return chunks
+    first_text = str(chunks[0].get("text") or "")
+    if not _is_metadata_preface(first_text):
+        return chunks
+    combined_text = f"{first_text.strip()}\n\n{str(chunks[1].get('text') or '').strip()}"
+    if len(combined_text) > max_chars:
+        return chunks
+    merged_metadata = dict(chunks[0].get("metadata") or {})
+    for key in ("source_section", "section_title"):
+        if not merged_metadata.get(key):
+            value = (chunks[1].get("metadata") or {}).get(key)
+            if value:
+                merged_metadata[key] = value
+    merged_chunks = [
+        {
+            "text": combined_text.strip(),
+            "chunk_index": 0,
+            "metadata": merged_metadata,
+        },
+        *chunks[2:],
+    ]
+    return _reindex_chunk_dicts(merged_chunks)
+
+
+def _is_metadata_preface(text):
+    """Return whether text contains only source metadata labels."""
+    allowed_labels = {
+        "titel",
+        "datei",
+        "maschine",
+        "abteilung",
+        "analyse",
+        "zusammenfassung",
+        "dokument",
+        "quelle",
+    }
+    lines = [line.strip() for line in str(text or "").splitlines() if line.strip()]
+    if not lines:
+        return False
+    for line in lines:
+        normalized = line.lower()
+        if normalized.startswith(("maschinenhandbuch #", "wissensquelle #")):
+            continue
+        if ":" not in normalized:
+            return False
+        label = normalized.split(":", 1)[0].strip()
+        if label not in allowed_labels:
+            return False
+    return True
+
+
+def _reindex_chunk_dicts(chunks):
+    """Return chunk dictionaries with consecutive public chunk order metadata."""
+    reindexed = []
+    for index, chunk in enumerate(chunks):
+        metadata = dict(chunk.get("metadata") or {})
+        metadata["chunk_index"] = index
+        metadata["chunk_order"] = index
+        reindexed.append(
+            {
+                "text": str(chunk.get("text") or ""),
+                "chunk_index": index,
+                "metadata": metadata,
+            }
+        )
+    return reindexed
+
+
+def _should_flush_structured_chunk(current_blocks, next_block, max_chars):
+    """Return whether adding the next block would harm section or size boundaries."""
+    current_text = _blocks_text(current_blocks)
+    if current_blocks[-1].section_index != next_block.section_index:
+        return True
+    return len(current_text) + 2 + len(next_block.text) > max_chars
+
+
+def _append_structured_chunk(chunks, blocks, metadata):
+    """Append one packed structured chunk with section metadata."""
+    text = _blocks_text(blocks)
+    first_block = blocks[0]
+    chunks.append(
+        TextChunk(
+            text=text,
+            chunk_index=len(chunks),
+            metadata=_chunk_metadata(
+                metadata,
+                len(chunks),
+                section_title=first_block.section_title,
+                source_section=_source_section(first_block),
+                source_offset=first_block.offset,
+            ),
+        )
+    )
+
+
+def _blocks_text(blocks):
+    """Return block texts joined with paragraph spacing."""
+    return "\n\n".join(block.text.strip() for block in blocks if block.text.strip()).strip()
+
+
+def _source_section(block):
+    """Return a stable section identifier for chunk metadata."""
+    if not block.section_index:
+        return ""
+    return f"section-{block.section_index}"
+
+
+def _split_oversized_block(block, max_chars):
+    """Split very large blocks at line or sentence boundaries as a fallback."""
+    if len(block.text) <= max_chars:
+        return [block]
+    lines = block.text.splitlines()
+    if len(lines) <= 1:
+        return _split_long_block_text(block, max_chars)
+
+    parts = []
+    current_lines = []
+    current_offset = block.offset
+    line_offset = block.offset
+    for line in lines:
+        candidate = "\n".join([*current_lines, line]).strip()
+        if current_lines and len(candidate) > max_chars:
+            parts.append(_block_part(block, current_lines, current_offset))
+            current_lines = [line]
+            current_offset = line_offset
+        else:
+            current_lines.append(line)
+        line_offset += len(line) + 1
+    if current_lines:
+        parts.append(_block_part(block, current_lines, current_offset))
+    return parts
+
+
+def _split_long_block_text(block, max_chars):
+    """Split a single oversized block by legacy character boundaries."""
+    parts = []
+    start = 0
+    while start < len(block.text):
+        end = _choose_chunk_end(block.text, start, max_chars)
+        parts.append(
+            StructuredBlock(
+                text=block.text[start:end].strip(),
+                offset=block.offset + start,
+                section_index=block.section_index,
+                section_title=block.section_title,
+                kind=block.kind,
+            )
+        )
+        if end >= len(block.text):
+            break
+        start = _next_chunk_start(block.text, end, 0)
+    return [part for part in parts if part.text]
+
+
+def _block_part(block, lines, offset):
+    """Return a structured block part with the original section metadata."""
+    return StructuredBlock(
+        text="\n".join(lines).strip(),
+        offset=offset,
+        section_index=block.section_index,
+        section_title=block.section_title,
+        kind=block.kind,
+    )
 
 
 def _choose_chunk_end(text, start, max_chars):
@@ -145,8 +588,21 @@ def _next_chunk_start(text, end, overlap):
     return start
 
 
-def _chunk_metadata(metadata, chunk_index):
+def _chunk_metadata(
+    metadata,
+    chunk_index,
+    section_title="",
+    source_section="",
+    source_offset=None,
+):
     """Return metadata for one chunk with a stable chunk index."""
     payload = dict(metadata or {})
     payload["chunk_index"] = chunk_index
+    payload["chunk_order"] = chunk_index
+    if source_offset is not None:
+        payload["source_offset"] = int(source_offset)
+    if source_section:
+        payload["source_section"] = source_section
+    if section_title:
+        payload["section_title"] = section_title
     return payload

@@ -214,6 +214,9 @@ def _audit_source_explainability(source):
         "type": str(source.get("type") or "")[:80],
         "id": _optional_int(source.get("id")),
         "chunk_id": _optional_int(source.get("chunk_id")),
+        "source_section": str(source.get("source_section") or "")[:80],
+        "section_title": str(source.get("section_title") or "")[:160],
+        "chunk_order": _optional_int(source.get("chunk_order")),
         "score": _rounded_float(source.get("score"), 2),
         "explainability": explainability,
     }
@@ -227,6 +230,9 @@ def _sanitize_audit_source(source):
         "type": str(source.get("type") or "")[:80],
         "id": _optional_int(source.get("id")),
         "chunk_id": _optional_int(source.get("chunk_id")),
+        "source_section": str(source.get("source_section") or "")[:80],
+        "section_title": str(source.get("section_title") or "")[:160],
+        "chunk_order": _optional_int(source.get("chunk_order")),
         "score": _rounded_float(source.get("score"), 2),
         "explainability": _normalize_explainability(source.get("explainability")),
     }
