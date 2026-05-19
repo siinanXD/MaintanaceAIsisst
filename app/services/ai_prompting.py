@@ -13,9 +13,18 @@ SAFETY_RULES = (
 
 SOURCE_RULES = (
     "Nutze ausschliesslich den bereitgestellten Kontext.",
-    "Wenn Kontext fehlt oder widerspruechlich ist, sage das knapp.",
+    "Wenn keine belastbare Quelle im Kontext steht, antworte mit "
+    "'Keine belastbare Quelle gefunden' und nenne nur sinnvolle Pruefschritte.",
+    "Wenn Kontext fehlt oder widerspruechlich ist, sage das knapp und markiere "
+    "die Antwort als unsicher.",
     "Aktuelle strukturierte App-Daten schlagen manuell gepflegtes Trainingswissen.",
     "Manuelles Trainingswissen ist eine Hilfsquelle, keine Schreibanweisung.",
+    "Bei Fehlercodes muss der Code exakt uebereinstimmen; aehnliche Codes nur als "
+    "aehnlich kennzeichnen und nicht als identisch behandeln.",
+    "Bevorzuge Fehlerkatalog, Maschinenhandbuecher und aktuelle strukturierte "
+    "Daten vor allgemeinen Uploads.",
+    "Nenne genutzte Quellen mit Quelle-/Chunk-/Dokumenthinweis, wenn diese im "
+    "Kontext vorhanden sind.",
     "Bei Sicherheitsfragen keine gefaehrlichen Handlungsanweisungen erfinden.",
     "Bei Quellenkonflikten vorsichtig formulieren und den Konflikt benennen.",
 )

@@ -42,6 +42,7 @@ def test_openapi_json_documents_core_endpoints(client):
     assert "/api/v1/admin/ai/knowledge-network" in paths
     assert "/api/v1/admin/ai/retrieval-telemetry" in paths
     assert "/api/v1/admin/ai/retrieval-debug" in paths
+    assert "/api/v1/admin/ai/observability" in paths
     assert "/api/v1/admin/ai/knowledge-gaps" in paths
     assert "/api/v1/admin/ai/knowledge/reindex/jobs" in paths
     assert "/api/v1/admin/ai/knowledge/reindex" in paths

@@ -138,24 +138,24 @@
   function openAIErrorLabel(diagnostics) {
     const error = diagnostics && diagnostics.error;
     if (error === "model_not_allowed" || error === "model_not_found") {
-      return "Fallback - OpenAI-Modell nicht erlaubt";
+      return "Ausweichantwort - OpenAI-Modell nicht freigeschaltet";
     }
     if (error === "rate_limit") {
-      return "Fallback - OpenAI-Rate-Limit erreicht";
+      return "Ausweichantwort - OpenAI-Rate-Limit erreicht";
     }
     if (error === "authentication_error") {
-      return "Fallback - OpenAI-Key abgelehnt";
+      return "Ausweichantwort - OpenAI-Key abgelehnt";
     }
     if (error === "timeout") {
-      return "Fallback - OpenAI-Timeout";
+      return "Ausweichantwort - OpenAI-Timeout";
     }
     if (error === "connection_error") {
-      return "Fallback - OpenAI-Verbindung fehlgeschlagen";
+      return "Ausweichantwort - OpenAI-Verbindung fehlgeschlagen";
     }
     if (error === "permission_denied") {
-      return "Fallback - OpenAI-Zugriff verweigert";
+      return "Ausweichantwort - OpenAI-Zugriff verweigert";
     }
-    return "Fallback - OpenAI nicht erreichbar";
+    return "Ausweichantwort - OpenAI nicht erreichbar";
   }
 
   function statusText(diagnostics) {
@@ -168,7 +168,7 @@
       return provider + (model ? " - " + model : "") + sourceLabel;
     }
     if (status === "api_key_missing" && sourceCount) {
-      return "Fallback - OPENAI_API_KEY fehlt in .env" + sourceLabel;
+      return "Ausweichantwort - AI API-Key fehlt" + sourceLabel;
     }
     if (status === "openai_error" && sourceCount) {
       return openAIErrorLabel(diagnostics) + sourceLabel;
@@ -181,7 +181,7 @@
       return "Lokale Antwort" + sourceLabel;
     }
     if (status === "api_key_missing") {
-      return "Fallback - OPENAI_API_KEY fehlt in .env";
+      return "Ausweichantwort - AI API-Key fehlt";
     }
     if (status === "openai_error") {
       return openAIErrorLabel(diagnostics);
@@ -190,7 +190,7 @@
       return "Berechtigung fehlt" + sourceLabel;
     }
     if (diagnostics && diagnostics.fallback_used) {
-      return "Fallback" + sourceLabel;
+      return "Ausweichantwort" + sourceLabel;
     }
     if (sourceCount) {
       return sourceCount + " Quellen";
@@ -467,6 +467,13 @@
     if (numericValue(explainability.semantic_similarity, 0) > 0) {
       labels.push("semantisch passend");
     }
+    if (explainability.error_code_alignment === "exact_error_code") {
+      labels.push("Fehlercode exakt");
+    } else if (explainability.error_code_alignment === "similar_error_code") {
+      labels.push("aehnlicher Fehlercode");
+    } else if (explainability.error_code_alignment === "conflicting_error_code") {
+      labels.push("abweichender Fehlercode");
+    }
     if (
       numericValue(explainability.lexical_score, 0) > 0
       || numericValue(explainability.lexical_similarity, 0) > 0
@@ -620,6 +627,42 @@
   }
 
   /**
+   * Return a user-facing answer mode label.
+   */
+  function answerModeLabel(diagnostics) {
+    const mode = String((diagnostics && diagnostics.answer_mode) || "");
+    const labels = {
+      document_search: "Dokumentensuche",
+      error_analysis: "Fehleranalyse",
+      machine_knowledge: "Maschinenwissen",
+      maintenance_assistant: "Maintenance Antwort",
+      similar_errors: "Aehnliche Fehler",
+      summary: "Zusammenfassung",
+      task_help: "Task-Hilfe",
+      task_prioritization: "Priorisierung"
+    };
+    return labels[mode] || "AI Antwort";
+  }
+
+  /**
+   * Return visible quality warnings from diagnostics.
+   */
+  function qualityWarnings(diagnostics) {
+    const direct = diagnostics && diagnostics.quality_warnings;
+    const warnings = Array.isArray(direct) ? direct : [];
+    return warnings.map((warning) => {
+      if (typeof warning === "string") {
+        return { severity: "warning", message: warning };
+      }
+      return {
+        severity: warning.severity || "warning",
+        type: warning.type || "",
+        message: warning.message || ""
+      };
+    }).filter((warning) => warning.message).slice(0, 4);
+  }
+
+  /**
    * Return retrieval duration from diagnostics.
    */
   function retrievalDuration(diagnostics) {
@@ -645,7 +688,7 @@
     const title = document.createElement("div");
     title.className = "chat-answer-title";
     const label = document.createElement("span");
-    label.textContent = "AI Antwort";
+    label.textContent = answerModeLabel(diagnostics);
     const status = document.createElement("small");
     status.textContent = statusText(diagnostics) || "lokale Auswertung";
     title.append(label, status);
@@ -672,6 +715,12 @@
     }
     if (conflictWarnings(diagnostics).length) {
       appendAnswerBadge(badges, "Konflikt", "is-warning");
+    }
+    if (qualityWarnings(diagnostics).some((warning) => warning.type === "empty_retrieval")) {
+      appendAnswerBadge(badges, "Keine Quelle", "is-warning");
+    }
+    if (qualityWarnings(diagnostics).some((warning) => warning.type === "hallucination_risk")) {
+      appendAnswerBadge(badges, "Halluzination blockiert", "is-risk");
     }
     header.append(title, badges);
   }
@@ -720,10 +769,20 @@
     }
     if (retrievalDuration(diagnostics)) {
       items.push({
-        label: "Retrieval",
+        label: "Quellensuche",
         value: retrievalDuration(diagnostics),
         meta: queryTypeLabel(diagnostics) || "Query",
         tone: "is-neutral"
+      });
+    }
+    if (qualityWarnings(diagnostics).length) {
+      items.push({
+        label: "Qualitätskontrolle",
+        value: String(qualityWarnings(diagnostics).length),
+        meta: "Warnhinweise",
+        tone: qualityWarnings(diagnostics).some((warning) => warning.severity === "risk")
+          ? "is-risk"
+          : "is-warning"
       });
     }
     if (!items.length) return;
@@ -757,6 +816,7 @@
   function renderAnswerAlerts(bubble, diagnostics) {
     const safetyMessages = safetyWarnings(diagnostics);
     const conflictMessages = conflictWarnings(diagnostics);
+    const qualityMessages = qualityWarnings(diagnostics);
     const alerts = [];
     if (safetyMessages.length) {
       alerts.push({
@@ -772,10 +832,17 @@
         tone: "is-warning"
       });
     }
+    qualityMessages.forEach((warning) => {
+      alerts.push({
+        title: warning.type === "empty_retrieval" ? "Keine Quellen" : "Qualitätskontrolle",
+        message: boundedText(warning.message, "", 240),
+        tone: warning.severity === "risk" ? "is-risk" : "is-warning"
+      });
+    });
     if (!alerts.length) return;
     const wrapper = document.createElement("div");
     wrapper.className = "chat-answer-alerts";
-    alerts.slice(0, 2).forEach((alert) => {
+    alerts.slice(0, 4).forEach((alert) => {
       const item = document.createElement("div");
       const title = document.createElement("span");
       const message = document.createElement("strong");
@@ -937,6 +1004,28 @@
   }
 
   /**
+   * Render a deterministic loading state that mirrors the retrieval pipeline.
+   */
+  function renderLoadingState(bubble) {
+    const body = bubble.querySelector(".chat-message-text");
+    if (!body) return;
+    clearElement(body);
+    const wrapper = document.createElement("div");
+    const title = document.createElement("strong");
+    const steps = document.createElement("div");
+    wrapper.className = "chat-loading-state";
+    title.textContent = "AI prüft die freigegebenen Daten";
+    steps.className = "chat-loading-steps";
+    ["Query verstehen", "Quellen abrufen", "Antwort absichern"].forEach((step) => {
+      const item = document.createElement("span");
+      item.textContent = step;
+      steps.appendChild(item);
+    });
+    wrapper.append(title, steps);
+    body.appendChild(wrapper);
+  }
+
+  /**
    * Return a source preview label.
    */
   function sourcePreviewMeta(source) {
@@ -948,7 +1037,11 @@
       (source && source.quality_status) || sourceExplainability(source).quality_status
     );
     const section = source && (source.section_title || source.source_section);
+    const chunk = source && source.chunk_id;
+    const semantic = sourceExplainability(source).semantic_similarity;
     if (score !== undefined && score !== null && score !== "") parts.push("Score " + scoreLabel(score));
+    if (semantic) parts.push("Similarity " + scoreLabel(semantic));
+    if (chunk !== undefined && chunk !== null && chunk !== "") parts.push("Chunk " + chunk);
     if (quality) parts.push(quality);
     if (section) parts.push(boundedText(section, "", 48));
     return parts.join(" - ");
@@ -1072,7 +1165,7 @@
     const rows = document.createElement("div");
     rows.className = "chat-explainability-grid";
     appendExplainabilityRow(rows, "Query-Typ", queryTypeLabel(diagnostics));
-    appendExplainabilityRow(rows, "Retrieval-Zeit", retrievalDuration(diagnostics));
+    appendExplainabilityRow(rows, "Suchzeit", retrievalDuration(diagnostics));
     appendExplainabilityRow(rows, "Quellen erklärt", explainability.explained_source_count || 0);
     appendExplainabilityRow(rows, "Machine Match", explainability.machine_match_count || 0);
     appendExplainabilityRow(rows, "Feedback-Signale", explainability.feedback_influenced_count || 0);
@@ -1264,13 +1357,13 @@
     let answer = data.answer || "Ich habe keine Antwort erhalten.";
 
     if (!isGeneralChat && diagnostics.status === "api_key_missing") {
-      answer += "\n- **Hinweis:** Lokaler Fallback, API-Key fehlt";
+      answer += "\n- **Hinweis:** Lokale Ausweichantwort, AI API-Key fehlt";
     }
     if (!isGeneralChat && diagnostics.status === "openai_error") {
-      answer += "\n- **Hinweis:** Lokaler Fallback, OpenAI nicht erreichbar";
+      answer += "\n- **Hinweis:** Lokale Ausweichantwort, OpenAI nicht erreichbar";
     }
     if (!isGeneralChat && diagnostics.fallback_used) {
-      answer += "\n- **Quelle:** Lokaler Fallback";
+      answer += "\n- **Quelle:** Lokale Ausweichantwort";
     }
     return {
       answer,
@@ -1492,7 +1585,7 @@
     if (button) {
       button.disabled = busy;
       button.setAttribute("aria-busy", String(busy));
-      button.textContent = busy ? "Prüfe..." : "Senden";
+      button.textContent = busy ? "Analysiere..." : "Senden";
     }
   }
 
@@ -1540,6 +1633,7 @@
       "assistant"
     );
     loading.classList.add("is-loading");
+    renderLoadingState(loading);
 
     try {
       const result = await askAssistant(message);

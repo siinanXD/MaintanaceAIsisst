@@ -10,6 +10,21 @@
   </div>
 </section>
 
+<nav class="page-command-bar" aria-label="Maschinen Schnellzugriff">
+  <a class="quick-action-row" href="#machine-list">
+    <span>Maschinen&uuml;bersicht &ouml;ffnen</span>
+    <strong>Anlagen</strong>
+  </a>
+  <button class="quick-action-row is-button" type="button" data-machine-assistant-focus>
+    <span>Maschinen-Assistent fragen</span>
+    <strong>AI</strong>
+  </button>
+  <a class="quick-action-row" href="/errors" data-dashboard-nav="errors" hidden>
+    <span>St&ouml;rungen pr&uuml;fen</span>
+    <strong data-dashboard-machine-issue-count>0</strong>
+  </a>
+</nav>
+
 <section class="ai-action-grid" aria-label="Maschinen Aktionen">
   <button class="ai-action-card is-button" type="button" data-machine-assistant-focus>
     <strong>Maschinen-Assistent</strong>
@@ -18,7 +33,7 @@
 </section>
 
 <section class="dashboard-grid">
-  <details class="card app-card mobile-action-section lg:col-span-12" data-mobile-collapsible data-permission-write="machines" open>
+  <details class="card app-card mobile-action-section lg:order-4 lg:col-span-12" data-mobile-collapsible data-default-collapsed="true" data-permission-write="machines">
     <summary class="mobile-action-summary">
       <span>
         <span class="mobile-action-title">Maschine anlegen</span>
@@ -55,7 +70,7 @@
     </form>
   </details>
 
-  <article class="card app-card lg:col-span-12" data-maintenance-recommendations-panel>
+  <article class="card app-card lg:order-2 lg:col-span-12" data-maintenance-recommendations-panel>
     <div class="card-body">
       <div class="panel-header">
         <div>
@@ -68,7 +83,7 @@
     </div>
   </article>
 
-  <article class="card app-card lg:col-span-12" data-machine-history-panel hidden>
+  <article class="card app-card lg:order-3 lg:col-span-12" data-machine-history-panel hidden>
     <div class="card-body">
       <div class="panel-header">
         <div>
@@ -90,7 +105,7 @@
     </div>
   </article>
 
-  <article class="card app-card mobile-primary-card lg:col-span-12">
+  <article class="card app-card mobile-primary-card lg:order-1 lg:col-span-12" id="machine-list">
     <div class="card-body">
       <div class="panel-header">
         <div>

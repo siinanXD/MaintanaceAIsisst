@@ -208,7 +208,7 @@ def looks_like_count_question(message):
 def looks_like_error_question(message):
     """Check whether a message asks for error catalog or fault help."""
     text = message.lower()
-    return bool(re.search(r"\b[A-Z]?\d{2,5}\b", message.upper())) or any(
+    return bool(re.search(r"\b[A-Z]{0,3}\d{2,5}\b", message.upper())) or any(
         word in text for word in SCOPE_KEYWORDS["errors"]
     )
 
@@ -220,7 +220,7 @@ def looks_like_general_knowledge_question(message):
         return False
     if looks_like_count_question(text) or looks_like_today_tasks_question(text):
         return False
-    if re.search(r"\b[A-Z]?\d{2,5}\b", str(message or "").upper()):
+    if re.search(r"\b[A-Z]{0,3}\d{2,5}\b", str(message or "").upper()):
         return False
     return not any(phrase in text for phrase in APP_DATA_INTENT_PHRASES)
 
@@ -233,7 +233,7 @@ def detect_requested_scopes(message):
         for scope, keywords in SCOPE_KEYWORDS.items()
         if any(keyword in text for keyword in keywords)
     }
-    if re.search(r"\b[A-Z]?\d{2,5}\b", message.upper()):
+    if re.search(r"\b[A-Z]{0,3}\d{2,5}\b", message.upper()):
         scopes.add("errors")
     if looks_like_today_tasks_question(message):
         scopes.add("tasks")
@@ -641,6 +641,133 @@ def fallback_error_answer(entries):
     )
 
 
+def answer_mode_for_message(message, response_type="", diagnostics=None):
+    """Return the product-facing answer mode used by chat UX and diagnostics."""
+    diagnostics = diagnostics or {}
+    query_understanding = diagnostics.get("query_understanding") or {}
+    query_type = query_understanding.get("query_type")
+    text = str(message or "").lower()
+    if response_type == "tasks_today" or "task" in response_type:
+        return "task_help"
+    if response_type == "order_plan":
+        return "task_prioritization"
+    if response_type == "general_chat":
+        return "summary"
+    if query_type == "document_question" or any(
+        word in text for word in ("dokument", "handbuch", "anleitung", "pdf")
+    ):
+        return "document_search"
+    if query_type == "trend_history_question" or any(
+        word in text for word in ("aehnlich", "ähnlich", "wiederkehrend", "historie")
+    ):
+        return "similar_errors"
+    if response_type == "error_help" or looks_like_error_question(message):
+        return "error_analysis"
+    if query_type == "machine_question" or any(
+        word in text for word in ("maschine", "anlage", "presse")
+    ):
+        return "machine_knowledge"
+    return "maintenance_assistant"
+
+
+def retrieval_has_evidence(retrieval):
+    """Return whether a RAG retrieval payload contains usable answer evidence."""
+    return bool(retrieval.get("sources"))
+
+
+def should_generate_without_evidence():
+    """Return whether a configured provider should still receive unsourced prompts."""
+    provider = get_ai_provider()
+    configured_provider = current_app.config.get("AI_PROVIDER", "openai").lower()
+    return provider.name != "mock" or configured_provider != "mock"
+
+
+def grounded_empty_retrieval_answer(message):
+    """Return a non-hallucinating fallback when no relevant source was retrieved."""
+    if looks_like_error_question(message):
+        return (
+            "## Keine belastbare Quelle gefunden\n"
+            "- **Status:** Kein passender Fehlerkatalog- oder Dokumenttreffer sichtbar\n"
+            "- **Unsicherheit:** Ich kann den Fehler ohne Quelle nicht fachlich sicher erklaeren\n"
+            "- **Naechster Schritt:** Fehlercode, Maschinenname oder Symptom genauer angeben\n"
+            "- **Dokumentation:** Falls der Fehler neu ist, im Fehlerkatalog erfassen"
+        )
+    return (
+        "## Keine belastbare Quelle gefunden\n"
+        "- **Status:** Keine passende freigegebene Datenquelle sichtbar\n"
+        "- **Unsicherheit:** Ich sollte daraus keine konkrete Wartungsanweisung ableiten\n"
+        "- **Naechster Schritt:** Frage mit Maschine, Fehlercode, Task oder "
+        "Dokumenttitel praezisieren"
+    )
+
+
+def chat_quality_warnings(result, message=""):
+    """Return visible quality warnings for the chat answer without storing prompt text."""
+    diagnostics = result.get("diagnostics") or {}
+    sources = result.get("sources") or []
+    confidence = result.get("confidence") or diagnostics.get("confidence") or {}
+    warnings = []
+    if not sources:
+        warnings.append(
+            {
+                "type": "empty_retrieval",
+                "severity": "warning",
+                "message": (
+                    "Keine Quellen gefunden; Antwort nur als vorsichtige "
+                    "Orientierung nutzen."
+                ),
+            }
+        )
+    if confidence.get("level") == "low":
+        warnings.append(
+            {
+                "type": "low_confidence",
+                "severity": "warning",
+                "message": "Niedrige Confidence; Quellenlage oder Maschinenbezug ist schwach.",
+            }
+        )
+    if (
+        not sources
+        and result.get("type") in {"assistant", "error_help"}
+        and looks_like_error_question(message)
+    ):
+        warnings.append(
+            {
+                "type": "hallucination_risk",
+                "severity": "risk",
+                "message": "Halluzinationsrisiko: Fehleranalyse ohne belegte Quelle blockiert.",
+            }
+        )
+    if any(source.get("quality_status") == "outdated" for source in sources):
+        warnings.append(
+            {
+                "type": "stale_source",
+                "severity": "warning",
+                "message": "Mindestens eine Quelle ist als veraltet markiert.",
+            }
+        )
+    return warnings
+
+
+def finalize_chat_result_quality(result, message):
+    """Attach answer mode and quality-control diagnostics to a chat result."""
+    diagnostics = result.setdefault("diagnostics", ai_diagnostics("local_answer"))
+    diagnostics["answer_mode"] = answer_mode_for_message(
+        message,
+        result.get("type", ""),
+        diagnostics,
+    )
+    warnings = chat_quality_warnings(result, message)
+    diagnostics["quality_warnings"] = warnings
+    diagnostics["empty_retrieval"] = any(
+        warning["type"] == "empty_retrieval" for warning in warnings
+    )
+    diagnostics["hallucination_warning"] = any(
+        warning["type"] == "hallucination_risk" for warning in warnings
+    )
+    return result
+
+
 def ai_diagnostics(
     status,
     fallback_used=False,
@@ -735,6 +862,7 @@ def attach_audit_metadata(
             "retrieval_duration_ms": diagnostics.get("retrieval_duration_ms", 0),
         }
     )
+    finalize_chat_result_quality(result, message)
     event_id = create_ai_audit_event(
         user,
         workflow or result.get("type", "assistant"),
@@ -1407,7 +1535,11 @@ def answer_chat(message, user, session_id=""):
         requested_scopes,
         conversation_context=conversation_context,
     )
-    answer, diagnostics = openai_assistant_answer(message, retrieval["context"])
+    if retrieval_has_evidence(retrieval) or should_generate_without_evidence():
+        answer, diagnostics = openai_assistant_answer(message, retrieval["context"])
+    else:
+        answer = grounded_empty_retrieval_answer(message)
+        diagnostics = ai_diagnostics("local_answer", fallback_used=True)
     if not answer:
         logger.warning("ai_fallback workflow=chat type=assistant")
         retrieval_message = conversation_context.retrieval_query(message)

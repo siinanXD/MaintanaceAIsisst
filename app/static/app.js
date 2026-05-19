@@ -1,5 +1,5 @@
 (function () {
-  const STATIC_VERSION = "20260517-dashboard-refresh1";
+  const STATIC_VERSION = "20260519-self-explain1";
   const WORKFLOW_MODULE_URL = "/static/pages/workflows.js?v=" + STATIC_VERSION;
   const PAGE_MODULE_URLS = {
     "/login": "/static/pages/login.js?v=" + STATIC_VERSION
@@ -432,6 +432,17 @@
     });
   }
 
+  function initHelpDisclosures() {
+    document.querySelectorAll(".help-disclosure").forEach((details) => {
+      const summary = details.querySelector("summary");
+      if (!summary) return;
+      summary.setAttribute("aria-expanded", String(details.open));
+      details.addEventListener("toggle", () => {
+        summary.setAttribute("aria-expanded", String(details.open));
+      });
+    });
+  }
+
   function initTopbarActions() {
     const workButton = document.querySelector("[data-topbar-work]");
     const dateButton = document.querySelector("[data-topbar-date]");
@@ -480,7 +491,7 @@
           if (!section.dataset.mobileTouched) section.open = false;
           return;
         }
-        section.open = true;
+        section.open = section.dataset.defaultCollapsed !== "true";
       });
       syncing = false;
     }
@@ -678,6 +689,7 @@
     initAppShellPreferences();
     initMobileCollapsibleSections();
     initLocalListSearch();
+    initHelpDisclosures();
     initAccessibleForms();
     initAccessibleTables();
     initTopbarClock();

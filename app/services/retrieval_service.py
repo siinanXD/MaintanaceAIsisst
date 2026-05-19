@@ -198,6 +198,8 @@ def _vector_context(candidates):
         block_lines = [
             f"Quelle: Wissen #{source_id} - {title}",
             f"Dokumenttyp: {document_type}",
+            f"Chunk-ID: {metadata.get('chunk_id') or ''}",
+            f"Retrieval Score: {round(float(candidate.normalized_score or 0), 2)}",
         ]
         if metadata.get("section_title"):
             block_lines.append(f"Abschnitt: {metadata['section_title']}")

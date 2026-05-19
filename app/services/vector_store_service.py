@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
 from flask import current_app, has_app_context
+from sqlalchemy import or_
 
 from app.extensions import db
 from app.models import GeneratedDocument, KnowledgeChunk, KnowledgeDocument
@@ -19,7 +20,41 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_RAG_TOP_K = 4
 DEFAULT_RAG_SCAN_LIMIT = 300
+DEFAULT_RAG_KEYWORD_SCAN_LIMIT = 500
+DEFAULT_RAG_MAX_KEYWORD_TERMS = 8
 DEFAULT_RAG_MIN_SCORE = 1
+RETRIEVAL_STOPWORDS = {
+    "aber",
+    "alle",
+    "als",
+    "am",
+    "an",
+    "auf",
+    "bei",
+    "bitte",
+    "das",
+    "der",
+    "die",
+    "ein",
+    "eine",
+    "fuer",
+    "für",
+    "hat",
+    "hilfe",
+    "hilft",
+    "ich",
+    "ist",
+    "mit",
+    "nach",
+    "nicht",
+    "oder",
+    "und",
+    "von",
+    "was",
+    "welche",
+    "wie",
+    "zu",
+}
 
 
 class VectorStoreError(Exception):
@@ -121,6 +156,10 @@ class SqlAlchemyKnowledgeVectorStore(BaseVectorStore):
             _config_value("RAG_SCAN_LIMIT", DEFAULT_RAG_SCAN_LIMIT),
             DEFAULT_RAG_SCAN_LIMIT,
         )
+        keyword_scan_limit = _positive_int(
+            _config_value("RAG_KEYWORD_SCAN_LIMIT", DEFAULT_RAG_KEYWORD_SCAN_LIMIT),
+            DEFAULT_RAG_KEYWORD_SCAN_LIMIT,
+        )
         min_score = _positive_int(
             _config_value("RAG_MIN_SCORE", DEFAULT_RAG_MIN_SCORE),
             DEFAULT_RAG_MIN_SCORE,
@@ -131,23 +170,35 @@ class SqlAlchemyKnowledgeVectorStore(BaseVectorStore):
             query_vector=query_vector,
             embedding_provider=self.embedding_provider,
         )
-        chunks = (
+        base_query = (
             KnowledgeChunk.query.join(KnowledgeDocument)
             .filter(KnowledgeDocument.status == "indexed")
-            .order_by(KnowledgeDocument.updated_at.desc(), KnowledgeChunk.chunk_index.asc())
-            .limit(scan_limit)
-            .all()
+        )
+        base_query = _apply_db_filters(base_query, filters)
+        chunks = _candidate_chunks(
+            base_query=base_query,
+            query_tokens=query_tokens,
+            recent_limit=scan_limit,
+            keyword_limit=keyword_scan_limit,
         )
 
         results = []
+        permission_filtered = 0
+        score_filtered = 0
+        quality_filtered = 0
         for chunk in chunks:
             document = chunk.document
             if not _matches_filters(document, filters):
                 continue
             if not can_user_read_knowledge_document(user, document):
+                permission_filtered += 1
                 continue
             score = scorer.score_chunk(chunk, document)
-            if not score.allowed or score.final_score < min_score:
+            if not score.allowed:
+                quality_filtered += 1
+                continue
+            if score.final_score < min_score:
+                score_filtered += 1
                 continue
             results.append(
                 VectorSearchResult(
@@ -164,6 +215,17 @@ class SqlAlchemyKnowledgeVectorStore(BaseVectorStore):
         results.sort(
             key=lambda item: (item.score, item.metadata.get("updated_at", "")),
             reverse=True,
+        )
+        logger.info(
+            "rag_local_retrieval query_tokens=%s candidate_count=%s result_count=%s "
+            "permission_filtered=%s quality_filtered=%s score_filtered=%s min_score=%s",
+            len(query_tokens),
+            len(chunks),
+            len(results),
+            permission_filtered,
+            quality_filtered,
+            score_filtered,
+            min_score,
         )
         return results[:limit_value]
 
@@ -371,6 +433,88 @@ def _matches_filters(document, filters):
         if key == "source_id" and str(document.source_id) != str(value):
             return False
     return True
+
+
+def _apply_db_filters(query, filters):
+    """Apply safe document-level filters before candidate scanning."""
+    if not filters:
+        return query
+    source_type = filters.get("source_type")
+    if source_type not in (None, ""):
+        query = query.filter(KnowledgeDocument.source_type == str(source_type))
+    department = filters.get("department")
+    if department not in (None, ""):
+        query = query.filter(KnowledgeDocument.department == str(department))
+    source_id = filters.get("source_id")
+    if source_id not in (None, ""):
+        query = query.filter(KnowledgeDocument.source_id == source_id)
+    return query
+
+
+def _candidate_chunks(base_query, query_tokens, recent_limit, keyword_limit):
+    """Return de-duplicated recent and keyword-matched chunks for local hybrid search."""
+    recent_chunks = (
+        base_query.order_by(
+            KnowledgeDocument.updated_at.desc(),
+            KnowledgeChunk.chunk_index.asc(),
+        )
+        .limit(recent_limit)
+        .all()
+    )
+    keyword_chunks = _keyword_candidate_chunks(base_query, query_tokens, keyword_limit)
+    return _deduplicate_chunks([*keyword_chunks, *recent_chunks])
+
+
+def _keyword_candidate_chunks(base_query, query_tokens, keyword_limit):
+    """Return chunks matched by informative query tokens before scoring."""
+    terms = _informative_query_terms(query_tokens)
+    if not terms:
+        return []
+    filters = [KnowledgeChunk.token_text.ilike(f"%{term}%") for term in terms]
+    return (
+        base_query.filter(or_(*filters))
+        .order_by(KnowledgeDocument.updated_at.desc(), KnowledgeChunk.chunk_index.asc())
+        .limit(keyword_limit)
+        .all()
+    )
+
+
+def _informative_query_terms(query_tokens):
+    """Return bounded query tokens useful for lexical candidate expansion."""
+    terms = [
+        str(token).lower()
+        for token in query_tokens
+        if _is_informative_query_token(token)
+    ]
+    terms.sort(key=lambda token: (not _looks_like_code_token(token), -len(token), token))
+    return terms[:DEFAULT_RAG_MAX_KEYWORD_TERMS]
+
+
+def _is_informative_query_token(token):
+    """Return whether a query token is useful enough for DB prefiltering."""
+    value = str(token or "").strip().lower()
+    if len(value) < 3 or value in RETRIEVAL_STOPWORDS:
+        return False
+    return True
+
+
+def _looks_like_code_token(token):
+    """Return whether a token looks like an error code or technical identifier."""
+    value = str(token or "")
+    return any(char.isdigit() for char in value)
+
+
+def _deduplicate_chunks(chunks):
+    """Return chunks without duplicate database ids while preserving order."""
+    seen = set()
+    unique_chunks = []
+    for chunk in chunks:
+        key = getattr(chunk, "id", None)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_chunks.append(chunk)
+    return unique_chunks
 
 
 def _flat_metadata(metadata):

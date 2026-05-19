@@ -105,6 +105,56 @@ def test_chunk_text_keeps_error_code_block_together():
     assert "Abhilfe: Sensorposition" in chunks[0]["text"]
 
 
+def test_chunk_text_keeps_slightly_oversized_error_code_block_intact():
+    """Verify protected error-code blocks are not split just because they exceed budget."""
+    text = "\n".join(
+        (
+            "Fehlercode FX-451",
+            "Ursache: Frequenzumrichter meldet Unterspannung am Zwischenkreis.",
+            "Abhilfe: Anlage sichern, Spannungsversorgung durch Fachpersonal pruefen, "
+            "Klemmenplan heranziehen, Messwerte dokumentieren und erst nach Freigabe "
+            "einen kontrollierten Testlauf starten.",
+        )
+    )
+
+    chunks = chunk_text(
+        text,
+        config=ChunkingConfig(max_chars=220, overlap=40, max_chunks=5),
+    )
+
+    assert len(chunks) == 1
+    assert len(chunks[0]["text"]) > 220
+    assert "Fehlercode FX-451" in chunks[0]["text"]
+    assert "Unterspannung" in chunks[0]["text"]
+    assert "kontrollierten Testlauf" in chunks[0]["text"]
+
+
+def test_chunk_text_repeats_table_header_when_splitting_large_tables():
+    """Verify large technical tables remain understandable after chunk splitting."""
+    text = "\n".join(
+        (
+            "Messwerttabelle:",
+            "| Fehlercode | Symptom | Pruefung |",
+            "| --- | --- | --- |",
+            "| TB-100 | Sensor kein Signal | Kabel pruefen und Abstand messen |",
+            "| TB-101 | Druck zu niedrig | Filter und Ventil pruefen |",
+            "| TB-102 | Motor zu warm | Luefter und Lastprofil pruefen |",
+            "| TB-103 | SPS Timeout | Netzwerk und SPS Diagnose pruefen |",
+            "| TB-104 | FU Stoerung | Frequenzumrichter Diagnose lesen |",
+        )
+    )
+
+    chunks = chunk_text(
+        text,
+        config=ChunkingConfig(max_chars=230, overlap=40, max_chunks=8),
+    )
+
+    table_chunks = [chunk for chunk in chunks if "Fehlercode" in chunk["text"]]
+    assert len(table_chunks) > 1
+    assert all("| Fehlercode | Symptom | Pruefung |" in chunk["text"] for chunk in table_chunks)
+    assert any("TB-104" in chunk["text"] for chunk in table_chunks)
+
+
 def test_chunk_text_rejects_invalid_overlap():
     """Verify invalid chunking settings fail explicitly."""
     with pytest.raises(ValueError, match="overlap"):
@@ -318,6 +368,54 @@ def test_rag_knowledge_context_respects_document_permissions(
     assert sources[0]["type"] == "knowledge"
     assert blocked_context == ""
     assert blocked_sources == []
+
+
+def test_local_hybrid_retrieval_finds_keyword_match_beyond_recent_scan(
+    app,
+    make_user,
+    set_dashboard_permission,
+):
+    """Verify lexical candidate expansion prevents recent-only retrieval misses."""
+    user_data = make_user(
+        username="rag_keyword_candidate_user",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+    set_dashboard_permission(user_data["username"], "documents", can_view=True)
+    app.config["RAG_SCAN_LIMIT"] = 1
+    app.config["RAG_KEYWORD_SCAN_LIMIT"] = 10
+
+    with app.app_context():
+        user = db.session.get(User, user_data["id"])
+        old_timestamp = utc_now() - timedelta(days=20)
+        new_timestamp = utc_now()
+        old_document = _create_quality_gate_document(
+            title="KWS900 Pumpenlager Wartung",
+            quality_status="admin_approved",
+            created_by=user.id,
+            text="KWS900 Pumpenlager mit Messuhr pruefen und Schmierung dokumentieren.",
+            token_text="kws900 pumpenlager messuhr pruefen schmierung dokumentieren",
+            updated_at=old_timestamp,
+        )
+        _create_quality_gate_document(
+            title="KWS901 Neuer irrelevanter Hinweis",
+            quality_status="admin_approved",
+            created_by=user.id,
+            text="KWS901 Verpackungsbereich reinigen und Sichtpruefung dokumentieren.",
+            token_text="kws901 verpackungsbereich reinigen sichtpruefung dokumentieren",
+            updated_at=new_timestamp,
+        )
+        db.session.commit()
+
+        context, sources = knowledge_context_for_chat(
+            "KWS900 Pumpenlager Messuhr",
+            user,
+            limit=1,
+        )
+
+    assert sources[0]["id"] == old_document.id
+    assert sources[0]["title"] == "KWS900 Pumpenlager Wartung"
+    assert "Pumpenlager" in context
 
 
 def test_retrieve_context_keeps_structured_data_when_rag_disabled(
@@ -681,6 +779,76 @@ def test_machine_aware_retrieval_prefers_same_error_machine(
     assert "Maschinenkontext:" in context
     assert "same_machine" in sources[0]["score_debug"]["signals"]["machine_match_reasons"]
     assert "same_error_code" in sources[0]["score_debug"]["signals"]["machine_match_reasons"]
+
+
+def test_rag_retrieval_penalizes_conflicting_error_codes(
+    app,
+    make_user,
+    make_error_entry,
+    set_dashboard_permission,
+):
+    """Verify exact error-code matches outrank chunks with conflicting codes."""
+    user_data = make_user(
+        username="rag_error_alignment_user",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+    set_dashboard_permission(user_data["username"], "errors", can_view=True)
+    app.config["RAG_SCORE_DEBUG"] = True
+    exact_error_id = make_error_entry(
+        "Presse 5",
+        "E204",
+        "Drucksensor Stoerung",
+        department_name="Produktion",
+        description="Drucksensor meldet sporadisch kein Signal.",
+        possible_causes="Sensorleitung oder Steckverbinder lose.",
+        solution="E204 Diagnose ausfuehren und Steckverbinder pruefen.",
+    )
+    wrong_error_id = make_error_entry(
+        "Presse 5",
+        "E999",
+        "Drucksensor Stoerung",
+        department_name="Produktion",
+        description="Drucksensor meldet sporadisch kein Signal.",
+        possible_causes="Sensorleitung oder Steckverbinder lose.",
+        solution="E999 Diagnose ausfuehren und Steckverbinder pruefen.",
+    )
+
+    with app.app_context():
+        user = db.session.get(User, user_data["id"])
+        timestamp = utc_now()
+        _create_quality_gate_document(
+            title="E999 Drucksensor",
+            quality_status="admin_approved",
+            created_by=user.id,
+            source_type="error_entry",
+            source_id=wrong_error_id,
+            text="Fehler E999 Drucksensor Stoerung an Presse 5 pruefen.",
+            token_text="fehler e999 drucksensor stoerung presse 5 pruefen",
+            updated_at=timestamp,
+        )
+        _create_quality_gate_document(
+            title="E204 Drucksensor",
+            quality_status="admin_approved",
+            created_by=user.id,
+            source_type="error_entry",
+            source_id=exact_error_id,
+            text="Fehler E204 Drucksensor Stoerung an Presse 5 pruefen.",
+            token_text="fehler e204 drucksensor stoerung presse 5 pruefen",
+            updated_at=timestamp,
+        )
+        db.session.commit()
+
+        _context, sources = knowledge_context_for_chat(
+            "Presse 5 Fehler E204 Drucksensor Stoerung",
+            user,
+            limit=2,
+        )
+
+    assert sources[0]["title"] == "E204 Drucksensor"
+    assert sources[0]["score"] > sources[1]["score"]
+    assert sources[0]["score_debug"]["signals"]["error_code_alignment"] == "exact_error_code"
+    assert sources[1]["score_debug"]["signals"]["error_code_alignment"] == "conflicting_error_code"
 
 
 def test_machine_aware_retrieval_uses_series_and_similar_error_code(

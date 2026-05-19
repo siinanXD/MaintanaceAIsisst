@@ -20,8 +20,13 @@ EXPLAINABILITY_FIELDS = (
     "aging_age_days",
     "aging_unconfirmed_days",
     "aging_reason",
+    "error_code_alignment",
 )
-NON_NUMERIC_EXPLAINABILITY_FIELDS = {"quality_status", "aging_reason"}
+NON_NUMERIC_EXPLAINABILITY_FIELDS = {
+    "quality_status",
+    "aging_reason",
+    "error_code_alignment",
+}
 MAX_AUDIT_SOURCES = 8
 
 
@@ -54,6 +59,7 @@ def explainability_from_metadata(metadata, final_score=0):
         "aging_age_days": _int_value(signals.get("aging_age_days")),
         "aging_unconfirmed_days": _int_value(signals.get("aging_unconfirmed_days")),
         "aging_reason": str(signals.get("aging_reason") or ""),
+        "error_code_alignment": str(signals.get("error_code_alignment") or ""),
         "final_score": _rounded_float(final_score, 2),
     }
 
@@ -177,6 +183,7 @@ def _normalize_explainability(value):
         "aging_age_days": _int_value(value.get("aging_age_days")),
         "aging_unconfirmed_days": _int_value(value.get("aging_unconfirmed_days")),
         "aging_reason": str(value.get("aging_reason") or ""),
+        "error_code_alignment": str(value.get("error_code_alignment") or ""),
         "final_score": _rounded_float(value.get("final_score"), 2),
     }
 

@@ -1,457 +1,664 @@
 {% extends "base.html" %}
 
-{% block title %}AI Admin · Maintenance Assistant{% endblock %}
+{% block title %}AI Admin &middot; Maintenance Assistant{% endblock %}
 {% block header_title %}AI Administration{% endblock %}
 
 {% block content %}
-<section class="page-section" data-admin-ai-page>
-  <div class="page-section-header">
+<section class="page-section ai-admin-page" data-admin-ai-page>
+  <header class="ai-admin-hero">
     <div>
-      <p class="section-kicker">Transparenz</p>
-      <h2>AI-Nutzung, Fehler und Wissensdatenbank</h2>
+      <span class="section-kicker">AI Control Center</span>
+      <h2>AI-System, Datenquellen und Retrieval nachvollziehbar betreiben</h2>
+      <p class="panel-meta">Betriebsstatus, RAG-Gesundheit, Datenqualit&auml;t und Antwortvertrauen an einem Ort.</p>
     </div>
-    <div class="toolbar">
+    <div class="ai-admin-actions">
       <button class="btn btn-primary" type="button" data-ai-reindex>Wissen neu indexieren</button>
       <button class="btn btn-secondary" type="button" data-ai-reindex-stale>Nur veraltete indexieren</button>
       <button class="btn btn-ghost" type="button" data-ai-queue-stale>Job einplanen</button>
       <span class="panel-meta" data-ai-reindex-message></span>
     </div>
-  </div>
+  </header>
 
-  <section class="panel" data-ai-health-panel>
-    <div class="panel-header">
-      <h3>AI Ops Cockpit</h3>
-      <span class="panel-meta">Betrieb, RAG und Queue auf einen Blick</span>
-    </div>
-    <div class="dashboard-grid dashboard-grid-4">
-      <article class="metric-card" data-ai-health="ai">
-        <span>AI Betrieb</span>
-        <strong data-ai-health-label>--</strong>
-        <small data-ai-health-detail>Noch nicht geladen</small>
-      </article>
-      <article class="metric-card" data-ai-health="rag">
-        <span>RAG Readiness</span>
-        <strong data-ai-health-label>--</strong>
-        <small data-ai-health-detail>Noch nicht geladen</small>
-      </article>
-      <article class="metric-card" data-ai-health="queue">
-        <span>Job Queue</span>
-        <strong data-ai-health-label>--</strong>
-        <small data-ai-health-detail>Noch nicht geladen</small>
-      </article>
-    </div>
+  <nav class="ai-admin-nav" aria-label="AI Admin Bereiche">
+    <a href="#ai-overview">AI &Uuml;bersicht</a>
+    <a href="#ai-monitoring">Monitoring</a>
+    <a href="#ai-data-sources">Datenquellen</a>
+    <a href="#ai-retrieval-rag">Retrieval &amp; RAG</a>
+    <a href="#ai-capabilities">AI F&auml;higkeiten</a>
+    <a href="#ai-answer-quality">Antworten verbessern</a>
+    <a href="#ai-knowledge-care">Wissenspflege</a>
+  </nav>
+
+  <section class="context-help" aria-label="So arbeitet die KI">
+    <strong>So arbeitet die KI</strong>
+    <ol class="next-step-list">
+      <li><strong>Frage verstehen:</strong> Absicht, Maschine, Fehlercode und Bereich erkennen.</li>
+      <li><strong>Daten suchen:</strong> Strukturierte App-Daten und freigegebene Dokument-Chunks abrufen.</li>
+      <li><strong>Kontext bauen:</strong> Quellen sortieren, k&uuml;rzen und mit Confidence bewerten.</li>
+      <li><strong>Safety pr&uuml;fen:</strong> riskante Aussagen markieren oder entsch&auml;rfen.</li>
+      <li><strong>Antwort liefern:</strong> Ergebnis mit Quellen, Unsicherheit und n&auml;chsten Schritten anzeigen.</li>
+    </ol>
+    <details class="help-disclosure">
+      <summary>Was bedeuten RAG, Embeddings und Retrieval?</summary>
+      <p>Retrieval ist die Suche nach passenden Quellen. RAG bedeutet, dass diese Quellen in die Antwort einflie&szlig;en. Embeddings sind technische Suchvektoren; sie m&uuml;ssen vorhanden sein, damit Dokumente semantisch gefunden werden.</p>
+    </details>
   </section>
 
-  <div class="dashboard-grid dashboard-grid-4" data-ai-kpis>
-    <article class="metric-card"><span>Events</span><strong data-ai-kpi="events_total">0</strong></article>
-    <article class="metric-card"><span>Fallback-Rate</span><strong data-ai-kpi="fallback_rate">0%</strong></article>
-    <article class="metric-card"><span>Fehler-Rate</span><strong data-ai-kpi="error_rate">0%</strong></article>
-    <article class="metric-card"><span>AI Latenz</span><strong data-ai-kpi="average_latency_ms">0 ms</strong></article>
-    <article class="metric-card"><span>Tokens</span><strong data-ai-kpi="total_tokens">0</strong></article>
-    <article class="metric-card"><span>Kosten USD</span><strong data-ai-kpi="estimated_cost_usd">0</strong></article>
-    <article class="metric-card"><span>Cache-Rate</span><strong data-ai-kpi="cache_rate">0%</strong></article>
-    <article class="metric-card"><span>Kosten / 1k</span><strong data-ai-kpi="cost_per_1k_tokens">0</strong></article>
-  </div>
-
-  <section class="panel" data-retrieval-slo-panel>
-    <div class="panel-header">
-      <h3>Retrieval SLO</h3>
-      <span class="badge badge-ai" data-retrieval-slo-status>Noch nicht geladen</span>
-    </div>
-    <div class="dashboard-grid dashboard-grid-4">
-      <article class="metric-card"><span>P95 Retrieval</span><strong data-retrieval-slo-kpi="retrieval_p95_ms">0 ms</strong></article>
-      <article class="metric-card"><span>Ohne Quellen</span><strong data-retrieval-slo-kpi="no_source_rate">0%</strong></article>
-      <article class="metric-card"><span>Low Confidence</span><strong data-retrieval-slo-kpi="low_confidence_rate">0%</strong></article>
-      <article class="metric-card"><span>Permission Filter</span><strong data-retrieval-slo-kpi="permission_filtered_candidate_count">0</strong></article>
-      <article class="metric-card"><span>Negatives Feedback</span><strong data-retrieval-slo-kpi="negative_feedback_rate">0%</strong></article>
-      <article class="metric-card"><span>Safety Risiken</span><strong data-retrieval-slo-kpi="safety_risk_count">0</strong></article>
-      <article class="metric-card"><span>Fallback Rate</span><strong data-retrieval-slo-kpi="fallback_rate">0%</strong></article>
-      <article class="metric-card"><span>Index/Sync Risiken</span><strong data-retrieval-slo-kpi="index_sync_risks">0</strong></article>
-    </div>
-    <div class="content-grid two-columns mt-4">
-      <div class="stats-list" data-retrieval-slo-trends></div>
-      <div class="stats-list" data-retrieval-slo-warnings></div>
-    </div>
-  </section>
-
-  <section class="panel" data-retrieval-evaluation-history-panel>
-    <div class="panel-header">
-      <h3>Golden Eval Historie</h3>
-      <span class="badge badge-ai" data-retrieval-evaluation-status>Noch nicht geladen</span>
-    </div>
-    <div class="dashboard-grid dashboard-grid-4">
-      <article class="metric-card"><span>Recall@K</span><strong data-retrieval-evaluation-kpi="recall_at_k">0%</strong></article>
-      <article class="metric-card"><span>MRR</span><strong data-retrieval-evaluation-kpi="mrr">0%</strong></article>
-      <article class="metric-card"><span>nDCG@K</span><strong data-retrieval-evaluation-kpi="ndcg_at_k">0%</strong></article>
-      <article class="metric-card"><span>Keine Treffer</span><strong data-retrieval-evaluation-kpi="no_result_count">0</strong></article>
-    </div>
-    <div class="content-grid two-columns mt-4">
-      <div class="stats-list" data-retrieval-evaluation-regression></div>
-      <div class="stats-list" data-retrieval-evaluation-runs></div>
-    </div>
-  </section>
-
-  <section class="panel">
-    <div class="panel-header">
-      <h3>Workflow-Kosten und Fehler</h3>
-      <span class="panel-meta">Metadata-only Auswertung ohne Prompt- oder Antworttexte</span>
-    </div>
-    <div class="content-grid two-columns">
-      <div class="table-wrap">
-        <table class="data-table">
-          <caption>AI-Workflows nach Events, Fehlern, Fallbacks, Tokens und Kosten</caption>
-          <thead><tr><th scope="col">Workflow</th><th scope="col">Events</th><th scope="col">Fallback</th><th scope="col">Fehler</th><th scope="col">Tokens</th><th scope="col">Kosten</th><th scope="col">Latenz</th></tr></thead>
-          <tbody data-ai-workflows></tbody>
-        </table>
-      </div>
-      <div class="stats-list" data-ai-top-errors></div>
-    </div>
-  </section>
-
-  <section class="panel">
-    <div class="panel-header">
-      <h3>RAG-Index Status</h3>
-      <span class="badge badge-ai" data-rag-readiness>RAG</span>
-    </div>
-    <div class="dashboard-grid dashboard-grid-4">
-      <article class="metric-card"><span>Dokumente</span><strong data-rag-kpi="documents">0</strong></article>
-      <article class="metric-card"><span>Indexiert</span><strong data-rag-kpi="indexed">0</strong></article>
-      <article class="metric-card"><span>Veraltet</span><strong data-rag-kpi="stale">0</strong></article>
-      <article class="metric-card"><span>Ausstehend</span><strong data-rag-kpi="pending">0</strong></article>
-      <article class="metric-card"><span>Durchsuchbar</span><strong data-rag-kpi="searchable_documents">0</strong></article>
-      <article class="metric-card"><span>Chunks</span><strong data-rag-kpi="chunks">0</strong></article>
-      <article class="metric-card"><span>Readiness</span><strong data-rag-readiness-score>0</strong></article>
-    </div>
-    <div class="content-grid two-columns mt-4">
-      <div class="stats-list" data-rag-source-status></div>
-      <div class="stats-list" data-rag-diagnostics></div>
-    </div>
-    <div class="content-grid two-columns mt-4">
-      <div class="stats-list" data-rag-readiness-reasons></div>
-      <div class="stats-list" data-rag-problem-documents></div>
-    </div>
-    <div class="content-grid two-columns mt-4">
-      <div class="stats-list" data-rag-vector-sync></div>
-      <div class="stats-list" data-rag-vector-issues></div>
-    </div>
-  </section>
-
-  <section class="panel" data-knowledge-lifecycle-panel>
-    <div class="panel-header">
-      <h3>Knowledge Lifecycle</h3>
-      <span class="badge badge-ai" data-knowledge-lifecycle-state>Noch nicht geladen</span>
-    </div>
-    <div class="dashboard-grid dashboard-grid-4">
-      <article class="metric-card"><span>Drafts</span><strong data-lifecycle-kpi="drafts">0</strong></article>
-      <article class="metric-card"><span>Techniker OK</span><strong data-lifecycle-kpi="technician_confirmed">0</strong></article>
-      <article class="metric-card"><span>Admin frei</span><strong data-lifecycle-kpi="admin_approved">0</strong></article>
-      <article class="metric-card"><span>Problemquellen</span><strong data-lifecycle-kpi="problem_documents">0</strong></article>
-      <article class="metric-card"><span>Feedback offen</span><strong data-lifecycle-kpi="feedback_open">0</strong></article>
-      <article class="metric-card"><span>Gaps offen</span><strong data-lifecycle-kpi="knowledge_gaps_open">0</strong></article>
-      <article class="metric-card"><span>Review offen</span><strong data-lifecycle-kpi="needs_admin_approval">0</strong></article>
-      <article class="metric-card"><span>Nicht freigegeben</span><strong data-lifecycle-kpi="non_approved_indexed_documents">0</strong></article>
-    </div>
-    <div class="content-grid two-columns mt-4">
-      <div class="stats-list" data-knowledge-lifecycle-review></div>
-      <div class="stats-list" data-knowledge-lifecycle-gate></div>
-    </div>
-    <div class="content-grid two-columns mt-4">
-      <div class="stats-list" data-knowledge-lifecycle-actions></div>
-      <div class="stats-list" data-knowledge-lifecycle-steps></div>
-    </div>
-  </section>
-
-  <section class="panel" data-knowledge-network-panel>
-    <div class="panel-header">
+  <section class="ai-admin-area" id="ai-overview" data-ai-admin-area="overview">
+    <div class="ai-admin-area-header">
       <div>
-        <h3>Knowledge Network</h3>
-        <p class="panel-meta">Read-only Sicht auf Maschinen, Fehler, Dokumente, Inventar, Trends und Knowledge-Gaps.</p>
+        <span class="section-kicker">1. AI &Uuml;bersicht</span>
+        <h3>Systemzustand und wichtigste Betriebssignale</h3>
+        <p class="panel-meta">F&uuml;r schnelle Entscheidungen: l&auml;uft die AI, ist RAG bereit und wo liegen Risiken?</p>
       </div>
-      <div class="toolbar">
-        <input class="input input-bordered" data-knowledge-network-search placeholder="Netzwerk durchsuchen">
-        <select class="input input-bordered" data-knowledge-network-source aria-label="Netzwerk nach Quelle filtern">
-          <option value="">Alle Quellen</option>
-          <option value="upload">Uploads</option>
-          <option value="manual_training">Manuelles Training</option>
-          <option value="generated_document">Berichte</option>
-          <option value="error_entry">Fehlerkatalog</option>
-          <option value="task">Tasks</option>
-          <option value="machine">Maschinen</option>
-          <option value="inventory_material">Inventar</option>
-          <option value="maintenance_plan">Wartungspläne</option>
-          <option value="machine_manual">Maschinenhandbücher</option>
-          <option value="shift_handover">Schichtübergaben</option>
-        </select>
-        <select class="input input-bordered" data-knowledge-network-quality aria-label="Netzwerk nach Qualität filtern">
-          <option value="">Alle Qualitätsstatus</option>
-          <option value="draft">Draft</option>
-          <option value="ai_suggested">AI-Vorschlag</option>
-          <option value="technician_confirmed">Techniker bestaetigt</option>
-          <option value="admin_approved">Admin freigegeben</option>
-          <option value="outdated">Veraltet</option>
-          <option value="rejected">Abgelehnt</option>
-        </select>
-        <select class="input input-bordered" data-knowledge-network-focus-type aria-label="Knowledge Network Ansicht">
-          <option value="">Gesamtnetz</option>
-          <option value="machine">Maschinenzentriert</option>
-          <option value="error">Fehlerzentriert</option>
-          <option value="task">Taskzentriert</option>
-          <option value="knowledge_gap">Gapzentriert</option>
-        </select>
-        <input class="input input-bordered" data-knowledge-network-focus placeholder="Fokus optional">
-        <button class="btn btn-secondary" type="button" data-knowledge-network-refresh>Aktualisieren</button>
-      </div>
-    </div>
-    <div class="dashboard-grid dashboard-grid-4" data-knowledge-network-stats></div>
-    <div class="knowledge-network-groups mt-4" data-knowledge-network-groups aria-label="Gruppierte Knowledge-Nodes"></div>
-    <div class="knowledge-network-layout mt-4">
-      <div class="stats-list" data-knowledge-network-canvas aria-label="Knowledge-Network Visualisierung"></div>
-      <aside class="stats-list" data-knowledge-network-detail aria-label="Knowledge-Network Details"></aside>
-    </div>
-    <div class="knowledge-network-relations mt-4" data-knowledge-network-relations aria-label="Klickbare Knowledge-Verbindungen"></div>
-    <div class="stats-list mt-4" data-knowledge-network-legend aria-label="Knowledge-Network Legende"></div>
-  </section>
-
-  <section class="panel" data-retrieval-debug-panel>
-    <div class="panel-header">
-      <div>
-        <h3>Retrieval Debug</h3>
-        <p class="panel-meta">Read-only Nachvollziehbarkeit ohne Roh-Prompts, Antworten oder Chunk-Volltexte.</p>
-      </div>
-      <div class="toolbar">
-        <input class="input input-bordered" data-retrieval-debug-search placeholder="Fragen filtern">
-        <select class="input input-bordered" data-retrieval-debug-type aria-label="Nach Query-Typ filtern">
-          <option value="">Alle Query-Typen</option>
-          <option value="error_analysis">Fehleranalyse</option>
-          <option value="machine_question">Maschinenfrage</option>
-          <option value="inventory_question">Inventarfrage</option>
-          <option value="task_question">Taskfrage</option>
-          <option value="document_question">Dokumentfrage</option>
-          <option value="safety_question">Sicherheitsfrage</option>
-          <option value="knowledge_gap">Wissenslücke</option>
-          <option value="trend_history_question">Trend/Historie</option>
-          <option value="general_question">Allgemein</option>
-        </select>
-        <button class="btn btn-secondary" type="button" data-retrieval-debug-refresh>Aktualisieren</button>
-      </div>
+      <span class="badge badge-ai" data-ai-overview-state>Noch nicht geladen</span>
     </div>
 
-    <section class="retrieval-flow-panel" data-retrieval-flow-panel aria-label="AI Retrieval Flow">
-      <div class="retrieval-flow-header">
+    <section class="panel ai-status-panel" data-ai-health-panel>
+      <div class="panel-header">
+        <h3>Systemstatus</h3>
+        <span class="panel-meta">AI-Anbieter, Modell, Dokumentensuche und Queue</span>
+      </div>
+      <div class="dashboard-grid dashboard-grid-4">
+        <article class="metric-card ai-status-card" data-ai-health="ai">
+          <span>AI Betrieb</span>
+          <strong data-ai-health-label>--</strong>
+          <small data-ai-health-detail>Noch nicht geladen</small>
+        </article>
+        <article class="metric-card ai-status-card" data-ai-health="rag">
+          <span>Dokumentensuche</span>
+          <strong data-ai-health-label>--</strong>
+          <small data-ai-health-detail>Noch nicht geladen</small>
+        </article>
+        <article class="metric-card ai-status-card" data-ai-health="queue">
+          <span>Job Queue</span>
+          <strong data-ai-health-label>--</strong>
+          <small data-ai-health-detail>Noch nicht geladen</small>
+        </article>
+        <article class="metric-card ai-status-card" data-ai-model-card>
+          <span>Modellstatus</span>
+          <strong data-ai-model-status>--</strong>
+          <small data-ai-model-detail>Noch nicht geladen</small>
+        </article>
+      </div>
+    </section>
+
+    <div class="dashboard-grid dashboard-grid-4 ai-admin-kpi-grid" data-ai-kpis>
+      <article class="metric-card"><span>Events</span><strong data-ai-kpi="events_total">0</strong></article>
+      <article class="metric-card"><span>Ausweichantworten</span><strong data-ai-kpi="fallback_rate">0%</strong></article>
+      <article class="metric-card"><span>Fehler-Rate</span><strong data-ai-kpi="error_rate">0%</strong></article>
+      <article class="metric-card"><span>AI Latenz</span><strong data-ai-kpi="average_latency_ms">0 ms</strong></article>
+      <article class="metric-card"><span>Tokens</span><strong data-ai-kpi="total_tokens">0</strong></article>
+      <article class="metric-card"><span>Kosten USD</span><strong data-ai-kpi="estimated_cost_usd">0</strong></article>
+      <article class="metric-card"><span>Cache-Rate</span><strong data-ai-kpi="cache_rate">0%</strong></article>
+      <article class="metric-card"><span>Kosten / 1k</span><strong data-ai-kpi="cost_per_1k_tokens">0</strong></article>
+    </div>
+
+    <section class="panel" data-retrieval-slo-panel>
+      <div class="panel-header">
         <div>
-          <span class="section-kicker">Warum diese Antwort?</span>
-          <h4>AI Retrieval Flow</h4>
-          <p class="panel-meta">Prompt-sichere Timeline vom Query-Verst&auml;ndnis bis zur finalen Antwort.</p>
+          <h3>Suchqualit&auml;t SLO</h3>
+          <p class="panel-meta">Qualit&auml;ts- und Betriebsmetriken f&uuml;r AI-Antworten.</p>
         </div>
-        <div class="retrieval-flow-header-actions">
-          <span class="badge badge-ai" data-retrieval-flow-status>Noch nicht geladen</span>
-          <span class="panel-meta" data-retrieval-flow-duration>-</span>
-        </div>
+        <span class="badge badge-ai" data-retrieval-slo-status>Noch nicht geladen</span>
       </div>
-      <div class="retrieval-flow-summary" data-retrieval-flow-summary></div>
-      <div class="retrieval-flow-timeline" data-retrieval-flow-timeline></div>
+      <div class="dashboard-grid dashboard-grid-4">
+        <article class="metric-card"><span>P95 Suchzeit</span><strong data-retrieval-slo-kpi="retrieval_p95_ms">0 ms</strong></article>
+        <article class="metric-card"><span>Ohne Quellen</span><strong data-retrieval-slo-kpi="no_source_rate">0%</strong></article>
+        <article class="metric-card"><span>Niedrige Sicherheit</span><strong data-retrieval-slo-kpi="low_confidence_rate">0%</strong></article>
+        <article class="metric-card"><span>Berechtigungsfilter</span><strong data-retrieval-slo-kpi="permission_filtered_candidate_count">0</strong></article>
+        <article class="metric-card"><span>Negatives Feedback</span><strong data-retrieval-slo-kpi="negative_feedback_rate">0%</strong></article>
+        <article class="metric-card"><span>Safety Risiken</span><strong data-retrieval-slo-kpi="safety_risk_count">0</strong></article>
+        <article class="metric-card"><span>Ausweichantworten</span><strong data-retrieval-slo-kpi="fallback_rate">0%</strong></article>
+        <article class="metric-card"><span>Index/Sync Risiken</span><strong data-retrieval-slo-kpi="index_sync_risks">0</strong></article>
+      </div>
       <div class="content-grid two-columns mt-4">
-        <div class="retrieval-flow-source-map" data-retrieval-flow-source-map></div>
-        <div class="retrieval-flow-answer" data-retrieval-flow-answer></div>
+        <div class="stats-list" data-retrieval-slo-trends></div>
+        <div class="stats-list" data-retrieval-slo-warnings></div>
       </div>
     </section>
 
-    <div class="table-wrap">
-      <table class="data-table">
-        <caption>Prompt-sichere Retrieval-Debug-Daten mit Query-Typ, Quellen, Confidence und Konflikten</caption>
-        <thead><tr><th scope="col">Zeit</th><th scope="col">Frage</th><th scope="col">Typ</th><th scope="col">Quellen</th><th scope="col">Confidence</th><th scope="col">Konflikte</th><th scope="col">Dauer</th><th scope="col">Flow</th></tr></thead>
-        <tbody data-retrieval-debug-rows></tbody>
-      </table>
+    <div class="content-grid two-columns">
+      <section class="panel">
+        <div class="panel-header">
+          <h3>Letzte AI-Fehler</h3>
+          <select class="input input-bordered" data-ai-event-error>
+            <option value="">Alle Fehler</option>
+            <option value="rate_limit">Rate Limit</option>
+            <option value="model_not_allowed">Modell nicht erlaubt</option>
+            <option value="authentication_error">Key ung&uuml;ltig</option>
+            <option value="connection_error">Verbindung</option>
+            <option value="timeout">Timeout</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <caption>Letzte AI-Events mit Status, Fehlerart und Tokenverbrauch</caption>
+            <thead><tr><th scope="col">Zeit</th><th scope="col">Workflow</th><th scope="col">Status</th><th scope="col">Fehler</th><th scope="col">Tokens</th></tr></thead>
+            <tbody data-ai-events></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h3>Letzte AI-Anfragen</h3>
+          <input class="input input-bordered" data-ai-chat-search placeholder="Chats durchsuchen">
+        </div>
+        <div class="stack" data-ai-chats></div>
+      </section>
     </div>
   </section>
 
-  <section class="panel">
-    <div class="panel-header">
-      <h3>Background Jobs</h3>
-      <span class="panel-meta" data-ai-job-count>0 Jobs</span>
+  <section class="ai-admin-area" id="ai-monitoring" data-ai-admin-area="monitoring">
+    <div class="ai-admin-area-header">
+      <div>
+        <span class="section-kicker">AI Monitoring</span>
+        <h3>Antwortqualit&auml;t und Retrieval-Probleme erkennen</h3>
+        <p class="panel-meta">Betriebsmetriken, Retrieval-Hits, AI-Logs und Debug-Blueprints aus bestehenden Auditdaten.</p>
+      </div>
+      <div class="toolbar">
+        <span class="badge badge-ai" data-ai-observability-status>Noch nicht geladen</span>
+        <button class="btn btn-secondary" type="button" data-ai-observability-refresh>Monitoring aktualisieren</button>
+      </div>
     </div>
-    <div class="table-wrap">
-      <table class="data-table">
-        <caption>Background-Jobs für RAG-Reindex und Wartungsdiagnose</caption>
-        <thead><tr><th scope="col">ID</th><th scope="col">Typ</th><th scope="col">Status</th><th scope="col">Versuche</th><th scope="col">Ergebnis</th></tr></thead>
-        <tbody data-ai-jobs></tbody>
-      </table>
-    </div>
-  </section>
 
-  <section class="panel">
-    <div class="panel-header">
-      <h3>Operationsdiagnose</h3>
-      <span class="panel-meta" data-ops-generated>-</span>
-    </div>
-    <div class="dashboard-grid dashboard-grid-4">
-      <article class="metric-card"><span>DB Latenz</span><strong data-ops-kpi="database_latency_ms">0 ms</strong></article>
-      <article class="metric-card"><span>Queue</span><strong data-ops-kpi="queue_length">0</strong></article>
-      <article class="metric-card"><span>Laufend</span><strong data-ops-kpi="running_jobs">0</strong></article>
-      <article class="metric-card"><span>Fehlgeschlagen</span><strong data-ops-kpi="failed_jobs">0</strong></article>
-      <article class="metric-card"><span>AI Latenz</span><strong data-ops-kpi="ai_latency_ms">0 ms</strong></article>
-      <article class="metric-card"><span>RAG stale</span><strong data-ops-kpi="rag_stale_ratio">0%</strong></article>
-      <article class="metric-card"><span>&Auml;ltester Job</span><strong data-ops-kpi="oldest_queued_age">0 s</strong></article>
-      <article class="metric-card"><span>Job Dauer</span><strong data-ops-kpi="job_avg_duration">0 s</strong></article>
-    </div>
-    <div class="content-grid two-columns mt-4">
-      <div class="stats-list" data-ai-job-status></div>
-      <div class="stats-list" data-ops-slow-endpoints></div>
-    </div>
-  </section>
+    <section class="panel ai-observability-panel">
+      <div class="panel-header">
+        <div>
+          <h3>AI Metrics Dashboard</h3>
+          <p class="panel-meta">Latenz, Tokens, Fehler, leere Retrievals und Halluzinationswarnungen.</p>
+        </div>
+      </div>
+      <div class="dashboard-grid dashboard-grid-4">
+        <article class="metric-card"><span>Antwortzeit Ø</span><strong data-ai-monitoring-kpi="average_response_ms">0 ms</strong></article>
+        <article class="metric-card"><span>Retrieval Ø</span><strong data-ai-monitoring-kpi="average_retrieval_ms">0 ms</strong></article>
+        <article class="metric-card"><span>Tokenverbrauch</span><strong data-ai-monitoring-kpi="total_tokens">0</strong></article>
+        <article class="metric-card"><span>Fehlerquote</span><strong data-ai-monitoring-kpi="error_rate">0%</strong></article>
+        <article class="metric-card"><span>Leere Retrievals</span><strong data-ai-monitoring-kpi="empty_retrieval_rate">0%</strong></article>
+        <article class="metric-card"><span>Halluzinationswarnungen</span><strong data-ai-monitoring-kpi="hallucination_warning_count">0</strong></article>
+        <article class="metric-card"><span>Trefferquote</span><strong data-ai-monitoring-kpi="retrieval_hit_rate">0%</strong></article>
+        <article class="metric-card"><span>Similarity Ø</span><strong data-ai-monitoring-kpi="average_similarity_score">0%</strong></article>
+      </div>
+      <div class="content-grid two-columns mt-4">
+        <div class="ai-monitor-list" data-ai-top-questions></div>
+        <div class="ai-monitor-list" data-ai-source-distribution></div>
+      </div>
+    </section>
 
-  <div class="content-grid two-columns">
     <section class="panel">
       <div class="panel-header">
-        <h3>Letzte AI-Events</h3>
-        <select class="input input-bordered" data-ai-event-error>
-          <option value="">Alle Fehler</option>
-          <option value="rate_limit">Rate Limit</option>
-          <option value="model_not_allowed">Modell nicht erlaubt</option>
-          <option value="authentication_error">Key ungültig</option>
-          <option value="connection_error">Verbindung</option>
-          <option value="timeout">Timeout</option>
-        </select>
+        <h3>Retrieval Monitoring</h3>
+        <span class="panel-meta">Top Treffer, schlechte Treffer, Chunk-Nutzung und Dokumentverteilung.</span>
+      </div>
+      <div class="content-grid two-columns">
+        <div class="ai-monitor-list" data-ai-top-hits></div>
+        <div class="ai-monitor-list" data-ai-poor-hits></div>
+      </div>
+      <div class="content-grid two-columns mt-4">
+        <div class="ai-monitor-list" data-ai-chunk-usage></div>
+        <div class="ai-monitor-list" data-ai-quality-metrics></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h3>AI Logs</h3>
+        <span class="panel-meta">Frage, Quellen, Confidence, Antwortqualit&auml;t, Fehler und Dauer.</span>
       </div>
       <div class="table-wrap">
         <table class="data-table">
-          <caption>Letzte AI-Events mit Status, Fehlerart und Tokenverbrauch</caption>
-          <thead><tr><th scope="col">Zeit</th><th scope="col">Workflow</th><th scope="col">Status</th><th scope="col">Fehler</th><th scope="col">Tokens</th></tr></thead>
-          <tbody data-ai-events></tbody>
+          <caption>AI-Monitoring-Logs mit Antwortqualit&auml;t, Confidence und Quellen</caption>
+          <thead><tr><th scope="col">Zeit</th><th scope="col">Frage</th><th scope="col">Qualit&auml;t</th><th scope="col">Confidence</th><th scope="col">Quellen</th><th scope="col">Dauer</th><th scope="col">Debug</th></tr></thead>
+          <tbody data-ai-observability-logs></tbody>
         </table>
       </div>
     </section>
 
     <section class="panel">
       <div class="panel-header">
-        <h3>Chat-Suche</h3>
-        <input class="input input-bordered" data-ai-chat-search placeholder="Chats durchsuchen">
+        <h3>Debug Tools</h3>
+        <div class="toolbar">
+          <select class="input input-bordered" data-ai-debug-request aria-label="AI-Anfrage analysieren"></select>
+        </div>
       </div>
-      <div class="stack" data-ai-chats></div>
+      <div class="content-grid two-columns">
+        <div class="ai-monitor-list" data-ai-debug-analysis></div>
+        <pre class="ai-debug-prompt" data-ai-debug-prompt>Kein Prompt-Blueprint geladen.</pre>
+      </div>
     </section>
-  </div>
-
-  <section class="panel">
-    <div class="panel-header">
-      <h3>Knowledge Gaps</h3>
-      <span class="panel-meta" data-ai-knowledge-gap-count>0 offen</span>
-    </div>
-    <div class="table-wrap">
-      <table class="data-table">
-        <caption>Offene Wissenslücken aus AI-Fragen ohne belastbare Quellen</caption>
-        <thead><tr><th scope="col">Frage</th><th scope="col">Bereich</th><th scope="col">Maschine</th><th scope="col">Status</th><th scope="col">Treffer</th><th scope="col">Zuletzt</th></tr></thead>
-        <tbody data-ai-knowledge-gaps></tbody>
-      </table>
-    </div>
   </section>
 
-  <section class="panel admin-training-panel">
-    <div class="panel-header">
+  <section class="ai-admin-area" id="ai-data-sources" data-ai-admin-area="data-sources">
+    <div class="ai-admin-area-header">
       <div>
-        <h3>Manuelles Assistant-Training</h3>
-        <p class="panel-meta">Q&amp;A, Regeln und Synonyme als gepflegte Wissensbasis.</p>
-      </div>
-      <div class="admin-filterbar">
-        <input class="input input-bordered" data-ai-training-search placeholder="Training durchsuchen">
-        <select class="input input-bordered" data-ai-training-active aria-label="Training nach Status filtern">
-          <option value="">Alle Trainings</option>
-          <option value="true">Nur aktiv</option>
-          <option value="false">Nur inaktiv</option>
-        </select>
+        <span class="section-kicker">2. Datenquellen</span>
+        <h3>Welche Quellen speisen strukturierte Antworten und RAG?</h3>
+        <p class="panel-meta">Fehlerkatalog, Dokumente, Tasks, Maschinen, Schichtdaten und Trainingsdaten getrennt bewerten.</p>
       </div>
     </div>
-    <div class="admin-training-workflow">
-      <aside class="admin-training-list" data-ai-training aria-label="Trainingseinträge"></aside>
-      <form class="admin-training-editor" data-ai-training-form>
-        <input type="hidden" name="id">
-        <div class="training-editor-header">
-          <div>
-            <span class="section-kicker">Editor</span>
-            <h4 data-ai-training-editor-title>Neuer Trainingseintrag</h4>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h3>Source Health Matrix</h3>
+        <span class="panel-meta">Eintr&auml;ge, Chunks, RAG-Aktivierung und Health je Quelle</span>
+      </div>
+      <div class="ai-source-grid" data-ai-source-health></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h3>RAG-Index Status</h3>
+        <span class="badge badge-ai" data-rag-readiness>RAG</span>
+      </div>
+      <div class="dashboard-grid dashboard-grid-4">
+        <article class="metric-card"><span>Dokumente</span><strong data-rag-kpi="documents">0</strong></article>
+        <article class="metric-card"><span>Indexiert</span><strong data-rag-kpi="indexed">0</strong></article>
+        <article class="metric-card"><span>Veraltet</span><strong data-rag-kpi="stale">0</strong></article>
+        <article class="metric-card"><span>Ausstehend</span><strong data-rag-kpi="pending">0</strong></article>
+        <article class="metric-card"><span>Durchsuchbar</span><strong data-rag-kpi="searchable_documents">0</strong></article>
+        <article class="metric-card"><span>Chunks</span><strong data-rag-kpi="chunks">0</strong></article>
+        <article class="metric-card"><span>Readiness</span><strong data-rag-readiness-score>0</strong></article>
+      </div>
+      <div class="content-grid two-columns mt-4">
+        <div class="stats-list" data-rag-source-status></div>
+        <div class="stats-list" data-rag-diagnostics></div>
+      </div>
+      <div class="content-grid two-columns mt-4">
+        <div class="stats-list" data-rag-readiness-reasons></div>
+        <div class="stats-list" data-rag-problem-documents></div>
+      </div>
+      <div class="content-grid two-columns mt-4">
+        <div class="stats-list" data-rag-vector-sync></div>
+        <div class="stats-list" data-rag-vector-issues></div>
+      </div>
+    </section>
+  </section>
+
+  <section class="ai-admin-area" id="ai-retrieval-rag" data-ai-admin-area="retrieval">
+    <div class="ai-admin-area-header">
+      <div>
+        <span class="section-kicker">3. Retrieval &amp; RAG</span>
+        <h3>Debugging ohne Prompt- oder Chunk-Leaks</h3>
+        <p class="panel-meta">Kandidaten, Chunks, Scores, Permission-Filter, Hybrid Search und Re-Ranking sichtbar machen.</p>
+      </div>
+    </div>
+
+    <section class="panel" data-retrieval-debug-panel>
+      <div class="panel-header">
+        <div>
+          <h3>Retrieval Analyse</h3>
+          <p class="panel-meta">Read-only Nachvollziehbarkeit ohne Roh-Prompts, Antworten oder Chunk-Volltexte.</p>
+        </div>
+        <div class="toolbar">
+          <input class="input input-bordered" data-retrieval-debug-search placeholder="Fragen filtern">
+          <select class="input input-bordered" data-retrieval-debug-type aria-label="Nach Query-Typ filtern">
+            <option value="">Alle Query-Typen</option>
+            <option value="error_analysis">Fehleranalyse</option>
+            <option value="machine_question">Maschinenfrage</option>
+            <option value="inventory_question">Inventarfrage</option>
+            <option value="task_question">Taskfrage</option>
+            <option value="document_question">Dokumentfrage</option>
+            <option value="safety_question">Sicherheitsfrage</option>
+            <option value="knowledge_gap">Wissensl&uuml;cke</option>
+            <option value="trend_history_question">Trend/Historie</option>
+            <option value="general_question">Allgemein</option>
+          </select>
+          <button class="btn btn-secondary" type="button" data-retrieval-debug-refresh>Aktualisieren</button>
+        </div>
+      </div>
+
+      <div class="ai-retrieval-inspector" data-retrieval-inspector>
+        <div class="ai-retrieval-metrics" data-retrieval-analysis></div>
+        <section class="retrieval-flow-panel" data-retrieval-flow-panel aria-label="AI Retrieval Flow">
+          <div class="retrieval-flow-header">
+            <div>
+              <span class="section-kicker">Warum diese Antwort?</span>
+              <h4>AI Retrieval Flow</h4>
+              <p class="panel-meta">Prompt-sichere Timeline vom Query-Verst&auml;ndnis bis zur finalen Antwort.</p>
+            </div>
+            <div class="retrieval-flow-header-actions">
+              <span class="badge badge-ai" data-retrieval-flow-status>Noch nicht geladen</span>
+              <span class="panel-meta" data-retrieval-flow-duration>-</span>
+            </div>
           </div>
-          <span class="status-pill is-stale" data-ai-training-editor-status>Nach dem Speichern neu indexieren</span>
-        </div>
-        <div class="training-status-strip">
-          <label class="inline-form training-active-toggle">
-            <span>Aktiv</span>
-            <input name="is_active" type="checkbox" checked>
-          </label>
-          <label class="inline-form training-priority-field">
-            <span>Priorität</span>
-            <input class="input input-bordered" name="priority" type="number" min="0" max="100" value="50">
-          </label>
-        </div>
-        <div class="content-grid two-columns">
-          <input class="input input-bordered" name="title" maxlength="220" placeholder="Titel">
-          <input class="input input-bordered" name="category" maxlength="80" placeholder="Kategorie, z. B. Wartung">
-          <input class="input input-bordered" name="department" maxlength="120" placeholder="Abteilung optional">
-          <input class="input input-bordered" name="keywords" maxlength="1000" placeholder="Keywords, Synonyme, Fehlercodes">
-        </div>
-        <textarea class="input input-bordered" name="question" maxlength="1000" rows="3" placeholder="Typische Frage oder Situation"></textarea>
-        <textarea class="input input-bordered" name="answer" maxlength="6000" rows="6" placeholder="Freigegebene Antwort, Regel oder Wartungshinweis"></textarea>
-        <p class="panel-meta">Aktuelle strukturierte Daten bleiben führend; Training ergänzt nur freigegebenes Erfahrungswissen.</p>
-        <div class="toolbar training-editor-actions">
-          <button class="btn btn-primary" type="submit">Training speichern</button>
-          <button class="btn btn-ghost" type="button" data-ai-training-reset>Neu</button>
-        </div>
-      </form>
+          <div class="retrieval-flow-summary" data-retrieval-flow-summary></div>
+          <div class="retrieval-flow-timeline" data-retrieval-flow-timeline></div>
+          <div class="content-grid two-columns mt-4">
+            <div class="retrieval-flow-source-map" data-retrieval-flow-source-map></div>
+            <div class="retrieval-flow-answer" data-retrieval-flow-answer></div>
+          </div>
+        </section>
+      </div>
+
+      <div class="table-wrap">
+        <table class="data-table">
+          <caption>Prompt-sichere Retrieval-Debug-Daten mit Query-Typ, Quellen, Confidence und Konflikten</caption>
+          <thead><tr><th scope="col">Zeit</th><th scope="col">Frage</th><th scope="col">Typ</th><th scope="col">Quellen</th><th scope="col">Confidence</th><th scope="col">Konflikte</th><th scope="col">Dauer</th><th scope="col">Flow</th></tr></thead>
+          <tbody data-retrieval-debug-rows></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel" data-retrieval-evaluation-history-panel>
+      <div class="panel-header">
+        <h3>Golden Eval Historie</h3>
+        <span class="badge badge-ai" data-retrieval-evaluation-status>Noch nicht geladen</span>
+      </div>
+      <div class="dashboard-grid dashboard-grid-4">
+        <article class="metric-card"><span>Recall@K</span><strong data-retrieval-evaluation-kpi="recall_at_k">0%</strong></article>
+        <article class="metric-card"><span>MRR</span><strong data-retrieval-evaluation-kpi="mrr">0%</strong></article>
+        <article class="metric-card"><span>nDCG@K</span><strong data-retrieval-evaluation-kpi="ndcg_at_k">0%</strong></article>
+        <article class="metric-card"><span>Keine Treffer</span><strong data-retrieval-evaluation-kpi="no_result_count">0</strong></article>
+      </div>
+      <div class="content-grid two-columns mt-4">
+        <div class="stats-list" data-retrieval-evaluation-regression></div>
+        <div class="stats-list" data-retrieval-evaluation-runs></div>
+      </div>
+    </section>
+  </section>
+
+  <section class="ai-admin-area" id="ai-capabilities" data-ai-admin-area="capabilities">
+    <div class="ai-admin-area-header">
+      <div>
+        <span class="section-kicker">4. AI F&auml;higkeiten</span>
+        <h3>Was kann die KI aktuell?</h3>
+        <p class="panel-meta">Eine bewusst einfache Produktansicht: unterst&uuml;tzt, teilweise unterst&uuml;tzt oder noch nicht unterst&uuml;tzt.</p>
+      </div>
+    </div>
+    <div class="ai-capability-grid">
+      <section class="panel ai-capability-column">
+        <div class="panel-header"><h3>Unterst&uuml;tzt</h3><span class="status-pill is-active">aktiv</span></div>
+        <div class="stack" data-ai-capabilities="supported"></div>
+      </section>
+      <section class="panel ai-capability-column">
+        <div class="panel-header"><h3>Teilweise unterst&uuml;tzt</h3><span class="status-pill is-stale">abh&auml;ngig von Daten</span></div>
+        <div class="stack" data-ai-capabilities="partial"></div>
+      </section>
+      <section class="panel ai-capability-column">
+        <div class="panel-header"><h3>Nicht unterst&uuml;tzt</h3><span class="status-pill is-muted">bewusst gesperrt</span></div>
+        <div class="stack" data-ai-capabilities="unsupported"></div>
+      </section>
     </div>
   </section>
 
-  <section class="panel">
-    <div class="panel-header">
-      <h3>Wissensdatenbank</h3>
-      <div class="toolbar">
-        <input class="input input-bordered" data-ai-knowledge-search placeholder="Wissen durchsuchen">
-        <select class="input input-bordered" data-ai-knowledge-source>
-          <option value="">Alle Quellen</option>
-          <option value="upload">Uploads</option>
-          <option value="manual_training">Manuelles Training</option>
-          <option value="generated_document">Berichte</option>
-          <option value="error_entry">Fehlerkatalog</option>
-          <option value="task">Tasks</option>
-          <option value="machine">Maschinen</option>
-          <option value="inventory_material">Inventar</option>
-          <option value="maintenance_plan">Wartungspläne</option>
-          <option value="machine_manual">Maschinenhandbücher</option>
-          <option value="shift_handover">Schichtübergaben</option>
-        </select>
-        <select class="input input-bordered" data-ai-knowledge-status aria-label="Wissen nach Indexstatus filtern">
-          <option value="">Alle Status</option>
-          <option value="indexed">Indexiert</option>
-          <option value="stale">Veraltet</option>
-          <option value="pending">Ausstehend</option>
-          <option value="error">Fehler</option>
-          <option value="no_text">Ohne Text</option>
-        </select>
-        <select class="input input-bordered" data-ai-knowledge-quality aria-label="Wissen nach Qualitätsstatus filtern">
-          <option value="">Alle Qualitätsstatus</option>
-          <option value="draft">Draft</option>
-          <option value="ai_suggested">AI-Vorschlag</option>
-          <option value="technician_confirmed">Techniker bestaetigt</option>
-          <option value="admin_approved">Admin freigegeben</option>
-          <option value="outdated">Veraltet</option>
-          <option value="rejected">Abgelehnt</option>
-        </select>
-        <form class="inline-form" data-ai-knowledge-upload>
-          <input class="input input-bordered" name="department" placeholder="Abteilung optional">
-          <input class="input input-bordered" name="file" type="file" accept=".pdf,.txt,.html,.htm">
-          <button class="btn btn-secondary" type="submit">Hochladen</button>
+  <section class="ai-admin-area" id="ai-answer-quality" data-ai-admin-area="answers">
+    <div class="ai-admin-area-header">
+      <div>
+        <span class="section-kicker">5. AI Antworten verbessern</span>
+        <h3>Antwortqualit&auml;t, Feedback und Wissensl&uuml;cken</h3>
+        <p class="panel-meta">Admins sehen, ob Antworten belegt, sicher und verbesserbar sind.</p>
+      </div>
+    </div>
+
+    <section class="panel ai-answer-quality-panel">
+      <div class="panel-header">
+        <h3>Antwortqualit&auml;t im Chat</h3>
+        <span class="panel-meta">Jede Antwort zeigt Quellen, Confidence, Unsicherheit, Safety und verwendete Dokumente.</span>
+      </div>
+      <div class="ai-answer-quality-grid" data-ai-answer-quality-guide></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h3>Workflow-Kosten und Fehler</h3>
+        <span class="panel-meta">Metadata-only Auswertung ohne Prompt- oder Antworttexte</span>
+      </div>
+      <div class="content-grid two-columns">
+        <div class="table-wrap">
+          <table class="data-table">
+            <caption>AI-Workflows nach Events, Fehlern, Fallbacks, Tokens und Kosten</caption>
+            <thead><tr><th scope="col">Workflow</th><th scope="col">Events</th><th scope="col">Fallback</th><th scope="col">Fehler</th><th scope="col">Tokens</th><th scope="col">Kosten</th><th scope="col">Latenz</th></tr></thead>
+            <tbody data-ai-workflows></tbody>
+          </table>
+        </div>
+        <div class="stats-list" data-ai-top-errors></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h3>Knowledge Gaps</h3>
+        <span class="panel-meta" data-ai-knowledge-gap-count>0 offen</span>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <caption>Offene Wissensl&uuml;cken aus AI-Fragen ohne belastbare Quellen</caption>
+          <thead><tr><th scope="col">Frage</th><th scope="col">Bereich</th><th scope="col">Maschine</th><th scope="col">Status</th><th scope="col">Treffer</th><th scope="col">Zuletzt</th></tr></thead>
+          <tbody data-ai-knowledge-gaps></tbody>
+        </table>
+      </div>
+    </section>
+  </section>
+
+  <section class="ai-admin-area" id="ai-knowledge-care" data-ai-admin-area="knowledge-care">
+    <div class="ai-admin-area-header">
+      <div>
+        <span class="section-kicker">Wissenspflege</span>
+        <h3>Lifecycle, Netzwerk, Training und Dokumentverwaltung</h3>
+        <p class="panel-meta">Pflegeaufgaben und tiefere Analyse bleiben erreichbar, aber getrennt vom Betriebs&uuml;berblick.</p>
+      </div>
+    </div>
+
+    <section class="panel" data-knowledge-lifecycle-panel>
+      <div class="panel-header">
+        <h3>Knowledge Lifecycle</h3>
+        <span class="badge badge-ai" data-knowledge-lifecycle-state>Noch nicht geladen</span>
+      </div>
+      <div class="dashboard-grid dashboard-grid-4">
+        <article class="metric-card"><span>Drafts</span><strong data-lifecycle-kpi="drafts">0</strong></article>
+        <article class="metric-card"><span>Techniker OK</span><strong data-lifecycle-kpi="technician_confirmed">0</strong></article>
+        <article class="metric-card"><span>Admin frei</span><strong data-lifecycle-kpi="admin_approved">0</strong></article>
+        <article class="metric-card"><span>Problemquellen</span><strong data-lifecycle-kpi="problem_documents">0</strong></article>
+        <article class="metric-card"><span>Feedback offen</span><strong data-lifecycle-kpi="feedback_open">0</strong></article>
+        <article class="metric-card"><span>Gaps offen</span><strong data-lifecycle-kpi="knowledge_gaps_open">0</strong></article>
+        <article class="metric-card"><span>Review offen</span><strong data-lifecycle-kpi="needs_admin_approval">0</strong></article>
+        <article class="metric-card"><span>Nicht freigegeben</span><strong data-lifecycle-kpi="non_approved_indexed_documents">0</strong></article>
+      </div>
+      <div class="content-grid two-columns mt-4">
+        <div class="stats-list" data-knowledge-lifecycle-review></div>
+        <div class="stats-list" data-knowledge-lifecycle-gate></div>
+      </div>
+      <div class="content-grid two-columns mt-4">
+        <div class="stats-list" data-knowledge-lifecycle-actions></div>
+        <div class="stats-list" data-knowledge-lifecycle-steps></div>
+      </div>
+    </section>
+
+    <section class="panel" data-knowledge-network-panel>
+      <div class="panel-header">
+        <div>
+          <h3>Knowledge Network</h3>
+          <p class="panel-meta">Read-only Sicht auf Maschinen, Fehler, Dokumente, Inventar, Trends und Knowledge-Gaps.</p>
+        </div>
+        <div class="toolbar">
+          <input class="input input-bordered" data-knowledge-network-search placeholder="Netzwerk durchsuchen">
+          <select class="input input-bordered" data-knowledge-network-source aria-label="Netzwerk nach Quelle filtern">
+            <option value="">Alle Quellen</option>
+            <option value="upload">Uploads</option>
+            <option value="manual_training">Manuelles Training</option>
+            <option value="generated_document">Berichte</option>
+            <option value="error_entry">Fehlerkatalog</option>
+            <option value="task">Tasks</option>
+            <option value="machine">Maschinen</option>
+            <option value="inventory_material">Inventar</option>
+            <option value="maintenance_plan">Wartungspl&auml;ne</option>
+            <option value="machine_manual">Maschinenhandb&uuml;cher</option>
+            <option value="shift_handover">Schicht&uuml;bergaben</option>
+          </select>
+          <select class="input input-bordered" data-knowledge-network-quality aria-label="Netzwerk nach Qualit&auml;t filtern">
+            <option value="">Alle Qualit&auml;tsstatus</option>
+            <option value="draft">Draft</option>
+            <option value="ai_suggested">AI-Vorschlag</option>
+            <option value="technician_confirmed">Techniker best&auml;tigt</option>
+            <option value="admin_approved">Admin freigegeben</option>
+            <option value="outdated">Veraltet</option>
+            <option value="rejected">Abgelehnt</option>
+          </select>
+          <select class="input input-bordered" data-knowledge-network-focus-type aria-label="Knowledge Network Ansicht">
+            <option value="">Gesamtnetz</option>
+            <option value="machine">Maschinenzentriert</option>
+            <option value="error">Fehlerzentriert</option>
+            <option value="task">Taskzentriert</option>
+            <option value="knowledge_gap">Gapzentriert</option>
+          </select>
+          <input class="input input-bordered" data-knowledge-network-focus placeholder="Fokus optional">
+          <button class="btn btn-secondary" type="button" data-knowledge-network-refresh>Aktualisieren</button>
+        </div>
+      </div>
+      <div class="dashboard-grid dashboard-grid-4" data-knowledge-network-stats></div>
+      <div class="knowledge-network-groups mt-4" data-knowledge-network-groups aria-label="Gruppierte Knowledge-Nodes"></div>
+      <div class="knowledge-network-layout mt-4">
+        <div class="stats-list" data-knowledge-network-canvas aria-label="Knowledge-Network Visualisierung"></div>
+        <aside class="stats-list" data-knowledge-network-detail aria-label="Knowledge-Network Details"></aside>
+      </div>
+      <div class="knowledge-network-relations mt-4" data-knowledge-network-relations aria-label="Klickbare Knowledge-Verbindungen"></div>
+      <div class="stats-list mt-4" data-knowledge-network-legend aria-label="Knowledge-Network Legende"></div>
+    </section>
+
+    <section class="panel admin-training-panel">
+      <div class="panel-header">
+        <div>
+          <h3>Trainingsdaten</h3>
+          <p class="panel-meta">Manuelles Assistant-Training als freigegebene, indexierbare Wissensbasis.</p>
+        </div>
+        <div class="admin-filterbar">
+          <input class="input input-bordered" data-ai-training-search placeholder="Training durchsuchen">
+          <select class="input input-bordered" data-ai-training-active aria-label="Training nach Status filtern">
+            <option value="">Alle Trainings</option>
+            <option value="true">Nur aktiv</option>
+            <option value="false">Nur inaktiv</option>
+          </select>
+        </div>
+      </div>
+      <div class="admin-training-workflow">
+        <aside class="admin-training-list" data-ai-training aria-label="Trainingseintr&auml;ge"></aside>
+        <form class="admin-training-editor" data-ai-training-form>
+          <input type="hidden" name="id">
+          <div class="training-editor-header">
+            <div>
+              <span class="section-kicker">Editor</span>
+              <h4 data-ai-training-editor-title>Neuer Trainingseintrag</h4>
+            </div>
+            <span class="status-pill is-stale" data-ai-training-editor-status>Nach dem Speichern neu indexieren</span>
+          </div>
+          <div class="training-status-strip">
+            <label class="inline-form training-active-toggle">
+              <span>Aktiv</span>
+              <input name="is_active" type="checkbox" checked>
+            </label>
+            <label class="inline-form training-priority-field">
+              <span>Priorit&auml;t</span>
+              <input class="input input-bordered" name="priority" type="number" min="0" max="100" value="50">
+            </label>
+          </div>
+          <div class="content-grid two-columns">
+            <input class="input input-bordered" name="title" maxlength="220" placeholder="Titel">
+            <input class="input input-bordered" name="category" maxlength="80" placeholder="Kategorie, z. B. Wartung">
+            <input class="input input-bordered" name="department" maxlength="120" placeholder="Abteilung optional">
+            <input class="input input-bordered" name="keywords" maxlength="1000" placeholder="Keywords, Synonyme, Fehlercodes">
+          </div>
+          <textarea class="input input-bordered" name="question" maxlength="1000" rows="3" placeholder="Typische Frage oder Situation"></textarea>
+          <textarea class="input input-bordered" name="answer" maxlength="6000" rows="6" placeholder="Freigegebene Antwort, Regel oder Wartungshinweis"></textarea>
+          <p class="panel-meta">Aktuelle strukturierte Daten bleiben f&uuml;hrend; Training erg&auml;nzt nur freigegebenes Erfahrungswissen.</p>
+          <div class="toolbar training-editor-actions">
+            <button class="btn btn-primary" type="submit">Training speichern</button>
+            <button class="btn btn-ghost" type="button" data-ai-training-reset>Neu</button>
+          </div>
         </form>
       </div>
-      <div class="knowledge-origin-legend" data-knowledge-origin-legend aria-label="Herkunft der Wissensquellen">
-        <span class="status-pill is-source-automatic">Automatisch</span>
-        <span class="status-pill is-source-manual">Manuell</span>
-        <span class="status-pill is-source-prebuilt">Vorgefertigt</span>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h3>Wissensdatenbank</h3>
+        <div class="toolbar">
+          <input class="input input-bordered" data-ai-knowledge-search placeholder="Wissen durchsuchen">
+          <select class="input input-bordered" data-ai-knowledge-source>
+            <option value="">Alle Quellen</option>
+            <option value="upload">Uploads</option>
+            <option value="manual_training">Manuelles Training</option>
+            <option value="generated_document">Berichte</option>
+            <option value="error_entry">Fehlerkatalog</option>
+            <option value="task">Tasks</option>
+            <option value="machine">Maschinen</option>
+            <option value="inventory_material">Inventar</option>
+            <option value="maintenance_plan">Wartungspl&auml;ne</option>
+            <option value="machine_manual">Maschinenhandb&uuml;cher</option>
+            <option value="shift_handover">Schicht&uuml;bergaben</option>
+          </select>
+          <select class="input input-bordered" data-ai-knowledge-status aria-label="Wissen nach Indexstatus filtern">
+            <option value="">Alle Status</option>
+            <option value="indexed">Indexiert</option>
+            <option value="stale">Veraltet</option>
+            <option value="pending">Ausstehend</option>
+            <option value="error">Fehler</option>
+            <option value="no_text">Ohne Text</option>
+          </select>
+          <select class="input input-bordered" data-ai-knowledge-quality aria-label="Wissen nach Qualit&auml;tsstatus filtern">
+            <option value="">Alle Qualit&auml;tsstatus</option>
+            <option value="draft">Draft</option>
+            <option value="ai_suggested">AI-Vorschlag</option>
+            <option value="technician_confirmed">Techniker best&auml;tigt</option>
+            <option value="admin_approved">Admin freigegeben</option>
+            <option value="outdated">Veraltet</option>
+            <option value="rejected">Abgelehnt</option>
+          </select>
+          <form class="inline-form" data-ai-knowledge-upload>
+            <input class="input input-bordered" name="department" placeholder="Abteilung optional">
+            <input class="input input-bordered" name="file" type="file" accept=".pdf,.txt,.html,.htm">
+            <button class="btn btn-secondary" type="submit">Hochladen</button>
+          </form>
+        </div>
+        <div class="knowledge-origin-legend" data-knowledge-origin-legend aria-label="Herkunft der Wissensquellen">
+          <span class="status-pill is-source-automatic">Automatisch</span>
+          <span class="status-pill is-source-manual">Manuell</span>
+          <span class="status-pill is-source-prebuilt">Vorgefertigt</span>
+        </div>
       </div>
-    </div>
-    <div class="table-wrap">
+      <div class="table-wrap">
         <table class="data-table">
-        <caption>Wissensdatenbank mit Quelle, Indexstatus, Qualität, Chunks und Abteilung</caption>
-        <thead><tr><th scope="col">Titel</th><th scope="col">Quelle</th><th scope="col">Index</th><th scope="col">Qualität</th><th scope="col">Chunks</th><th scope="col">Abteilung</th><th scope="col">Aktionen</th></tr></thead>
-        <tbody data-ai-knowledge></tbody>
-      </table>
-    </div>
+          <caption>Wissensdatenbank mit Quelle, Indexstatus, Qualit&auml;t, Chunks und Abteilung</caption>
+          <thead><tr><th scope="col">Titel</th><th scope="col">Quelle</th><th scope="col">Index</th><th scope="col">Qualität</th><th scope="col">Chunks</th><th scope="col">Abteilung</th><th scope="col">Aktionen</th></tr></thead>
+          <tbody data-ai-knowledge></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h3>Background Jobs</h3>
+        <span class="panel-meta" data-ai-job-count>0 Jobs</span>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <caption>Background-Jobs f&uuml;r RAG-Reindex und Wartungsdiagnose</caption>
+          <thead><tr><th scope="col">ID</th><th scope="col">Typ</th><th scope="col">Status</th><th scope="col">Versuche</th><th scope="col">Ergebnis</th></tr></thead>
+          <tbody data-ai-jobs></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h3>Operationsdiagnose</h3>
+        <span class="panel-meta" data-ops-generated>-</span>
+      </div>
+      <div class="dashboard-grid dashboard-grid-4">
+        <article class="metric-card"><span>DB Latenz</span><strong data-ops-kpi="database_latency_ms">0 ms</strong></article>
+        <article class="metric-card"><span>Queue</span><strong data-ops-kpi="queue_length">0</strong></article>
+        <article class="metric-card"><span>Laufend</span><strong data-ops-kpi="running_jobs">0</strong></article>
+        <article class="metric-card"><span>Fehlgeschlagen</span><strong data-ops-kpi="failed_jobs">0</strong></article>
+        <article class="metric-card"><span>AI Latenz</span><strong data-ops-kpi="ai_latency_ms">0 ms</strong></article>
+        <article class="metric-card"><span>RAG stale</span><strong data-ops-kpi="rag_stale_ratio">0%</strong></article>
+        <article class="metric-card"><span>&Auml;ltester Job</span><strong data-ops-kpi="oldest_queued_age">0 s</strong></article>
+        <article class="metric-card"><span>Job Dauer</span><strong data-ops-kpi="job_avg_duration">0 s</strong></article>
+      </div>
+      <div class="content-grid two-columns mt-4">
+        <div class="stats-list" data-ai-job-status></div>
+        <div class="stats-list" data-ops-slow-endpoints></div>
+      </div>
+    </section>
   </section>
 </section>
 {% endblock %}

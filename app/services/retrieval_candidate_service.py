@@ -8,6 +8,12 @@ from app.services.retrieval_explainability_service import explainability_from_me
 
 STRUCTURED_SCORE_CAP = 100.0
 KNOWLEDGE_SCORE_CAP = 180.0
+STRUCTURED_SCOPE_PRIORITY = {
+    "errors": 18.0,
+    "machines": 10.0,
+    "tasks": 8.0,
+    "documents": 6.0,
+}
 
 
 @dataclass(frozen=True)
@@ -83,7 +89,8 @@ def structured_candidate_score(
     requested_scope_set = set(requested_scopes or set())
     overlap = set(query_tokens or set()) & set(candidate_tokens or set())
     requested_bonus = 15 if permission_scope in requested_scope_set else 0
-    raw_score = len(overlap) * 20 + requested_bonus
+    scope_priority_bonus = STRUCTURED_SCOPE_PRIORITY.get(str(permission_scope or ""), 4.0)
+    raw_score = len(overlap) * 20 + requested_bonus + scope_priority_bonus
     allowed = raw_score > 0 or permission_scope in requested_scope_set
     reason = (
         f"{len(overlap)} gemeinsame Begriffe" if overlap else "Aktueller sichtbarer Kontext"

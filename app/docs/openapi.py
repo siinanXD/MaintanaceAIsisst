@@ -3483,6 +3483,31 @@ OPENAPI_SPEC["paths"].update(
                 },
             }
         },
+        "/api/v1/admin/ai/observability": {
+            "get": {
+                "tags": ["Admin"],
+                "summary": "Inspect AI monitoring, logs, quality metrics and debug blueprints",
+                "security": [{"bearerAuth": []}],
+                "parameters": [
+                    {
+                        "name": "days",
+                        "in": "query",
+                        "schema": {"type": "integer", "default": 30},
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "schema": {"type": "integer", "default": 10},
+                    },
+                    {
+                        "name": "chat_message_id",
+                        "in": "query",
+                        "schema": {"type": "integer"},
+                    },
+                ],
+                "responses": {"200": {"description": "AI observability loaded"}},
+            }
+        },
         "/api/v1/admin/ai/knowledge-gaps": {
             "get": {
                 "tags": ["Admin"],

@@ -24,6 +24,7 @@ from app.models import (
 )
 from app.services.ai_audit_service import ai_analytics_summary, create_ai_audit_event
 from app.services.ai_confidence_service import calculate_ai_confidence
+from app.services.ai_observability_service import ai_observability_dashboard
 from app.services.ai_routing import estimate_cost_usd, workflow_profile
 from app.services.ai_service import AIServiceError
 from app.services.conversation_context_service import conversation_context_for_chat
@@ -333,6 +334,37 @@ def test_ai_chat_marks_and_persists_low_confidence_answers(
     assert event.confidence_level == "low"
     assert chat_message.confidence_level == "low"
     assert chat_message.confidence_score == payload["confidence"]["score"]
+
+
+def test_ai_chat_blocks_hallucination_when_retrieval_is_empty(
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify unresolved error questions expose empty retrieval and avoid fake fixes."""
+    user = make_user(
+        username="ai_empty_retrieval_guard_user",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Wie behebe ich Stoerung QX999 an Maschine Omega?"},
+    )
+
+    payload = response.get_json()
+    warnings = {
+        warning["type"] for warning in payload["diagnostics"]["quality_warnings"]
+    }
+    assert response.status_code == 200
+    assert "Keine belastbare Quelle gefunden" in payload["answer"]
+    assert payload["diagnostics"]["answer_mode"] == "error_analysis"
+    assert payload["diagnostics"]["empty_retrieval"] is True
+    assert payload["diagnostics"]["hallucination_warning"] is True
+    assert {"empty_retrieval", "hallucination_risk"}.issubset(warnings)
+    assert payload["sources"] == []
 
 
 def test_ai_chat_tracks_knowledge_gap_when_no_sources_match(
@@ -1249,6 +1281,155 @@ def test_retrieval_slo_metrics_handle_empty_data(app):
     assert slo["last_values"]["retrieval_p95_ms"] == 0
     assert slo["last_values"]["no_source_rate"] == 0.0
     assert slo["warnings"] == []
+
+
+def test_ai_observability_dashboard_combines_logs_quality_and_retrieval(
+    app,
+    make_user,
+):
+    """Verify AI observability combines monitoring metrics and bounded debug data."""
+    user = make_user(username="ai_observability_user")
+    with app.app_context():
+        document = KnowledgeDocument(
+            source_type="upload",
+            title="Observability Motor FU",
+            original_filename="observability.txt",
+            relative_path="uploads/observability.txt",
+            content_type="text/plain",
+            department="Produktion",
+            status="indexed",
+            quality_status="admin_approved",
+            is_public=True,
+            chunk_count=1,
+        )
+        db.session.add(document)
+        db.session.flush()
+        actor = type("UserStub", (), {"id": user["id"]})()
+        audit_id = create_ai_audit_event(
+            user=actor,
+            workflow="assistant",
+            diagnostics={
+                "status": "openai_used",
+                "latency_ms": 240,
+                "total_tokens": 320,
+                "confidence_score": 84,
+                "confidence_level": "high",
+                "retrieval_explainability": {
+                    "retrieval_duration_ms": 42,
+                    "sources": [
+                        {
+                            "type": "knowledge",
+                            "id": document.id,
+                            "chunk_id": 77,
+                            "score": 88,
+                            "section_title": "FU Diagnose",
+                            "explainability": {
+                                "semantic_similarity": 0.82,
+                                "final_score": 88,
+                                "quality_status": "admin_approved",
+                            },
+                        }
+                    ],
+                    "context_builder": {
+                        "sections": [
+                            {
+                                "label": "Knowledge",
+                                "source_count": 1,
+                                "used_chars": 180,
+                            }
+                        ],
+                        "stats": {"used_chars": 180, "max_chars": 2000},
+                    },
+                    "query_understanding": {"query_type": "document_question"},
+                },
+            },
+            requested_scopes={"documents"},
+            allowed_scopes={"documents"},
+            source_count=1,
+        )
+        db.session.add(
+            ChatMessage(
+                user_id=user["id"],
+                message="Welche Dokumente helfen beim FU Fehler?",
+                response="Dokument Observability Motor FU nutzen.",
+                response_type="assistant",
+                diagnostics_json=json.dumps(
+                    {
+                        "confidence_score": 84,
+                        "confidence_level": "high",
+                        "quality_warnings": [],
+                    },
+                    ensure_ascii=True,
+                ),
+                source_count=1,
+                confidence_score=84,
+                confidence_level="high",
+                audit_event_id=audit_id,
+            )
+        )
+        db.session.add(
+            AIFeedback(
+                user_id=user["id"],
+                chat_message_id=1,
+                audit_event_id=audit_id,
+                prompt="Welche Dokumente helfen beim FU Fehler?",
+                response="Dokument Observability Motor FU nutzen.",
+                response_type="assistant",
+                rating="not_helpful",
+                sources_json="[]",
+                source_count=1,
+            )
+        )
+        db.session.commit()
+
+        dashboard = ai_observability_dashboard({"days": "30", "limit": "5"})
+
+    assert dashboard["metrics"]["average_response_ms"] == 240
+    assert dashboard["metrics"]["average_retrieval_ms"] == 42
+    assert dashboard["metrics"]["source_distribution"]["knowledge"] == 1
+    assert dashboard["metrics"]["top_questions"][0]["count"] == 1
+    assert dashboard["quality_metrics"]["retrieval_hit_rate"] == 1
+    assert dashboard["quality_metrics"]["average_similarity_score"] == 0.82
+    assert dashboard["retrieval_monitoring"]["top_hits"][0]["label"].startswith(
+        "Observability Motor FU",
+    )
+    assert dashboard["ai_logs"][0]["user_question"] == "Welche Dokumente helfen beim FU Fehler?"
+    assert dashboard["debug_tools"]["prompt_blueprint"]["system_prompt"]
+    assert dashboard["debug_tools"]["request_analysis"]["retrieval"]["source_count"] == 1
+
+
+def test_admin_ai_observability_endpoint_is_admin_only(
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify AI observability endpoint is restricted to master admins."""
+    admin = make_user(
+        username="ai_observability_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    user = make_user(username="ai_observability_regular")
+
+    forbidden_response = client.get(
+        "/api/v1/admin/ai/observability",
+        headers=auth_headers(user["username"]),
+    )
+    admin_response = client.get(
+        "/api/v1/admin/ai/observability?days=30&limit=5",
+        headers=auth_headers(admin["username"]),
+    )
+
+    payload = admin_response.get_json()["data"]
+    assert forbidden_response.status_code == 403
+    assert admin_response.status_code == 200
+    assert set(payload.keys()) >= {
+        "metrics",
+        "retrieval_monitoring",
+        "ai_logs",
+        "quality_metrics",
+        "debug_tools",
+    }
 
 
 def test_admin_retrieval_telemetry_endpoint_is_admin_only(

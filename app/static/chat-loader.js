@@ -1,5 +1,5 @@
 (function () {
-  const CHAT_MODULE_URL = "/static/chat.js?v=20260519-ai-answer-card1";
+  const CHAT_MODULE_URL = "/static/chat.js?v=20260519-self-explain1";
   const CHAT_OPEN_KEY = "maintenance_chat_open";
   let chatImportPromise = null;
 

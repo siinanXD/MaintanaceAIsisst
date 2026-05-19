@@ -27,6 +27,7 @@ from app.security import roles_required
 from app.services.admin_retrieval_debug_service import retrieval_debug_items
 from app.services.ai_audit_service import ai_analytics_summary
 from app.services.ai_history_service import paginated_chat_history, parse_limit_offset
+from app.services.ai_observability_service import ai_observability_dashboard
 from app.services.assistant_training_service import (
     create_training_entry,
     delete_training_entry,
@@ -476,6 +477,19 @@ def ai_retrieval_debug():
     return success_response(
         retrieval_debug_items(request.args),
         message="Retrieval debug loaded",
+    )
+
+
+@admin_bp.get("/ai/observability")
+@roles_required(Role.MASTER_ADMIN)
+def ai_observability():
+    """Return AI monitoring, quality, retrieval, and debug observability."""
+    schema_status = database_schema_status()
+    if not schema_status["ok"]:
+        return jsonify(database_schema_error_payload(schema_status)), 503
+    return success_response(
+        ai_observability_dashboard(request.args),
+        message="AI observability loaded",
     )
 
 

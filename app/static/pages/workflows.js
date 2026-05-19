@@ -466,8 +466,8 @@
 
   function priorityLabel(priority) {
     const labels = {
-      urgent: "Urgent",
-      soon: "Soon",
+      urgent: "Kritisch",
+      soon: "Bald",
       normal: "Normal"
     };
     return labels[priority] || priority || "-";
@@ -784,11 +784,11 @@
           body: JSON.stringify({ status: "open", limit: 10 })
         });
       } catch (error) {
-        priorityList.innerHTML = '<div class="empty-state">Priorisierung konnte nicht geladen werden.</div>';
+        priorityList.innerHTML = '<div class="guided-empty-state"><strong>Priorisierung konnte nicht geladen werden.</strong><p>Die Taskliste bleibt nutzbar. Prüfe später erneut oder sortiere nach Fälligkeit und Risiko.</p></div>';
         return;
       }
       if (!priorities.length) {
-        priorityList.innerHTML = '<div class="empty-state">Keine offenen Tasks zu priorisieren.</div>';
+        priorityList.innerHTML = '<div class="guided-empty-state"><strong>Keine offenen Tasks</strong><p>Wenn Arbeit entsteht, lege einen Task an oder nutze den AI-Vorschlag aus einer kurzen Beschreibung.</p><a class="btn btn-primary btn-sm" href="#task-list">Taskliste prüfen</a></div>';
         return;
       }
       priorities.forEach((item) => {
@@ -966,7 +966,7 @@
       const tasks = listData(await api("/api/v1/tasks?limit=100"));
       list.innerHTML = "";
       if (!tasks.length) {
-        list.innerHTML = '<div class="empty-state md:col-span-2 xl:col-span-3">Noch keine Tasks vorhanden.</div>';
+        list.innerHTML = '<div class="guided-empty-state md:col-span-2 xl:col-span-3"><strong>Noch keine Tasks vorhanden</strong><p>Beispiel: "Presse 3 Hydraulik prüfen". Starte mit einem neuen Task oder lasse aus einer Meldung einen Vorschlag erstellen.</p><a class="btn btn-primary btn-sm" href="#task-list">Task anlegen</a></div>';
         return;
       }
       tasks.forEach((task) => list.appendChild(taskCard(task)));
@@ -1166,7 +1166,7 @@
       similarPanel.hidden = false;
       similarList.innerHTML = "";
       if (!matches.length) {
-        similarList.innerHTML = '<tr><td colspan="5">Keine aehnlichen Fehler gefunden.</td></tr>';
+        similarList.innerHTML = '<tr><td colspan="5"><div class="guided-empty-state"><strong>Keine ähnlichen Fehler gefunden</strong><p>Lege den Eintrag an, wenn Code, Maschine und Ursache plausibel sind. Er wird danach als Quelle für spätere Analysen nutzbar.</p></div></td></tr>';
         return;
       }
       matches.forEach((match) => {
@@ -1261,7 +1261,7 @@
       list.innerHTML = "";
       if (errorCount) errorCount.textContent = filteredErrors.length + " Einträge";
       if (!filteredErrors.length) {
-        list.innerHTML = '<tr><td colspan="6">Keine passenden Fehler gefunden.</td></tr>';
+        list.innerHTML = '<tr><td colspan="6"><div class="guided-empty-state"><strong>Keine passenden Fehler gefunden</strong><p>Beispielsuche: Fehlercode, Maschine oder Symptom. Wenn es ein neuer Fall ist, lege ihn mit Ursache und Lösung im Katalog an.</p></div></td></tr>';
         return;
       }
       filteredErrors.forEach((entry) => {
@@ -2958,7 +2958,7 @@
           const fallback = result.diagnostics && (
             result.diagnostics.fallback_used || result.diagnostics.status === "fallback_used"
           )
-            ? "Fallback-Antwort: "
+            ? "Ausweichantwort: "
             : "";
           setStatusMessage(assistantAnswer, fallback + result.answer);
           renderSourcePanel(assistantSources, result.sources);
@@ -3485,11 +3485,16 @@
     const aiSystemRail = document.querySelector("[data-ai-system-rail]");
     const aiRiskRadar = document.querySelector("[data-ai-risk-radar]");
     const aiKnowledgeHealth = document.querySelector("[data-ai-knowledge-health]");
+    const executiveActivityFeed = document.querySelector("[data-dashboard-activity-feed]");
+    const executiveWarningFeed = document.querySelector("[data-dashboard-warning-feed]");
+    const executiveAiTrust = document.querySelector("[data-dashboard-ai-trust]");
+    const executiveMachineStrip = document.querySelector("[data-dashboard-machine-strip]");
+    const quickAiButtons = document.querySelectorAll("[data-dashboard-quick-ai]");
     const shiftCalendar = document.querySelector("[data-dashboard-shift-calendar]");
     const shiftTimeline = document.querySelector("[data-dashboard-shift-timeline]");
     const shiftCalendarMessage = document.querySelector("[data-dashboard-calendar-message]");
     const shiftCalendarEmployee = document.querySelector("[data-dashboard-calendar-employee]");
-    if ((!taskBoard && !errorStats && !inventoryStats && !briefingList && !employeeOverview && !shiftTimeline && !operationsInsights) || !token()) return;
+    if ((!taskBoard && !errorStats && !inventoryStats && !briefingList && !employeeOverview && !shiftTimeline && !operationsInsights && !executiveActivityFeed) || !token()) return;
 
     let activeTask = null;
     let activeTaskId = null;
@@ -3693,16 +3698,16 @@
       }
       if (lowConfidenceRate >= 0.15 || noSourceRate >= 0.1) {
         signals.push({
-          label: "Retrieval-Qualität",
+          label: "Suchqualität",
           value: formatRatePercent(Math.max(lowConfidenceRate, noSourceRate)),
-          detail: "Low Confidence oder ohne Quellen",
+          detail: "Niedrige Sicherheit oder fehlende Quellen",
           severity: lowConfidenceRate >= 0.25 || noSourceRate >= 0.2 ? "critical" : "warning",
           href: "/admin/ai"
         });
       }
       if (staleIndexCount) {
         signals.push({
-          label: "Staler Index",
+          label: "Veralteter Index",
           value: staleIndexCount,
           detail: "Dokumente sollten reindexiert werden",
           severity: "warning",
@@ -3733,11 +3738,11 @@
       const sloValues = retrievalSloValues();
       const rows = [
         ["Safety", Number(sloValues.safety_risk_count || 0), "Safety Events", Number(sloValues.safety_risk_count || 0) ? "critical" : "good"],
-        ["Low Confidence", formatRatePercent(sloValues.low_confidence_rate), "Antworten unter Schwelle", Number(sloValues.low_confidence_rate || 0) >= 0.15 ? "warning" : "good"],
+        ["Niedrige Sicherheit", formatRatePercent(sloValues.low_confidence_rate), "Antworten unter Schwelle", Number(sloValues.low_confidence_rate || 0) >= 0.15 ? "warning" : "good"],
         ["Ohne Quellen", formatRatePercent(sloValues.no_source_rate), "Antworten ohne Source", Number(sloValues.no_source_rate || 0) >= 0.1 ? "warning" : "good"],
-        ["Fallback", formatRatePercent(sloValues.fallback_rate), "Provider oder Retrieval", Number(sloValues.fallback_rate || 0) >= 0.1 ? "warning" : "good"],
+        ["Ausweichantworten", formatRatePercent(sloValues.fallback_rate), "AI-Anbieter oder Suche", Number(sloValues.fallback_rate || 0) >= 0.1 ? "warning" : "good"],
         ["Negatives Feedback", formatRatePercent(sloValues.negative_feedback_rate), "User-Rückmeldungen", Number(sloValues.negative_feedback_rate || 0) >= 0.1 ? "warning" : "good"],
-        ["Permission Filter", Number(sloValues.permission_filtered_candidate_count || 0), "gefilterte Kandidaten", "muted"]
+        ["Berechtigungsfilter", Number(sloValues.permission_filtered_candidate_count || 0), "gefilterte Kandidaten", "muted"]
       ];
       aiRiskRadar.innerHTML = "";
       rows.forEach(([label, value, detail, severity]) => {
@@ -3763,14 +3768,14 @@
       }
       const ready = aiStatus.ready === true;
       aiSystemRail.append(
-        systemStatusRow("Provider", aiStatus.provider || "-", ready ? "bereit" : "prüfen", ready ? "good" : "warning"),
+        systemStatusRow("AI-Anbieter", aiStatus.provider || "-", ready ? "bereit" : "prüfen", ready ? "good" : "warning"),
         systemStatusRow("Modell", aiStatus.model || "-", aiStatus.streaming_enabled ? "Streaming aktiv" : "Streaming aus", "muted"),
-        systemStatusRow("Retrieval P95", formatMilliseconds(sloValues.retrieval_p95_ms), "Antwortkontext", Number(sloValues.retrieval_p95_ms || 0) > 2500 ? "warning" : "good"),
-        systemStatusRow("Fallback Rate", formatRatePercent(sloValues.fallback_rate), "AI/Provider-Fallbacks", Number(sloValues.fallback_rate || 0) >= 0.1 ? "warning" : "good"),
-        systemStatusRow("Vector Sync Fehler", Number(sloValues.vector_sync_failure_count || 0), "Index-Synchronisation", Number(sloValues.vector_sync_failure_count || 0) ? "critical" : "good")
+        systemStatusRow("Suchzeit P95", formatMilliseconds(sloValues.retrieval_p95_ms), "Antwortkontext", Number(sloValues.retrieval_p95_ms || 0) > 2500 ? "warning" : "good"),
+        systemStatusRow("Ausweichantworten", formatRatePercent(sloValues.fallback_rate), "AI-Anbieter oder Suche", Number(sloValues.fallback_rate || 0) >= 0.1 ? "warning" : "good"),
+        systemStatusRow("Index-Sync-Fehler", Number(sloValues.vector_sync_failure_count || 0), "Index-Synchronisation", Number(sloValues.vector_sync_failure_count || 0) ? "critical" : "good")
       );
       setDashboardText("[data-dashboard-ai-status]", ready ? "bereit" : "prüfen");
-      setDashboardText("[data-dashboard-ai-status-meta]", aiStatus.provider || "Provider unbekannt");
+      setDashboardText("[data-dashboard-ai-status-meta]", aiStatus.provider || "AI-Anbieter unbekannt");
     }
 
     function renderKnowledgeHealth() {
@@ -3796,7 +3801,7 @@
       }
       aiKnowledgeHealth.append(
         systemStatusRow("Dokumente indexiert", indexed + "/" + documents, chunks + " Chunks", documents && indexed < documents ? "warning" : "good"),
-        systemStatusRow("Stale Dokumente", stale, "Aging und Reindex", stale ? "warning" : "good"),
+        systemStatusRow("Veraltete Dokumente", stale, "Aging und Reindex", stale ? "warning" : "good"),
         systemStatusRow("Fehlende Chunks", missingChunks, "DB zu Vector Store", missingChunks ? "critical" : "good"),
         systemStatusRow("Reindex", reindexNeeded ? "empfohlen" : "nicht nötig", (vectorStatus.reindex_reasons || []).join(", "), reindexNeeded ? "warning" : "good"),
         systemStatusRow("Knowledge-Gaps", Number(gaps.open_count || 0), "offene Lücken", Number(gaps.open_count || 0) ? "warning" : "good")
@@ -3821,12 +3826,145 @@
       );
     }
 
+    function setProgress(selector, value) {
+      document.querySelectorAll(selector).forEach((element) => {
+        element.style.width = Math.max(0, Math.min(100, Number(value || 0))) + "%";
+      });
+    }
+
+    function activityItem(kind, title, meta, severity, href) {
+      const element = document.createElement(href ? "a" : "div");
+      element.className = "activity-feed-item " + dashboardSignalClass(severity);
+      if (href) element.href = href;
+      const marker = document.createElement("span");
+      marker.className = "activity-feed-marker";
+      marker.textContent = kind;
+      const body = document.createElement("div");
+      const heading = document.createElement("strong");
+      const detail = document.createElement("small");
+      heading.textContent = title || "Hinweis";
+      detail.textContent = meta || "";
+      body.append(heading, detail);
+      element.append(marker, body);
+      return element;
+    }
+
+    function briefingSignalCount() {
+      const briefing = dashboardState.briefing || {};
+      const sections = Array.isArray(briefing.sections) ? briefing.sections : [];
+      return sections.reduce((sum, section) => sum + Number(section.count || 0), 0);
+    }
+
+    function renderMachineStrip() {
+      if (!executiveMachineStrip) return;
+      const operations = dashboardState.operations || {};
+      const machines = operations.machines || {};
+      const inventory = dashboardState.inventory || operations.inventory || {};
+      executiveMachineStrip.innerHTML = "";
+      executiveMachineStrip.append(
+        systemStatusRow("Maschinen down", Number(machines.machines_down || 0) + "/" + Number(machines.machines_total || 0), (machines.faults || dashboardState.errors.length || 0) + " Störungen", Number(machines.machines_down || 0) ? "critical" : "good"),
+        systemStatusRow("Wiederholungen", Number(machines.repeat_faults || 0), "Fehlertrend im Zeitraum", Number(machines.repeat_faults || 0) ? "warning" : "good"),
+        systemStatusRow("MTTR", formatMinutes(machines.mttr_minutes), formatMinutes(machines.downtime_minutes) + " Ausfallzeit", Number(machines.mttr_minutes || 0) > 0 ? "warning" : "good"),
+        systemStatusRow("Lager kritisch", Number(inventory.critical_shortage_count || 0), (inventory.low_stock_count || 0) + " niedrig", Number(inventory.critical_shortage_count || 0) ? "critical" : "good")
+      );
+    }
+
+    function renderAiTrustPanel() {
+      if (!executiveAiTrust) return;
+      const sloValues = retrievalSloValues();
+      const gapCount = dashboardState.knowledgeGaps ? Number(dashboardState.knowledgeGaps.open_count || 0) : 0;
+      executiveAiTrust.innerHTML = "";
+      executiveAiTrust.append(
+        systemStatusRow("Niedrige Sicherheit", formatRatePercent(sloValues.low_confidence_rate), "Antworten unter Schwelle", Number(sloValues.low_confidence_rate || 0) >= 0.15 ? "warning" : "good"),
+        systemStatusRow("Suchzeit P95", formatMilliseconds(sloValues.retrieval_p95_ms), formatRatePercent(sloValues.no_source_rate) + " ohne Quellen", Number(sloValues.retrieval_p95_ms || 0) > 2500 || Number(sloValues.no_source_rate || 0) >= 0.1 ? "warning" : "good"),
+        systemStatusRow("Safety", Number(sloValues.safety_risk_count || 0), "Safety Events im Fenster", Number(sloValues.safety_risk_count || 0) ? "critical" : "good"),
+        systemStatusRow("Knowledge-Gaps", gapCount, "offene Wissensluecken", gapCount ? "warning" : "good")
+      );
+    }
+
+    function renderExecutiveWarnings() {
+      if (!executiveWarningFeed) return;
+      const activeTasks = dashboardState.tasks.filter((task) => task.status !== "done" && task.status !== "cancelled");
+      const criticalTasks = activeTasks.filter((task) => task.priority === "urgent" || isOverdue(task));
+      const sloValues = retrievalSloValues();
+      const gapCount = dashboardState.knowledgeGaps ? Number(dashboardState.knowledgeGaps.open_count || 0) : 0;
+      const items = [];
+      if (criticalTasks.length) items.push(activityItem("KR", criticalTasks.length + " kritische Tasks", "Sofort priorisieren", "critical", "/tasks"));
+      if (dashboardState.errors.length) items.push(activityItem("ST", dashboardState.errors.length + " offene Störungen", "Maschinenlage prüfen", dashboardState.errors.length > 2 ? "critical" : "warning", "/errors"));
+      if (Number(sloValues.safety_risk_count || 0)) items.push(activityItem("SF", Number(sloValues.safety_risk_count || 0) + " Safety-Risiken", "AI Antworten prüfen", "critical", "/admin/ai"));
+      if (gapCount) items.push(activityItem("KG", gapCount + " Knowledge-Gaps", "Wissensbasis ergaenzen", "warning", "/admin/ai"));
+      if (Number(sloValues.stale_index_count || 0)) items.push(activityItem("IX", Number(sloValues.stale_index_count || 0) + " veraltete Indexeinträge", "Reindex empfohlen", "warning", "/admin/ai"));
+      executiveWarningFeed.innerHTML = "";
+      if (!items.length) {
+        executiveWarningFeed.appendChild(emptyRailMessage("Keine kritischen Warnungen im aktuellen Datenfenster."));
+        return;
+      }
+      items.slice(0, 6).forEach((item) => executiveWarningFeed.appendChild(item));
+    }
+
+    function renderActivityFeed() {
+      if (!executiveActivityFeed) return;
+      const items = [];
+      dashboardState.tasks.slice(0, 3).forEach((task) => {
+        items.push(activityItem("TA", task.title || "Task", (task.priority || "normal") + " - " + (task.status || "offen"), task.priority === "urgent" || isOverdue(task) ? "warning" : "muted", "/tasks"));
+      });
+      dashboardState.errors.slice(0, 3).forEach((entry) => {
+        items.push(activityItem("FE", entry.title || entry.error_code || "Störung", ((entry.machine_obj && entry.machine_obj.name) || entry.machine || "Maschine") + " - " + formatDashboardTime(entry.created_at), "warning", "/errors"));
+      });
+      const briefing = dashboardState.briefing || {};
+      const sections = Array.isArray(briefing.sections) ? briefing.sections : [];
+      sections.slice(0, 2).forEach((section) => {
+        items.push(activityItem("AI", section.title || "Briefing", Number(section.count || 0) + " Hinweise", "muted", "#daily-briefing"));
+      });
+      const sloValues = retrievalSloValues();
+      if (Number(sloValues.no_source_rate || 0) >= 0.1) {
+        items.push(activityItem("RG", "Antworten ohne Quellen", formatRatePercent(sloValues.no_source_rate), "warning", "/admin/ai"));
+      }
+      executiveActivityFeed.innerHTML = "";
+      if (!items.length) {
+        executiveActivityFeed.appendChild(emptyRailMessage("Noch keine Aktivitäten im aktuellen Datenfenster."));
+        return;
+      }
+      items.slice(0, 8).forEach((item) => executiveActivityFeed.appendChild(item));
+    }
+
+    function renderExecutiveKpis() {
+      const activeTasks = dashboardState.tasks.filter((task) => task.status !== "done" && task.status !== "cancelled");
+      const doneTasks = dashboardState.tasks.filter((task) => task.status === "done");
+      const criticalTasks = activeTasks.filter((task) => task.priority === "urgent" || isOverdue(task));
+      const activityCount = dashboardState.errors.length + dashboardState.tasks.length + briefingSignalCount();
+      const sloValues = retrievalSloValues();
+      const hasRisk = Boolean(criticalTasks.length || dashboardState.errors.length || Number(sloValues.safety_risk_count || 0) || Number(sloValues.vector_sync_failure_count || 0) || Number(sloValues.stale_index_count || 0));
+      setDashboardText("[data-dashboard-unresolved-errors]", dashboardState.errors.length);
+      setDashboardText("[data-dashboard-today-activity-count]", activityCount);
+      setDashboardText("[data-dashboard-active-integrations]", currentUserIsMasterAdmin() ? "AI/RAG" : "Basis");
+      setDashboardText("[data-dashboard-system-status]", hasRisk ? "Prüfen" : "Stabil");
+      setDashboardText("[data-dashboard-system-meta]", hasRisk ? "Warnungen aktiv" : "Keine kritischen Signale");
+      setProgress("[data-dashboard-open-progress]", activeTasks.length ? Math.min(100, activeTasks.length * 8) : 4);
+      setProgress("[data-dashboard-critical-progress]", criticalTasks.length ? Math.min(100, criticalTasks.length * 20) : 4);
+      setProgress("[data-dashboard-done-progress]", dashboardState.tasks.length ? (doneTasks.length / dashboardState.tasks.length) * 100 : 4);
+      setProgress("[data-dashboard-error-progress]", dashboardState.errors.length ? Math.min(100, dashboardState.errors.length * 18) : 4);
+      setProgress("[data-dashboard-activity-progress]", activityCount ? Math.min(100, activityCount * 6) : 4);
+      setProgress("[data-dashboard-ai-progress]", Number(sloValues.low_confidence_rate || 0) >= 0.15 ? 45 : 88);
+      setProgress("[data-dashboard-integration-progress]", currentUserIsMasterAdmin() ? 75 : 35);
+      setProgress("[data-dashboard-system-progress]", hasRisk ? 48 : 92);
+    }
+
+    function renderExecutiveDashboard() {
+      renderExecutiveKpis();
+      renderMachineStrip();
+      renderAiTrustPanel();
+      renderExecutiveWarnings();
+      renderActivityFeed();
+    }
+
     async function loadAiOperationsSignals() {
       if (!aiSystemRail && !aiRiskRadar && !aiKnowledgeHealth) return;
       if (!currentUserIsMasterAdmin()) {
         renderAiSystemRail();
         renderRiskRadar();
         renderKnowledgeHealth();
+        renderExecutiveDashboard();
         return;
       }
       const [aiStatusResult, telemetryResult, knowledgeStatusResult, gapResult] = await Promise.allSettled([
@@ -3843,6 +3981,7 @@
       renderAiSystemRail();
       renderRiskRadar();
       renderKnowledgeHealth();
+      renderExecutiveDashboard();
     }
 
     function updateDashboardTaskMetrics(tasks) {
@@ -3859,6 +3998,7 @@
       setText("[data-dashboard-progress-count]", progressTasks.length);
       setText("[data-dashboard-done-count]", doneTasks.length);
       setText("[data-dashboard-critical-count]", criticalTasks.length);
+      renderExecutiveDashboard();
       setDashboardText("[data-dashboard-open-meta]", progressTasks.length + " in Arbeit");
       setDashboardText("[data-dashboard-critical-meta]", criticalTasks.length ? "sofort prüfen" : "keine kritische Arbeit");
     }
@@ -4069,13 +4209,13 @@
       card.className = "cockpit-task-card is-empty";
       const text = document.createElement("p");
       text.textContent = groupName === "urgent"
-        ? "Keine dringenden Tasks."
+        ? "Keine kritischen Tasks. Beobachte neue Störungen und überfällige Arbeit."
         : groupName === "today"
-          ? "Keine Tasks für heute."
-          : "Keine Tasks in Arbeit.";
+          ? "Keine Tasks für heute. Neue Arbeit kannst du direkt aus dem Cockpit anlegen."
+          : "Keine Tasks in Arbeit. Starte offene Tasks, sobald Verantwortung und Material klar sind.";
       card.appendChild(text);
       if (cockpitSuggestForm && canWrite("tasks")) {
-        const captureButton = actionButton("Aufgaben oeffnen", () => {
+        const captureButton = actionButton("Aufgaben öffnen", () => {
           if (cockpitSuggestForm.hidden) {
             window.location.href = "/tasks";
             return;
@@ -4233,6 +4373,19 @@
       });
     }
 
+    quickAiButtons.forEach((button) => {
+      if (button.dataset.bound === "true") return;
+      button.addEventListener("click", () => {
+        const chatToggle = document.querySelector(".chat-toggle");
+        const chatInput = document.querySelector("#chat-message-input, [data-chat-input], textarea[name='message']");
+        if (chatToggle) chatToggle.click();
+        window.setTimeout(() => {
+          if (chatInput && typeof chatInput.focus === "function") chatInput.focus();
+        }, 120);
+      });
+      button.dataset.bound = "true";
+    });
+
     function rowLikeStat(label, value) {
       const item = document.createElement("div");
       item.className = "stat-row";
@@ -4269,7 +4422,7 @@
 
     function emptyDashboardMessage(message) {
       const empty = document.createElement("div");
-      empty.className = "empty-state";
+      empty.className = "guided-empty-state";
       empty.textContent = message;
       return empty;
     }
@@ -4389,6 +4542,7 @@
       if (!errors.length) {
         errorStats.appendChild(emptyDashboardMessage("Keine Störungen erfasst."));
         setDashboardText("[data-dashboard-machine-status]", "0");
+        renderExecutiveDashboard();
         setDashboardText("[data-dashboard-machine-status-meta]", "keine offenen Störungen");
         return;
       }
@@ -4410,6 +4564,7 @@
         errorStats.appendChild(rowElement);
       });
       setDashboardText("[data-dashboard-machine-status]", String(errors.length));
+      renderExecutiveDashboard();
       setDashboardText("[data-dashboard-machine-status-meta]", "offene Störungen");
     }
 
@@ -4680,6 +4835,7 @@
       const aiQuality = summary.ai_quality || {};
       setDashboardText("[data-dashboard-recurring-count]", Number(machines.repeat_faults || 0));
       setDashboardText("[data-dashboard-machine-status]", Number(machines.machines_down || 0) + "/" + Number(machines.machines_total || 0));
+      renderExecutiveDashboard();
       setDashboardText(
         "[data-dashboard-machine-status-meta]",
         (machines.faults || 0) + " Störungen, " + formatMinutes(machines.downtime_minutes) + " Ausfall"
@@ -4798,6 +4954,7 @@
       briefingList.innerHTML = "";
       const briefingCount = briefing.sections.reduce((sum, section) => sum + (section.count || 0), 0);
       setText("[data-dashboard-briefing-count]", briefingCount);
+      renderExecutiveDashboard();
       if (!briefing.sections.length) {
         briefingList.appendChild(rowLikeStat("Status", "Keine Hinweise"));
         return;
@@ -4951,6 +5108,7 @@
     renderAiSystemRail();
     renderKnowledgeHealth();
     renderPriorityRail();
+    renderExecutiveDashboard();
 
   }
 
@@ -5005,8 +5163,21 @@
       if (!tableBody) return;
       const cell = document.createElement("td");
       cell.colSpan = colspan;
-      cell.textContent = message;
       cell.className = isError ? "table-message is-error" : "table-message";
+      if (isError || message.includes("werden geladen")) {
+        cell.textContent = message;
+      } else {
+        const empty = document.createElement("div");
+        empty.className = "guided-empty-state";
+        const title = document.createElement("strong");
+        title.textContent = message;
+        const hint = document.createElement("p");
+        hint.textContent = message.includes("Handbücher")
+          ? "Lade ein Maschinenhandbuch hoch und ordne es Maschine und Bereich zu, damit die AI eine belastbare Quelle findet."
+          : "Nutze Filter, lade ein Dokument hoch oder prüfe abgeschlossene Tasks, wenn du einen Bericht erwartest.";
+        empty.append(title, hint);
+        cell.appendChild(empty);
+      }
       const tableRow = document.createElement("tr");
       tableRow.appendChild(cell);
       tableBody.innerHTML = "";

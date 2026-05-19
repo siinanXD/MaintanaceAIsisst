@@ -41,10 +41,10 @@ DEFAULT_RECENCY_WINDOW_DAYS = 90
 DEFAULT_FEEDBACK_SCAN_LIMIT = 300
 DEFAULT_SEMANTIC_ONLY_MIN_SIMILARITY = 0.78
 SOURCE_TYPE_PRIORITY = {
-    "machine_manual": 0.85,
-    "manual_training": 0.8,
-    "error_entry": 0.75,
-    "maintenance_plan": 0.7,
+    "error_entry": 0.95,
+    "machine_manual": 0.9,
+    "maintenance_plan": 0.78,
+    "manual_training": 0.72,
     "generated_document": 0.65,
     "task": 0.6,
     "machine": 0.55,
@@ -238,6 +238,7 @@ class HybridRetrievalScorer:
             candidate_text,
             document,
         )
+        error_code_alignment = self._error_code_alignment(machine_context)
         feedback_stats = self._feedback_stats_for(document, chunk_id)
         feedback_signal = feedback_stats.net_signal()
         usage_signal = _usage_signal(feedback_stats.success_count)
@@ -305,10 +306,18 @@ class HybridRetrievalScorer:
             2,
         )
         components["aging"] = -aging_penalty if aging_penalty else 0.0
-        final_score = max(
+        aged_score = max(
             0.0,
             round(quality_adjusted_score * aging_state.retrieval_multiplier, 2),
         )
+        error_mismatch_penalty = round(
+            aged_score * max(0.0, 1.0 - error_code_alignment["multiplier"]),
+            2,
+        )
+        components["error_code_alignment"] = (
+            -error_mismatch_penalty if error_mismatch_penalty else 0.0
+        )
+        final_score = max(0.0, round(aged_score * error_code_alignment["multiplier"], 2))
         signals = {
             "semantic_similarity": round(semantic_similarity, 4),
             "lexical_similarity": round(lexical_similarity, 4),
@@ -328,6 +337,9 @@ class HybridRetrievalScorer:
             "aging_age_days": aging_state.age_days,
             "aging_unconfirmed_days": aging_state.unconfirmed_days,
             "aging_stable": aging_state.stable,
+            "error_code_alignment": error_code_alignment["state"],
+            "query_error_codes": sorted(error_code_alignment["query_error_codes"]),
+            "candidate_error_codes": sorted(error_code_alignment["candidate_error_codes"]),
         }
         score = HybridScore(
             final_score=final_score,
@@ -641,6 +653,36 @@ class HybridRetrievalScorer:
             return ""
         return " ".join(_source_machine_labels(source))
 
+    def _error_code_alignment(self, candidate_context):
+        """Return an exactness signal that penalizes conflicting error-code hits."""
+        query_codes = self._query_machine_context().error_codes
+        candidate_codes = candidate_context.error_codes
+        if not query_codes:
+            return _error_alignment_payload("not_applicable", 1.0, query_codes, candidate_codes)
+        if not candidate_codes:
+            return _error_alignment_payload(
+                "candidate_without_error_code",
+                0.92,
+                query_codes,
+                candidate_codes,
+            )
+        best_similarity = _error_code_similarity(query_codes, candidate_codes)
+        if best_similarity >= 1.0:
+            return _error_alignment_payload("exact_error_code", 1.0, query_codes, candidate_codes)
+        if best_similarity >= 0.65:
+            return _error_alignment_payload(
+                "similar_error_code",
+                0.86,
+                query_codes,
+                candidate_codes,
+            )
+        return _error_alignment_payload(
+            "conflicting_error_code",
+            0.42,
+            query_codes,
+            candidate_codes,
+        )
+
     def _known_departments(self):
         """Return normalized known department names."""
         if self._known_departments_cache is not None:
@@ -899,6 +941,16 @@ def _error_code_similarity(left_codes, right_codes):
         for right_code in right_codes:
             best = max(best, _single_error_code_similarity(left_code, right_code))
     return best
+
+
+def _error_alignment_payload(state, multiplier, query_codes, candidate_codes):
+    """Return a compact error-code alignment scoring payload."""
+    return {
+        "state": state,
+        "multiplier": _clamp(multiplier, 0.0, 1.0),
+        "query_error_codes": frozenset(query_codes or ()),
+        "candidate_error_codes": frozenset(candidate_codes or ()),
+    }
 
 
 def _single_error_code_similarity(left_code, right_code):

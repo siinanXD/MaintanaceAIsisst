@@ -10,12 +10,13 @@ from app.services.text_normalization_service import (
 )
 from app.services.text_normalization_service import tokenize_text
 
-DEFAULT_CHUNK_SIZE = 1400
-DEFAULT_CHUNK_OVERLAP = 160
+DEFAULT_CHUNK_SIZE = 1200
+DEFAULT_CHUNK_OVERLAP = 220
 DEFAULT_MAX_CHUNKS = 80
 MIN_CHUNK_SIZE = 200
 MIN_CHUNK_OVERLAP = 0
 MAX_SECTION_TITLE_CHARS = 140
+MAX_PROTECTED_BLOCK_OVERSIZE_FACTOR = 1.35
 HEADING_NUMBER_PATTERN = re.compile(r"^\d+(?:\.\d+)*[.)]?\s+\S+")
 LIST_ITEM_PATTERN = re.compile(
     r"^\s*(?:[-*]|\u2022|\d+[.)]|schritt\s+\d+[:.)-])\s+",
@@ -499,6 +500,10 @@ def _split_oversized_block(block, max_chars):
     """Split very large blocks at line or sentence boundaries as a fallback."""
     if len(block.text) <= max_chars:
         return [block]
+    if _is_protected_maintenance_block(block, max_chars):
+        return [block]
+    if block.kind == "table":
+        return _split_table_block(block, max_chars)
     lines = block.text.splitlines()
     if len(lines) <= 1:
         return _split_long_block_text(block, max_chars)
@@ -519,6 +524,62 @@ def _split_oversized_block(block, max_chars):
     if current_lines:
         parts.append(_block_part(block, current_lines, current_offset))
     return parts
+
+
+def _is_protected_maintenance_block(block, max_chars):
+    """Return whether a slightly oversized maintenance block should stay intact."""
+    if block.kind not in {"error_code", "error_detail", "list"}:
+        return False
+    protected_limit = int(max_chars * MAX_PROTECTED_BLOCK_OVERSIZE_FACTOR)
+    if len(block.text) > protected_limit:
+        return False
+    if block.kind in {"error_code", "error_detail"}:
+        return True
+    return "schritt" in block.text.lower() or LIST_ITEM_PATTERN.search(block.text)
+
+
+def _split_table_block(block, max_chars):
+    """Split an oversized table block while preserving the header row in each part."""
+    lines = [line for line in block.text.splitlines() if line.strip()]
+    if len(lines) <= 2:
+        return _split_long_block_text(block, max_chars)
+
+    header_lines = _table_header_lines(lines)
+    body_lines = lines[len(header_lines):]
+    parts = []
+    current_lines = []
+    current_offset = block.offset + sum(len(line) + 1 for line in header_lines)
+    line_offset = current_offset
+    for line in body_lines:
+        candidate_lines = [*header_lines, *current_lines, line]
+        candidate = "\n".join(candidate_lines).strip()
+        if current_lines and len(candidate) > max_chars:
+            parts.append(_block_part(block, [*header_lines, *current_lines], current_offset))
+            current_lines = [line]
+            current_offset = line_offset
+        else:
+            current_lines.append(line)
+        line_offset += len(line) + 1
+    if current_lines:
+        parts.append(_block_part(block, [*header_lines, *current_lines], current_offset))
+    return parts or _split_long_block_text(block, max_chars)
+
+
+def _table_header_lines(lines):
+    """Return table header lines that should repeat across split table chunks."""
+    if len(lines) >= 3 and not _is_table_line(lines[0]) and _is_table_line(lines[1]):
+        if _looks_like_table_separator(lines[2]):
+            return lines[:3]
+        return lines[:2]
+    if len(lines) >= 2 and _looks_like_table_separator(lines[1]):
+        return lines[:2]
+    return lines[:1]
+
+
+def _looks_like_table_separator(line):
+    """Return whether a row looks like a Markdown table separator."""
+    normalized = str(line or "").replace("|", "").replace("-", "").replace(":", "").strip()
+    return normalized == ""
 
 
 def _split_long_block_text(block, max_chars):

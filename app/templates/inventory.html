@@ -11,8 +11,23 @@
   </div>
 </section>
 
+<nav class="page-command-bar" aria-label="Lager Schnellzugriff">
+  <a class="quick-action-row" href="#inventory-list">
+    <span>Lagerbestand pr&uuml;fen</span>
+    <strong>Bestand</strong>
+  </a>
+  <button class="quick-action-row is-button" type="submit" form="inventory-forecast-command-form">
+    <span>Ersatzteil-Prognose berechnen</span>
+    <strong>AI</strong>
+  </button>
+  <a class="quick-action-row" href="/machines" data-dashboard-nav="machines" hidden>
+    <span>Maschinenbezug &ouml;ffnen</span>
+    <strong>Anlagen</strong>
+  </a>
+</nav>
+
 <section class="dashboard-grid">
-  <details class="card app-card mobile-action-section lg:col-span-12" data-mobile-collapsible data-permission-write="inventory" open>
+  <details class="card app-card mobile-action-section lg:order-3 lg:col-span-12" data-mobile-collapsible data-default-collapsed="true" data-permission-write="inventory">
     <summary class="mobile-action-summary">
       <span>
         <span class="mobile-action-title">Material anlegen</span>
@@ -59,7 +74,7 @@
     </form>
   </details>
 
-  <article class="card app-card lg:col-span-12">
+  <article class="card app-card lg:order-2 lg:col-span-12">
     <div class="card-body">
       <div class="panel-header">
         <div>
@@ -67,7 +82,7 @@
           <p class="panel-meta">Riskante Tasks mit Lagerbestand und Maschinenbezug abgleichen.</p>
         </div>
       </div>
-      <form class="toolbar form-actions" data-inventory-forecast-form>
+      <form class="toolbar form-actions" id="inventory-forecast-command-form" data-inventory-forecast-form>
         <div class="field">
           <label for="forecast-threshold">Mindestbestand</label>
           <input class="input input-bordered" id="forecast-threshold" name="low_stock_threshold" type="number" min="0" value="5">
@@ -99,7 +114,7 @@
     </div>
   </article>
 
-  <article class="card app-card mobile-primary-card lg:col-span-12">
+  <article class="card app-card mobile-primary-card lg:order-1 lg:col-span-12" id="inventory-list">
     <div class="card-body">
       <div class="panel-header">
         <div>

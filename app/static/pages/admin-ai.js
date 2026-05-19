@@ -13,6 +13,10 @@
   let retrievalDebugItems = [];
   let selectedRetrievalFlowId = null;
   let currentKnowledgeNetworkPayload = null;
+  let latestAiStatus = null;
+  let latestKnowledgeStatus = null;
+  let latestRetrievalTelemetry = null;
+  let latestAiObservability = null;
 
   function token() {
     return window.localStorage.getItem("maintenance_access_token");
@@ -134,6 +138,124 @@
       manual_training: "Manuelles Training"
     };
     return labels[sourceType] || sourceType;
+  }
+
+  function dataSourceDefinitions() {
+    return [
+      {
+        key: "error_catalog",
+        label: "Fehlerkatalog",
+        description: "Fehlercodes, Ursachen und L&ouml;sungen",
+        types: ["error_entry"]
+      },
+      {
+        key: "documents",
+        label: "Dokumente",
+        description: "Uploads, Berichte und Maschinenhandb&uuml;cher",
+        types: ["upload", "generated_document", "machine_manual", "maintenance_plan"]
+      },
+      {
+        key: "tasks",
+        label: "Tasks",
+        description: "Wartungs- und Eskalationsaufgaben",
+        types: ["task"]
+      },
+      {
+        key: "machines",
+        label: "Maschinen",
+        description: "Anlagen, Komponenten und Maschinenkontext",
+        types: ["machine"]
+      },
+      {
+        key: "shift_data",
+        label: "Schichtdaten",
+        description: "Schicht&uuml;bergaben und operative Hinweise",
+        types: ["shift_handover"]
+      },
+      {
+        key: "training",
+        label: "Trainingsdaten",
+        description: "Manuelles Assistant-Training",
+        types: ["manual_training"]
+      }
+    ];
+  }
+
+  function sourceMetrics(status, types) {
+    const sourceTypes = status.source_types || [];
+    const matching = sourceTypes.filter((item) => types.includes(item.source_type));
+    return matching.reduce((result, item) => ({
+      documents: result.documents + Number(item.documents || 0),
+      searchable: result.searchable + Number(item.searchable_documents || 0),
+      chunks: result.chunks + Number(item.chunks || 0),
+      active: result.active || Boolean(item.searchable),
+    }), { documents: 0, searchable: 0, chunks: 0, active: false });
+  }
+
+  function sourceHealth(metrics, ragEnabled) {
+    if (!ragEnabled) {
+      return { label: "RAG aus", className: "is-muted", detail: "Strukturierte Daten bleiben nutzbar" };
+    }
+    if (!metrics.documents) {
+      return { label: "leer", className: "is-muted", detail: "noch keine Quelle registriert" };
+    }
+    if (metrics.active && metrics.searchable === metrics.documents) {
+      return { label: "gesund", className: "is-active", detail: "vollst&auml;ndig im Retrieval nutzbar" };
+    }
+    if (metrics.active) {
+      return { label: "teilweise", className: "is-stale", detail: "ein Teil ist suchbar" };
+    }
+    return { label: "nicht aktiv", className: "is-error", detail: "nicht im RAG-Kontext verf&uuml;gbar" };
+  }
+
+  function appendSourceStat(target, label, value) {
+    const item = document.createElement("span");
+    const key = document.createElement("small");
+    const count = document.createElement("strong");
+    key.textContent = label;
+    count.textContent = text(value);
+    item.append(key, count);
+    target.appendChild(item);
+  }
+
+  function renderSourceHealth(status) {
+    const target = root.querySelector("[data-ai-source-health]");
+    if (!target) return;
+    const data = status || {};
+    const ragEnabled = Boolean(data.diagnostics && data.diagnostics.rag_enabled);
+    const vectorStatus = data.vector_store || {};
+    const lastUpdate = vectorStatus.latest_indexed_at
+      || (vectorStatus.last_successful_sync && vectorStatus.last_successful_sync.synced_at)
+      || "";
+    target.innerHTML = "";
+    dataSourceDefinitions().forEach((definition) => {
+      const metrics = sourceMetrics(data, definition.types);
+      const health = sourceHealth(metrics, ragEnabled);
+      const card = document.createElement("article");
+      const header = document.createElement("div");
+      const title = document.createElement("strong");
+      const badge = statusPill(health.label, health.className);
+      const description = document.createElement("p");
+      const stats = document.createElement("div");
+      const meta = document.createElement("small");
+      card.className = "ai-source-card " + health.className;
+      header.className = "ai-source-card-header";
+      title.textContent = definition.label;
+      description.innerHTML = definition.description;
+      stats.className = "ai-source-stats";
+      appendSourceStat(stats, "Einträge", numberText(metrics.documents));
+      appendSourceStat(stats, "Chunks", numberText(metrics.chunks));
+      appendSourceStat(stats, "Suchbar", numberText(metrics.searchable));
+      meta.innerHTML = [
+        "Embedding: " + text(data.diagnostics && data.diagnostics.embedding_provider),
+        "RAG: " + (metrics.active ? "aktiv genutzt" : "nicht aktiv"),
+        "Letzte Aktualisierung: " + (lastUpdate ? dateTimeText(lastUpdate) : "nicht verf&uuml;gbar"),
+        "Health: " + health.detail
+      ].join(" &middot; ");
+      header.append(title, badge);
+      card.append(header, description, stats, meta);
+      target.appendChild(card);
+    });
   }
 
   function knowledgeOriginKind(documentItem) {
@@ -766,6 +888,7 @@
       }
       if (durationTarget) durationTarget.textContent = "-";
       summaryTarget.appendChild(statusRow("Flow", "Noch keine Retrieval-Debug-Daten vorhanden."));
+      renderRetrievalAnalysis(null);
       return;
     }
     const worstStatus = retrievalFlowWorstStatus(item.flow_steps || []);
@@ -778,6 +901,69 @@
     renderRetrievalFlowTimeline(timelineTarget, item);
     renderRetrievalFlowSources(sourceMapTarget, item);
     renderRetrievalFlowAnswer(answerTarget, item);
+    renderRetrievalAnalysis(item);
+  }
+
+  function renderRetrievalAnalysis(item) {
+    const target = root.querySelector("[data-retrieval-analysis]");
+    if (!target) return;
+    target.innerHTML = "";
+    const empty = !item;
+    const reranking = empty ? {} : (item.reranking || {});
+    const metrics = [
+      {
+        label: "Gefundene Chunks",
+        value: empty ? "0" : numberText((item.rag_chunks || []).length),
+        detail: "RAG-Kontext"
+      },
+      {
+        label: "Hybrid Treffer",
+        value: empty ? "0" : numberText((item.used_sources || []).length),
+        detail: "Strukturiert + RAG"
+      },
+      {
+        label: "Re-Ranking",
+        value: numberText(reranking.reranked_count || 0),
+        detail: "sichtbar neu sortiert"
+      },
+      {
+        label: "Top Score",
+        value: scoreText(reranking.top_score),
+        detail: "bestbewertete Quelle"
+      },
+      {
+        label: "Permission Status",
+        value: empty ? "-" : "gefiltert",
+        detail: "nur erlaubte Quellen im Flow"
+      },
+      {
+        label: "Suchdauer",
+        value: empty ? "0 ms" : msText(item.retrieval_duration_ms || 0),
+        detail: "bis Context Building"
+      },
+      {
+        label: "Tokens",
+        value: "-",
+        detail: "prompt-sicher nicht persistiert"
+      },
+      {
+        label: "Chunk IDs",
+        value: empty ? "-" : (item.rag_chunks || []).map((chunk) => chunk.chunk_id).filter(Boolean).slice(0, 3).join(", ") || "-",
+        detail: "Top sichtbare Chunks"
+      }
+    ];
+    metrics.forEach((metric) => {
+      const card = document.createElement("article");
+      const label = document.createElement("span");
+      const value = document.createElement("strong");
+      const detail = document.createElement("small");
+      card.className = "ai-retrieval-metric";
+      label.textContent = metric.label;
+      value.textContent = metric.value;
+      detail.textContent = metric.detail;
+      card.append(label, value, detail);
+      target.appendChild(card);
+    });
   }
 
   function retrievalFlowWorstStatus(steps) {
@@ -1051,15 +1237,15 @@
 
   function retrievalSloLabel(metric) {
     const labels = {
-      retrieval_p95_ms: "P95 Retrieval",
+      retrieval_p95_ms: "P95 Suchzeit",
       no_source_rate: "Ohne Quellen",
-      low_confidence_rate: "Low Confidence",
-      permission_filtered_candidate_count: "Permission Filter",
+      low_confidence_rate: "Niedrige Sicherheit",
+      permission_filtered_candidate_count: "Berechtigungsfilter",
       negative_feedback_rate: "Negatives Feedback",
       safety_risk_count: "Safety Risiken",
-      fallback_rate: "Fallback Rate",
-      vector_sync_failure_count: "Vector Sync Fehler",
-      stale_index_count: "Stale Index"
+      fallback_rate: "Ausweichantworten",
+      vector_sync_failure_count: "Index-Sync-Fehler",
+      stale_index_count: "Veralteter Index"
     };
     return labels[metric] || text(metric);
   }
@@ -1130,6 +1316,301 @@
         });
       }
     }
+    renderOverviewState();
+  }
+
+  function monitoringStatus(metrics, qualityMetrics) {
+    const errorRate = Number((metrics && metrics.error_rate) || 0);
+    const emptyRate = Number((metrics && metrics.empty_retrieval_rate) || 0);
+    const warnings = Number((metrics && metrics.hallucination_warning_count) || 0);
+    const hitRate = Number((qualityMetrics && qualityMetrics.retrieval_hit_rate) || 0);
+    if (errorRate >= 0.25 || emptyRate >= 0.35 || warnings >= 5 || hitRate < 0.5) {
+      return "critical";
+    }
+    if (errorRate > 0 || emptyRate >= 0.15 || warnings > 0 || hitRate < 0.75) {
+      return "warning";
+    }
+    return "ok";
+  }
+
+  function monitoringKpiValue(key, metrics, qualityMetrics) {
+    const source = key in qualityMetrics ? qualityMetrics : metrics;
+    const value = source[key];
+    if (key.includes("rate") || key.includes("similarity")) return percentText(value);
+    if (key.includes("_ms")) return msText(Math.round(Number(value || 0)));
+    return numberText(value);
+  }
+
+  function renderMiniBar(target, label, value, maxValue) {
+    const row = document.createElement("div");
+    const header = document.createElement("div");
+    const bar = document.createElement("span");
+    const fill = document.createElement("i");
+    const safeMax = Math.max(Number(maxValue || 0), Number(value || 0), 1);
+    row.className = "ai-mini-bar";
+    header.append(statusPill(label, "is-muted"), document.createElement("strong"));
+    header.querySelector("strong").textContent = numberText(value);
+    fill.style.width = Math.max(4, Math.round((Number(value || 0) / safeMax) * 100)) + "%";
+    bar.appendChild(fill);
+    row.append(header, bar);
+    target.appendChild(row);
+  }
+
+  function renderMonitoringList(target, title, rows, emptyText, rowRenderer) {
+    if (!target) return;
+    target.innerHTML = "";
+    const heading = document.createElement("div");
+    const headingTitle = document.createElement("strong");
+    heading.className = "ai-monitor-list-header";
+    headingTitle.textContent = title;
+    heading.appendChild(headingTitle);
+    target.appendChild(heading);
+    if (!rows || !rows.length) {
+      target.appendChild(statusRow(title, emptyText));
+      return;
+    }
+    rows.forEach((row) => target.appendChild(rowRenderer(row)));
+  }
+
+  function monitoringRow(label, value, meta, className) {
+    const row = document.createElement("article");
+    const title = document.createElement("strong");
+    const detail = document.createElement("span");
+    const foot = document.createElement("small");
+    row.className = "ai-monitor-row " + (className || "");
+    title.textContent = label;
+    detail.textContent = value;
+    foot.textContent = meta || "";
+    row.append(title, detail, foot);
+    return row;
+  }
+
+  function renderAiObservability(payload) {
+    latestAiObservability = payload || {};
+    const metrics = latestAiObservability.metrics || {};
+    const quality = latestAiObservability.quality_metrics || {};
+    const retrieval = latestAiObservability.retrieval_monitoring || {};
+    const status = monitoringStatus(metrics, quality);
+    const statusTarget = root.querySelector("[data-ai-observability-status]");
+    if (statusTarget) {
+      statusTarget.textContent = readinessLabel(status);
+      statusTarget.className = "badge badge-ai " + healthClass(status);
+    }
+    root.querySelectorAll("[data-ai-monitoring-kpi]").forEach((target) => {
+      const key = target.dataset.aiMonitoringKpi;
+      target.textContent = monitoringKpiValue(key, metrics, quality);
+    });
+    renderTopQuestions(metrics.top_questions || []);
+    renderSourceDistribution(metrics.source_distribution_rows || []);
+    renderRetrievalHits(retrieval);
+    renderQualityMetrics(quality, retrieval.score_summary || {});
+    renderAiObservabilityLogs(latestAiObservability.ai_logs || []);
+    renderDebugTools(latestAiObservability.debug_tools || {});
+  }
+
+  function renderTopQuestions(rows) {
+    renderMonitoringList(
+      root.querySelector("[data-ai-top-questions]"),
+      "Häufigste Fragen",
+      rows,
+      "noch keine Fragen",
+      (row) => monitoringRow(
+        truncateLabel(row.question, 110),
+        numberText(row.count) + "x",
+        "Ø Confidence " + text(row.average_confidence)
+      )
+    );
+  }
+
+  function renderSourceDistribution(rows) {
+    const target = root.querySelector("[data-ai-source-distribution]");
+    if (!target) return;
+    target.innerHTML = "";
+    const heading = document.createElement("div");
+    heading.className = "ai-monitor-list-header";
+    heading.appendChild(document.createElement("strong"));
+    heading.querySelector("strong").textContent = "Quellenverteilung";
+    target.appendChild(heading);
+    if (!rows.length) {
+      target.appendChild(statusRow("Quellen", "noch keine Quellen genutzt"));
+      return;
+    }
+    const maxValue = Math.max(...rows.map((row) => Number(row.count || 0)), 1);
+    rows.forEach((row) => renderMiniBar(target, sourceTypeLabel(row.key), row.count, maxValue));
+  }
+
+  function renderRetrievalHits(retrieval) {
+    renderMonitoringList(
+      root.querySelector("[data-ai-top-hits]"),
+      "Top Treffer",
+      retrieval.top_hits || [],
+      "noch keine Treffer",
+      (row) => monitoringRow(
+        truncateLabel(row.label, 120),
+        "Score " + scoreText(row.score),
+        "Rank " + text(row.rank) + " · Similarity " + scoreText(row.similarity)
+      )
+    );
+    renderMonitoringList(
+      root.querySelector("[data-ai-poor-hits]"),
+      "Schlechte Treffer",
+      retrieval.poor_hits || [],
+      "keine auffälligen Treffer",
+      (row) => monitoringRow(
+        truncateLabel(row.label, 120),
+        "Score " + scoreText(row.score),
+        "Similarity " + scoreText(row.similarity),
+        "is-warning"
+      )
+    );
+    renderMonitoringList(
+      root.querySelector("[data-ai-chunk-usage]"),
+      "Chunk-Nutzung",
+      retrieval.chunk_usage || [],
+      "noch keine Chunk-Nutzung",
+      (row) => monitoringRow(
+        truncateLabel(row.label || row.source_type + " #" + row.source_id, 120),
+        numberText(row.uses) + " Nutzungen",
+        row.chunk_id ? "Chunk #" + row.chunk_id : "ohne Chunk"
+      )
+    );
+  }
+
+  function renderQualityMetrics(quality, scoreSummary) {
+    const rows = [
+      ["Recall@K", quality.recall_at_k == null ? "-" : percentText(quality.recall_at_k)],
+      ["Trefferquote", percentText(quality.retrieval_hit_rate)],
+      ["Leere Suchläufe", percentText(quality.empty_retrieval_rate)],
+      ["Similarity Ø", percentText(quality.average_similarity_score)],
+      ["Score Ø", scoreText(scoreSummary.average_score)],
+      ["Niedrige Ähnlichkeit", numberText(quality.low_similarity_count)]
+    ];
+    renderMonitoringList(
+      root.querySelector("[data-ai-quality-metrics]"),
+      "Qualitätsmetriken",
+      rows,
+      "noch keine Metriken",
+      (row) => monitoringRow(row[0], row[1], "")
+    );
+  }
+
+  function renderAiObservabilityLogs(logs) {
+    const tbody = root.querySelector("[data-ai-observability-logs]");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+    if (!logs.length) {
+      const row = document.createElement("tr");
+      const empty = document.createElement("td");
+      empty.colSpan = 7;
+      empty.textContent = "Noch keine AI-Logs im Zeitraum.";
+      row.appendChild(empty);
+      tbody.appendChild(row);
+      return;
+    }
+    logs.forEach((item) => {
+      const row = document.createElement("tr");
+      const action = document.createElement("td");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn btn-ghost btn-sm";
+      button.dataset.aiDebugSelect = item.chat_message_id;
+      button.textContent = "Analysieren";
+      action.appendChild(button);
+      row.append(
+        cell(dateTimeText(item.created_at)),
+        cell(truncateLabel(item.user_question, 80)),
+        pillCell(answerQualityLabel(item.answer_quality), answerQualityClass(item.answer_quality)),
+        cell(confidenceLabel(item.confidence)),
+        cell(numberText(item.source_count)),
+        cell(msText(item.response_duration_ms || item.retrieval_duration_ms || 0)),
+        action
+      );
+      tbody.appendChild(row);
+    });
+  }
+
+  function answerQualityLabel(value) {
+    const labels = {
+      good: "gut",
+      ok: "ok",
+      warning: "prüfen",
+      risk: "Risiko"
+    };
+    return labels[value] || text(value);
+  }
+
+  function answerQualityClass(value) {
+    if (value === "good") return "is-active";
+    if (value === "risk") return "is-error";
+    if (value === "warning") return "is-stale";
+    return "is-muted";
+  }
+
+  function renderDebugTools(debugTools) {
+    const select = root.querySelector("[data-ai-debug-request]");
+    const analysisTarget = root.querySelector("[data-ai-debug-analysis]");
+    const promptTarget = root.querySelector("[data-ai-debug-prompt]");
+    if (!select || !analysisTarget || !promptTarget) return;
+    const selectedId = String(debugTools.selected_chat_message_id || "");
+    select.innerHTML = "";
+    (debugTools.available_requests || []).forEach((item) => {
+      const option = document.createElement("option");
+      option.value = item.chat_message_id;
+      option.textContent = truncateLabel(item.question, 90);
+      option.selected = String(item.chat_message_id) === selectedId;
+      select.appendChild(option);
+    });
+    if (!select.options.length) {
+      const option = document.createElement("option");
+      option.value = "";
+      option.textContent = "Keine Anfrage vorhanden";
+      select.appendChild(option);
+    }
+    renderDebugAnalysis(analysisTarget, debugTools.request_analysis);
+    promptTarget.textContent = promptDebugText(debugTools.prompt_blueprint);
+  }
+
+  function renderDebugAnalysis(target, analysis) {
+    target.innerHTML = "";
+    if (!analysis) {
+      target.appendChild(statusRow("Analyse", "noch keine Anfrage vorhanden"));
+      return;
+    }
+    const retrieval = analysis.retrieval || {};
+    const contextBuilder = analysis.context_builder || {};
+    const stats = contextBuilder.stats || {};
+    target.appendChild(statusRow("Frage", truncateLabel(analysis.question, 140)));
+    target.appendChild(statusRow("Query-Typ", queryTypeLabel((analysis.query_understanding || {}).query_type)));
+    target.appendChild(statusRow("Quellen", numberText(retrieval.source_count)));
+    target.appendChild(statusRow("Suchdauer", msText(retrieval.retrieval_duration_ms || 0)));
+    target.appendChild(statusRow("Context Sections", numberText((contextBuilder.sections || []).length)));
+    target.appendChild(statusRow("Kontextbudget", numberText(stats.used_chars) + " / " + numberText(stats.max_chars)));
+    target.appendChild(statusRow("Confidence", confidenceLabel(analysis.confidence)));
+    target.appendChild(statusRow("Warnungen", numberText((analysis.quality_warnings || []).length)));
+  }
+
+  function promptDebugText(prompt) {
+    if (!prompt) return "Kein Prompt-Blueprint geladen.";
+    return [
+      "System Prompt:",
+      prompt.system_prompt || "-",
+      "",
+      "Kontextsicht:",
+      prompt.context_visibility || "-",
+      "",
+      "Prompt Preview:",
+      prompt.prompt_preview || "-",
+      "",
+      "Quellen:",
+      (prompt.source_references || []).map((source) => "- " + source.label).join("\n") || "-"
+    ].join("\n");
+  }
+
+  async function loadAiObservability(chatMessageId) {
+    const params = new URLSearchParams({ days: "30", limit: "10" });
+    if (chatMessageId) params.set("chat_message_id", chatMessageId);
+    const payload = await api("/api/v1/admin/ai/observability?" + params.toString());
+    renderAiObservability(payload);
   }
 
   function retrievalEvaluationValue(metric, value) {
@@ -1209,8 +1690,118 @@
 
   async function loadRetrievalTelemetry() {
     const telemetry = await api("/api/v1/admin/ai/retrieval-telemetry?days=30&limit=5");
+    latestRetrievalTelemetry = telemetry;
     renderRetrievalSlo(telemetry);
     renderRetrievalEvaluationHistory(telemetry);
+  }
+
+  function renderAiStatus(status) {
+    latestAiStatus = status || {};
+    const card = root.querySelector("[data-ai-model-card]");
+    const label = root.querySelector("[data-ai-model-status]");
+    const detail = root.querySelector("[data-ai-model-detail]");
+    if (!card || !label || !detail) return;
+    card.classList.remove("is-active", "is-stale", "is-error");
+    card.classList.add(latestAiStatus.ready ? "is-active" : "is-stale");
+    label.textContent = latestAiStatus.model || "lokal";
+    detail.textContent = [
+      latestAiStatus.provider || "provider offen",
+      latestAiStatus.streaming_enabled ? "Streaming aktiv" : "Streaming aus",
+      latestAiStatus.last_error ? "Fehler: " + latestAiStatus.last_error : "kein letzter Fehler"
+    ].join(" - ");
+    renderCapabilities();
+    renderOverviewState();
+  }
+
+  async function loadAiStatus() {
+    const status = await api("/api/v1/ai/status");
+    renderAiStatus(status);
+  }
+
+  function renderOverviewState() {
+    const target = root.querySelector("[data-ai-overview-state]");
+    if (!target) return;
+    const aiReady = !latestAiStatus || latestAiStatus.ready !== false;
+    const ragScore = Number((latestKnowledgeStatus || {}).readiness_score || 0);
+    const sloStatus = (
+      latestRetrievalTelemetry
+      && latestRetrievalTelemetry.retrieval_slo
+      && latestRetrievalTelemetry.retrieval_slo.status
+    ) || "ok";
+    const critical = !aiReady || ragScore < 40 || sloStatus === "critical";
+    const warning = !critical && (ragScore < 80 || sloStatus === "warning");
+    target.textContent = critical ? "Handlungsbedarf" : (warning ? "Beobachten" : "Betriebsbereit");
+    target.className = "badge badge-ai " + (critical ? "is-error" : (warning ? "is-stale" : "is-active"));
+  }
+
+  function capabilityGroups() {
+    const ragReady = Number((latestKnowledgeStatus || {}).readiness_score || 0) >= 60;
+    const modelReady = !latestAiStatus || latestAiStatus.ready !== false;
+    return {
+      supported: [
+        ["Permission-aware Retrieval", "Quellen werden rollen- und berechtigungsbewusst gefiltert."],
+        ["Fehlerkatalog-Assistenz", "Fehlercodes, Ursachen und L&ouml;sungen bleiben strukturiert nutzbar."],
+        ["Confidence & Explainability", "Antworten zeigen Score, Begr&uuml;ndung und verwendete Quellen."],
+        ["Safety Checks", "Riskante Wartungshinweise werden vor und nach der Generierung gepr&uuml;ft."]
+      ],
+      partial: [
+        [
+          "RAG & Dokumentwissen",
+          ragReady
+            ? "Aktiv, aber abh&auml;ngig von Indexfrische und Quellenqualit&auml;t."
+            : "Nur eingeschr&auml;nkt, solange Readiness oder Chunks fehlen."
+        ],
+        ["Golden Retrieval Evaluation", "Historie ist vorhanden, ben&ouml;tigt regelm&auml;&szlig;ige Runs f&uuml;r Trends."],
+        [
+          "OpenAI-Anbindung",
+          modelReady ? "Konfiguriert; Fallbacks bleiben m&ouml;glich." : "Nicht voll bereit; lokale/strukturierte Antworten bleiben m&ouml;glich."
+        ],
+        ["Knowledge Network", "Read-only Analyse verf&uuml;gbar; keine GraphDB erforderlich."]
+      ],
+      unsupported: [
+        ["Autonome Maschinenfreigaben", "Die KI darf keine sicherheitskritischen Freigaben erteilen."],
+        ["Arbeiten unter Spannung", "Gef&auml;hrliche Schritt-f&uuml;r-Schritt-Anleitungen werden entsch&auml;rft."],
+        ["Ungefilterte Prompt-/Chunk-Einsicht", "Admin-Debug bleibt prompt-sicher und zeigt keine sensiblen Rohtexte."]
+      ]
+    };
+  }
+
+  function renderCapabilityCard(target, title, detail, tone) {
+    const card = document.createElement("article");
+    const heading = document.createElement("strong");
+    const textNode = document.createElement("p");
+    card.className = "ai-capability-card " + tone;
+    heading.innerHTML = title;
+    textNode.innerHTML = detail;
+    card.append(heading, textNode);
+    target.appendChild(card);
+  }
+
+  function renderCapabilities() {
+    const groups = capabilityGroups();
+    Object.keys(groups).forEach((key) => {
+      const target = root.querySelector('[data-ai-capabilities="' + key + '"]');
+      if (!target) return;
+      target.innerHTML = "";
+      const tone = key === "supported" ? "is-active" : (key === "unsupported" ? "is-muted" : "is-stale");
+      groups[key].forEach(([title, detail]) => renderCapabilityCard(target, title, detail, tone));
+    });
+  }
+
+  function renderAnswerQualityGuide() {
+    const target = root.querySelector("[data-ai-answer-quality-guide]");
+    if (!target) return;
+    target.innerHTML = "";
+    [
+      ["Quellen", "Verwendete Quellen und Dokumente werden als Chips angezeigt.", "is-active"],
+      ["Confidence Score", "Hoch, mittel oder niedrig mit visueller Skala.", "is-active"],
+      ["Antwortqualit&auml;t", "SLOs, Feedback und Golden Eval zeigen Qualit&auml;t &uuml;ber Zeit.", "is-stale"],
+        ["Unsicherheit", "Niedrige Sicherheit, Konflikte und fehlende Quellen werden sichtbar markiert.", "is-stale"],
+      ["Safety", "Sicherheitsrelevante Inhalte erhalten klare Warnhinweise.", "is-error"],
+      ["Dokumentbezug", "Abschnitte, Chunks und Quelle-zu-Antwort-Bezug bleiben nachvollziehbar.", "is-active"]
+    ].forEach(([title, detail, tone]) => {
+      renderCapabilityCard(target, title, detail, tone);
+    });
   }
 
   function renderWorkflowMetrics(workflows) {
@@ -1354,9 +1945,9 @@
     if (syncList) {
       syncList.innerHTML = "";
       syncList.append(
-        statusRow("Vector Backend", data.store || "-"),
+        statusRow("Suchindex Backend", data.store || "-"),
         statusRow("Konfiguriert", data.configured_store || "-"),
-        statusRow("Fallback", data.fallback_active ? "aktiv" : "nein"),
+        statusRow("Ausweichbetrieb", data.fallback_active ? "aktiv" : "nein"),
         statusRow("Soll Vektoren", numberText(data.expected_vector_count || 0)),
         statusRow("Ist Vektoren", data.actual_vector_count == null ? "-" : numberText(data.actual_vector_count)),
         statusRow("Letzter Index", dateTimeText(data.latest_indexed_at)),
@@ -1371,7 +1962,7 @@
         statusRow("Stale Dokumente", numberText(data.stale_document_count || 0)),
         statusRow("Fehlende Chunks", numberText(data.missing_chunk_count || 0)),
         statusRow("Chunk Mismatch", numberText(data.chunk_mismatch_count || 0)),
-        statusRow("Sync Fehler", numberText(data.vector_sync_failure_count || 0))
+        statusRow("Sync-Fehler", numberText(data.vector_sync_failure_count || 0))
       );
       const reasons = data.reindex_reasons || [];
       if (reasons.length) {
@@ -1381,6 +1972,7 @@
   }
 
   function renderKnowledgeStatus(status) {
+    latestKnowledgeStatus = status || {};
     ["documents", "indexed", "stale", "pending", "searchable_documents", "chunks"].forEach((key) => {
       const target = root.querySelector('[data-rag-kpi="' + key + '"]');
       if (target) target.textContent = text(status[key]);
@@ -1421,8 +2013,8 @@
     diagnosticList.innerHTML = "";
     diagnosticList.append(
       statusRow("RAG aktiv", diagnostics.rag_enabled ? "ja" : "nein"),
-      statusRow("Vector Store", diagnostics.vector_store),
-      statusRow("Embedding", diagnostics.embedding_provider),
+      statusRow("Suchindex", diagnostics.vector_store),
+      statusRow("Embedding-Anbieter", diagnostics.embedding_provider),
       statusRow("Chunking", diagnostics.chunk_size + " / " + diagnostics.chunk_overlap),
       statusRow("Top K", diagnostics.top_k),
       statusRow("Scan Limit", diagnostics.scan_limit)
@@ -1454,6 +2046,9 @@
 
     renderLifecycle(status.lifecycle || {});
     renderVectorStoreStatus(status.vector_store || {});
+    renderSourceHealth(status);
+    renderCapabilities();
+    renderOverviewState();
   }
 
   async function loadKnowledgeStatus() {
@@ -1823,7 +2418,10 @@
   }
 
   async function refreshAll() {
+    renderCapabilities();
+    renderAnswerQualityGuide();
     await Promise.all([
+      loadAiStatus(),
       loadSummary(),
       loadEvents(),
       loadChats(),
@@ -1833,6 +2431,7 @@
       loadKnowledgeNetwork(),
       loadRetrievalDebug(),
       loadRetrievalTelemetry(),
+      loadAiObservability(),
       loadKnowledgeStatus(),
       loadJobs(),
       loadOperationsMetrics()
@@ -1875,6 +2474,19 @@
   });
   root.querySelector("[data-retrieval-debug-type]").addEventListener("change", loadRetrievalDebug);
   root.querySelector("[data-retrieval-debug-refresh]").addEventListener("click", loadRetrievalDebug);
+  root.querySelector("[data-ai-observability-refresh]").addEventListener("click", () => {
+    loadAiObservability().catch((error) => setAdminMessage(error.message, true));
+  });
+  root.querySelector("[data-ai-debug-request]").addEventListener("change", (event) => {
+    loadAiObservability(event.currentTarget.value)
+      .catch((error) => setAdminMessage(error.message, true));
+  });
+  root.querySelector("[data-ai-observability-logs]").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-ai-debug-select]");
+    if (!button) return;
+    loadAiObservability(button.dataset.aiDebugSelect)
+      .catch((error) => setAdminMessage(error.message, true));
+  });
   root.querySelector("[data-retrieval-debug-rows]").addEventListener("click", (event) => {
     const button = event.target.closest("[data-retrieval-flow-select]");
     if (!button) return;
