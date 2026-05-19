@@ -1546,6 +1546,7 @@ def test_technician_quality_status_permissions_are_scoped(
 def test_manual_training_rag_respects_active_state_and_department(
     client,
     make_user,
+    set_dashboard_permission,
     auth_headers,
 ):
     """Verify manual training sources are indexed and permission-aware."""
@@ -1564,9 +1565,18 @@ def test_manual_training_rag_respects_active_state_and_department(
         role=Role.PRODUKTION,
         department_name="Instandhaltung",
     )
+    no_scope = make_user(
+        username="training_rag_no_scope",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+    set_dashboard_permission(user["username"], "documents", can_view=True)
+    set_dashboard_permission(blocked["username"], "documents", can_view=True)
+    set_dashboard_permission(no_scope["username"], "documents", can_view=False)
     admin_headers = auth_headers(admin["username"])
     user_headers = auth_headers(user["username"])
     blocked_headers = auth_headers(blocked["username"])
+    no_scope_headers = auth_headers(no_scope["username"])
 
     create_response = client.post(
         "/api/v1/admin/ai/training",
@@ -1606,6 +1616,11 @@ def test_manual_training_rag_respects_active_state_and_department(
         "/api/v1/admin/ai/knowledge/reindex?mode=stale",
         headers=admin_headers,
     )
+    admin_visible_response = client.post(
+        "/api/v1/ai/chat",
+        headers=admin_headers,
+        json={"message": "Was ist bei X900 Druckverlust wichtig?"},
+    )
     visible_response = client.post(
         "/api/v1/ai/chat",
         headers=user_headers,
@@ -1626,9 +1641,18 @@ def test_manual_training_rag_respects_active_state_and_department(
         headers=blocked_headers,
         json={"message": "Was ist bei X900 Druckverlust wichtig?"},
     )
+    no_scope_response = client.post(
+        "/api/v1/ai/chat",
+        headers=no_scope_headers,
+        json={"message": "Was ist bei X900 Druckverlust wichtig?"},
+    )
 
     assert create_response.status_code == 201
     assert reindex_response.status_code == 200
+    assert any(
+        source["type"] == "knowledge" and "X900" in source["title"]
+        for source in admin_visible_response.get_json()["sources"]
+    )
     assert any(
         source["type"] == "knowledge" and "X900" in source["title"]
         for source in visible_response.get_json()["sources"]
@@ -1638,6 +1662,9 @@ def test_manual_training_rag_respects_active_state_and_department(
         "Z900" in source["title"] for source in department_response.get_json()["sources"]
     )
     assert not any("X900" in source["title"] for source in blocked_response.get_json()["sources"])
+    assert not any(
+        "X900" in source["title"] for source in no_scope_response.get_json()["sources"]
+    )
 
 
 def test_chat_templates_are_permission_aware(
@@ -1863,6 +1890,7 @@ def test_knowledge_status_reports_rag_index_diagnostics(
 def test_knowledge_lifecycle_status_covers_training_rag_feedback_flow(
     client,
     make_user,
+    set_dashboard_permission,
     auth_headers,
 ):
     """Verify the lifecycle read model covers draft, RAG use, and feedback review."""
@@ -1876,6 +1904,7 @@ def test_knowledge_lifecycle_status_covers_training_rag_feedback_flow(
         role=Role.PRODUKTION,
         department_name="Produktion",
     )
+    set_dashboard_permission(user["username"], "documents", can_view=True)
     admin_headers = auth_headers(admin["username"])
     user_headers = auth_headers(user["username"])
 

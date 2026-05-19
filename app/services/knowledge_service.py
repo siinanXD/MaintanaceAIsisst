@@ -23,7 +23,6 @@ from app.models import (
     ShiftHandover,
     Task,
 )
-from app.security import has_dashboard_permission
 from app.services.chunking_service import (
     ChunkingConfig,
 )
@@ -34,7 +33,6 @@ from app.services.document_service import (
     document_path,
     extract_manual_text,
     html_to_text,
-    visible_documents_query,
 )
 from app.services.knowledge_quality_service import (
     default_quality_status_for_source,
@@ -42,6 +40,7 @@ from app.services.knowledge_quality_service import (
     retrieval_quality_gate_for_document,
 )
 from app.services.retrieval_scoring_service import HybridRetrievalScorer
+from app.services.source_visibility_policy import can_user_read_source_document
 from app.services.technical_entity_service import (
     entities_to_json,
     entity_token_text,
@@ -635,76 +634,7 @@ def search_knowledge_chunks(query_text, user, limit=MAX_RETRIEVAL_CHUNKS):
 
 def can_user_read_knowledge_document(user, document):
     """Return whether a user may use a knowledge document as RAG context."""
-    if user.is_admin:
-        return True
-    if not document.is_public:
-        return False
-    if document.department and (not user.department or user.department.name != document.department):
-        return False
-    if document.source_type == "upload":
-        return has_dashboard_permission(user, "documents", "view")
-    if document.source_type == "generated_document" and document.source_id:
-        return (
-            visible_documents_query(user).filter(GeneratedDocument.id == document.source_id).first()
-            is not None
-        )
-    if document.source_type == "error_entry" and document.source_id:
-        return can_read_error_entry(user, document.source_id)
-    if document.source_type == "task" and document.source_id:
-        return can_read_task(user, document.source_id)
-    if document.source_type == "machine":
-        return has_dashboard_permission(user, "machines", "view")
-    if document.source_type == "inventory_material":
-        return has_dashboard_permission(user, "inventory", "view")
-    if document.source_type == "maintenance_plan" and document.source_id:
-        return can_read_maintenance_plan(user, document.source_id)
-    if document.source_type == "machine_manual":
-        return has_dashboard_permission(user, "documents", "view")
-    if document.source_type == "shift_handover":
-        return has_dashboard_permission(user, "shiftplans", "view")
-    if document.source_type == "manual_training" and document.source_id:
-        return can_read_training_entry(user, document.source_id)
-    return has_dashboard_permission(user, "documents", "view")
-
-
-def can_read_error_entry(user, error_id):
-    """Return whether a user can read an error catalog source."""
-    if not has_dashboard_permission(user, "errors", "view"):
-        return False
-    from app.services.error_service import visible_errors_query
-
-    return visible_errors_query(user).filter(ErrorEntry.id == error_id).first() is not None
-
-
-def can_read_task(user, task_id):
-    """Return whether a user can read a task source."""
-    if not has_dashboard_permission(user, "tasks", "view"):
-        return False
-    from app.services.task_service import visible_tasks_query
-
-    return visible_tasks_query(user).filter(Task.id == task_id).first() is not None
-
-
-def can_read_maintenance_plan(user, plan_id):
-    """Return whether a user can read a recurring maintenance plan source."""
-    if not has_dashboard_permission(user, "machines", "view"):
-        return False
-    from app.machines.maintenance_services import visible_maintenance_plans_query
-
-    return (
-        visible_maintenance_plans_query(user).filter(MaintenancePlan.id == plan_id).first()
-        is not None
-    )
-
-
-def can_read_training_entry(user, entry_id):
-    """Return whether a user can read a manual training source."""
-    entry = db.session.get(AssistantTrainingEntry, entry_id)
-    if not entry or not entry.is_active:
-        return False
-    if entry.department and (not user.department or user.department.name != entry.department):
-        return False
-    return True
+    return can_user_read_source_document(user, document)
 
 
 def chunk_payload(chunk, score):

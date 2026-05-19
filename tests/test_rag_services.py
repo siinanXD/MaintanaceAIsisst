@@ -27,7 +27,7 @@ from app.services.knowledge_aging_service import (
     mark_outdated_knowledge_by_age,
 )
 from app.services.knowledge_service import chunk_vector_metadata, rebuild_chunks
-from app.services.retrieval_service import knowledge_context_for_chat
+from app.services.retrieval_service import knowledge_context_for_chat, retrieve_context
 from app.services.technical_entity_service import extract_technical_entities
 
 
@@ -217,6 +217,41 @@ def test_rag_knowledge_context_respects_document_permissions(
     assert sources[0]["type"] == "knowledge"
     assert blocked_context == ""
     assert blocked_sources == []
+
+
+def test_retrieve_context_keeps_structured_data_when_rag_disabled(
+    app,
+    make_user,
+    set_dashboard_permission,
+    make_task,
+):
+    """Verify structured retrieval remains available when RAG is disabled."""
+    user_data = make_user(
+        username="rag_disabled_structured_user",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+    set_dashboard_permission(user_data["username"], "tasks", can_view=True)
+    make_task(
+        "RD900 RAG deaktiviert",
+        user_data["username"],
+        department_name="Produktion",
+        description="RD900 strukturierter Task bleibt ohne RAG sichtbar.",
+    )
+    app.config["RAG_ENABLED"] = False
+
+    with app.app_context():
+        user = db.session.get(User, user_data["id"])
+        payload = retrieve_context(
+            "RD900 strukturierter Task",
+            user,
+            requested_scopes={"tasks"},
+        )
+
+    assert "RD900 RAG deaktiviert" in payload["context"]
+    assert any(source["type"] == "task" for source in payload["sources"])
+    assert payload["data"]["tasks"]
+    assert "knowledge" not in payload["data"]
 
 
 @pytest.mark.parametrize(
