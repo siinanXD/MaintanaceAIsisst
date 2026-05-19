@@ -31,9 +31,11 @@ from app.services.ai_prompting import (
 from app.services.ai_retrieval import allowed_ai_scopes, retrieve_ai_context
 from app.services.ai_routing import local_metadata, workflow_profile
 from app.services.ai_safety_service import (
+    apply_post_generation_safety_to_result,
     apply_safety_payload_warning,
     apply_safety_warning,
     assess_ai_safety,
+    enforce_post_generation_safety,
 )
 from app.services.ai_service import AIServiceError, MockAIProvider, get_ai_provider
 from app.services.conversation_context_service import conversation_context_for_chat
@@ -716,6 +718,9 @@ def attach_audit_metadata(
         safety_assessment = assess_ai_safety(message, sources=sources)
     result["answer"] = apply_safety_warning(result.get("answer"), safety_assessment)
     result["answer"] = apply_safety_payload_warning(result.get("answer"), safety)
+    post_safety = enforce_post_generation_safety(result.get("answer"), safety)
+    result = apply_post_generation_safety_to_result(result, post_safety)
+    diagnostics = result.setdefault("diagnostics", ai_diagnostics("local_answer"))
     diagnostics["source_count"] = len(sources)
     diagnostics["scopes"] = sorted(requested_scopes or [])
     diagnostics["retrieval_explainability"] = retrieval_explainability_summary(sources)
@@ -723,6 +728,7 @@ def attach_audit_metadata(
         {
             "query_understanding": diagnostics.get("query_understanding") or {},
             "safety": diagnostics.get("safety") or {},
+            "post_generation_safety": diagnostics.get("post_generation_safety") or {},
             "conflicts": diagnostics.get("source_conflicts") or {},
             "context_builder": diagnostics.get("context_builder") or {},
             "knowledge_links": diagnostics.get("knowledge_links") or {},

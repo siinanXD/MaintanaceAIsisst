@@ -1,6 +1,10 @@
 """RAG orchestration for AI-native maintenance assistant workflows."""
 
 from app.services.ai_confidence_service import attach_confidence_to_result
+from app.services.ai_safety_service import (
+    apply_post_generation_safety_to_result,
+    enforce_post_generation_safety,
+)
 from app.services.ai_service import get_ai_provider
 from app.services.retrieval_explainability_service import retrieval_explainability_summary
 from app.services.retrieval_service import is_rag_enabled, retrieve_context
@@ -59,7 +63,7 @@ def answer_with_rag(
     )
     ai_provider = provider or get_ai_provider()
     answer = ai_provider.answer_question(message, retrieval["context"])
-    return attach_confidence_to_result(
+    result = attach_confidence_to_result(
         message,
         {
             "answer": answer,
@@ -69,6 +73,11 @@ def answer_with_rag(
             "provider": getattr(ai_provider, "name", "unknown"),
         },
     )
+    post_safety = enforce_post_generation_safety(
+        result.get("answer"),
+        retrieval["rag"].get("safety"),
+    )
+    return apply_post_generation_safety_to_result(result, post_safety)
 
 
 def _knowledge_source_count(sources):

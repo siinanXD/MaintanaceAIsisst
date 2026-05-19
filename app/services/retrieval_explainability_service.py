@@ -122,6 +122,10 @@ def sanitize_audit_explainability(value):
         )
     if "safety" in value:
         payload["safety"] = _sanitize_safety(value.get("safety"))
+    if "post_generation_safety" in value:
+        payload["post_generation_safety"] = _sanitize_post_generation_safety(
+            value.get("post_generation_safety"),
+        )
     if "conflicts" in value:
         payload["conflicts"] = _sanitize_conflicts(value.get("conflicts"))
     if "context_builder" in value:
@@ -256,6 +260,21 @@ def _sanitize_safety(value):
         "blocked_actions": _string_list(value.get("blocked_actions")),
         "signals": _string_list(value.get("signals")),
     }
+
+
+def _sanitize_post_generation_safety(value):
+    """Return safe final-answer safety metadata for audit storage."""
+    if not isinstance(value, dict):
+        return {}
+    payload = _sanitize_safety(value)
+    payload.update(
+        {
+            "action": str(value.get("action") or "")[:80],
+            "modified": bool(value.get("modified")),
+            "confidence_penalty": _int_value(value.get("confidence_penalty")),
+        }
+    )
+    return payload
 
 
 def _sanitize_conflicts(value):
