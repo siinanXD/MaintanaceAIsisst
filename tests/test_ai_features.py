@@ -30,6 +30,10 @@ from app.services.conversation_context_service import conversation_context_for_c
 from app.services.document_service import document_path
 from app.services.knowledge_service import register_source_document
 from app.services.retrieval_telemetry_service import retrieval_quality_analytics
+from app.services.vector_sync_status_service import (
+    clear_vector_sync_observability,
+    record_vector_sync_failure,
+)
 
 
 def test_ai_chat_returns_today_tasks_without_openai(
@@ -1128,6 +1132,125 @@ def test_retrieval_quality_analytics_aggregates_prompt_safe_signals(app, make_us
     assert "Sensitive used chunk text" not in telemetry_text
 
 
+def test_retrieval_slo_metrics_aggregate_operational_signals(app, make_user):
+    """Verify retrieval SLO metrics combine audit, feedback, safety, and drift signals."""
+    user = make_user(username="retrieval_slo_user")
+    clear_vector_sync_observability()
+    try:
+        with app.app_context():
+            stale_document = KnowledgeDocument(
+                source_type="upload",
+                title="SLO stale source",
+                original_filename="slo-stale.txt",
+                relative_path="uploads/slo-stale.txt",
+                content_type="text/plain",
+                department="Produktion",
+                status="stale",
+                quality_status="admin_approved",
+                is_public=True,
+                chunk_count=1,
+            )
+            db.session.add(stale_document)
+            db.session.flush()
+            record_vector_sync_failure(
+                stale_document.id,
+                "chroma",
+                RuntimeError("sync failed"),
+            )
+            actor = type("UserStub", (), {"id": user["id"]})()
+            create_ai_audit_event(
+                user=actor,
+                workflow="assistant",
+                diagnostics={
+                    "status": "openai_used",
+                    "confidence_score": 82,
+                    "retrieval_explainability": {
+                        "retrieval_duration_ms": 100,
+                        "safety": {"safety_relevant": False},
+                    },
+                },
+                requested_scopes={"documents"},
+                allowed_scopes={"documents"},
+                source_count=1,
+            )
+            create_ai_audit_event(
+                user=actor,
+                workflow="assistant",
+                diagnostics={
+                    "status": "fallback_used",
+                    "fallback_used": True,
+                    "confidence_score": 20,
+                    "retrieval_explainability": {
+                        "retrieval_duration_ms": 1500,
+                        "safety": {
+                            "safety_relevant": True,
+                            "risk_level": "high",
+                            "categories": ["electrical_hazard"],
+                        },
+                    },
+                },
+                requested_scopes={"documents", "employees"},
+                allowed_scopes={"documents"},
+                source_count=0,
+            )
+            db.session.add_all(
+                [
+                    AIFeedback(
+                        user_id=user["id"],
+                        prompt="Prompt must not appear",
+                        response="Answer must not appear",
+                        response_type="assistant",
+                        rating="not_helpful",
+                        sources_json="[]",
+                        source_count=0,
+                    ),
+                    AIFeedback(
+                        user_id=user["id"],
+                        prompt="Other prompt must not appear",
+                        response="Other answer must not appear",
+                        response_type="assistant",
+                        rating="helpful",
+                        sources_json="[]",
+                        source_count=0,
+                    ),
+                ]
+            )
+            db.session.commit()
+
+            telemetry = retrieval_quality_analytics(days=30, limit=5)
+    finally:
+        clear_vector_sync_observability()
+
+    slo = telemetry["retrieval_slo"]
+    values = slo["last_values"]
+    assert values["retrieval_p95_ms"] == 1500
+    assert values["no_source_rate"] == 0.5
+    assert values["low_confidence_rate"] == 0.5
+    assert values["permission_filtered_candidate_count"] == 1
+    assert values["negative_feedback_rate"] == 0.5
+    assert values["safety_risk_count"] == 1
+    assert values["fallback_rate"] == 0.5
+    assert values["vector_sync_failure_count"] == 1
+    assert values["stale_index_count"] == 1
+    assert slo["status"] == "critical"
+    assert slo["trends"]["retrieval_p95_ms"]["direction"] == "up"
+    assert "Prompt must not appear" not in json.dumps(slo, ensure_ascii=True)
+
+
+def test_retrieval_slo_metrics_handle_empty_data(app):
+    """Verify retrieval SLO metrics return safe defaults for empty telemetry."""
+    clear_vector_sync_observability()
+    with app.app_context():
+        telemetry = retrieval_quality_analytics(days=7, limit=5)
+
+    slo = telemetry["retrieval_slo"]
+    assert slo["status"] == "ok"
+    assert slo["last_values"]["event_count"] == 0
+    assert slo["last_values"]["retrieval_p95_ms"] == 0
+    assert slo["last_values"]["no_source_rate"] == 0.0
+    assert slo["warnings"] == []
+
+
 def test_admin_retrieval_telemetry_endpoint_is_admin_only(
     client,
     make_user,
@@ -1154,6 +1277,7 @@ def test_admin_retrieval_telemetry_endpoint_is_admin_only(
     assert forbidden_response.status_code == 403
     assert admin_response.status_code == 200
     assert set(payload.keys()) >= {
+        "retrieval_slo",
         "source_usage",
         "poor_sources",
         "unsuccessful_questions",
@@ -2667,6 +2791,10 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
     assert script_response.status_code == 200
     assert "data-admin-ai-page" in html
     assert "data-ai-health-panel" in html
+    assert "data-retrieval-slo-panel" in html
+    assert 'data-retrieval-slo-kpi="retrieval_p95_ms"' in html
+    assert "data-retrieval-slo-trends" in html
+    assert "data-retrieval-slo-warnings" in html
     assert "data-ai-workflows" in html
     assert "data-ai-top-errors" in html
     assert "data-ai-chat-search" in html
@@ -2719,7 +2847,10 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
     assert "/api/v1/admin/ai/knowledge/upload" in source
     assert "/api/v1/admin/ai/knowledge/status" in source
     assert "renderVectorStoreStatus" in source
+    assert "renderRetrievalSlo" in script
+    assert "loadRetrievalTelemetry" in script
     assert "/api/v1/admin/ai/knowledge-network" in source
+    assert "/api/v1/admin/ai/retrieval-telemetry" in source
     assert "/api/v1/admin/ai/retrieval-debug" in source
     assert "/api/v1/admin/ai/knowledge/reindex/jobs" in source
     assert "/api/v1/admin/ai/knowledge/reindex?mode=stale" in source

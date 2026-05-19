@@ -44,6 +44,10 @@
     return Math.round(number * 100) + "%";
   }
 
+  function msText(value) {
+    return numberText(value) + " ms";
+  }
+
   function moneyText(value) {
     const number = Number(value || 0);
     return "$" + number.toLocaleString("de-DE", {
@@ -612,6 +616,94 @@
     renderTopErrors(summary.top_errors || []);
     const readiness = summary.readiness || {};
     setHealthCard("ai", readiness.status || "warning", (readiness.reasons || []).join(" "));
+  }
+
+  function retrievalSloLabel(metric) {
+    const labels = {
+      retrieval_p95_ms: "P95 Retrieval",
+      no_source_rate: "Ohne Quellen",
+      low_confidence_rate: "Low Confidence",
+      permission_filtered_candidate_count: "Permission Filter",
+      negative_feedback_rate: "Negatives Feedback",
+      safety_risk_count: "Safety Risiken",
+      fallback_rate: "Fallback Rate",
+      vector_sync_failure_count: "Vector Sync Fehler",
+      stale_index_count: "Stale Index"
+    };
+    return labels[metric] || text(metric);
+  }
+
+  function retrievalSloValue(metric, value) {
+    if (metric === "retrieval_p95_ms") return msText(value);
+    if (
+      metric === "no_source_rate"
+      || metric === "low_confidence_rate"
+      || metric === "negative_feedback_rate"
+      || metric === "fallback_rate"
+    ) {
+      return percentText(value);
+    }
+    return numberText(value);
+  }
+
+  function renderRetrievalSlo(payload) {
+    const slo = (payload && payload.retrieval_slo) || {};
+    const values = slo.last_values || {};
+    const status = slo.status || "ok";
+    const statusTarget = root.querySelector("[data-retrieval-slo-status]");
+    if (statusTarget) {
+      statusTarget.textContent = readinessLabel(status);
+      statusTarget.className = "badge badge-ai " + healthClass(status);
+    }
+    root.querySelectorAll("[data-retrieval-slo-kpi]").forEach((target) => {
+      const key = target.dataset.retrievalSloKpi;
+      if (key === "index_sync_risks") {
+        target.textContent = numberText(
+          Number(values.vector_sync_failure_count || 0) + Number(values.stale_index_count || 0)
+        );
+        return;
+      }
+      target.textContent = retrievalSloValue(key, values[key]);
+    });
+
+    const trendList = root.querySelector("[data-retrieval-slo-trends]");
+    if (trendList) {
+      trendList.innerHTML = "";
+      const trends = slo.trends || {};
+      Object.keys(trends).slice(0, 9).forEach((metric) => {
+        const item = trends[metric] || {};
+        const delta = item.delta || 0;
+        const sign = delta > 0 ? "+" : "";
+        trendList.appendChild(statusRow(
+          retrievalSloLabel(metric),
+          retrievalSloValue(metric, item.current) + " (" + sign + retrievalSloValue(metric, delta) + ")"
+        ));
+      });
+      if (!Object.keys(trends).length) {
+        trendList.appendChild(statusRow("Trend", "noch keine Messwerte"));
+      }
+    }
+
+    const warningList = root.querySelector("[data-retrieval-slo-warnings]");
+    if (warningList) {
+      warningList.innerHTML = "";
+      const warnings = slo.warnings || [];
+      if (!warnings.length) {
+        warningList.appendChild(statusRow("SLO Status", "keine Warnungen"));
+      } else {
+        warnings.forEach((warning) => {
+          warningList.appendChild(statusRow(
+            retrievalSloLabel(warning.metric),
+            readinessLabel(warning.status) + " ab " + retrievalSloValue(warning.metric, warning.threshold)
+          ));
+        });
+      }
+    }
+  }
+
+  async function loadRetrievalTelemetry() {
+    const telemetry = await api("/api/v1/admin/ai/retrieval-telemetry?days=30&limit=5");
+    renderRetrievalSlo(telemetry);
   }
 
   function renderWorkflowMetrics(workflows) {
@@ -1233,6 +1325,7 @@
       loadKnowledge(),
       loadKnowledgeNetwork(),
       loadRetrievalDebug(),
+      loadRetrievalTelemetry(),
       loadKnowledgeStatus(),
       loadJobs(),
       loadOperationsMetrics()

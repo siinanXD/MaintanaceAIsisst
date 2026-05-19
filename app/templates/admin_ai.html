@@ -53,6 +53,27 @@
     <article class="metric-card"><span>Kosten / 1k</span><strong data-ai-kpi="cost_per_1k_tokens">0</strong></article>
   </div>
 
+  <section class="panel" data-retrieval-slo-panel>
+    <div class="panel-header">
+      <h3>Retrieval SLO</h3>
+      <span class="badge badge-ai" data-retrieval-slo-status>Noch nicht geladen</span>
+    </div>
+    <div class="dashboard-grid dashboard-grid-4">
+      <article class="metric-card"><span>P95 Retrieval</span><strong data-retrieval-slo-kpi="retrieval_p95_ms">0 ms</strong></article>
+      <article class="metric-card"><span>Ohne Quellen</span><strong data-retrieval-slo-kpi="no_source_rate">0%</strong></article>
+      <article class="metric-card"><span>Low Confidence</span><strong data-retrieval-slo-kpi="low_confidence_rate">0%</strong></article>
+      <article class="metric-card"><span>Permission Filter</span><strong data-retrieval-slo-kpi="permission_filtered_candidate_count">0</strong></article>
+      <article class="metric-card"><span>Negatives Feedback</span><strong data-retrieval-slo-kpi="negative_feedback_rate">0%</strong></article>
+      <article class="metric-card"><span>Safety Risiken</span><strong data-retrieval-slo-kpi="safety_risk_count">0</strong></article>
+      <article class="metric-card"><span>Fallback Rate</span><strong data-retrieval-slo-kpi="fallback_rate">0%</strong></article>
+      <article class="metric-card"><span>Index/Sync Risiken</span><strong data-retrieval-slo-kpi="index_sync_risks">0</strong></article>
+    </div>
+    <div class="content-grid two-columns mt-4">
+      <div class="stats-list" data-retrieval-slo-trends></div>
+      <div class="stats-list" data-retrieval-slo-warnings></div>
+    </div>
+  </section>
+
   <section class="panel">
     <div class="panel-header">
       <h3>Workflow-Kosten und Fehler</h3>
