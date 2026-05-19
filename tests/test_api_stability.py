@@ -93,6 +93,7 @@ def test_new_ai_frontend_routes_exist(app, client):
         ("/api/v1/machines/<int:machine_id>/history", "GET"),
         ("/api/v1/machines/<int:machine_id>/assistant", "POST"),
         ("/api/v1/machines/maintenance-recommendations", "GET"),
+        ("/api/v1/ai/status", "GET"),
         ("/api/v1/ai/daily-briefing", "GET"),
         ("/api/v1/ai/incident-timeline", "GET"),
         ("/api/v1/ai/chat/templates", "GET"),
@@ -102,6 +103,9 @@ def test_new_ai_frontend_routes_exist(app, client):
         ("/api/v1/admin/ai/training/<int:entry_id>", "PUT"),
         ("/api/v1/admin/ai/training/<int:entry_id>", "DELETE"),
         ("/api/v1/admin/ai/knowledge-network", "GET"),
+        ("/api/v1/admin/ai/retrieval-telemetry", "GET"),
+        ("/api/v1/admin/ai/knowledge/status", "GET"),
+        ("/api/v1/admin/ai/knowledge-gaps", "GET"),
         ("/api/v1/admin/ai/retrieval-debug", "GET"),
         ("/api/v1/sites", "GET"),
         ("/api/v1/operations/summary", "GET"),
@@ -126,6 +130,9 @@ def test_new_ai_frontend_routes_exist(app, client):
     assert "/api/v1/ai/daily-briefing" in script
     assert "/api/v1/ai/error-assistant" in script
     assert "/api/v1/admin/ai/knowledge-network" in script
+    assert "/api/v1/admin/ai/retrieval-telemetry" in script
+    assert "/api/v1/admin/ai/knowledge/status" in script
+    assert "/api/v1/admin/ai/knowledge-gaps" in script
     assert "/api/v1/admin/ai/retrieval-debug" in script
     assert "/api/v1/machines/maintenance-recommendations" in script
 

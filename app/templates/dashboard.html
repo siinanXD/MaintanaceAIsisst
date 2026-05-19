@@ -4,53 +4,153 @@
 {% block header_title %}Dashboard{% endblock %}
 
 {% block content %}
-<section class="dashboard-page-hero dashboard-kpi-grid" aria-label="Cockpit Kennzahlen">
+<section class="dashboard-page-hero maintenance-cockpit-hero app-card" data-ai-ops-cockpit aria-label="Maintenance AI Cockpit">
+  <div class="maintenance-cockpit-copy">
+    <h2>Maintenance AI Cockpit</h2>
+    <p>Operations-, Safety-, Retrieval- und Wissenssignale in einer priorisierten Leitstand-Sicht.</p>
+  </div>
+  <div class="maintenance-cockpit-state">
+    <span class="ops-status-pill is-loading" data-ai-ops-status>Live-Daten werden geladen</span>
+    <span data-ai-ops-updated>Aktualisierung ausstehend</span>
+  </div>
+  <nav class="maintenance-cockpit-actions" aria-label="Cockpit Schnellzugriff">
+    <a href="#daily-briefing">Daily Briefing</a>
+    <a data-dashboard-nav="errors" hidden href="/errors">St&ouml;rungen</a>
+    <a data-dashboard-nav="tasks" hidden href="/tasks">Tasks</a>
+    <a data-dashboard-nav="admin_users" hidden href="/admin/ai">AI Admin</a>
+  </nav>
+</section>
+
+<section class="maintenance-cockpit-kpis dashboard-kpi-grid" aria-label="AI Operations Kennzahlen">
   <article class="kpi-card kpi-card-open">
     <div class="kpi-icon" aria-hidden="true">AU</div>
     <div>
       <p class="kpi-label">Offene Aufgaben</p>
-      <p class="kpi-value" data-dashboard-open-count>23</p>
-      <p class="kpi-meta"><span class="trend-up">+5</span> seit gestern</p>
-    </div>
-  </article>
-  <article class="kpi-card kpi-card-progress">
-    <div class="kpi-icon" aria-hidden="true">IP</div>
-    <div>
-      <p class="kpi-label">In Arbeit</p>
-      <p class="kpi-value" data-dashboard-progress-count>11</p>
-      <p class="kpi-meta">0 seit gestern</p>
-    </div>
-  </article>
-  <article class="kpi-card kpi-card-done">
-    <div class="kpi-icon" aria-hidden="true">OK</div>
-    <div>
-      <p class="kpi-label">Abgeschlossen</p>
-      <p class="kpi-value" data-dashboard-done-count>34</p>
-      <p class="kpi-meta"><span class="trend-up">+8</span> seit gestern</p>
+      <p class="kpi-value" data-dashboard-open-count>0</p>
+      <p class="kpi-meta" data-dashboard-open-meta>Wird geladen</p>
     </div>
   </article>
   <article class="kpi-card kpi-card-critical">
     <div class="kpi-icon" aria-hidden="true">KR</div>
     <div>
-      <p class="kpi-label">Kritische St&ouml;rungen</p>
-      <p class="kpi-value" data-dashboard-critical-count>7</p>
-      <p class="kpi-meta"><span class="trend-danger">+2</span> seit gestern</p>
+      <p class="kpi-label">Kritische Arbeit</p>
+      <p class="kpi-value" data-dashboard-critical-count>0</p>
+      <p class="kpi-meta" data-dashboard-critical-meta>Tasks und &Uuml;berf&auml;lligkeit</p>
     </div>
   </article>
   <article class="kpi-card kpi-card-machine">
     <div class="kpi-icon" aria-hidden="true">MA</div>
     <div>
-      <p class="kpi-label">Maschinen mit St&ouml;rung</p>
-      <p class="kpi-value" data-dashboard-machine-issue-count>5</p>
-      <p class="kpi-meta">0 seit gestern</p>
+      <p class="kpi-label">Maschinenstatus</p>
+      <p class="kpi-value" data-dashboard-machine-status>--</p>
+      <p class="kpi-meta" data-dashboard-machine-status-meta>St&ouml;rungen werden geladen</p>
+    </div>
+  </article>
+  <article class="kpi-card kpi-card-recurring">
+    <div class="kpi-icon" aria-hidden="true">RP</div>
+    <div>
+      <p class="kpi-label">Wiederkehrende Probleme</p>
+      <p class="kpi-value" data-dashboard-recurring-count>0</p>
+      <p class="kpi-meta">30-Tage-Fehlertrend</p>
+    </div>
+  </article>
+  <article class="kpi-card kpi-card-safety">
+    <div class="kpi-icon" aria-hidden="true">SF</div>
+    <div>
+      <p class="kpi-label">Safety-Risiken</p>
+      <p class="kpi-value" data-dashboard-safety-count>0</p>
+      <p class="kpi-meta">AI Safety Events</p>
     </div>
   </article>
   <article class="kpi-card kpi-card-ai">
     <div class="kpi-icon" aria-hidden="true">AI</div>
     <div>
-      <p class="kpi-label">AI Briefing</p>
-      <p class="kpi-value" data-dashboard-briefing-count>3 Hinweise</p>
-      <p class="kpi-meta"><a href="#daily-briefing">Details anzeigen</a></p>
+      <p class="kpi-label">AI-Systemstatus</p>
+      <p class="kpi-value" data-dashboard-ai-status>--</p>
+      <p class="kpi-meta" data-dashboard-ai-status-meta>Provider wird gepr&uuml;ft</p>
+    </div>
+  </article>
+  <article class="kpi-card kpi-card-retrieval">
+    <div class="kpi-icon" aria-hidden="true">RG</div>
+    <div>
+      <p class="kpi-label">Retrieval-Gesundheit</p>
+      <p class="kpi-value" data-dashboard-retrieval-health>--</p>
+      <p class="kpi-meta" data-dashboard-retrieval-health-meta>P95 und Quellenrate</p>
+    </div>
+  </article>
+  <article class="kpi-card kpi-card-knowledge">
+    <div class="kpi-icon" aria-hidden="true">KG</div>
+    <div>
+      <p class="kpi-label">Knowledge-Gaps</p>
+      <p class="kpi-value" data-dashboard-knowledge-gap-count>0</p>
+      <p class="kpi-meta" data-dashboard-knowledge-gap-meta>Offene L&uuml;cken</p>
+    </div>
+  </article>
+  <article class="kpi-card kpi-card-confidence">
+    <div class="kpi-icon" aria-hidden="true">LC</div>
+    <div>
+      <p class="kpi-label">Low Confidence</p>
+      <p class="kpi-value" data-dashboard-low-confidence-count>0%</p>
+      <p class="kpi-meta">Antwortqualit&auml;t</p>
+    </div>
+  </article>
+  <article class="kpi-card kpi-card-index">
+    <div class="kpi-icon" aria-hidden="true">IX</div>
+    <div>
+      <p class="kpi-label">Dokument-/Index-Status</p>
+      <p class="kpi-value" data-dashboard-index-status>--</p>
+      <p class="kpi-meta" data-dashboard-index-status-meta>Vector Sync</p>
+    </div>
+  </article>
+</section>
+
+<section class="ai-ops-command-grid" aria-label="Priorisierte AI Operations Signale">
+  <article class="ops-panel app-card ai-priority-panel">
+    <header class="ops-panel-header">
+      <div>
+        <h2>Priorit&auml;tslage</h2>
+        <p class="panel-meta">Kritische Fehler, Safety, Gaps und Retrieval-Risiken.</p>
+      </div>
+    </header>
+    <div class="ai-priority-rail" data-ai-ops-priority-rail>
+      <div class="empty-state">AI Operations Signale werden geladen.</div>
+    </div>
+  </article>
+
+  <article class="ops-panel app-card ai-system-panel">
+    <header class="ops-panel-header">
+      <div>
+        <h2>AI Systemstatus</h2>
+        <p class="panel-meta">Read-only Betriebszustand ohne Promptinhalte.</p>
+      </div>
+      <a data-dashboard-nav="admin_users" hidden href="/admin/ai">Details</a>
+    </header>
+    <div class="ai-system-rail" data-ai-system-rail>
+      <div class="empty-state">Systemstatus wird geladen.</div>
+    </div>
+  </article>
+
+  <article class="ops-panel app-card ai-risk-panel">
+    <header class="ops-panel-header">
+      <div>
+        <h2>AI Risk Radar</h2>
+        <p class="panel-meta">Confidence, Safety, Fallbacks und Feedback.</p>
+      </div>
+    </header>
+    <div class="ai-risk-grid" data-ai-risk-radar>
+      <div class="empty-state">Risk Radar wird geladen.</div>
+    </div>
+  </article>
+
+  <article class="ops-panel app-card ai-knowledge-panel">
+    <header class="ops-panel-header">
+      <div>
+        <h2>Retrieval &amp; Knowledge Health</h2>
+        <p class="panel-meta">Index, Quellen, Chunks und Wissensl&uuml;cken.</p>
+      </div>
+    </header>
+    <div class="ai-knowledge-health" data-ai-knowledge-health>
+      <div class="empty-state">Knowledge Health wird geladen.</div>
     </div>
   </article>
 </section>
@@ -169,6 +269,9 @@
             <span>06:59</span>
             <span class="badge badge-status is-progress">In Arbeit</span>
           </div>
+        </div>
+        <div class="frequent-code-strip" aria-label="H&auml;ufige Fehlercodes" data-dashboard-frequent-codes>
+          <span>Fehlercodes werden geladen.</span>
         </div>
       </article>
 

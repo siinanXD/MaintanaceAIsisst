@@ -5632,7 +5632,297 @@
     font-weight: 750;
   }
 
+  .maintenance-cockpit-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 1rem;
+    align-items: center;
+    margin-bottom: 0.85rem;
+    border: 1px solid #d8e2ef;
+    border-left: 4px solid #0b7cff;
+    border-radius: 0.5rem;
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(240, 247, 255, 0.94)),
+      #ffffff;
+    padding: 1rem 1.1rem;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.055);
+  }
+
+  .maintenance-cockpit-copy h2 {
+    margin: 0;
+    color: #102036;
+    font-size: 1.55rem;
+    font-weight: 950;
+    line-height: 1.05;
+  }
+
+  .maintenance-cockpit-copy p {
+    margin: 0.4rem 0 0;
+    max-width: 52rem;
+    color: #526276;
+    font-size: 0.88rem;
+    font-weight: 700;
+    line-height: 1.35;
+  }
+
+  .maintenance-cockpit-state {
+    display: grid;
+    justify-items: end;
+    gap: 0.35rem;
+    color: #64748b;
+    font-size: 0.74rem;
+    font-weight: 800;
+  }
+
+  .ops-status-pill {
+    display: inline-flex;
+    min-height: 2rem;
+    align-items: center;
+    border: 1px solid #d8e2ef;
+    border-radius: 0.35rem;
+    background: #f8fafc;
+    color: #334155;
+    padding: 0.35rem 0.65rem;
+    font-size: 0.72rem;
+    font-weight: 900;
+    line-height: 1;
+  }
+
+  .ops-status-pill.is-critical {
+    border-color: #fecdd3;
+    background: #fff1f3;
+    color: #be123c;
+  }
+
+  .ops-status-pill.is-warning {
+    border-color: #fed7aa;
+    background: #fff7ed;
+    color: #c2410c;
+  }
+
+  .ops-status-pill.is-good {
+    border-color: #bbf7d0;
+    background: #ecfdf3;
+    color: #15803d;
+  }
+
+  .ops-status-pill.is-loading,
+  .ops-status-pill.is-muted {
+    border-color: #d8e2ef;
+    background: #f8fafc;
+    color: #64748b;
+  }
+
+  .maintenance-cockpit-actions {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+  }
+
+  .maintenance-cockpit-actions a {
+    border: 1px solid #d8e2ef;
+    border-radius: 0.35rem;
+    background: #ffffff;
+    color: #1e3a5f;
+    padding: 0.4rem 0.55rem;
+    font-size: 0.74rem;
+    font-weight: 850;
+    text-decoration: none;
+  }
+
+  .maintenance-cockpit-kpis {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .kpi-card-recurring .kpi-icon { background: linear-gradient(135deg, #8b5cf6, #5b37d8); }
+  .kpi-card-safety .kpi-icon { background: linear-gradient(135deg, #f43f5e, #be123c); }
+  .kpi-card-retrieval .kpi-icon { background: linear-gradient(135deg, #0ea5b7, #087b8d); }
+  .kpi-card-knowledge .kpi-icon { background: linear-gradient(135deg, #2563eb, #1745a8); }
+  .kpi-card-confidence .kpi-icon { background: linear-gradient(135deg, #f59e0b, #b45309); }
+  .kpi-card-index .kpi-icon { background: linear-gradient(135deg, #475569, #1f2937); }
+
+  .ai-ops-command-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(18rem, 0.85fr);
+    gap: 0.85rem;
+    align-items: start;
+    margin-bottom: 0.9rem;
+  }
+
+  .ai-priority-panel {
+    grid-row: span 2;
+  }
+
+  .ai-priority-rail,
+  .ai-system-rail,
+  .ai-risk-grid,
+  .ai-knowledge-health {
+    display: grid;
+    gap: 0.55rem;
+    padding: 0.85rem 0.95rem 0.95rem;
+  }
+
+  .ai-priority-rail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ai-signal-card {
+    display: grid;
+    grid-template-columns: 2rem minmax(0, 1fr) auto;
+    gap: 0.7rem;
+    align-items: center;
+    min-height: 4.15rem;
+    border: 1px solid #e0e8f1;
+    border-left-width: 4px;
+    border-radius: 0.45rem;
+    background: #fbfdff;
+    color: #203049;
+    padding: 0.75rem;
+    text-decoration: none;
+  }
+
+  .ai-signal-card.is-critical {
+    border-left-color: #e11d48;
+    background: #fff5f6;
+  }
+
+  .ai-signal-card.is-warning {
+    border-left-color: #f97316;
+    background: #fff8ed;
+  }
+
+  .ai-signal-card.is-good {
+    border-left-color: #16a34a;
+    background: #f3fcf5;
+  }
+
+  .ai-signal-card.is-muted {
+    border-left-color: #94a3b8;
+    background: #f8fafc;
+  }
+
+  .ai-signal-marker {
+    display: grid;
+    width: 1.75rem;
+    height: 1.75rem;
+    place-items: center;
+    border-radius: 0.35rem;
+    background: #ffffff;
+    color: #102036;
+    font-size: 0.7rem;
+    font-weight: 950;
+    box-shadow: inset 0 0 0 1px #d8e2ef;
+  }
+
+  .ai-signal-card strong,
+  .ai-system-row strong {
+    color: #102036;
+    font-size: 0.9rem;
+    font-weight: 950;
+    line-height: 1.15;
+  }
+
+  .ai-signal-card span:last-child {
+    color: #102036;
+    font-size: 1.2rem;
+    font-weight: 950;
+  }
+
+  .ai-signal-card small,
+  .ai-system-row small {
+    display: block;
+    margin-top: 0.18rem;
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 750;
+    line-height: 1.2;
+  }
+
+  .ai-system-row {
+    display: grid;
+    grid-template-columns: minmax(7rem, 0.85fr) auto;
+    gap: 0.2rem 0.75rem;
+    align-items: center;
+    min-height: 3.25rem;
+    border: 1px solid #e0e8f1;
+    border-left: 4px solid #94a3b8;
+    border-radius: 0.45rem;
+    background: #fbfdff;
+    padding: 0.65rem 0.75rem;
+  }
+
+  .ai-system-row > span {
+    color: #526276;
+    font-size: 0.72rem;
+    font-weight: 900;
+  }
+
+  .ai-system-row small {
+    grid-column: 1 / -1;
+  }
+
+  .ai-system-row.is-critical {
+    border-left-color: #e11d48;
+    background: #fff5f6;
+  }
+
+  .ai-system-row.is-warning {
+    border-left-color: #f97316;
+    background: #fff8ed;
+  }
+
+  .ai-system-row.is-good {
+    border-left-color: #16a34a;
+    background: #f3fcf5;
+  }
+
+  .frequent-code-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    border-top: 1px solid #edf1f6;
+    padding: 0.75rem 0.85rem 0.9rem;
+  }
+
+  .frequent-code-strip span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border: 1px solid #d8e2ef;
+    border-radius: 0.35rem;
+    background: #f8fafc;
+    color: #334155;
+    padding: 0.32rem 0.48rem;
+    font-size: 0.72rem;
+    font-weight: 850;
+  }
+
+  .frequent-code-strip strong {
+    display: inline-grid;
+    min-width: 1.25rem;
+    height: 1.25rem;
+    place-items: center;
+    border-radius: 0.28rem;
+    background: #fff1f3;
+    color: #be123c;
+    font-size: 0.68rem;
+    font-weight: 950;
+  }
+
   @media (max-width: 1180px) {
+    .maintenance-cockpit-kpis {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .ai-ops-command-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .ai-priority-panel {
+      grid-row: auto;
+    }
+
     .ops-dashboard-grid {
       grid-template-columns: 1fr;
     }
@@ -5647,6 +5937,28 @@
   }
 
   @media (max-width: 640px) {
+    .maintenance-cockpit-hero {
+      grid-template-columns: 1fr;
+    }
+
+    .maintenance-cockpit-state {
+      justify-items: start;
+    }
+
+    .maintenance-cockpit-kpis,
+    .ai-priority-rail {
+      grid-template-columns: 1fr;
+    }
+
+    .ai-signal-card,
+    .ai-system-row {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .ai-signal-card span:last-child {
+      font-size: 1rem;
+    }
+
     .ops-insights-header,
     .ops-insights-controls {
       display: grid;

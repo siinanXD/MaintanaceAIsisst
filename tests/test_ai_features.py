@@ -2726,6 +2726,12 @@ def test_dashboard_contains_daily_briefing_and_priority_ui(client):
     assert css_response.status_code == 200
     assert "data-daily-briefing-list" in html
     assert "data-dashboard-priority-list" in html
+    assert "data-ai-ops-priority-rail" in html
+    assert "data-ai-system-rail" in html
+    assert "data-ai-risk-radar" in html
+    assert "data-ai-knowledge-health" in html
+    assert "data-dashboard-low-confidence-count" in html
+    assert "data-dashboard-frequent-codes" in html
     assert "data-chat-suggestions" in html
     assert "data-chat-history-panel hidden" in html
     assert "data-chat-history-search" in html
@@ -2733,6 +2739,11 @@ def test_dashboard_contains_daily_briefing_and_priority_ui(client):
     assert "briefingItem(section, item)" in script
     assert "Briefing konnte nicht geladen werden." in script
     assert "KI-Priorisierung" in script
+    assert "renderPriorityRail" in script
+    assert "/api/v1/admin/ai/retrieval-telemetry" in script
+    assert "/api/v1/admin/ai/knowledge/status" in script
+    assert "/api/v1/admin/ai/knowledge-gaps" in script
+    assert "/api/v1/ai/status" in script
     assert "maintenance_ai_action_preview" in script
     assert "responseData && responseData.answer" in chat_script
     assert 'data.type === "general_chat"' in chat_script
