@@ -10,7 +10,11 @@ from app.services.context_builder_service import build_dynamic_context
 from app.services.incident_timeline_service import timeline_context_for_query
 from app.services.knowledge_linking_service import linked_knowledge_for_sources
 from app.services.query_understanding_service import classify_query
-from app.services.retrieval_explainability_service import explainability_from_metadata
+from app.services.retrieval_candidate_service import (
+    public_sources_from_candidates,
+    rank_candidates,
+    vector_result_candidate,
+)
 from app.services.source_conflict_service import detect_source_conflicts
 from app.services.vector_store_service import get_vector_store
 
@@ -24,11 +28,13 @@ def retrieve_context(message, user, requested_scopes=None, conversation_context=
     strategy = understanding.retrieval_strategy
     structured = retrieve_ai_context(retrieval_message, user, effective_scopes)
     structured_context = structured.get("context", "")
-    structured_sources = structured.get("sources") or []
+    structured_candidates = structured.get("candidates") or []
     data = dict(structured.get("data") or {})
 
     if not is_rag_enabled():
-        sources = _deduplicate_sources(structured_sources)
+        sources = _deduplicate_sources(
+            public_sources_from_candidates(rank_candidates(structured_candidates))
+        )
         conflicts = detect_source_conflicts(sources, data)
         safety = assess_ai_safety(retrieval_message, understanding, sources)
         dynamic_context = build_dynamic_context(
@@ -65,9 +71,25 @@ def retrieve_context(message, user, requested_scopes=None, conversation_context=
         limit=strategy.get("top_k"),
         filters=_strategy_filters(strategy),
     )
-    vector_context = _vector_context(vector_results) if vector_results else ""
-    vector_sources = [_source_from_result(result) for result in vector_results]
-    sources = _deduplicate_sources(structured_sources + vector_sources)
+    vector_candidates = rank_candidates(
+        [
+            vector_result_candidate(
+                result,
+                include_score_debug=_score_debug_enabled(),
+            )
+            for result in vector_results
+        ]
+    )
+    vector_context = _vector_context(vector_candidates) if vector_candidates else ""
+    vector_sources = public_sources_from_candidates(
+        vector_candidates,
+        include_score_debug=_score_debug_enabled(),
+    )
+    ranked_sources = public_sources_from_candidates(
+        rank_candidates([*structured_candidates, *vector_candidates]),
+        include_score_debug=_score_debug_enabled(),
+    )
+    sources = _deduplicate_sources(ranked_sources)
     data["knowledge"] = vector_sources
     knowledge_links = linked_knowledge_for_sources(vector_sources, user=user)
     data["knowledge_links"] = knowledge_links.get("links", [])
@@ -130,11 +152,24 @@ def knowledge_context_for_chat(message, user, limit=None, conversation_context=N
     understanding = classify_query(retrieval_message)
     strategy_limit = limit or understanding.retrieval_strategy.get("top_k")
     vector_results = retrieve_vector_chunks(retrieval_message, user, limit=strategy_limit)
-    if not vector_results:
+    vector_candidates = rank_candidates(
+        [
+            vector_result_candidate(
+                result,
+                include_score_debug=_score_debug_enabled(),
+            )
+            for result in vector_results
+        ],
+        strategy_limit,
+    )
+    if not vector_candidates:
         return _prompt_context("", conversation_context), []
-    return _prompt_context(_vector_context(vector_results), conversation_context), [
-        _source_from_result(result) for result in vector_results
-    ]
+    return _prompt_context(_vector_context(vector_candidates), conversation_context), (
+        public_sources_from_candidates(
+            vector_candidates,
+            include_score_debug=_score_debug_enabled(),
+        )
+    )
 
 
 def is_rag_enabled():
@@ -147,14 +182,18 @@ def is_rag_enabled():
     return bool(value)
 
 
-def _vector_context(results):
-    """Build compact source context from vector-search results."""
+def _vector_context(candidates):
+    """Build compact source context from ranked knowledge candidates."""
     blocks = []
-    for result in results:
-        metadata = result.metadata
-        title = metadata.get("title") or "Wissensquelle"
-        source_id = metadata.get("id") or metadata.get("source_id") or ""
-        document_type = metadata.get("document_type") or metadata.get("source_type") or ""
+    for candidate in candidates:
+        metadata = candidate.metadata
+        title = candidate.title or "Wissensquelle"
+        source_id = candidate.source_id or metadata.get("source_record_id") or ""
+        document_type = (
+            metadata.get("document_type")
+            or metadata.get("knowledge_source_type")
+            or candidate.source_type
+        )
         machine_context = _machine_context_line(metadata)
         block_lines = [
             f"Quelle: Wissen #{source_id} - {title}",
@@ -162,37 +201,11 @@ def _vector_context(results):
         ]
         if machine_context:
             block_lines.append(machine_context)
-        block_lines.append(result.text)
+        block_lines.append(candidate.content)
         blocks.append(
             "\n".join(block_lines)
         )
     return "\n\n".join(blocks)
-
-
-def _source_from_result(result):
-    """Return a public source payload for one vector-search result."""
-    metadata = result.metadata
-    score_signals = metadata.get("score_signals") or {}
-    explainability = explainability_from_metadata(metadata, result.score)
-    source = {
-        "type": metadata.get("type", "knowledge"),
-        "id": metadata.get("id"),
-        "chunk_id": metadata.get("chunk_id"),
-        "title": metadata.get("title", "Wissensquelle"),
-        "module": metadata.get("module", "knowledge"),
-        "url": metadata.get("url", "/admin/ai"),
-        "reason": f"{int(result.score)} RAG-Trefferpunkte",
-        "score": int(result.score),
-        "quality_status": explainability.get("quality_status")
-        or metadata.get("quality_status")
-        or score_signals.get("quality_status"),
-        "machine_match": explainability.get("machine_match", 0),
-        "machine_match_reasons": explainability.get("machine_match_reasons", []),
-        "explainability": explainability,
-    }
-    if _score_debug_enabled() and metadata.get("score_debug"):
-        source["score_debug"] = metadata["score_debug"]
-    return source
 
 
 def _retrieval_payload(
@@ -291,7 +304,9 @@ def _prompt_context(context, conversation_context):
 def _machine_context_line(metadata):
     """Return an optional context line explaining machine-aware retrieval signals."""
     signals = metadata.get("score_signals") or {}
-    reasons = signals.get("machine_match_reasons") or []
+    reasons = metadata.get("machine_match_reasons") or signals.get(
+        "machine_match_reasons",
+    ) or []
     if not reasons:
         return ""
     labels = {

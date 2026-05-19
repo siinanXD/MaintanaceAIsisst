@@ -12,6 +12,13 @@ from app.models import (
 from app.security import employee_access_level, has_dashboard_permission
 from app.services.document_service import visible_documents_query
 from app.services.error_service import visible_errors_query
+from app.services.retrieval_candidate_service import (
+    RetrievalCandidate,
+    normalize_retrieval_score,
+    public_sources_from_candidates,
+    rank_candidates,
+    structured_candidate_score,
+)
 from app.services.task_service import visible_tasks_query
 from app.services.text_normalization_service import tokenize_text
 
@@ -23,47 +30,44 @@ def retrieve_ai_context(message, user, requested_scopes=None):
     requested_scopes = set(requested_scopes or [])
     allowed_scopes = allowed_ai_scopes(user)
     searchable_scopes = requested_scopes & allowed_scopes if requested_scopes else allowed_scopes
-    sources = []
+    candidates = []
     data = {}
 
     if "tasks" in searchable_scopes:
         task_sources, tasks = _task_sources(message, user, requested_scopes)
-        sources.extend(task_sources)
+        candidates.extend(task_sources)
         data["tasks"] = [task.to_dict() for task in tasks]
     if "errors" in searchable_scopes:
         error_sources, errors = _error_sources(message, user, requested_scopes)
-        sources.extend(error_sources)
+        candidates.extend(error_sources)
         data["errors"] = [entry.to_dict() for entry in errors]
     if "machines" in searchable_scopes:
         machine_sources, machines = _machine_sources(message, requested_scopes)
-        sources.extend(machine_sources)
+        candidates.extend(machine_sources)
         data["machines"] = [machine.to_dict() for machine in machines]
     if "inventory" in searchable_scopes:
         inventory_sources, materials = _inventory_sources(message, requested_scopes)
-        sources.extend(inventory_sources)
+        candidates.extend(inventory_sources)
         data["inventory"] = [material.to_dict() for material in materials]
     if "documents" in searchable_scopes:
         document_sources, documents = _document_sources(message, user, requested_scopes)
-        sources.extend(document_sources)
+        candidates.extend(document_sources)
         data["documents"] = [document.to_dict() for document in documents]
     if "shiftplans" in searchable_scopes:
         shift_sources, plans = _shiftplan_sources(message, user, requested_scopes)
-        sources.extend(shift_sources)
+        candidates.extend(shift_sources)
         data["shiftplans"] = [plan.to_dict(employee_access_level(user)) for plan in plans]
     if "employees" in searchable_scopes:
         employee_sources, employees = _employee_sources(message, user, requested_scopes)
-        sources.extend(employee_sources)
+        candidates.extend(employee_sources)
         access_level = employee_access_level(user)
         data["employees"] = [employee.to_dict(access_level) for employee in employees]
 
-    ranked_sources = sorted(
-        sources,
-        key=lambda source: (source["score"], source["type"], source["title"]),
-        reverse=True,
-    )[:MAX_SOURCES]
+    ranked_candidates = rank_candidates(candidates, MAX_SOURCES)
     return {
-        "context": _context_from_sources(ranked_sources),
-        "sources": [_public_source(source) for source in ranked_sources],
+        "context": _context_from_sources(ranked_candidates),
+        "sources": public_sources_from_candidates(ranked_candidates),
+        "candidates": ranked_candidates,
         "data": data,
         "allowed_scopes": sorted(allowed_scopes),
         "requested_scopes": sorted(requested_scopes),
@@ -273,15 +277,16 @@ def _rank_records(records, message, text_fn, scope, requested_scopes):
     ranked = []
     for index, record in enumerate(records):
         record_tokens = _tokens(text_fn(record))
-        overlap = query_tokens & record_tokens
-        requested_bonus = 15 if scope in requested_scopes else 0
-        score = len(overlap) * 20 + requested_bonus
-        if score <= 0 and scope not in requested_scopes:
-            continue
-        reason = (
-            f"{len(overlap)} gemeinsame Begriffe" if overlap else "Aktueller sichtbarer Kontext"
+        score = structured_candidate_score(
+            query_tokens=query_tokens,
+            candidate_tokens=record_tokens,
+            permission_scope=scope,
+            requested_scopes=requested_scopes,
+            index=index,
         )
-        ranked.append((record, max(score, 5) - index * 0.01, reason))
+        if not score.allowed:
+            continue
+        ranked.append((record, score.raw_score, score.explanation))
     return ranked[:5]
 
 
@@ -292,41 +297,26 @@ def _tokens(value):
 
 def _source(item_type, item_id, title, module, url, context, score, reason):
     """Return one internal source object."""
-    return {
-        "type": item_type,
-        "id": item_id,
-        "title": title,
-        "module": module,
-        "url": url,
-        "context": context,
-        "score": int(max(score, 0)),
-        "reason": reason,
-    }
-
-
-def _public_source(source):
-    """Return a source object safe for API clients."""
-    return {
-        "type": source["type"],
-        "id": source["id"],
-        "title": source["title"],
-        "module": source["module"],
-        "url": source["url"],
-        "reason": source["reason"],
-        "score": source["score"],
-    }
+    return RetrievalCandidate(
+        source_type=item_type,
+        source_id=item_id,
+        title=title,
+        content=context,
+        module=module,
+        url=url,
+        raw_score=float(score or 0),
+        normalized_score=normalize_retrieval_score(score, "structured"),
+        permission_scope=module,
+        explanation=reason,
+        metadata={"source_kind": "structured"},
+    )
 
 
 def _context_from_sources(sources):
     """Build compact text context from selected sources."""
     if not sources:
         return "Keine passenden freigegebenen Quellen gefunden."
-    return "\n\n".join(
-        f"Quelle: {source['module']} #{source['id']} - {source['title']}\n"
-        f"Grund: {source['reason']}\n"
-        f"{source['context']}"
-        for source in sources
-    )
+    return "\n\n".join(source.context_block() for source in sources)
 
 
 def _task_text(task):
