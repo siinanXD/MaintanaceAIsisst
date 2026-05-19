@@ -2705,6 +2705,8 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
     assert "data-rag-problem-documents" in html
     assert 'data-rag-kpi="searchable_documents"' in html
     assert 'data-rag-kpi="stale"' in html
+    assert "data-rag-vector-sync" in html
+    assert "data-rag-vector-issues" in html
     assert "data-ai-reindex-stale" in html
     assert "data-ai-queue-stale" in html
     assert "data-ai-jobs" in html
@@ -2716,6 +2718,7 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
     assert "/api/v1/admin/jobs" in source
     assert "/api/v1/admin/ai/knowledge/upload" in source
     assert "/api/v1/admin/ai/knowledge/status" in source
+    assert "renderVectorStoreStatus" in source
     assert "/api/v1/admin/ai/knowledge-network" in source
     assert "/api/v1/admin/ai/retrieval-debug" in source
     assert "/api/v1/admin/ai/knowledge/reindex/jobs" in source

@@ -47,6 +47,11 @@ from app.services.technical_entity_service import (
     load_technical_entity_catalog,
 )
 from app.services.text_normalization_service import tokenize_text
+from app.services.vector_sync_status_service import (
+    record_vector_sync_failure,
+    record_vector_sync_success,
+    vector_store_drift_status,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -417,11 +422,19 @@ def sync_vector_store_document(document, chunks):
             get_vector_store,
         )
     except ImportError as exc:
+        record_vector_sync_failure(document.id, "unavailable", exc)
         logger.warning("vector_store_import_failed document_id=%s error=%s", document.id, exc)
         return
 
     store = get_vector_store()
     if getattr(store, "name", "") != "chroma":
+        configured_store = str(current_app.config.get("RAG_VECTOR_STORE", "local")).lower()
+        if configured_store == "chroma":
+            record_vector_sync_failure(
+                document.id,
+                "chroma",
+                RuntimeError("Configured Chroma vector store fell back to local search"),
+            )
         return
     try:
         store.delete_document(document.id)
@@ -435,7 +448,9 @@ def sync_vector_store_document(document, chunks):
                 for chunk in chunks
             ]
         )
+        record_vector_sync_success(document.id, store.name, len(chunks))
     except Exception as exc:
+        record_vector_sync_failure(document.id, getattr(store, "name", ""), exc)
         logger.warning("vector_store_sync_failed document_id=%s error=%s", document.id, exc)
 
 
@@ -723,6 +738,7 @@ def knowledge_index_status():
         total_chunks=total_chunks,
     )
     lifecycle = knowledge_lifecycle_overview(documents)
+    vector_status = vector_store_drift_status(documents)
     return {
         "documents": len(documents),
         "indexed": indexed,
@@ -744,6 +760,7 @@ def knowledge_index_status():
         "problem_documents": _problem_knowledge_documents(documents),
         "lifecycle": lifecycle,
         "aging": lifecycle.get("aging", {}),
+        "vector_store": vector_status,
         "diagnostics": {
             "rag_enabled": bool(current_app.config.get("RAG_ENABLED", True)),
             "vector_store": current_app.config.get("RAG_VECTOR_STORE", "local"),

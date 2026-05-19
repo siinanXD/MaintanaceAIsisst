@@ -122,6 +122,7 @@ def rag_metrics():
     status = knowledge_index_status()
     documents = status.get("documents", 0) or 0
     stale = status.get("stale", 0) or 0
+    vector_status = status.get("vector_store", {}) or {}
     return {
         "documents": documents,
         "indexed": status.get("indexed", 0),
@@ -130,6 +131,16 @@ def rag_metrics():
         "chunks": status.get("chunks", 0),
         "stale_ratio": round(stale / documents, 4) if documents else 0,
         "vector_store": status.get("diagnostics", {}).get("vector_store", "local"),
+        "vector_sync": {
+            "store": vector_status.get("store"),
+            "reindex_recommended": bool(vector_status.get("reindex_recommended")),
+            "missing_chunk_count": vector_status.get("missing_chunk_count", 0),
+            "chunk_mismatch_count": vector_status.get("chunk_mismatch_count", 0),
+            "vector_sync_failure_count": vector_status.get(
+                "vector_sync_failure_count",
+                0,
+            ),
+        },
         "source_counts": status.get("source_counts", {}),
     }
 

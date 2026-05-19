@@ -69,6 +69,14 @@ class BaseVectorStore(ABC):
         """Delete records for one knowledge document when the backend supports it."""
         return 0
 
+    def document_vector_count(self, document_id):
+        """Return one document's vector count when the backend can report it."""
+        return None
+
+    def collection_vector_count(self):
+        """Return the total vector count when the backend can report it."""
+        return None
+
 
 class SqlAlchemyKnowledgeVectorStore(BaseVectorStore):
     """Use persisted knowledge chunks as the local vector-search backend."""
@@ -145,6 +153,22 @@ class SqlAlchemyKnowledgeVectorStore(BaseVectorStore):
         )
         return results[:limit_value]
 
+    def document_vector_count(self, document_id):
+        """Return the local persisted chunk count for one knowledge document."""
+        try:
+            parsed_id = int(document_id)
+        except (TypeError, ValueError):
+            return None
+        return KnowledgeChunk.query.filter_by(document_id=parsed_id).count()
+
+    def collection_vector_count(self):
+        """Return the local persisted chunk count for indexed knowledge documents."""
+        return (
+            KnowledgeChunk.query.join(KnowledgeDocument)
+            .filter(KnowledgeDocument.status == "indexed")
+            .count()
+        )
+
 
 class ChromaVectorStore(BaseVectorStore):
     """Use Chroma as a persistent vector-store backend."""
@@ -191,6 +215,19 @@ class ChromaVectorStore(BaseVectorStore):
             return 0
         self.collection.delete(where={"id": int(document_id)})
         return 1
+
+    def document_vector_count(self, document_id):
+        """Return the Chroma record count for one knowledge document."""
+        try:
+            parsed_id = int(document_id)
+        except (TypeError, ValueError):
+            return None
+        response = self.collection.get(where={"id": parsed_id})
+        return len(response.get("ids") or [])
+
+    def collection_vector_count(self):
+        """Return the total Chroma record count for the collection."""
+        return int(self.collection.count())
 
     def similarity_search(self, query_text, user=None, limit=None, filters=None):
         """Return Chroma vector-search results for query text."""

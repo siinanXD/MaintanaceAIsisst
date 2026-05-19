@@ -742,6 +742,45 @@
     });
   }
 
+  function vectorSyncEventText(event) {
+    if (!event) return "-";
+    const timestamp = event.synced_at || event.failed_at;
+    return "#" + text(event.document_id) + " " + dateTimeText(timestamp);
+  }
+
+  function renderVectorStoreStatus(vectorStatus) {
+    const syncList = root.querySelector("[data-rag-vector-sync]");
+    const issueList = root.querySelector("[data-rag-vector-issues]");
+    const data = vectorStatus || {};
+    if (syncList) {
+      syncList.innerHTML = "";
+      syncList.append(
+        statusRow("Vector Backend", data.store || "-"),
+        statusRow("Konfiguriert", data.configured_store || "-"),
+        statusRow("Fallback", data.fallback_active ? "aktiv" : "nein"),
+        statusRow("Soll Vektoren", numberText(data.expected_vector_count || 0)),
+        statusRow("Ist Vektoren", data.actual_vector_count == null ? "-" : numberText(data.actual_vector_count)),
+        statusRow("Letzter Index", dateTimeText(data.latest_indexed_at)),
+        statusRow("Letzter Sync", vectorSyncEventText(data.last_successful_sync)),
+        statusRow("Letzter Fehler", vectorSyncEventText(data.last_failed_sync))
+      );
+    }
+    if (issueList) {
+      issueList.innerHTML = "";
+      issueList.append(
+        statusRow("Reindex empfohlen", data.reindex_recommended ? "ja" : "nein"),
+        statusRow("Stale Dokumente", numberText(data.stale_document_count || 0)),
+        statusRow("Fehlende Chunks", numberText(data.missing_chunk_count || 0)),
+        statusRow("Chunk Mismatch", numberText(data.chunk_mismatch_count || 0)),
+        statusRow("Sync Fehler", numberText(data.vector_sync_failure_count || 0))
+      );
+      const reasons = data.reindex_reasons || [];
+      if (reasons.length) {
+        issueList.appendChild(statusRow("Grund", reasons.join(", ")));
+      }
+    }
+  }
+
   function renderKnowledgeStatus(status) {
     ["documents", "indexed", "stale", "pending", "searchable_documents", "chunks"].forEach((key) => {
       const target = root.querySelector('[data-rag-kpi="' + key + '"]');
@@ -815,6 +854,7 @@
     }
 
     renderLifecycle(status.lifecycle || {});
+    renderVectorStoreStatus(status.vector_store || {});
   }
 
   async function loadKnowledgeStatus() {
