@@ -2754,6 +2754,13 @@ def test_dashboard_contains_daily_briefing_and_priority_ui(client):
     assert "maintenance_ai_chat_session_id" in chat_script
     assert "session_id: chatSessionId()" in chat_script
     assert "resetChatSession()" in chat_script
+    assert "renderAssistantEvidence" in chat_script
+    assert "confidencePayload" in chat_script
+    assert "renderExplainability" in chat_script
+    assert "chat-answer-card" in css
+    assert "chat-answer-badge" in css
+    assert "chat-source-chip" in css
+    assert "chat-explainability" in css
 
 
 def test_admin_users_page_contains_ai_analytics_ui(client):
