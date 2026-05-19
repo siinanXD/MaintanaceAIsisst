@@ -19,9 +19,11 @@ from app.models import (
     Machine,
     MachineManual,
     MaintenancePlan,
+    Task,
 )
 from app.services.knowledge_service import can_user_read_knowledge_document, source_url
 from app.services.recurring_issue_service import analyze_recurring_issues
+from app.services.technical_entity_service import extract_technical_entities
 
 DEFAULT_DAYS = 30
 DEFAULT_LIMIT = 120
@@ -48,11 +50,22 @@ TYPE_ORDER = {
     "error": 2,
     "solution": 3,
     "document": 4,
-    "inventory_part": 5,
-    "recurring_issue": 6,
-    "knowledge_gap": 7,
-    "component": 8,
-    "sensor": 9,
+    "task": 5,
+    "inventory_part": 6,
+    "recurring_issue": 7,
+    "knowledge_gap": 8,
+    "component": 9,
+    "sensor": 10,
+}
+
+FOCUS_TYPES = {
+    "machine",
+    "error",
+    "task",
+    "document",
+    "inventory_part",
+    "knowledge_gap",
+    "recurring_issue",
 }
 
 DIRECT_EDGE_WEIGHT = 8.0
@@ -83,6 +96,7 @@ class KnowledgeNetworkBuilder:
         self.material_by_name = {}
         self.error_by_id = {}
         self.error_by_code = {}
+        self.task_by_id = {}
         self._load_reference_data()
 
     def build(self):
@@ -97,12 +111,14 @@ class KnowledgeNetworkBuilder:
         machines = Machine.query.order_by(Machine.id.desc()).limit(500).all()
         materials = InventoryMaterial.query.order_by(InventoryMaterial.id.desc()).limit(500).all()
         errors = ErrorEntry.query.order_by(ErrorEntry.created_at.desc()).limit(750).all()
+        tasks = Task.query.order_by(Task.updated_at.desc(), Task.id.desc()).limit(500).all()
 
         self.machine_by_id = {machine.id: machine for machine in machines}
         self.machine_by_name = {_name_key(machine.name): machine for machine in machines}
         self.material_by_id = {material.id: material for material in materials}
         self.material_by_name = {_name_key(material.name): material for material in materials}
         self.error_by_id = {entry.id: entry for entry in errors}
+        self.task_by_id = {task.id: task for task in tasks}
         self.error_by_code = {}
         for entry in errors:
             code = _code_key(entry.error_code)
@@ -181,6 +197,8 @@ class KnowledgeNetworkBuilder:
         target_node_id = None
         if source_type == "error_entry" and source_id:
             target_node_id = self._add_error_source(source_id)
+        elif source_type == "task" and source_id:
+            target_node_id = self._add_task_source(source_id)
         elif source_type == "machine" and source_id:
             target_node_id = self._add_machine_by_id(source_id)
         elif source_type == "inventory_material" and source_id:
@@ -230,6 +248,71 @@ class KnowledgeNetworkBuilder:
                 signals=["documented_solution"],
             )
         return error_node_id
+
+    def _add_task_source(self, task_id):
+        """Add a task node and safe inferred relations from task metadata."""
+        task = self.task_by_id.get(task_id) or db.session.get(Task, task_id)
+        if not task:
+            return None
+        task_node_id = self._add_task_node(task)
+        for target_node_id, edge_label, signals in self._task_relation_nodes(task):
+            self._add_edge(
+                task_node_id,
+                target_node_id,
+                edge_type="task_context",
+                label=edge_label,
+                weight=DIRECT_EDGE_WEIGHT - 0.5,
+                signals=signals,
+            )
+        return task_node_id
+
+    def _add_task_node(self, task):
+        """Add a prompt-safe task node."""
+        priority = _enum_value(task.priority)
+        status = _enum_value(task.status)
+        return self._add_node(
+            node_id=f"task:{task.id}",
+            node_type="task",
+            label=_safe_title(task.title, max_length=120),
+            title=_safe_title(task.title, max_length=160),
+            weight=4.5,
+            url="/tasks",
+            status=status,
+            metadata={
+                "task_id": task.id,
+                "priority": priority,
+                "status": status,
+                "due_date": task.due_date.isoformat() if task.due_date else None,
+                "department": task.department.name if task.department else None,
+                "blocked": bool(task.blocked_reason),
+                "reopened_count": task.reopened_count,
+            },
+            signals=["task_source"],
+        )
+
+    def _task_relation_nodes(self, task):
+        """Return inferred machine, error and inventory relations for a task."""
+        text = " ".join([task.title or "", task.description or ""])
+        entities = extract_technical_entities(
+            text,
+            metadata={
+                "source_type": "task",
+                "source_id": task.id,
+                "department": task.department.name if task.department else None,
+            },
+        )
+        relations = []
+        relation_specs = (
+            ("machines", "task machine", "task_machine_entity"),
+            ("error_codes", "task error code", "task_error_entity"),
+            ("inventory_parts", "task inventory", "task_inventory_entity"),
+        )
+        for entity_key, edge_label, signal in relation_specs:
+            for value in entities.get(entity_key, [])[:MAX_ENTITY_VALUES]:
+                target_node_id = self._node_for_entity(entity_key, value)
+                if target_node_id:
+                    relations.append((target_node_id, edge_label, [signal, entity_key]))
+        return _dedupe_relations(relations)
 
     def _add_generated_document_source(self, document_id):
         """Add source relations for a generated maintenance document."""
@@ -772,6 +855,7 @@ class KnowledgeNetworkBuilder:
         return {
             "nodes": nodes,
             "edges": edges,
+            "groups": self._groups(nodes, edges),
             "stats": self._stats(nodes, edges),
             "filters": dict(self.filters),
             "explainability": {
@@ -804,27 +888,18 @@ class KnowledgeNetworkBuilder:
     def _rank_nodes(self):
         """Return sorted and limited nodes with optional focus narrowing."""
         nodes = list(self.nodes.values())
-        focus = _name_key(self.filters["focus"])
-        if focus:
-            focused = {
-                node["id"]
-                for node in nodes
-                if focus in _name_key(node["id"])
-                or focus in _name_key(node.get("label"))
-                or focus in _name_key(node.get("title"))
-                or focus in _name_key(node.get("source_type"))
-            }
-            if focused:
-                focused_neighbors = set(focused)
-                for edge in self.edges.values():
-                    if edge["source"] in focused:
-                        focused_neighbors.add(edge["target"])
-                    if edge["target"] in focused:
-                        focused_neighbors.add(edge["source"])
-                nodes = [node for node in nodes if node["id"] in focused_neighbors]
-                for node in nodes:
-                    if node["id"] in focused:
-                        node["weight"] = round(float(node["weight"]) + 6.0, 3)
+        focused = self._focused_node_ids(nodes)
+        if focused:
+            focused_neighbors = set(focused)
+            for edge in self.edges.values():
+                if edge["source"] in focused:
+                    focused_neighbors.add(edge["target"])
+                if edge["target"] in focused:
+                    focused_neighbors.add(edge["source"])
+            nodes = [node for node in nodes if node["id"] in focused_neighbors]
+            for node in nodes:
+                if node["id"] in focused:
+                    node["weight"] = round(float(node["weight"]) + 6.0, 3)
 
         nodes.sort(
             key=lambda node: (
@@ -835,6 +910,59 @@ class KnowledgeNetworkBuilder:
             ),
         )
         return nodes[: self.filters["limit"]]
+
+    def _focused_node_ids(self, nodes):
+        """Return node ids selected by focus text or focus type."""
+        focused = set()
+        focus = _name_key(self.filters["focus"])
+        focus_type = self.filters.get("focus_type")
+        for node in nodes:
+            if focus_type and node.get("type") == focus_type:
+                focused.add(node["id"])
+            if not focus:
+                continue
+            if (
+                focus in _name_key(node["id"])
+                or focus in _name_key(node.get("label"))
+                or focus in _name_key(node.get("title"))
+                or focus in _name_key(node.get("source_type"))
+            ):
+                focused.add(node["id"])
+        return focused
+
+    def _groups(self, nodes, edges):
+        """Return grouped node summaries for the relationship UI."""
+        edges_by_node = Counter()
+        for edge in edges:
+            edges_by_node[edge["source"]] += 1
+            edges_by_node[edge["target"]] += 1
+        grouped = defaultdict(list)
+        for node in nodes:
+            grouped[node["type"]].append(node)
+        groups = []
+        for node_type, items in sorted(
+            grouped.items(),
+            key=lambda item: TYPE_ORDER.get(item[0], 99),
+        ):
+            items.sort(key=lambda node: (-float(node.get("weight") or 0), node["label"]))
+            groups.append(
+                {
+                    "type": node_type,
+                    "label": _group_label(node_type),
+                    "count": len(items),
+                    "edge_count": sum(edges_by_node[node["id"]] for node in items),
+                    "top_nodes": [
+                        {
+                            "id": node["id"],
+                            "label": node["label"],
+                            "weight": node["weight"],
+                            "status": node.get("status") or node.get("quality_status"),
+                        }
+                        for node in items[:5]
+                    ],
+                },
+            )
+        return groups
 
     def _stats(self, nodes, edges):
         """Return compact network statistics for dashboard rendering."""
@@ -848,6 +976,7 @@ class KnowledgeNetworkBuilder:
             "raw_node_count": len(self.nodes),
             "raw_edge_count": len(self.edges),
             "window_days": self.filters["days"],
+            "focus_type": self.filters.get("focus_type") or "all",
         }
 
 
@@ -858,6 +987,7 @@ def _network_filters(args):
         "source_type": _clean_filter(args.get("source_type")),
         "quality_status": _clean_filter(args.get("quality_status")),
         "focus": _clean_filter(args.get("focus")),
+        "focus_type": _focus_type(args.get("focus_type")),
         "days": _parse_bounded_int(args.get("days"), DEFAULT_DAYS, 1, MAX_DAYS, "days"),
         "limit": _parse_bounded_int(args.get("limit"), DEFAULT_LIMIT, 1, MAX_LIMIT, "limit"),
         "edge_limit": _parse_bounded_int(
@@ -888,6 +1018,16 @@ def _clean_filter(value):
     return " ".join(str(value or "").strip().split())
 
 
+def _focus_type(value):
+    """Return a validated optional focus node type."""
+    cleaned = _clean_filter(value)
+    if not cleaned:
+        return ""
+    if cleaned not in FOCUS_TYPES:
+        raise ValueError("focus_type is not supported")
+    return cleaned
+
+
 def _quality_weight(quality_status):
     """Return the ranking weight for a knowledge quality status."""
     return QUALITY_WEIGHTS.get(str(quality_status or "").strip(), 1.0)
@@ -899,6 +1039,28 @@ def _safe_title(value, max_length=140):
     if len(cleaned) <= max_length:
         return cleaned
     return f"{cleaned[: max_length - 3].rstrip()}..."
+
+
+def _group_label(node_type):
+    """Return a human-readable group label for one network node type."""
+    labels = {
+        "machine": "Maschinen",
+        "error": "Fehler",
+        "solution": "Loesungen",
+        "document": "Dokumente",
+        "task": "Tasks",
+        "inventory_part": "Inventarteile",
+        "recurring_issue": "Wiederkehrende Probleme",
+        "knowledge_gap": "Knowledge-Gaps",
+        "component": "Komponenten",
+        "sensor": "Sensorik",
+    }
+    return labels.get(node_type, node_type)
+
+
+def _enum_value(value):
+    """Return a stable string for enum-like values."""
+    return getattr(value, "value", value)
 
 
 def _slug(value):
@@ -929,6 +1091,19 @@ def _merge_unique(existing, additions):
         if item and item not in values:
             values.append(item)
     return values
+
+
+def _dedupe_relations(relations):
+    """Return unique relation tuples while preserving their first explanation."""
+    seen = set()
+    unique_relations = []
+    for target_node_id, edge_label, signals in relations:
+        key = (target_node_id, edge_label)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_relations.append((target_node_id, edge_label, signals))
+    return unique_relations
 
 
 def _iso_or_none(value):

@@ -109,6 +109,51 @@ def test_knowledge_network_builds_prompt_safe_nodes_and_edges(
     assert "chunk_text" in payload["privacy"]["omitted"]
 
 
+def test_knowledge_network_adds_task_sources_and_focus_groups(
+    app,
+    make_user,
+    make_machine,
+    make_material,
+    make_error_entry,
+    make_task,
+):
+    """Verify task-backed knowledge participates in focused relationship views."""
+    admin = make_user(username="network_task_admin", role=Role.MASTER_ADMIN)
+    machine_id = make_machine(name="Anlage T1")
+    make_material("Sensor T42", 10, 2, machine_id=machine_id)
+    error_id = make_error_entry("Anlage T1", "T-42", "Sensor T42 meldet Drift")
+    task_id = make_task(
+        "Anlage T1 Fehler T-42 Sensor T42 pruefen",
+        creator_username=admin["username"],
+        description="Bitte Sensor T42 an Anlage T1 pruefen und Fehler T-42 bewerten.",
+    )
+
+    with app.app_context():
+        _link_error_to_machine(error_id, machine_id)
+        _create_knowledge_document(
+            admin["id"],
+            "Taskbasierte Sensorpruefung",
+            source_type="task",
+            source_id=task_id,
+            quality_status="technician_confirmed",
+            entities={"machines": ["Anlage T1"], "error_codes": ["T-42"]},
+        )
+
+        payload = knowledge_network(
+            {"focus_type": "task", "limit": "20", "edge_limit": "40"},
+            _user_by_id(admin["id"]),
+        )
+
+    node_types = {node["type"] for node in payload["nodes"]}
+    edge_types = {edge["type"] for edge in payload["edges"]}
+    group_types = {group["type"] for group in payload["groups"]}
+
+    assert {"document", "task", "machine", "error"} <= node_types
+    assert {"source_relation", "task_context"} <= edge_types
+    assert "task" in group_types
+    assert payload["stats"]["focus_type"] == "task"
+
+
 def test_knowledge_network_deduplicates_nodes_and_weights_direct_relations(
     app,
     make_user,

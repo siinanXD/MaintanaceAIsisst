@@ -12,6 +12,7 @@
   ];
   let retrievalDebugItems = [];
   let selectedRetrievalFlowId = null;
+  let currentKnowledgeNetworkPayload = null;
 
   function token() {
     return window.localStorage.getItem("maintenance_access_token");
@@ -201,6 +202,7 @@
       error: "Fehler",
       solution: "Loesung",
       document: "Dokument",
+      task: "Task",
       inventory_part: "Inventar",
       recurring_issue: "Wiederkehrender Fehler",
       knowledge_gap: "Knowledge-Gap",
@@ -271,6 +273,7 @@
       error: "#dc2626",
       solution: "#16a34a",
       document: "#7c3aed",
+      task: "#0891b2",
       inventory_part: "#ca8a04",
       recurring_issue: "#ea580c",
       knowledge_gap: "#be123c",
@@ -308,6 +311,7 @@
       machine: 1,
       error: 1,
       recurring_issue: 1,
+      task: 2,
       solution: 2,
       inventory_part: 2,
       knowledge_gap: 2,
@@ -340,6 +344,97 @@
     if (value == null || value === "") return "-";
     if (typeof value === "object") return JSON.stringify(value);
     return String(value);
+  }
+
+  function networkEdgeNodeLabels(edge, payload) {
+    const nodes = networkNodeMap(payload.nodes || []);
+    const source = nodes[edge.source];
+    const target = nodes[edge.target];
+    return {
+      source: source ? source.label : edge.source,
+      target: target ? target.label : edge.target
+    };
+  }
+
+  function networkEdgeDetail(edge) {
+    const labels = {
+      source_relation: "Direkte Quelle",
+      mentions: "Entity-Erwaehnung",
+      recurring_pattern: "Wiederkehrendes Muster",
+      knowledge_gap: "Knowledge-Gap",
+      task_context: "Task-Kontext"
+    };
+    return labels[edge.type] || text(edge.type);
+  }
+
+  function renderKnowledgeNetworkGroups(payload) {
+    const target = root.querySelector("[data-knowledge-network-groups]");
+    if (!target) return;
+    target.innerHTML = "";
+    const groups = payload.groups || [];
+    if (!groups.length) {
+      target.appendChild(statusRow("Gruppen", "Keine gruppierten Nodes vorhanden"));
+      return;
+    }
+    groups.forEach((group) => {
+      const card = document.createElement("article");
+      const header = document.createElement("div");
+      const title = document.createElement("strong");
+      const count = document.createElement("span");
+      const list = document.createElement("div");
+      card.className = "knowledge-network-group-card";
+      header.className = "knowledge-network-group-header";
+      title.textContent = group.label || networkTypeLabel(group.type);
+      count.textContent = numberText(group.count) + " Nodes / " + numberText(group.edge_count) + " Links";
+      header.append(title, count);
+      list.className = "knowledge-network-group-nodes";
+      (group.top_nodes || []).forEach((node) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "knowledge-network-node-chip";
+        button.dataset.networkGroupNode = node.id;
+        button.textContent = truncateLabel(node.label, 34);
+        button.addEventListener("click", () => {
+          const nodeDetail = (currentKnowledgeNetworkPayload.nodes || []).find((item) => item.id === node.id);
+          renderKnowledgeNetworkDetail(nodeDetail, currentKnowledgeNetworkPayload);
+        });
+        list.appendChild(button);
+      });
+      card.append(header, list);
+      target.appendChild(card);
+    });
+  }
+
+  function renderKnowledgeNetworkRelations(payload) {
+    const target = root.querySelector("[data-knowledge-network-relations]");
+    if (!target) return;
+    target.innerHTML = "";
+    const edges = (payload.edges || []).slice(0, 16);
+    const heading = document.createElement("div");
+    const title = document.createElement("strong");
+    const meta = document.createElement("span");
+    heading.className = "knowledge-network-relations-header";
+    title.textContent = "Klickbare Verbindungen";
+    meta.textContent = edges.length ? edges.length + " wichtigste Beziehungen" : "Keine sichtbaren Beziehungen";
+    heading.append(title, meta);
+    target.appendChild(heading);
+    if (!edges.length) return;
+    edges.forEach((edge) => {
+      const labels = networkEdgeNodeLabels(edge, payload);
+      const button = document.createElement("button");
+      const relation = document.createElement("span");
+      const source = document.createElement("strong");
+      const score = document.createElement("small");
+      button.type = "button";
+      button.className = "knowledge-network-relation-card";
+      button.dataset.networkRelation = edge.id;
+      relation.textContent = networkEdgeDetail(edge);
+      source.textContent = truncateLabel(labels.source, 34) + " -> " + truncateLabel(labels.target, 34);
+      score.textContent = "Gewicht " + Number(edge.weight || 0).toFixed(1) + " / Evidenz " + numberText(edge.evidence_count || 0);
+      button.append(relation, source, score);
+      button.addEventListener("click", () => renderKnowledgeNetworkEdgeDetail(edge, payload));
+      target.appendChild(button);
+    });
   }
 
   function renderKnowledgeNetworkStats(stats) {
@@ -418,6 +513,30 @@
     }
   }
 
+  function renderKnowledgeNetworkEdgeDetail(edge, payload) {
+    const target = root.querySelector("[data-knowledge-network-detail]");
+    if (!target) return;
+    target.innerHTML = "";
+    if (!edge) {
+      target.appendChild(statusRow("Auswahl", "Node oder Verbindung anklicken"));
+      return;
+    }
+    const nodes = networkNodeMap(payload.nodes || []);
+    const source = nodes[edge.source];
+    const targetNode = nodes[edge.target];
+    target.append(
+      statusRow("Beziehung", networkEdgeDetail(edge)),
+      statusRow("Von", source ? truncateLabel(source.label, 80) : edge.source),
+      statusRow("Nach", targetNode ? truncateLabel(targetNode.label, 80) : edge.target),
+      statusRow("Gewicht", Number(edge.weight || 0).toFixed(1)),
+      statusRow("Evidenz", edge.evidence_count || 0),
+      statusRow("Typ", edge.type || "-")
+    );
+    ((edge.explainability || {}).signals || []).slice(0, 8).forEach((signal) => {
+      target.appendChild(statusRow("Signal", signal));
+    });
+  }
+
   function renderKnowledgeNetworkCanvas(payload) {
     const container = root.querySelector("[data-knowledge-network-canvas]");
     if (!container) return;
@@ -447,7 +566,19 @@
       const sourcePosition = layout.positions[edge.source];
       const targetPosition = layout.positions[edge.target];
       if (!sourcePosition || !targetPosition) return;
+      const edgeGroup = document.createElementNS(svgNamespace, "g");
+      const hitLine = document.createElementNS(svgNamespace, "line");
       const line = document.createElementNS(svgNamespace, "line");
+      edgeGroup.setAttribute("tabindex", "0");
+      edgeGroup.setAttribute("role", "button");
+      edgeGroup.setAttribute("class", "knowledge-network-edge");
+      edgeGroup.dataset.networkEdgeId = edge.id;
+      hitLine.setAttribute("x1", sourcePosition.x);
+      hitLine.setAttribute("y1", sourcePosition.y);
+      hitLine.setAttribute("x2", targetPosition.x);
+      hitLine.setAttribute("y2", targetPosition.y);
+      hitLine.setAttribute("stroke", "transparent");
+      hitLine.setAttribute("stroke-width", "14");
       line.setAttribute("x1", sourcePosition.x);
       line.setAttribute("y1", sourcePosition.y);
       line.setAttribute("x2", targetPosition.x);
@@ -457,8 +588,24 @@
       line.setAttribute("stroke-opacity", edge.type === "source_relation" ? "0.7" : "0.45");
       const title = document.createElementNS(svgNamespace, "title");
       title.textContent = edge.label + " (" + Number(edge.weight || 0).toFixed(1) + ")";
-      line.appendChild(title);
-      svg.appendChild(line);
+      edgeGroup.append(hitLine, line, title);
+      edgeGroup.addEventListener("click", () => {
+        svg.querySelectorAll("[data-network-edge-id]").forEach((item) => {
+          item.classList.remove("is-selected");
+        });
+        svg.querySelectorAll("[data-network-node-id] circle").forEach((item) => {
+          item.setAttribute("stroke", "#ffffff");
+          item.setAttribute("stroke-width", "2");
+        });
+        edgeGroup.classList.add("is-selected");
+        renderKnowledgeNetworkEdgeDetail(edge, payload);
+      });
+      edgeGroup.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        edgeGroup.dispatchEvent(new Event("click"));
+      });
+      svg.appendChild(edgeGroup);
     });
 
     nodes.forEach((node) => {
@@ -487,6 +634,9 @@
       title.textContent = node.title || node.label;
       group.append(circle, label, title);
       group.addEventListener("click", () => {
+        svg.querySelectorAll("[data-network-edge-id]").forEach((item) => {
+          item.classList.remove("is-selected");
+        });
         svg.querySelectorAll("[data-network-node-id] circle").forEach((item) => {
           item.setAttribute("stroke", "#ffffff");
           item.setAttribute("stroke-width", "2");
@@ -507,22 +657,28 @@
   }
 
   function renderKnowledgeNetwork(payload) {
+    payload = payload || { nodes: [], edges: [], groups: [], stats: {} };
+    currentKnowledgeNetworkPayload = payload;
     renderKnowledgeNetworkStats(payload.stats || {});
+    renderKnowledgeNetworkGroups(payload);
     renderKnowledgeNetworkLegend(payload);
     renderKnowledgeNetworkCanvas(payload);
+    renderKnowledgeNetworkRelations(payload);
   }
 
   async function loadKnowledgeNetwork() {
     const query = root.querySelector("[data-knowledge-network-search]").value;
     const source = root.querySelector("[data-knowledge-network-source]").value;
     const quality = root.querySelector("[data-knowledge-network-quality]").value;
+    const focusType = root.querySelector("[data-knowledge-network-focus-type]").value;
     const focus = root.querySelector("[data-knowledge-network-focus]").value;
     const params = new URLSearchParams({
       limit: "120",
       q: query,
       source_type: source,
       quality_status: quality,
-      focus
+      focus,
+      focus_type: focusType
     });
     const data = await api("/api/v1/admin/ai/knowledge-network?" + params.toString());
     renderKnowledgeNetwork(data);
@@ -1711,6 +1867,7 @@
   });
   root.querySelector("[data-knowledge-network-source]").addEventListener("change", loadKnowledgeNetwork);
   root.querySelector("[data-knowledge-network-quality]").addEventListener("change", loadKnowledgeNetwork);
+  root.querySelector("[data-knowledge-network-focus-type]").addEventListener("change", loadKnowledgeNetwork);
   root.querySelector("[data-knowledge-network-refresh]").addEventListener("click", loadKnowledgeNetwork);
   root.querySelector("[data-retrieval-debug-search]").addEventListener("input", () => {
     window.clearTimeout(root._retrievalDebugTimer);

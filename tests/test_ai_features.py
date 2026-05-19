@@ -2843,6 +2843,9 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
     assert "data-knowledge-network-detail" in html
     assert "data-knowledge-network-legend" in html
     assert "data-knowledge-network-search" in html
+    assert "data-knowledge-network-focus-type" in html
+    assert "data-knowledge-network-groups" in html
+    assert "data-knowledge-network-relations" in html
     assert "data-retrieval-debug-panel" in html
     assert "data-retrieval-debug-rows" in html
     assert "data-retrieval-debug-type" in html
@@ -2891,7 +2894,12 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
     assert "knowledgeQualityStatus" in script
     assert "qualityStatusLabel" in script
     assert "renderKnowledgeNetwork" in script
+    assert "renderKnowledgeNetworkGroups" in script
+    assert "renderKnowledgeNetworkRelations" in script
+    assert "renderKnowledgeNetworkEdgeDetail" in script
     assert "networkPositions" in script
+    assert "focus_type" in script
+    assert "task_context" in script
     assert "loadRetrievalDebug" in script
     assert "renderRetrievalFlow" in script
     assert "data-retrieval-flow-select" in script

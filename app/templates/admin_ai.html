@@ -191,15 +191,24 @@
           <option value="outdated">Veraltet</option>
           <option value="rejected">Abgelehnt</option>
         </select>
+        <select class="input input-bordered" data-knowledge-network-focus-type aria-label="Knowledge Network Ansicht">
+          <option value="">Gesamtnetz</option>
+          <option value="machine">Maschinenzentriert</option>
+          <option value="error">Fehlerzentriert</option>
+          <option value="task">Taskzentriert</option>
+          <option value="knowledge_gap">Gapzentriert</option>
+        </select>
         <input class="input input-bordered" data-knowledge-network-focus placeholder="Fokus optional">
         <button class="btn btn-secondary" type="button" data-knowledge-network-refresh>Aktualisieren</button>
       </div>
     </div>
     <div class="dashboard-grid dashboard-grid-4" data-knowledge-network-stats></div>
-    <div class="content-grid two-columns mt-4">
+    <div class="knowledge-network-groups mt-4" data-knowledge-network-groups aria-label="Gruppierte Knowledge-Nodes"></div>
+    <div class="knowledge-network-layout mt-4">
       <div class="stats-list" data-knowledge-network-canvas aria-label="Knowledge-Network Visualisierung"></div>
       <aside class="stats-list" data-knowledge-network-detail aria-label="Knowledge-Network Details"></aside>
     </div>
+    <div class="knowledge-network-relations mt-4" data-knowledge-network-relations aria-label="Klickbare Knowledge-Verbindungen"></div>
     <div class="stats-list mt-4" data-knowledge-network-legend aria-label="Knowledge-Network Legende"></div>
   </section>
 
