@@ -84,7 +84,11 @@ not carry large inline scripts.
 
 ## Getting Started
 
-**Prerequisites:** Python 3.11+, Node.js only if rebuilding CSS.
+**Prerequisites:** Python 3.11 or 3.12, Node.js only if rebuilding CSS.
+On Windows/PyCharm, prefer a Python 3.12 virtual environment for the current
+AI/vector dependency set. Python 3.13 can make `chroma-hnswlib` build from
+source during sync; if you must stay on Python 3.13, install Microsoft C++
+Build Tools before running `pip install -r requirements.txt`.
 
 ```bash
 python -m venv .venv
@@ -102,6 +106,12 @@ python seed.py demo        # realistic demo data and demo users
 python seed.py test        # minimal reproducible smoke-test users
 python seed.py production  # departments and optional admin bootstrap from env
 ```
+
+The demo profile is idempotent. It creates or refreshes realistic machines,
+inventory, error catalog entries, tasks, recurring maintenance plans, generated
+maintenance reports, machine manuals, shift handovers and curated AI training
+entries. It also registers stale/pending sources in the local knowledge index so
+the AI chat can answer source-backed demo questions immediately.
 
 Open `http://127.0.0.1:5050`. Demo credentials after `python seed.py demo`:
 

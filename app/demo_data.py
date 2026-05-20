@@ -1,26 +1,36 @@
 """Realistic demo data for development and demos."""
 
+import re
 from datetime import UTC, date, datetime, timedelta
+from io import BytesIO
 
 from sqlalchemy import or_
+from werkzeug.datastructures import FileStorage
 
 from app.departments.services import DEFAULT_DEPARTMENTS, ensure_default_departments
 from app.extensions import db
 from app.models import (
+    AssistantTrainingEntry,
     Department,
     Employee,
     ErrorEntry,
     GeneratedDocument,
     InventoryMaterial,
+    KnowledgeChunk,
+    KnowledgeDocument,
     Machine,
+    MachineManual,
+    MaintenancePlan,
     Priority,
     Role,
+    ShiftHandover,
     Task,
     TaskStatus,
     User,
 )
 from app.permissions import upsert_default_permissions
-from app.services.document_service import generate_maintenance_report
+from app.services.document_service import generate_maintenance_report, upload_machine_manual
+from app.services.knowledge_service import reindex_stale_knowledge
 from app.services.maintenance_tag_service import seed_maintenance_tag_library
 
 DEMO_PASSWORD = "Demo1234!"
@@ -594,6 +604,18 @@ MACHINE_DEFINITIONS = [
     ("Waschanlage 11", "Bauteilreinigung", 2),
 ]
 
+MACHINE_OPERATION_STATE = {
+    "cnc-frase-01": ("critical", "limited", 1),
+    "hydraulikpresse-03": ("critical", "maintenance", 0),
+    "spritzgussanlage-04": ("high", "running", 2),
+    "montagelinie-05": ("high", "running", None),
+    "forderband-linie-a": ("high", "limited", 3),
+    "kompressorstation-07": ("critical", "running", None),
+    "prufstand-08": ("normal", "running", None),
+    "roboterzelle-09": ("high", "running", 2),
+    "laserbeschrifter-10": ("normal", "limited", 6),
+}
+
 # ---------------------------------------------------------------------------
 # Lagermaterial
 # ---------------------------------------------------------------------------
@@ -631,6 +653,19 @@ INVENTORY_DEFINITIONS = [
     ("Schutzschlauch 1 m", 6.30, 3, "Igus", "Montagelinie 05"),
     ("Klemmblock 4 mm²", 1.90, 8, "Wago", "Prüfstand 08"),
 ]
+
+INVENTORY_POLICY = {
+    "dichtungssatz-presse": (2, "critical", 9),
+    "hydraulikol-hlp-46": (6, "high", 5),
+    "o-ring-satz-120-teilig": (5, "critical", 4),
+    "m8-sensor-induktiv": (8, "high", 3),
+    "druckluftfilter-g1-2": (4, "critical", 6),
+    "laser-schutzglas": (1, "critical", 12),
+    "heizkabel-230-v": (3, "high", 7),
+    "vakuumsauger-30-mm": (40, "normal", 2),
+    "servo-kabel-5-m": (12, "high", 8),
+    "klemmblock-4-mm2": (20, "normal", 2),
+}
 
 # ---------------------------------------------------------------------------
 # Tasks
@@ -1127,6 +1162,201 @@ ERROR_DEFINITIONS = [
 ]
 
 
+MAINTENANCE_PLAN_DEFINITIONS = [
+    (
+        "Hydraulikpresse 03 - Hydraulikdruck und Leckagecheck",
+        "Druckhaltepruefung bei 180 bar, Schlauchpakete sichtpruefen, "
+        "Dichtungssatz und O-Ring-Bestand vor Stillstand kontrollieren.",
+        30,
+        2,
+        "urgent",
+        "Instandhaltung",
+        "hydraulikpresse-03",
+        True,
+    ),
+    (
+        "Kompressorstation 07 - Druckluftqualitaet und Filter",
+        "Taupunkt, Kondensatableiter und Druckluftfilter G1/2 pruefen. "
+        "Bei Taupunkt > 3 Grad C Trockner reinigen und Leckagesuche starten.",
+        14,
+        4,
+        "soon",
+        "Instandhaltung",
+        "kompressorstation-07",
+        True,
+    ),
+    (
+        "Montagelinie 05 - Sicherheitskreis und Sensorik",
+        "Not-Halt, Tuerkontakte, induktive M8 Sensoren und Verriegelungen testen. "
+        "Abweichungen direkt im Schichtbuch dokumentieren.",
+        90,
+        8,
+        "normal",
+        "Instandhaltung",
+        "montagelinie-05",
+        True,
+    ),
+    (
+        "Roboterzelle 09 - Greifer, Vakuum und TCP",
+        "Sauger, Vakuumkreis und TCP nach Kollisionen pruefen. "
+        "Haltekraft je Station messen und Greiferfinger sichtpruefen.",
+        21,
+        1,
+        "soon",
+        "Produktion",
+        "roboterzelle-09",
+        True,
+    ),
+    (
+        "Pruefstand 08 - Kontaktleisten und Kalibrierung",
+        "Kontaktwiderstand der Adapter messen, Kalibrierstatus pruefen und "
+        "NIO-Haeufungen mit QS abgleichen.",
+        60,
+        12,
+        "normal",
+        "Produktion",
+        "prufstand-08",
+        True,
+    ),
+]
+
+MANUAL_DEFINITIONS = [
+    (
+        "hydraulikpresse-03",
+        "Instandhaltung",
+        "hydraulikpresse-03-betriebsanweisung.txt",
+        "Betriebsanweisung Hydraulikpresse 03",
+        (
+            "Maschine: Hydraulikpresse 03\n"
+            "Fehlercodes: INS-E-103, INS-E-112\n"
+            "Hydraulikdruckverlust: Anlage sichern, Druck abbauen, Lecktest "
+            "mit Spruehkreide durchfuehren, Filterzustand pruefen und "
+            "Dichtungssatz Presse bereitlegen.\n"
+            "Freigabe erst nach 10 Minuten Druckhaltepruefung ohne sichtbare "
+            "Leckage und dokumentiertem Oelstand.\n"
+        ),
+    ),
+    (
+        "spritzgussanlage-04",
+        "Instandhaltung",
+        "spritzgussanlage-04-heizzonen.txt",
+        "Servicehinweis Spritzgussanlage 04",
+        (
+            "Maschine: Spritzgussanlage 04\n"
+            "Fehlercodes: INS-E-104, PRO-E-118\n"
+            "Bei Temperaturabweichung Heizzone einzeln freischalten, "
+            "Heizkabel 230 V mit Messzange pruefen und Kuehlwasserdurchfluss "
+            "kontrollieren. Material PA6 erst nach stabiler Zone freigeben.\n"
+        ),
+    ),
+    (
+        "kompressorstation-07",
+        "Instandhaltung",
+        "kompressorstation-07-druckluft.txt",
+        "Wartungsanweisung Kompressorstation 07",
+        (
+            "Maschine: Kompressorstation 07\n"
+            "Fehlercode: INS-E-116\n"
+            "Druckluftqualitaet: Taupunkt messen, Kondensatableiter ausloesen, "
+            "Druckluftfilter G1/2 wechseln und Leckagen im Ringnetz markieren.\n"
+        ),
+    ),
+]
+
+SHIFT_HANDOVER_DEFINITIONS = [
+    (
+        "Instandhaltung",
+        0,
+        "Frueh",
+        "open",
+        "thomas.hoffmann",
+        "Hydraulikpresse 03 wegen Druckverlust nur im reduzierten Takt betreiben.",
+        "Task Hydraulikpresse 03 - Dichtigkeitspruefung laeuft; Material Dichtungssatz fehlt.",
+        "Hydraulikpresse 03: Oelstand stabil, aber Leckage an Ventilblock V3 wahrscheinlich.",
+        "Spaetschicht soll INS-E-103 pruefen und O-Ring-Satz aus Lager nachfordern.",
+    ),
+    (
+        "Produktion",
+        0,
+        "Spaet",
+        "open",
+        "ayse.demir",
+        "Spritzgussanlage 04 hatte drei Temperaturwarnungen in Heizzone 3.",
+        "Granulat PA6 ist nachgefuellt; Heizkabel-Tausch fuer Stillstand eingeplant.",
+        "Spritzgussanlage 04: Rezept W44 stabil, Ausschussquote leicht erhoeht.",
+        "Nachtschicht soll erste 20 Teile messen und QS bei Drift informieren.",
+    ),
+    (
+        "Verwaltung",
+        -1,
+        "Frueh",
+        "completed",
+        "petra.weiss",
+        "Kritische Ersatzteile fuer Hydraulikpresse 03 und Laserbeschrifter 10 priorisiert.",
+        "Dichtungssatz Presse ist Bestand 0; Parker-Bestellung eskaliert.",
+        "Verpackungsanlage 06 Material fuer Auftrag 5021 bereitgestellt.",
+        "Wareneingang soll Laser-Schutzglas direkt an Instandhaltung melden.",
+    ),
+]
+
+TRAINING_DEFINITIONS = [
+    (
+        "Demo: Hydraulikdruckverlust strukturiert beantworten",
+        "Wie loese ich Hydraulikdruckverlust an Hydraulikpresse 03?",
+        (
+            "Nur mit Quellen antworten. Prioritaet haben Fehler INS-E-103, "
+            "Manual Hydraulikpresse 03 und offene Tasks. Immer erst Anlage "
+            "sichern, Druck abbauen, Lecktest, Filter und Ventilblock pruefen."
+        ),
+        "Hydraulikpresse 03, Druck faellt ab, INS-E-103, Dichtungssatz Presse, O-Ring",
+        "demo_ai",
+        "Instandhaltung",
+        95,
+        True,
+    ),
+    (
+        "Demo: Kritische Maschine identifizieren",
+        "Welche Maschine ist aktuell kritisch?",
+        (
+            "Kritisch sind Maschinen mit critical/high Criticality, laufenden "
+            "urgent Tasks, aktuellen Schichtuebergaben oder fehlenden Ersatzteilen."
+        ),
+        "kritische Maschine, urgent Tasks, Hydraulikpresse 03, Kompressorstation 07",
+        "demo_ai",
+        "Produktion",
+        85,
+        True,
+    ),
+    (
+        "Demo: Ersatzteilrisiko erklaeren",
+        "Welche Ersatzteile blockieren Wartung an Hydraulikpresse 03?",
+        (
+            "Nenne nur sichtbare Lagerpositionen. Dichtungssatz Presse und "
+            "O-Ring-Satz sind fuer Hydraulikdruckverlust relevant; Bestand, "
+            "Mindestbestand und Lieferzeit erwaehnen."
+        ),
+        "Ersatzteil, Mindestbestand, Dichtungssatz Presse, O-Ring-Satz, Hydraulikpresse",
+        "demo_ai",
+        "Verwaltung",
+        80,
+        True,
+    ),
+    (
+        "Demo: Schichtuebergabe zusammenfassen",
+        "Was wurde in der letzten Schicht zu Spritzgussanlage 04 gemeldet?",
+        (
+            "Schichtuebergaben knapp zusammenfassen und offene naechste Schritte "
+            "aus next_notes nennen. Keine Mitarbeitenden-Details ausgeben."
+        ),
+        "Schichtuebergabe, Spritzgussanlage 04, Heizzone 3, Nachtschicht, QS",
+        "demo_ai",
+        "Produktion",
+        78,
+        True,
+    ),
+]
+
+
 # ---------------------------------------------------------------------------
 # Öffentliche Seeding-Funktion
 # ---------------------------------------------------------------------------
@@ -1150,18 +1380,30 @@ def seed_demo_data():
     _seed_inventory(machines)
     _link_employee_machines(employees, machines)
     _seed_errors(departments, machines)
+    _seed_maintenance_plans(departments, users, machines)
     _seed_tasks(departments, users, machines)
     db.session.flush()
     _seed_documents(users)
+    _seed_machine_manuals(users, machines)
+    _seed_shift_handovers(users)
+    _seed_training_entries(users)
     db.session.commit()
+    knowledge_summary = reindex_stale_knowledge()
     return {
         "users": len(users),
         "employees": len(employees),
         "machines": len(machines),
         "inventory_materials": InventoryMaterial.query.count(),
+        "maintenance_plans": MaintenancePlan.query.count(),
         "tasks": Task.query.count(),
         "errors": ErrorEntry.query.count(),
         "documents": GeneratedDocument.query.count(),
+        "machine_manuals": MachineManual.query.count(),
+        "shift_handovers": ShiftHandover.query.count(),
+        "training_entries": AssistantTrainingEntry.query.count(),
+        "knowledge_documents": KnowledgeDocument.query.count(),
+        "knowledge_chunks": KnowledgeChunk.query.count(),
+        "knowledge_documents_reindexed": knowledge_summary["indexed"],
         "maintenance_tag_entries": tag_summary["created"],
         "password": DEMO_PASSWORD,
     }
@@ -1242,6 +1484,34 @@ def _seed_users(departments, employees):
     return users
 
 
+def _demo_key(value):
+    """Return a stable ASCII key for demo lookup tables."""
+    normalized = str(value or "").strip().lower()
+    replacements = {
+        "ä": "a",
+        "ö": "o",
+        "ü": "u",
+        "ß": "ss",
+        "Ä": "a",
+        "Ö": "o",
+        "Ü": "u",
+        "×": "x",
+        "²": "2",
+    }
+    for source, target in replacements.items():
+        normalized = normalized.replace(source, target)
+    normalized = re.sub(r"[^a-z0-9]+", "-", normalized)
+    return normalized.strip("-")
+
+
+def _machine_by_key(machines, machine_key):
+    """Return a seeded machine by normalized demo key."""
+    for machine_name, machine in machines.items():
+        if _demo_key(machine_name) == machine_key:
+            return machine
+    return None
+
+
 def _seed_machines():
     """Create missing demo machines and return them by name."""
     machines = {}
@@ -1254,6 +1524,19 @@ def _seed_machines():
                 required_employees=required_employees,
             )
             db.session.add(machine)
+        criticality, status, downtime_days = MACHINE_OPERATION_STATE.get(
+            _demo_key(name),
+            ("normal", "running", None),
+        )
+        machine.produced_item = produced_item
+        machine.required_employees = required_employees
+        machine.criticality = criticality
+        machine.status = status
+        machine.last_downtime_at = (
+            datetime.now(UTC) - timedelta(days=downtime_days)
+            if downtime_days is not None
+            else None
+        )
         machines[name] = machine
     db.session.flush()
     return machines
@@ -1282,8 +1565,17 @@ def _seed_inventory(machines):
             )
             db.session.add(material)
         else:
+            material.unit_cost = unit_cost
             material.quantity = quantity
+            material.manufacturer = manufacturer
             material.machine = machines.get(machine_name)
+        min_quantity, criticality, lead_time_days = INVENTORY_POLICY.get(
+            _demo_key(name),
+            (0, "normal", 0),
+        )
+        material.min_quantity = min_quantity
+        material.criticality = criticality
+        material.lead_time_days = lead_time_days
 
 
 def _seed_errors(departments, machines):
@@ -1317,6 +1609,48 @@ def _seed_errors(departments, machines):
             db.session.add(entry)
 
 
+def _seed_maintenance_plans(departments, users, machines):
+    """Create recurring maintenance plans linked to departments and machines."""
+    priority_map = {"urgent": Priority.URGENT, "soon": Priority.SOON, "normal": Priority.NORMAL}
+    creator = users.get("admin")
+    if not creator:
+        return
+    today = date.today()
+    for (
+        title,
+        description,
+        interval_days,
+        due_days,
+        priority,
+        dept_name,
+        machine_key,
+        is_active,
+    ) in MAINTENANCE_PLAN_DEFINITIONS:
+        department = departments.get(dept_name)
+        machine = _machine_by_key(machines, machine_key)
+        if not department:
+            continue
+        plan = MaintenancePlan.query.filter_by(
+            title=title,
+            department=department,
+        ).first()
+        if not plan:
+            plan = MaintenancePlan(
+                title=title,
+                department=department,
+                created_by=creator.id,
+                interval_days=interval_days,
+                next_due_date=today + timedelta(days=due_days),
+            )
+            db.session.add(plan)
+        plan.description = description
+        plan.interval_days = interval_days
+        plan.next_due_date = today + timedelta(days=due_days)
+        plan.priority = priority_map[priority]
+        plan.is_active = is_active
+        plan.machine = machine
+
+
 def _seed_tasks(departments, users, machines):
     """Create demo tasks across departments and workflow states."""
     today = date.today()
@@ -1343,6 +1677,7 @@ def _seed_tasks(departments, users, machines):
         department = departments.get(dept_name)
         existing = Task.query.filter_by(title=title, department=department).first()
         if existing:
+            _apply_task_operational_details(existing, prio_str, status_str, due_days)
             continue
 
         status = status_map[status_str]
@@ -1368,7 +1703,27 @@ def _seed_tasks(departments, users, machines):
             task.completed_by_id = worker.id
             task.completed_at = now - timedelta(days=abs(due_days))
 
+        _apply_task_operational_details(task, prio_str, status_str, due_days)
         db.session.add(task)
+
+
+def _apply_task_operational_details(task, priority_name, status_name, due_days):
+    """Add realistic planning, effort and blocker metadata to a demo task."""
+    base_minutes = {"urgent": 180, "soon": 120, "normal": 75}[priority_name]
+    task.planned_minutes = base_minutes
+    if status_name == "done":
+        task.actual_minutes = max(30, base_minutes + (abs(due_days) * 8) - 12)
+    elif status_name == "in_progress":
+        task.actual_minutes = max(15, round(base_minutes * 0.45))
+    else:
+        task.actual_minutes = 0
+    if "Dichtungssatz" in task.description or "Lager-Kit" in task.description:
+        task.blocked_reason = "Wartet auf Ersatzteilfreigabe oder Materialbereitstellung."
+    elif task.priority == Priority.URGENT and task.status == TaskStatus.OPEN:
+        task.blocked_reason = "Stillstandsfenster muss mit Produktion abgestimmt werden."
+    else:
+        task.blocked_reason = ""
+    task.reopened_count = 1 if task.status == TaskStatus.IN_PROGRESS and due_days <= 0 else 0
 
 
 def _seed_documents(users):
@@ -1378,10 +1733,12 @@ def _seed_documents(users):
         Task.query.filter(Task.status == TaskStatus.DONE).order_by(Task.id.asc()).limit(8).all()
     )
     for task in completed_tasks:
-        if GeneratedDocument.query.filter_by(task_id=task.id).first():
+        existing = GeneratedDocument.query.filter_by(task_id=task.id).first()
+        if existing:
+            _enrich_generated_document(existing, creator)
             continue
         machine_name = _machine_for_task(task)
-        generate_maintenance_report(
+        document = generate_maintenance_report(
             task,
             creator,
             {
@@ -1395,6 +1752,137 @@ def _seed_documents(users):
                 "notes": "Nächste Fälligkeitstermin in Wartungskalender eingetragen.",
             },
         )
+        _enrich_generated_document(document, creator)
+
+
+def _enrich_generated_document(document, user):
+    """Attach review-ready demo metadata to a generated maintenance document."""
+    document.status = "approved"
+    document.summary_status = "completed"
+    document.summary = (
+        f"Freigegebener Wartungsbericht fuer {document.machine or 'Anlage'}; "
+        "Massnahme abgeschlossen, Befund und Folgepruefung dokumentiert."
+    )
+    document.quality_score = 88
+    document.quality_status = "checked"
+    document.quality_checked_at = datetime.now(UTC)
+    if user:
+        document.approved_by = user.id
+        document.approved_at = datetime.now(UTC)
+        document.approval_comment = "Demo-Freigabe: vollstaendig und nachvollziehbar."
+
+
+def _seed_machine_manuals(users, machines):
+    """Create compact machine manuals that can be indexed by RAG."""
+    creator = users.get("admin") or next(iter(users.values()), None)
+    if not creator:
+        return
+    for machine_key, department, filename, title, content in MANUAL_DEFINITIONS:
+        existing = MachineManual.query.filter_by(original_filename=filename).first()
+        if existing:
+            existing.title = title
+            existing.department = department
+            existing.summary = content.splitlines()[0] if content else title
+            existing.summary_status = "completed"
+            existing.analysis = _manual_analysis_text(title, content)
+            existing.analysis_status = "completed"
+            continue
+        machine = _machine_by_key(machines, machine_key)
+        file_storage = FileStorage(
+            stream=BytesIO(content.encode("utf-8")),
+            filename=filename,
+            content_type="text/plain",
+        )
+        upload_machine_manual(
+            file_storage,
+            creator,
+            machine_id=machine.id if machine else None,
+            department=department,
+        )
+        manual = MachineManual.query.filter_by(original_filename=filename).first()
+        if manual:
+            manual.title = title
+            manual.summary = content.splitlines()[0] if content else title
+            manual.summary_status = "completed"
+            manual.analysis = _manual_analysis_text(title, content)
+            manual.analysis_status = "completed"
+
+
+def _manual_analysis_text(title, content):
+    """Return a short local analysis for seeded manuals."""
+    return (
+        f"{title}: Demo-Manual mit relevanten Fehlercodes, Sicherheitsfolge, "
+        f"Ersatzteilhinweisen und freigegebenen Pruefschritten. Inhalt: {content[:500]}"
+    )
+
+
+def _seed_shift_handovers(users):
+    """Create realistic digital shift handover records."""
+    today = date.today()
+    for (
+        department,
+        day_offset,
+        shift_type,
+        status,
+        username,
+        content,
+        open_tasks,
+        machine_notes,
+        next_notes,
+    ) in SHIFT_HANDOVER_DEFINITIONS:
+        shift_date = today + timedelta(days=day_offset)
+        existing = ShiftHandover.query.filter_by(
+            department=department,
+            shift_date=shift_date,
+            shift_type=shift_type,
+        ).first()
+        user = users.get(username)
+        if not existing:
+            existing = ShiftHandover(
+                department=department,
+                shift_date=shift_date,
+                shift_type=shift_type,
+            )
+            db.session.add(existing)
+        existing.status = status
+        existing.handed_over_by = user.id if user else None
+        existing.handed_over_at = datetime.now(UTC) if status == "completed" else None
+        existing.content = content
+        existing.open_tasks = open_tasks
+        existing.machine_notes = machine_notes
+        existing.next_notes = next_notes
+
+
+def _seed_training_entries(users):
+    """Create curated demo assistant training entries for source-backed questions."""
+    creator = users.get("admin")
+    for (
+        title,
+        question,
+        answer,
+        keywords,
+        category,
+        department,
+        priority,
+        is_active,
+    ) in TRAINING_DEFINITIONS:
+        entry = AssistantTrainingEntry.query.filter_by(
+            title=title,
+            category=category,
+        ).first()
+        if not entry:
+            entry = AssistantTrainingEntry(
+                title=title,
+                category=category,
+                created_by=creator.id if creator else None,
+            )
+            db.session.add(entry)
+        entry.question = question
+        entry.answer = answer
+        entry.keywords = keywords
+        entry.department = department
+        entry.priority = priority
+        entry.is_active = is_active
 
 
 def _machine_for_task(task):
