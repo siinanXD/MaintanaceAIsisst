@@ -391,6 +391,72 @@
   }
 
   /**
+   * Return a stable source category for visual badges.
+   */
+  function sourceKind(source) {
+    const kind = String((source && source.source_kind) || "").toLowerCase();
+    const type = String((source && source.type) || "").toLowerCase();
+    const knowledgeType = String(
+      (source && (source.knowledge_source_type || source.source_type || source.document_type)) || ""
+    ).toLowerCase();
+    if (kind.includes("sql") || kind === "structured") return "sql";
+    if (type === "manual_training" || knowledgeType === "manual_training") return "manual_training";
+    if (type === "document" || knowledgeType === "generated_document") return "generated_document";
+    if (kind === "rag" || type === "knowledge") return "rag";
+    return "sql";
+  }
+
+  /**
+   * Return a short label for the source retrieval category.
+   */
+  function sourceKindLabel(source) {
+    const labels = {
+      generated_document: "Generated Document",
+      manual_training: "Manual Training",
+      rag: "RAG",
+      sql: "SQL"
+    };
+    return labels[sourceKind(source)] || "Quelle";
+  }
+
+  /**
+   * Return the CSS class for a source retrieval category.
+   */
+  function sourceKindClass(source) {
+    return "is-" + sourceKind(source).replaceAll("_", "-");
+  }
+
+  /**
+   * Return display-safe machine metadata for one source.
+   */
+  function sourceMachineLabel(source) {
+    const explainability = sourceExplainability(source);
+    const machine = source && (source.machine || explainability.machine);
+    return boundedText(machine, "", 72);
+  }
+
+  /**
+   * Return display-safe department metadata for one source.
+   */
+  function sourceDepartmentLabel(source) {
+    const explainability = sourceExplainability(source);
+    const department = source && (source.department || explainability.department);
+    return boundedText(department, "", 72);
+  }
+
+  /**
+   * Return a compact relevance label for one source.
+   */
+  function sourceRelevanceLabel(source) {
+    if (!source) return "";
+    return scoreLabel(
+      source.relevance !== undefined
+        ? source.relevance
+        : source.normalized_score !== undefined ? source.normalized_score : source.score
+    );
+  }
+
+  /**
    * Return a compact quality label.
    */
   function qualityStatusLabel(status) {
@@ -398,6 +464,8 @@
       admin_approved: "freigegeben",
       ai_suggested: "AI-Vorschlag",
       draft: "Entwurf",
+      low_quality: "niedrige Qualität",
+      duplicate: "Duplikat",
       outdated: "veraltet",
       rejected: "abgelehnt",
       technician_confirmed: "technisch bestätigt"
@@ -1030,16 +1098,18 @@
    */
   function sourcePreviewMeta(source) {
     const parts = [];
-    const score = source && source.normalized_score !== undefined
-      ? source.normalized_score
-      : source && source.score;
+    const relevance = sourceRelevanceLabel(source);
+    const machine = sourceMachineLabel(source);
+    const department = sourceDepartmentLabel(source);
     const quality = qualityStatusLabel(
       (source && source.quality_status) || sourceExplainability(source).quality_status
     );
     const section = source && (source.section_title || source.source_section);
     const chunk = source && source.chunk_id;
     const semantic = sourceExplainability(source).semantic_similarity;
-    if (score !== undefined && score !== null && score !== "") parts.push("Score " + scoreLabel(score));
+    if (relevance) parts.push("Relevanz " + relevance);
+    if (machine) parts.push("Maschine " + machine);
+    if (department) parts.push("Department " + department);
     if (semantic) parts.push("Similarity " + scoreLabel(semantic));
     if (chunk !== undefined && chunk !== null && chunk !== "") parts.push("Chunk " + chunk);
     if (quality) parts.push(quality);
@@ -1052,19 +1122,42 @@
    */
   function sourcePreviewChip(source) {
     const item = document.createElement(source && source.url ? "a" : "span");
+    const header = document.createElement("div");
+    const badges = document.createElement("div");
+    const badge = document.createElement("span");
     const title = document.createElement("strong");
     const type = document.createElement("small");
+    const facts = document.createElement("dl");
     const meta = document.createElement("small");
     const reason = document.createElement("small");
-    item.className = "chat-source-chip";
+    item.className = "chat-source-chip " + sourceKindClass(source);
     if (source && source.url) item.href = source.url;
+    header.className = "chat-source-chip-header";
+    badges.className = "chat-source-badges";
+    badge.className = "chat-source-kind " + sourceKindClass(source);
+    badge.textContent = sourceKindLabel(source);
     title.textContent = boundedText(source && source.title, "Wissensquelle", 72);
     type.textContent = sourceTypeLabel(source) + ((source && source.id) ? " #" + source.id : "");
+    facts.className = "chat-source-facts";
+    [
+      ["Source-Type", sourceTypeLabel(source)],
+      ["Maschine", sourceMachineLabel(source) || "-"],
+      ["Relevanz", sourceRelevanceLabel(source) || "-"],
+      ["Department", sourceDepartmentLabel(source) || "-"]
+    ].forEach(([labelText, valueText]) => {
+      const term = document.createElement("dt");
+      const description = document.createElement("dd");
+      term.textContent = labelText;
+      description.textContent = valueText;
+      facts.append(term, description);
+    });
     meta.textContent = sourcePreviewMeta(source);
     reason.className = "chat-source-reason";
     reason.textContent = sourceReasonLabels(source).slice(0, 3).join(" - ");
     item.title = boundedText((source && source.reason) || meta.textContent, "", 180);
-    item.append(title, type);
+    badges.appendChild(badge);
+    header.append(title, badges);
+    item.append(header, type, facts);
     if (meta.textContent) item.appendChild(meta);
     if (reason.textContent) item.appendChild(reason);
     return item;
