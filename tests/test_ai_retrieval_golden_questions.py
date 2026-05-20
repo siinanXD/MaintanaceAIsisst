@@ -1,6 +1,6 @@
 """Golden tests for AI chat retrieval questions."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, timedelta
 
 from app.domain_models.common import utc_now
@@ -23,6 +23,30 @@ from app.models import (
     User,
 )
 
+GOLDEN_ALLOWED_SOURCE_TYPES = (
+    "document",
+    "error",
+    "inventory",
+    "knowledge",
+    "machine",
+    "machine_manual",
+    "maintenance_plan",
+    "manual_training",
+    "shift_handover",
+    "task",
+)
+MIN_RECALL_AT_K = 0.95
+MIN_MRR = 0.5
+REQUIRED_GOLDEN_CATEGORIES = {
+    "Tasks",
+    "Fehler",
+    "Maschinen",
+    "Materialien",
+    "Wartungen",
+    "Dokumente",
+    "Schichtuebergaben",
+}
+
 
 @dataclass(frozen=True)
 class GoldenQuestion:
@@ -31,9 +55,11 @@ class GoldenQuestion:
     question: str
     expected_source_types: tuple[str, ...]
     expected_sources: tuple[tuple[str, str], ...] = ()
+    allowed_source_types: tuple[str, ...] = ()
     min_source_count: int = 1
     forbidden_sources: tuple[tuple[str, str], ...] = ()
     expected_query_type: str = ""
+    top_k: int = 8
 
 
 def test_ai_chat_golden_retrieval_questions(
@@ -67,6 +93,7 @@ def test_ai_chat_golden_retrieval_questions(
         cases = _golden_questions(source_ids)
 
     failures = []
+    evaluations = []
     for case in cases:
         response = client.post(
             "/api/v1/ai/chat",
@@ -79,7 +106,11 @@ def test_ai_chat_golden_retrieval_questions(
         source_keys = _source_keys(sources)
         missing_sources = set(case.expected_sources) - source_keys
         missing_types = set(case.expected_source_types) - _source_types(sources)
+        allowed_source_types = _allowed_source_types(case)
+        disallowed_types = _source_types(sources) - allowed_source_types
         forbidden_hits = source_keys & set(case.forbidden_sources)
+        evaluation = _evaluate_golden_question(case, sources)
+        evaluations.append(evaluation)
 
         if response.status_code != 200:
             failures.append(f"{case.question}: HTTP {response.status_code}")
@@ -100,10 +131,39 @@ def test_ai_chat_golden_retrieval_questions(
                 f"{case.question}: missing source types {sorted(missing_types)}, "
                 f"actual {sorted(_source_types(sources))}"
             )
+        if disallowed_types:
+            failures.append(
+                f"{case.question}: disallowed source types {sorted(disallowed_types)}, "
+                f"allowed {sorted(allowed_source_types)}"
+            )
         if forbidden_hits:
             failures.append(f"{case.question}: forbidden sources {sorted(forbidden_hits)}")
 
+    metrics = _golden_metrics(evaluations)
+    if metrics["no_result_count"]:
+        failures.append(f"no_result_count={metrics['no_result_count']}")
+    if metrics["forbidden_source_count"]:
+        failures.append(f"forbidden_source_count={metrics['forbidden_source_count']}")
+    if metrics["recall_at_k"] < MIN_RECALL_AT_K:
+        failures.append(f"recall_at_k={metrics['recall_at_k']}")
+    if metrics["mrr"] < MIN_MRR:
+        failures.append(f"mrr={metrics['mrr']}")
+
     assert not failures, "\n".join(failures)
+
+
+def test_golden_question_set_has_required_coverage():
+    """Verify the golden question structure covers core retrieval domains."""
+    cases = _golden_questions(_dummy_source_ids())
+    categories = set()
+    for case in cases:
+        categories.update(_case_categories(case))
+
+    assert len(cases) >= 20
+    assert REQUIRED_GOLDEN_CATEGORIES.issubset(categories)
+    assert all(case.expected_sources for case in cases)
+    assert all(case.min_source_count >= 1 for case in cases)
+    assert all(_allowed_source_types(case) for case in cases)
 
 
 def _seed_golden_sources(user):
@@ -581,3 +641,128 @@ def _source_keys(sources):
 def _source_types(sources):
     """Return source types from API source payloads."""
     return {str(source.get("type") or "") for source in sources}
+
+
+def _dummy_source_ids():
+    """Return deterministic ids for golden question structure tests."""
+    return {
+        "task_today": 101,
+        "task_overdue": 102,
+        "task_done": 103,
+        "error_e104": 201,
+        "error_x900": 202,
+        "foreign_error": 203,
+        "machine": 301,
+        "normal_machine": 302,
+        "material_filter": 401,
+        "material_sensor": 402,
+        "plan": 501,
+        "document": 601,
+        "manual": 701,
+        "training": 801,
+        "handover": 901,
+        "knowledge_hydraulic": 1001,
+        "knowledge_e104": 1002,
+        "knowledge_training": 1003,
+        "foreign_doc": 1004,
+    }
+
+
+def _case_categories(case):
+    """Return coverage categories represented by one golden question."""
+    categories = set()
+    source_types = set(case.expected_source_types)
+    question = case.question.lower()
+    if "task" in source_types:
+        categories.add("Tasks")
+    if "error" in source_types:
+        categories.add("Fehler")
+    if "machine" in source_types:
+        categories.add("Maschinen")
+    if "inventory" in source_types:
+        categories.add("Materialien")
+    if "maintenance_plan" in source_types or "wartung" in question:
+        categories.add("Wartungen")
+    if source_types & {"document", "machine_manual", "manual_training"} or any(
+        keyword in question for keyword in ("dokument", "handbuch", "anleitung")
+    ):
+        categories.add("Dokumente")
+    if "shift_handover" in source_types or "schichtuebergabe" in question:
+        categories.add("Schichtuebergaben")
+    return categories
+
+
+def _allowed_source_types(case):
+    """Return allowed public source types for one golden question."""
+    if case.allowed_source_types:
+        return set(case.allowed_source_types)
+    return set(GOLDEN_ALLOWED_SOURCE_TYPES)
+
+
+def _evaluate_golden_question(case, sources):
+    """Return retrieval metrics for one golden question."""
+    ranked_keys = _ranked_source_keys(sources, limit=case.top_k)
+    expected_sources = set(case.expected_sources)
+    forbidden_sources = set(case.forbidden_sources)
+    allowed_types = _allowed_source_types(case)
+    expected_hits = [key for key in ranked_keys if key in expected_sources]
+    forbidden_hits = [key for key in ranked_keys if key in forbidden_sources]
+    disallowed_type_hits = [
+        key for key in ranked_keys if key[0] and key[0] not in allowed_types
+    ]
+    return {
+        "question": case.question,
+        "expected_count": len(expected_sources),
+        "expected_hit_count": len(set(expected_hits)),
+        "recall_at_k": _recall_at_k(expected_hits, expected_sources),
+        "mrr": _mrr(ranked_keys, expected_sources),
+        "no_result": not ranked_keys,
+        "forbidden_source_count": len(forbidden_hits) + len(disallowed_type_hits),
+    }
+
+
+def _golden_metrics(evaluations):
+    """Return aggregate golden retrieval metrics."""
+    metric_items = [item for item in evaluations if item["expected_count"] > 0]
+    return {
+        "query_count": len(evaluations),
+        "metric_query_count": len(metric_items),
+        "recall_at_k": _average_metric(metric_items, "recall_at_k"),
+        "mrr": _average_metric(metric_items, "mrr"),
+        "no_result_count": sum(1 for item in evaluations if item["no_result"]),
+        "forbidden_source_count": sum(
+            item["forbidden_source_count"] for item in evaluations
+        ),
+    }
+
+
+def _ranked_source_keys(sources, limit):
+    """Return ordered type/id pairs from API source payloads."""
+    return [
+        (str(source.get("type") or ""), str(source.get("id") or ""))
+        for source in (sources or [])[:limit]
+    ]
+
+
+def _recall_at_k(expected_hits, expected_sources):
+    """Return Recall@K for expected source pairs."""
+    if not expected_sources:
+        return 1.0
+    return round(len(set(expected_hits)) / len(expected_sources), 4)
+
+
+def _mrr(ranked_keys, expected_sources):
+    """Return mean reciprocal rank for one query."""
+    if not expected_sources:
+        return 1.0
+    for index, key in enumerate(ranked_keys, start=1):
+        if key in expected_sources:
+            return round(1 / index, 4)
+    return 0.0
+
+
+def _average_metric(items, key):
+    """Return an average metric for evaluated golden questions."""
+    if not items:
+        return 0.0
+    return round(sum(item[key] for item in items) / len(items), 4)
