@@ -77,6 +77,7 @@ def test_query_classifier_routes_typical_live_sql_questions():
     assert "tasks" in tasks.suggested_sources
     assert machines.query_type == QUERY_TYPE_LIVE_SQL
     assert "machines" in machines.suggested_sources
+    assert "machine_hints" not in machines.possible_entities
 
 
 def test_query_classifier_routes_hybrid_error_code_questions():
@@ -92,13 +93,27 @@ def test_query_classifier_routes_knowledge_and_general_questions():
     """Verify knowledge-only and general questions are classified separately."""
     classifier = QueryClassifierService()
 
-    knowledge = classifier.classify("Wie loese ich Hydraulikdruckverlust?")
+    knowledge = classifier.classify("Wie l\u00f6se ich Hydraulikdruckverlust?")
     general = classifier.classify("Welche Funktionen hat diese App?")
 
     assert knowledge.query_type == QUERY_TYPE_KNOWLEDGE_RAG
     assert "knowledge" in knowledge.suggested_sources
     assert general.query_type == QUERY_TYPE_GENERAL
     assert general.suggested_sources == []
+
+
+def test_query_classifier_returns_required_payload_fields():
+    """Verify query classification returns stable routing metadata."""
+    payload = QueryClassifierService().classify("Was bedeutet Fehler E104?").to_dict()
+
+    assert set(payload) == {
+        "query_type",
+        "extracted_keywords",
+        "possible_entities",
+        "suggested_sources",
+    }
+    assert payload["query_type"] == QUERY_TYPE_HYBRID
+    assert payload["possible_entities"]["error_codes"] == ["E104"]
 
 
 def test_rag_context_adds_query_type_conflicts_links_and_context_builder(

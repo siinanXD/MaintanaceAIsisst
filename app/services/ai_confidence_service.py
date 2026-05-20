@@ -25,6 +25,8 @@ QUALITY_STATUS_SIGNALS = {
     "ai_suggested": 0.62,
     "draft": 0.35,
     "outdated": 0.45,
+    "low_quality": 0.18,
+    "duplicate": 0.14,
     "rejected": 0.0,
 }
 STRUCTURED_SOURCE_QUALITY_SIGNAL = 0.74

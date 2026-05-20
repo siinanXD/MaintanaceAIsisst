@@ -22,6 +22,17 @@ MATERIAL_HINT_PATTERN = re.compile(
     r"\b(?:material|ersatzteil|bestand|lager)\s+([a-zA-Z0-9][\w-]*)",
     re.IGNORECASE,
 )
+ENTITY_HINT_STOPWORDS = {
+    "an",
+    "der",
+    "die",
+    "ist",
+    "kritisch",
+    "mit",
+    "steht",
+    "stehen",
+    "welche",
+}
 
 LIVE_SQL_KEYWORDS = {
     "aktuell",
@@ -154,14 +165,21 @@ def _extract_entities(message):
             }
         ),
         "task_ids": [int(match.group(1)) for match in TASK_ID_PATTERN.finditer(text)],
-        "machine_hints": sorted(
-            {match.group(1) for match in MACHINE_HINT_PATTERN.finditer(text)}
-        )[:5],
-        "material_hints": sorted(
-            {match.group(1) for match in MATERIAL_HINT_PATTERN.finditer(text)}
-        )[:5],
+        "machine_hints": _entity_hints(MACHINE_HINT_PATTERN, text),
+        "material_hints": _entity_hints(MATERIAL_HINT_PATTERN, text),
     }
     return {key: value for key, value in entities.items() if value}
+
+
+def _entity_hints(pattern, text):
+    """Return bounded entity hints while filtering grammar filler words."""
+    hints = set()
+    for match in pattern.finditer(text):
+        value = str(match.group(1) or "").strip()
+        if not value or normalize_text(value) in ENTITY_HINT_STOPWORDS:
+            continue
+        hints.add(value)
+    return sorted(hints)[:5]
 
 
 def _suggested_sources(query_type, tokens, entities):

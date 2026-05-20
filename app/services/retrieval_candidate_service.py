@@ -54,8 +54,15 @@ class RetrievalCandidate:
             "score": int(round(max(self.raw_score, 0))),
             "raw_score": round(max(self.raw_score, 0), 2),
             "normalized_score": round(max(self.normalized_score, 0), 2),
+            "relevance": round(max(self.normalized_score, 0), 2),
         }
         _copy_optional(source, self.metadata, "chunk_id")
+        _copy_optional(source, self.metadata, "source_kind")
+        _copy_optional(source, self.metadata, "knowledge_source_type")
+        _copy_optional(source, self.metadata, "source_record_id")
+        _copy_optional(source, self.metadata, "document_type")
+        _copy_optional(source, self.metadata, "department")
+        _copy_optional(source, self.metadata, "machine")
         _copy_optional(source, self.metadata, "machine_match")
         _copy_optional(source, self.metadata, "machine_match_reasons")
         _copy_optional(source, self.metadata, "explainability")
@@ -145,10 +152,12 @@ def vector_result_candidate(result, include_score_debug=False):
     )
     candidate_metadata = {
         "chunk_id": metadata.get("chunk_id"),
+        "source_kind": "rag",
         "knowledge_source_type": metadata.get("source_type"),
         "source_record_id": metadata.get("source_id"),
         "document_type": metadata.get("document_type"),
         "department": metadata.get("department"),
+        "machine": metadata.get("machine"),
         "machine_match": explainability.get("machine_match", 0),
         "machine_match_reasons": explainability.get("machine_match_reasons", []),
         "explainability": explainability,

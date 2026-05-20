@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 from app.extensions import db
 from app.models import Employee, KnowledgeDocument, Role, Task, User
+from app.services.retrieval_service import retrieve_context
 from app.services.sql_keyword_retrieval_service import retrieve_sql_keyword_fallback
 
 
@@ -88,6 +89,40 @@ def test_sql_keyword_fallback_finds_machine_by_exact_name(app, make_user, make_m
         candidate.source_type == "machine" and candidate.source_id == machine_id
         for candidate in result["candidates"]
     )
+
+
+def test_retrieve_context_uses_sql_fallback_when_vector_is_empty(
+    app,
+    make_user,
+    make_task,
+):
+    """Verify SQL fallback supplies sources when vector retrieval has no hits."""
+    user = make_user(username="sql_fallback_vector_empty_user")
+    old_task_id = make_task(
+        "SQLONLY903 Altanlage pruefen",
+        creator_username=user["username"],
+        description="Seltener strukturierter Treffer nur ueber SQL-Fallback.",
+    )
+    for index in range(35):
+        make_task(
+            f"SQLONLY903 irrelevanter neuer Task {index}",
+            creator_username=user["username"],
+            description="Aktueller Task ohne den gesuchten Anlagenbezug.",
+        )
+    with app.app_context():
+        old_task = db.session.get(Task, old_task_id)
+        old_task.updated_at = datetime(2020, 1, 1, tzinfo=UTC)
+        db.session.commit()
+        db_user = User.query.filter_by(username=user["username"]).one()
+        payload = retrieve_context("Altanlage pruefen", db_user)
+
+    assert any(
+        source["type"] == "task" and source["id"] == old_task_id
+        for source in payload["sources"]
+    )
+    assert payload["retrieval_debug"]["vector_candidates_found"] == 0
+    assert payload["retrieval_debug"]["sql_keyword_fallback_used"] is True
+    assert payload["retrieval_debug"]["keyword_candidates_found"] >= 1
 
 
 def test_sql_keyword_fallback_blocks_rejected_linked_source(

@@ -3,7 +3,6 @@
 from app.services.query_classifier_service import classify_ai_query
 from app.services.retrieval_debug_service import is_retrieval_debug_visible
 
-
 SOURCE_LABELS = {
     "errors": "Fehlerkatalog",
     "error": "Fehlerkatalog",
@@ -46,6 +45,7 @@ def build_empty_retrieval_answer(message, retrieval=None, user=None):
     checked_sources = _checked_source_labels(retrieval, rag, classification)
     no_match_summary = _no_match_summary(checked_sources)
     recognized_terms = _recognized_terms(classification)
+    likely_reason = _likely_no_match_reason(classification, checked_sources, rag)
     lines = [
         "## Keine belastbare Quelle gefunden",
         (
@@ -58,6 +58,7 @@ def build_empty_retrieval_answer(message, retrieval=None, user=None):
             "- **Erkannte Suchsignale:** "
             + _format_list(recognized_terms, "keine eindeutigen Suchsignale erkannt")
         ),
+        "- **Wahrscheinlicher Grund:** " + likely_reason,
         (
             "- **Warum keine Antwort:** Ohne Quelle wuerde eine konkrete "
             "Loesung oder Wartungsanweisung geraten wirken."
@@ -137,6 +138,36 @@ def _recognized_terms(classification):
     return list(dict.fromkeys(terms))[:10]
 
 
+def _likely_no_match_reason(classification, checked_sources, rag):
+    """Return a user-safe reason for an empty retrieval outcome."""
+    debug = rag.get("retrieval_debug") or {}
+    filtered_count = (
+        _debug_int(debug, "permission_filtered")
+        + _debug_int(debug, "quality_filtered")
+        + _debug_int(debug, "score_anchor_filtered", fallback_key="score_filtered")
+    )
+    candidate_count = (
+        _debug_int(debug, "sql_candidates_found")
+        + _debug_int(debug, "keyword_candidates_found")
+        + _debug_int(debug, "vector_candidates_found")
+        + _debug_int(debug, "sql_keyword_fallback_candidates_found")
+    )
+    final_sources = _debug_int(debug, "final_visible_sources")
+    if filtered_count > 0 and final_sources == 0:
+        return (
+            "Es gab Suchkandidaten, aber keine Quelle blieb nach Sichtbarkeits-, "
+            "Qualitaets- oder Relevanzpruefung als belastbare Antwortgrundlage uebrig."
+        )
+    if candidate_count == 0:
+        return "In den geprueften Bereichen wurden keine passenden Treffer ermittelt."
+    if final_sources == 0:
+        return "Kandidaten waren vorhanden, aber keine freigegebene Quelle war sichtbar."
+    query_type = str(classification.get("query_type") or "GENERAL")
+    if query_type == "GENERAL" and not checked_sources:
+        return "Die Frage passt zu keiner konkreten freigegebenen Datenquelle."
+    return "Keine gepruefte Quelle passte ausreichend sicher zur Frage."
+
+
 def _next_step_text(classification, checked_sources):
     """Return concrete next steps without inventing answer content."""
     query_type = str(classification.get("query_type") or "GENERAL")
@@ -160,17 +191,28 @@ def _admin_diagnostic_lines(rag, user):
     debug = rag.get("retrieval_debug") or {}
     if not debug or not _may_show_admin_diagnostics(user):
         return []
+    score_filtered = _debug_int(
+        debug,
+        "score_anchor_filtered",
+        fallback_key="score_filtered",
+    )
     return [
         "- **Kandidaten gefunden:** "
-        f"SQL {int(debug.get('sql_candidates_found') or 0)}, "
-        f"Keyword {int(debug.get('keyword_candidates_found') or 0)}, "
-        f"Vector {int(debug.get('vector_candidates_found') or 0)}, "
-        f"SQL-Fallback {int(debug.get('sql_keyword_fallback_candidates_found') or 0)}",
+        f"SQL {_debug_int(debug, 'sql_candidates_found')}, "
+        f"Keyword {_debug_int(debug, 'keyword_candidates_found')}, "
+        f"Vector {_debug_int(debug, 'vector_candidates_found')}, "
+        f"SQL-Fallback {_debug_int(debug, 'sql_keyword_fallback_candidates_found')}",
         "- **Gefiltert:** "
-        f"Permission {int(debug.get('permission_filtered') or 0)}, "
-        f"Quality {int(debug.get('quality_filtered') or 0)}, "
-        f"Score/Anchor {int(debug.get('score_filtered') or 0)}",
-        f"- **Final sichtbare Quellen:** {int(debug.get('final_visible_sources') or 0)}",
+        f"Permission {_debug_int(debug, 'permission_filtered')}, "
+        f"Quality {_debug_int(debug, 'quality_filtered')}, "
+        f"Score/Anchor {score_filtered}",
+        "- **Admin-Counter:** "
+        f"SQL candidate count {_debug_int(debug, 'sql_candidates_found')}; "
+        f"vector candidate count {_debug_int(debug, 'vector_candidates_found')}; "
+        f"filtered by permission {_debug_int(debug, 'permission_filtered')}; "
+        f"filtered by quality {_debug_int(debug, 'quality_filtered')}; "
+        f"filtered by score {score_filtered}",
+        f"- **Final sichtbare Quellen:** {_debug_int(debug, 'final_visible_sources')}",
     ]
 
 
@@ -194,6 +236,18 @@ def _safe_term(value):
     if len(term) > 48:
         return ""
     return term
+
+
+def _debug_int(debug, key, fallback_key=None):
+    """Return a non-negative integer debug counter."""
+    value = debug.get(key)
+    if value in (None, "") and fallback_key:
+        value = debug.get(fallback_key)
+    try:
+        parsed = int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    return max(parsed, 0)
 
 
 def _format_list(items, empty_text="keine"):

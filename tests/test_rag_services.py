@@ -27,8 +27,13 @@ from app.services.knowledge_aging_service import (
     knowledge_aging_state,
     mark_outdated_knowledge_by_age,
 )
+from app.services.knowledge_quality_service import (
+    retrieval_quality_gate_for_status,
+)
 from app.services.knowledge_service import chunk_vector_metadata, rebuild_chunks
 from app.services.knowledge_source_quality_service import (
+    chunk_quality_reasons,
+    has_bad_ocr_signature,
     latest_chunk_quality_summary,
     reset_chunk_quality_reports,
 )
@@ -394,6 +399,114 @@ def test_rebuild_chunks_preserves_short_technical_chunks(app):
     assert document.chunk_count == 1
 
 
+def test_chunk_quality_detects_empty_short_duplicate_and_bad_ocr(app):
+    """Verify chunk-quality diagnostics expose concrete rejection signals."""
+    bad_ocr_text = "%%%%% ##### ||||| " * 5 + "\ufffd\ufffd"
+
+    assert chunk_quality_reasons("") == {"empty"}
+    assert "too_short" in chunk_quality_reasons("OK")
+    assert has_bad_ocr_signature(bad_ocr_text) is True
+
+    with app.app_context():
+        reset_chunk_quality_reports()
+        document = KnowledgeDocument(
+            source_type="upload",
+            title="OCR Qualitaetstest",
+            original_filename="ocr.txt",
+            relative_path="uploads/ocr.txt",
+            content_type="text/plain",
+            department="Instandhaltung",
+            status="indexed",
+            quality_status="draft",
+            is_public=True,
+            chunk_count=0,
+            created_at=utc_now(),
+            updated_at=utc_now(),
+        )
+        db.session.add(document)
+        db.session.flush()
+
+        with patch(
+            "app.services.knowledge_service.build_text_chunks",
+            return_value=[
+                {"text": "", "metadata": {"chunk_order": 0}},
+                {"text": "OK", "metadata": {"chunk_order": 1}},
+                {"text": bad_ocr_text, "metadata": {"chunk_order": 2}},
+            ],
+        ):
+            rebuild_chunks(document, "ignored")
+        db.session.commit()
+
+        summary = latest_chunk_quality_summary()
+        chunk_count = document.chunk_count
+        quality_status = document.quality_status
+
+    assert chunk_count == 0
+    assert quality_status == "low_quality"
+    assert summary["skipped_empty_chunks"] == 1
+    assert summary["skipped_short_chunks"] == 1
+    assert summary["skipped_bad_ocr_chunks"] == 1
+    assert summary["skipped_low_quality_chunks"] == 3
+
+
+def test_chunk_quality_marks_duplicate_sources_without_overriding_reviewed(app):
+    """Verify automatic duplicate status only affects unreviewed sources."""
+    useful_chunk = (
+        "Fehlercode DUP-100\n"
+        "Ursache: Sensor S12 liefert kein Signal.\n"
+        "Loesung: Sensor reinigen und Testlauf dokumentieren."
+    )
+    with app.app_context():
+        reset_chunk_quality_reports()
+        duplicate_document = KnowledgeDocument(
+            source_type="upload",
+            title="Duplikat Quelle",
+            original_filename="duplicate.txt",
+            relative_path="uploads/duplicate.txt",
+            content_type="text/plain",
+            department="Instandhaltung",
+            status="indexed",
+            quality_status="draft",
+            is_public=True,
+            chunk_count=0,
+            created_at=utc_now(),
+            updated_at=utc_now(),
+        )
+        approved_document = KnowledgeDocument(
+            source_type="upload",
+            title="Freigegebene Quelle",
+            original_filename="approved.txt",
+            relative_path="uploads/approved.txt",
+            content_type="text/plain",
+            department="Instandhaltung",
+            status="indexed",
+            quality_status="admin_approved",
+            is_public=True,
+            chunk_count=0,
+            created_at=utc_now(),
+            updated_at=utc_now(),
+        )
+        db.session.add_all([duplicate_document, approved_document])
+        db.session.flush()
+
+        duplicate_payloads = [
+            {"text": useful_chunk, "metadata": {"chunk_order": index}}
+            for index in range(3)
+        ]
+        with patch(
+            "app.services.knowledge_service.build_text_chunks",
+            return_value=duplicate_payloads,
+        ):
+            rebuild_chunks(duplicate_document, "ignored")
+            rebuild_chunks(approved_document, "ignored")
+        db.session.commit()
+        duplicate_quality_status = duplicate_document.quality_status
+        approved_quality_status = approved_document.quality_status
+
+    assert duplicate_quality_status == "duplicate"
+    assert approved_quality_status == "admin_approved"
+
+
 def test_rag_knowledge_context_respects_document_permissions(
     app,
     make_user,
@@ -546,6 +659,8 @@ def test_retrieve_context_keeps_structured_data_when_rag_disabled(
         ("ai_suggested", True),
         ("draft", True),
         ("outdated", True),
+        ("low_quality", True),
+        ("duplicate", True),
         ("rejected", False),
     ],
 )
@@ -605,6 +720,8 @@ def test_rag_retrieval_quality_gate_weights_lower_quality_statuses(
             "ai_suggested",
             "outdated",
             "draft",
+            "low_quality",
+            "duplicate",
             "rejected",
         ):
             _create_quality_gate_document(
@@ -630,6 +747,23 @@ def test_rag_retrieval_quality_gate_weights_lower_quality_statuses(
     ]
     assert score_by_title["QG901 ai_suggested"] > score_by_title["QG901 outdated"]
     assert score_by_title["QG901 outdated"] > score_by_title["QG901 draft"]
+    assert score_by_title["QG901 draft"] > score_by_title["QG901 low_quality"]
+    assert score_by_title["QG901 low_quality"] > score_by_title["QG901 duplicate"]
+
+
+def test_retrieval_quality_gate_exposes_problem_quality_statuses():
+    """Verify low-quality statuses are weakly retrievable and rejected is blocked."""
+    low_quality_gate = retrieval_quality_gate_for_status("low_quality")
+    duplicate_gate = retrieval_quality_gate_for_status("duplicate")
+    rejected_gate = retrieval_quality_gate_for_status("rejected")
+
+    assert low_quality_gate.allowed is True
+    assert duplicate_gate.allowed is True
+    assert rejected_gate.allowed is False
+    assert duplicate_gate.score_multiplier < low_quality_gate.score_multiplier
+    assert low_quality_gate.score_multiplier < retrieval_quality_gate_for_status(
+        "draft"
+    ).score_multiplier
 
 
 def test_hybrid_rag_scoring_promotes_helpful_feedback(

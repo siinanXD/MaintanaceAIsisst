@@ -35,6 +35,7 @@ from app.services.document_service import (
     html_to_text,
 )
 from app.services.knowledge_quality_service import (
+    automatic_quality_status_from_chunk_report,
     default_quality_status_for_source,
     mark_quality_outdated_if_reviewed,
     retrieval_quality_gate_for_document,
@@ -398,6 +399,10 @@ def rebuild_chunks(document, text):
     KnowledgeChunk.query.filter(KnowledgeChunk.document_id == document.id).delete()
     chunks, quality_report = filter_quality_chunks(build_text_chunks(text))
     remember_chunk_quality_report(document.id, quality_report)
+    document.quality_status = automatic_quality_status_from_chunk_report(
+        document,
+        quality_report,
+    )
     chunk_objects = []
     entity_catalog = load_technical_entity_catalog()
     source_metadata = document_entity_metadata(document)
@@ -497,8 +502,19 @@ def chunk_vector_metadata(document, chunk):
         "technical_entities": entities,
         "technical_entities_json": entities_to_json(entities),
     }
+    metadata.update(_public_source_entity_metadata(document_entity_metadata(document)))
     metadata.update(stored_chunk_metadata(chunk))
     return metadata
+
+
+def _public_source_entity_metadata(metadata):
+    """Return source metadata that is safe to expose in answer source cards."""
+    safe = {}
+    for key in ("machine", "department", "document_type"):
+        value = metadata.get(key) if isinstance(metadata, dict) else None
+        if value not in (None, ""):
+            safe[key] = str(value)[:180]
+    return safe
 
 
 def stored_chunk_metadata(chunk):
@@ -1303,7 +1319,9 @@ def mark_machine_knowledge_stale(machine):
     document.relative_path = "/machines"
     document.status = "stale"
     mark_quality_outdated_if_reviewed(document)
-    document.error_message = "Maschinenstammdaten wurden geaendert und muessen neu indexiert werden."
+    document.error_message = (
+        "Maschinenstammdaten wurden geaendert und muessen neu indexiert werden."
+    )
     document.updated_at = utc_now()
 
 

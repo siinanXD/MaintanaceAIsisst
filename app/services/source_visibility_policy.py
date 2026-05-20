@@ -23,6 +23,14 @@ class SourceVisibilityRule:
     dashboards: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class SourceVisibilityDecision:
+    """Describe a prompt-safe source visibility decision."""
+
+    allowed: bool
+    reason: str
+
+
 DEFAULT_SOURCE_VISIBILITY_RULE = SourceVisibilityRule(dashboards=("documents",))
 SOURCE_VISIBILITY_RULES = {
     "upload": SourceVisibilityRule(dashboards=("documents",)),
@@ -43,31 +51,59 @@ class SourceVisibilityPolicy:
 
     def can_read(self, user, document):
         """Return whether a user may consume a knowledge document in retrieval."""
+        return self.visibility_decision(user, document).allowed
+
+    def visibility_decision(self, user, document):
+        """Return a prompt-safe explanation for a source visibility decision."""
         if not user or not document:
-            return False
+            return SourceVisibilityDecision(False, "missing_user_or_document")
         if not self._passes_retrieval_quality_gate(document):
-            return False
+            return SourceVisibilityDecision(False, "quality_gate_blocked")
         if self._is_admin(user):
-            return True
+            return SourceVisibilityDecision(True, "admin_access")
         if not getattr(document, "is_public", False):
-            return False
+            return SourceVisibilityDecision(False, "source_not_public")
         if not self._department_matches(user, getattr(document, "department", "")):
-            return False
+            return SourceVisibilityDecision(False, "department_mismatch")
 
         source_type = self._source_type(document)
         if source_type == "generated_document":
-            return self._can_read_generated_document(user, document)
+            return self._decision_from_allowed(
+                self._can_read_generated_document(user, document),
+                "generated_document_visible",
+                "generated_document_not_visible",
+            )
         if source_type == "error_entry":
-            return self._can_read_error_entry(user, document)
+            return self._decision_from_allowed(
+                self._can_read_error_entry(user, document),
+                "error_entry_visible",
+                "error_entry_not_visible",
+            )
         if source_type == "task":
-            return self._can_read_task(user, document)
+            return self._decision_from_allowed(
+                self._can_read_task(user, document),
+                "task_visible",
+                "task_not_visible",
+            )
         if source_type == "maintenance_plan":
-            return self._can_read_maintenance_plan(user, document)
+            return self._decision_from_allowed(
+                self._can_read_maintenance_plan(user, document),
+                "maintenance_plan_visible",
+                "maintenance_plan_not_visible",
+            )
         if source_type == "manual_training":
-            return self._can_read_manual_training(user, document)
+            return self._decision_from_allowed(
+                self._can_read_manual_training(user, document),
+                "manual_training_visible",
+                "manual_training_not_visible",
+            )
 
         rule = SOURCE_VISIBILITY_RULES.get(source_type, DEFAULT_SOURCE_VISIBILITY_RULE)
-        return self._has_any_dashboard(user, rule.dashboards)
+        return self._decision_from_allowed(
+            self._has_any_dashboard(user, rule.dashboards),
+            "dashboard_scope_visible",
+            "dashboard_scope_missing",
+        )
 
     def _can_read_generated_document(self, user, document):
         """Return whether a generated document source is visible to the user."""
@@ -153,6 +189,12 @@ class SourceVisibilityPolicy:
         """Return whether the user has master administrator access."""
         return bool(getattr(user, "is_admin", False))
 
+    def _decision_from_allowed(self, allowed, allowed_reason, denied_reason):
+        """Return a visibility decision from a boolean check."""
+        if allowed:
+            return SourceVisibilityDecision(True, allowed_reason)
+        return SourceVisibilityDecision(False, denied_reason)
+
 
 SOURCE_VISIBILITY_POLICY = SourceVisibilityPolicy()
 
@@ -162,3 +204,10 @@ def can_user_read_source_document(user, document):
     if not isinstance(document, KnowledgeDocument):
         return False
     return SOURCE_VISIBILITY_POLICY.can_read(user, document)
+
+
+def source_visibility_decision(user, document):
+    """Return the central prompt-safe source visibility decision."""
+    if not isinstance(document, KnowledgeDocument):
+        return SourceVisibilityDecision(False, "not_a_knowledge_document")
+    return SOURCE_VISIBILITY_POLICY.visibility_decision(user, document)

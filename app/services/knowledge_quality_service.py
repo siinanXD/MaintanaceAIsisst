@@ -15,11 +15,24 @@ KNOWLEDGE_QUALITY_STATUSES = {
     "ai_suggested",
     "technician_confirmed",
     "admin_approved",
+    "low_quality",
+    "duplicate",
     "outdated",
     "rejected",
 }
 AI_SUGGESTED_SOURCE_TYPES = {"generated_document"}
-TECHNICIAN_STATUSES = {"technician_confirmed", "outdated"}
+TECHNICIAN_STATUSES = {
+    "technician_confirmed",
+    "low_quality",
+    "duplicate",
+    "outdated",
+}
+MANUAL_REVIEWED_STATUSES = {
+    "technician_confirmed",
+    "admin_approved",
+    "outdated",
+    "rejected",
+}
 
 
 @dataclass(frozen=True)
@@ -56,6 +69,18 @@ RETRIEVAL_QUALITY_GATES = {
         allowed=True,
         score_multiplier=0.35,
         reason="outdated_weighted",
+    ),
+    "low_quality": RetrievalQualityGate(
+        status="low_quality",
+        allowed=True,
+        score_multiplier=0.08,
+        reason="low_quality_strongly_weighted",
+    ),
+    "duplicate": RetrievalQualityGate(
+        status="duplicate",
+        allowed=True,
+        score_multiplier=0.05,
+        reason="duplicate_strongly_weighted",
     ),
     "draft": RetrievalQualityGate(
         status="draft",
@@ -118,6 +143,37 @@ def apply_retrieval_quality_score(score, document):
     return round(max(0.0, numeric_score) * gate.score_multiplier, 2)
 
 
+def automatic_quality_status_from_chunk_report(document, report):
+    """Return a safe automatic quality status suggestion after indexing."""
+    current_status = normalize_existing_quality_status(
+        getattr(document, "quality_status", None),
+        getattr(document, "source_type", ""),
+    )
+    if current_status in MANUAL_REVIEWED_STATUSES:
+        return current_status
+    if report is None or int(getattr(report, "total_chunks_seen", 0) or 0) <= 0:
+        return current_status
+    accepted_chunks = int(getattr(report, "accepted_chunks", 0) or 0)
+    duplicate_chunks = int(getattr(report, "skipped_duplicate_chunks", 0) or 0)
+    low_quality_chunks = int(getattr(report, "skipped_low_quality_chunks", 0) or 0)
+    bad_ocr_chunks = int(getattr(report, "skipped_bad_ocr_chunks", 0) or 0)
+    empty_chunks = int(getattr(report, "skipped_empty_chunks", 0) or 0)
+    short_chunks = int(getattr(report, "skipped_short_chunks", 0) or 0)
+    total_rejected = duplicate_chunks + low_quality_chunks
+
+    if accepted_chunks <= 0 and duplicate_chunks and not low_quality_chunks:
+        return "duplicate"
+    if accepted_chunks <= 0 and total_rejected:
+        return "low_quality"
+    if bad_ocr_chunks:
+        return "low_quality"
+    if duplicate_chunks >= max(2, accepted_chunks) and low_quality_chunks <= duplicate_chunks:
+        return "duplicate"
+    if (empty_chunks + short_chunks) >= max(2, accepted_chunks * 2):
+        return "low_quality"
+    return current_status
+
+
 def change_knowledge_quality_status(document, requested_status, user):
     """Persist a validated quality-status transition for a knowledge document."""
     try:
@@ -164,6 +220,14 @@ def normalize_quality_status(value):
         valid = ", ".join(sorted(KNOWLEDGE_QUALITY_STATUSES))
         raise ValueError(f"quality_status must be one of: {valid}")
     return status
+
+
+def normalize_existing_quality_status(value, source_type=""):
+    """Return a supported current quality status without raising."""
+    status = str(value or "").strip().lower()
+    if status in KNOWLEDGE_QUALITY_STATUSES:
+        return status
+    return default_quality_status_for_source(source_type)
 
 
 def validate_quality_status_permission(document, requested_status, user):

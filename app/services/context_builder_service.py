@@ -19,6 +19,8 @@ QUALITY_PRIORITY = {
     "technician_confirmed": 35,
     "ai_suggested": 10,
     "outdated": -15,
+    "low_quality": -35,
+    "duplicate": -40,
     "draft": -25,
     "rejected": -100,
 }

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 
@@ -27,6 +28,7 @@ from app.services.retrieval_candidate_service import (
     normalize_retrieval_score,
     rank_candidates,
 )
+from app.services.retrieval_debug_service import retrieval_debug_decision
 from app.services.source_visibility_policy import SOURCE_VISIBILITY_POLICY
 from app.services.task_service import visible_tasks_query
 from app.services.text_normalization_service import normalize_text, tokenize_text
@@ -46,7 +48,32 @@ SOURCE_PRIORITY = {
     "shift_handover": 12.0,
     "manual_training": 10.0,
 }
+TOKEN_SYNONYMS = {
+    "anlage": {"maschine", "machine"},
+    "anlagen": {"maschine", "maschinen", "machine"},
+    "anleitung": {"handbuch", "manual", "dokument"},
+    "auftrag": {"task", "aufgabe"},
+    "aufgabe": {"task", "auftrag"},
+    "defekt": {"fehler", "stoerung"},
+    "dokument": {"bericht", "report", "handbuch"},
+    "dokumente": {"berichte", "reports", "handbuch"},
+    "error": {"fehler", "stoerung"},
+    "ersatzteil": {"material", "lager"},
+    "fehler": {"error", "stoerung", "defekt"},
+    "handbuch": {"manual", "anleitung", "dokument"},
+    "lager": {"inventory", "material", "ersatzteil"},
+    "machine": {"maschine", "anlage"},
+    "manual": {"handbuch", "anleitung", "dokument"},
+    "material": {"ersatzteil", "lager", "inventory"},
+    "maschine": {"anlage", "machine"},
+    "maschinen": {"anlagen", "machine"},
+    "report": {"bericht", "dokument"},
+    "stoerung": {"fehler", "error", "defekt"},
+    "task": {"aufgabe", "auftrag"},
+    "teil": {"material", "ersatzteil"},
+}
 TASK_ID_PATTERN = re.compile(r"\b(?:task|aufgabe)\s*#?\s*(\d+)\b", re.IGNORECASE)
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -59,7 +86,14 @@ class SqlKeywordHit:
 
 
 def retrieve_sql_keyword_fallback(message, user, existing_sources=None, limit=6):
-    """Return visible structured SQL fallback candidates for a retrieval query."""
+    """Return visible structured SQL fallback candidates for a retrieval query.
+
+    The fallback supplements vector/RAG retrieval with bounded ``ilike`` searches
+    across structured maintenance tables. It expands normalized query tokens with
+    a small synonym map, boosts exact identifiers such as task ids and error
+    codes, and still delegates visibility to the existing dashboard queries and
+    ``SourceVisibilityPolicy``.
+    """
     tokens = _query_tokens(message)
     if not tokens:
         return _result([], used=False)
@@ -443,9 +477,46 @@ def _hit(
         metadata={
             "source_kind": "sql_keyword_fallback",
             "knowledge_source_type": source_document_type,
+            **_safe_source_metadata(record),
         },
     )
     return SqlKeywordHit(candidate=candidate, data_key=data_key, payload=record.to_dict())
+
+
+def _safe_source_metadata(record):
+    """Return display-safe metadata for SQL fallback sources."""
+    if isinstance(record, Task):
+        return {"department": record.department.name if record.department else ""}
+    if isinstance(record, ErrorEntry):
+        return {
+            "machine": record.machine,
+            "department": record.department.name if record.department else "",
+        }
+    if isinstance(record, Machine):
+        return {"machine": record.name}
+    if isinstance(record, InventoryMaterial):
+        return {"machine": record.machine.name if record.machine else ""}
+    if isinstance(record, MaintenancePlan):
+        return {
+            "machine": record.machine.name if record.machine else "",
+            "department": record.department.name if record.department else "",
+        }
+    if isinstance(record, GeneratedDocument):
+        return {
+            "machine": record.machine,
+            "department": record.department,
+            "document_type": record.document_type,
+        }
+    if isinstance(record, MachineManual):
+        return {
+            "machine": record.machine.name if record.machine else "",
+            "department": record.department,
+        }
+    if isinstance(record, ShiftHandover):
+        return {"department": record.department}
+    if isinstance(record, AssistantTrainingEntry):
+        return {"department": record.department}
+    return {}
 
 
 def _score_match(query_text, searchable_text, exact_texts, exact_match=False):
@@ -484,8 +555,12 @@ def _ilike_any(columns, tokens):
 
 
 def _query_tokens(value):
-    """Return bounded normalized SQL fallback query tokens."""
-    return set(tokenize_text(value))
+    """Return normalized SQL fallback query tokens expanded with simple synonyms."""
+    tokens = set(tokenize_text(value))
+    expanded = set(tokens)
+    for token in tokens:
+        expanded.update(TOKEN_SYNONYMS.get(str(token).lower(), set()))
+    return expanded
 
 
 def _bounded_tokens(tokens):
@@ -527,13 +602,32 @@ def _result(hits, used):
     data = {}
     for hit in hits:
         data.setdefault(hit.data_key, []).append(hit.payload)
+    logger.info(
+        "sql_keyword_retrieval used=%s candidates=%s by_type=%s",
+        bool(used),
+        len(candidates),
+        _count_by_type(candidates),
+    )
     return {
         "candidates": candidates,
         "data": data,
         "debug": {
+            "keyword_candidates_found": len(candidates),
             "sql_keyword_fallback_used": bool(used),
             "sql_keyword_fallback_candidates_found": len(candidates),
             "sql_keyword_fallback_by_type": _count_by_type(candidates),
+            "decision_trace": [
+                retrieval_debug_decision(
+                    "sql_keyword_fallback",
+                    "ok" if candidates else "empty",
+                    "ranked_visible_keyword_candidates",
+                    {
+                        "candidate_count": len(candidates),
+                        "used": bool(used),
+                        "source_types": _count_by_type(candidates),
+                    },
+                )
+            ],
         },
     }
 

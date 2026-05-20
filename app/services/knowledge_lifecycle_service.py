@@ -15,6 +15,7 @@ from app.services.knowledge_quality_service import (
 INDEXED_STATUS = "indexed"
 APPROVED_QUALITY_STATUS = "admin_approved"
 DRAFT_QUALITY_STATUSES = {"draft", "ai_suggested"}
+WEAK_QUALITY_STATUSES = {"low_quality", "duplicate", "outdated"}
 PROBLEM_INDEX_STATUSES = {"error", "no_text", "pending", "stale"}
 
 LIFECYCLE_STEP_DEFINITIONS = (
@@ -64,7 +65,10 @@ LIFECYCLE_STEP_DEFINITIONS = (
         "label": "Techniker bestaetigt",
         "status": "available",
         "services": ["knowledge_quality_service"],
-        "notes": "Techniker duerfen abteilungsbezogen technician_confirmed oder outdated setzen.",
+        "notes": (
+            "Techniker duerfen abteilungsbezogen technician_confirmed, "
+            "low_quality, duplicate oder outdated setzen."
+        ),
     },
     {
         "key": "admin_approval",
@@ -165,6 +169,8 @@ def knowledge_lifecycle_overview(documents=None):
         "drafts": _draft_count(quality_status_counts),
         "technician_confirmed": quality_status_counts.get("technician_confirmed", 0),
         "admin_approved": quality_status_counts.get(APPROVED_QUALITY_STATUS, 0),
+        "low_quality": quality_status_counts.get("low_quality", 0),
+        "duplicate": quality_status_counts.get("duplicate", 0),
         "outdated": quality_status_counts.get("outdated", 0),
         "rejected": quality_status_counts.get("rejected", 0),
         "problem_documents": problem_count,
@@ -185,7 +191,8 @@ def knowledge_lifecycle_overview(documents=None):
             "reason": (
                 "RAG blockiert rejected, verwendet admin_approved und "
                 "technician_confirmed mit voller Staerke und gewichtet "
-                "ai_suggested, draft sowie outdated niedriger."
+                "ai_suggested, draft, low_quality, duplicate sowie "
+                "outdated niedriger."
             ),
         },
         "steps": knowledge_lifecycle_steps(),
@@ -252,8 +259,13 @@ def _review_queue(quality_status_counts, aging_summary=None):
     return {
         "needs_technician_review": _draft_count(quality_status_counts),
         "needs_admin_approval": quality_status_counts.get("technician_confirmed", 0),
+        "needs_quality_review": sum(
+            quality_status_counts.get(status, 0) for status in WEAK_QUALITY_STATUSES
+        ),
         "needs_refresh": quality_status_counts.get("outdated", 0),
         "needs_aging_review": int(aging_summary.get("stale_candidates") or 0),
+        "low_quality": quality_status_counts.get("low_quality", 0),
+        "duplicate": quality_status_counts.get("duplicate", 0),
         "rejected": quality_status_counts.get("rejected", 0),
     }
 
@@ -281,6 +293,10 @@ def _next_actions(quality_status_counts, problem_count, non_approved_indexed, ag
         actions.append("Technikerbestaetigte Eintraege als Admin freigeben oder ablehnen.")
     if quality_status_counts.get("outdated", 0):
         actions.append("Veraltete Eintraege aktualisieren und neu indexieren.")
+    if quality_status_counts.get("low_quality", 0):
+        actions.append("Low-Quality Quellen pruefen, neu extrahieren oder ablehnen.")
+    if quality_status_counts.get("duplicate", 0):
+        actions.append("Doppelte Quellen zusammenfuehren oder blockieren.")
     if non_approved_indexed:
         actions.append("Nicht admin-freigegebene RAG-Quellen fachlich reviewen.")
     if not actions:
@@ -302,6 +318,10 @@ def _document_next_action(document, aging_state=None):
         return "admin_approval"
     if document.quality_status == "outdated":
         return "refresh"
+    if document.quality_status == "low_quality":
+        return "quality_review"
+    if document.quality_status == "duplicate":
+        return "merge_or_reject"
     if document.quality_status == "rejected":
         return "revise_or_archive"
     return "none"

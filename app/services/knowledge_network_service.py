@@ -42,6 +42,8 @@ QUALITY_WEIGHTS = {
     "ai_suggested": 2.0,
     "draft": 1.0,
     "outdated": 0.5,
+    "low_quality": 0.35,
+    "duplicate": 0.3,
     "rejected": 0.25,
 }
 

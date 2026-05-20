@@ -12,10 +12,18 @@ from app.extensions import db
 from app.models import GeneratedDocument, KnowledgeChunk, KnowledgeDocument
 from app.services.chunking_service import token_set
 from app.services.embedding_service import get_embedding_provider
-from app.services.knowledge_service import can_user_read_knowledge_document, stored_chunk_metadata
 from app.services.knowledge_quality_service import retrieval_quality_gate_for_document
-from app.services.retrieval_debug_service import empty_retrieval_debug
+from app.services.knowledge_service import (
+    can_user_read_knowledge_document,
+    document_entity_metadata,
+    stored_chunk_metadata,
+)
+from app.services.retrieval_debug_service import (
+    empty_retrieval_debug,
+    retrieval_debug_decision,
+)
 from app.services.retrieval_scoring_service import HybridRetrievalScorer
+from app.services.source_visibility_policy import source_visibility_decision
 from app.services.technical_entity_service import entities_from_json, entities_to_json
 
 logger = logging.getLogger(__name__)
@@ -190,6 +198,18 @@ class SqlAlchemyKnowledgeVectorStore(BaseVectorStore):
             keyword_limit=keyword_scan_limit,
         )
         chunks = _deduplicate_chunks([*keyword_chunks, *recent_chunks])
+        decisions = [
+            retrieval_debug_decision(
+                "vector_candidate_scan",
+                "ok" if chunks else "empty",
+                "assembled_keyword_and_recent_chunk_candidates",
+                {
+                    "keyword_candidates": len(keyword_chunks),
+                    "recent_candidates": len(recent_chunks),
+                    "unique_candidates": len(chunks),
+                },
+            )
+        ]
 
         results = []
         permission_filtered = 0
@@ -202,16 +222,41 @@ class SqlAlchemyKnowledgeVectorStore(BaseVectorStore):
             quality_gate = retrieval_quality_gate_for_document(document)
             if not quality_gate.allowed:
                 quality_filtered += 1
+                _log_vector_filter_decision(
+                    "quality",
+                    document,
+                    chunk,
+                    quality_gate.reason,
+                )
                 continue
             if not can_user_read_knowledge_document(user, document):
                 permission_filtered += 1
+                visibility = source_visibility_decision(user, document)
+                _log_vector_filter_decision(
+                    "permission",
+                    document,
+                    chunk,
+                    visibility.reason,
+                )
                 continue
             score = scorer.score_chunk(chunk, document)
             if not score.allowed:
                 score_filtered += 1
+                _log_vector_filter_decision(
+                    "score_anchor",
+                    document,
+                    chunk,
+                    score.explanation,
+                )
                 continue
             if score.final_score < min_score:
                 score_filtered += 1
+                _log_vector_filter_decision(
+                    "score_anchor",
+                    document,
+                    chunk,
+                    "below_min_score",
+                )
                 continue
             results.append(
                 VectorSearchResult(
@@ -229,6 +274,15 @@ class SqlAlchemyKnowledgeVectorStore(BaseVectorStore):
             key=lambda item: (item.score, item.metadata.get("updated_at", "")),
             reverse=True,
         )
+        decisions.extend(
+            _filter_decisions(
+                permission_filtered,
+                quality_filtered,
+                score_filtered,
+                len(results),
+                min_score,
+            )
+        )
         logger.info(
             "rag_local_retrieval query_tokens=%s candidate_count=%s result_count=%s "
             "permission_filtered=%s quality_filtered=%s score_filtered=%s min_score=%s",
@@ -242,13 +296,15 @@ class SqlAlchemyKnowledgeVectorStore(BaseVectorStore):
         )
         self._last_debug = empty_retrieval_debug(
             keyword_candidates_found=len(keyword_chunks),
-            vector_candidates_found=len(results),
+            vector_candidates_found=len(chunks),
             permission_filtered=permission_filtered,
             quality_filtered=quality_filtered,
             score_filtered=score_filtered,
+            score_anchor_filtered=score_filtered,
             vector_store=self.name,
             filters=filters or {},
             top_k=limit_value,
+            decision_trace=decisions,
         )
         return results[:limit_value]
 
@@ -342,13 +398,23 @@ class ChromaVectorStore(BaseVectorStore):
             n_results=candidate_limit,
             where=_flat_metadata(filters or {}) or None,
         )
+        raw_results = _chroma_results(response)
         debug = empty_retrieval_debug(
+            vector_candidates_found=len(raw_results),
             vector_store=self.name,
             filters=filters or {},
             top_k=limit_value,
+            decision_trace=[
+                retrieval_debug_decision(
+                    "vector_candidate_scan",
+                    "ok" if raw_results else "empty",
+                    "chroma_similarity_candidates_returned",
+                    {"unique_candidates": len(raw_results)},
+                )
+            ],
         )
         results = _filter_visible_results(
-            _chroma_results(response),
+            raw_results,
             query_text=query_text,
             user=user,
             filters=filters,
@@ -406,8 +472,19 @@ def _knowledge_metadata(document, chunk, score=None):
         metadata["quality_score_multiplier"] = score_metadata["signals"].get(
             "quality_multiplier"
         )
+    metadata.update(_public_source_entity_metadata(document_entity_metadata(document)))
     metadata.update(stored_chunk_metadata(chunk))
     return metadata
+
+
+def _public_source_entity_metadata(metadata):
+    """Return source metadata that is safe to expose in answer source cards."""
+    safe = {}
+    for key in ("machine", "department", "document_type"):
+        value = metadata.get(key) if isinstance(metadata, dict) else None
+        if value not in (None, ""):
+            safe[key] = str(value)[:180]
+    return safe
 
 
 def _chunk_entities(chunk):
@@ -611,9 +688,22 @@ def _filter_visible_results(results, query_text, user=None, filters=None, limit=
         quality_gate = retrieval_quality_gate_for_document(document)
         if not quality_gate.allowed:
             quality_filtered += 1
+            _log_vector_filter_decision(
+                "quality",
+                document,
+                _chunk_for_metadata(result),
+                quality_gate.reason,
+            )
             continue
         if user is not None and not can_user_read_knowledge_document(user, document):
             permission_filtered += 1
+            visibility = source_visibility_decision(user, document)
+            _log_vector_filter_decision(
+                "permission",
+                document,
+                _chunk_for_metadata(result),
+                visibility.reason,
+            )
             continue
         score = scorer.score_text_result(
             text=result.text,
@@ -623,6 +713,12 @@ def _filter_visible_results(results, query_text, user=None, filters=None, limit=
         )
         if not score.allowed:
             score_filtered += 1
+            _log_vector_filter_decision(
+                "score_anchor",
+                document,
+                _chunk_for_metadata(result),
+                score.explanation,
+            )
             continue
         merged_metadata = dict(result.metadata)
         merged_metadata.update(
@@ -644,11 +740,69 @@ def _filter_visible_results(results, query_text, user=None, filters=None, limit=
         reverse=True,
     )
     if isinstance(debug, dict):
-        debug["vector_candidates_found"] = len(visible)
         debug["permission_filtered"] = permission_filtered
         debug["quality_filtered"] = quality_filtered
         debug["score_filtered"] = score_filtered
+        debug["score_anchor_filtered"] = score_filtered
+        debug["decision_trace"] = [
+            *(debug.get("decision_trace") or []),
+            *_filter_decisions(
+                permission_filtered,
+                quality_filtered,
+                score_filtered,
+                len(visible),
+                min_score=0,
+            ),
+        ]
     return visible[:limit] if limit else visible
+
+
+def _filter_decisions(
+    permission_filtered,
+    quality_filtered,
+    score_filtered,
+    visible_count,
+    min_score,
+):
+    """Return aggregate vector retrieval decisions without source text."""
+    decisions = []
+    for step, count, reason in (
+        ("permission_filter", permission_filtered, "source_visibility_policy_denied"),
+        ("quality_filter", quality_filtered, "retrieval_quality_gate_denied"),
+        ("score_anchor_filter", score_filtered, "insufficient_score_or_relevance_anchor"),
+    ):
+        if count:
+            decisions.append(
+                retrieval_debug_decision(
+                    step,
+                    "filtered",
+                    reason,
+                    {"filtered": count},
+                )
+            )
+    decisions.append(
+        retrieval_debug_decision(
+            "vector_visible_candidates",
+            "ok" if visible_count else "empty",
+            "candidates_remaining_after_visibility_quality_and_score_filters",
+            {"visible_candidates": visible_count, "min_score": min_score},
+        )
+    )
+    return decisions
+
+
+def _log_vector_filter_decision(reason_type, document, chunk, reason):
+    """Log one prompt-safe vector retrieval filter decision."""
+    logger.debug(
+        "rag_candidate_filtered reason_type=%s reason=%s document_id=%s chunk_id=%s "
+        "source_type=%s quality_status=%s",
+        reason_type,
+        reason,
+        getattr(document, "id", None),
+        getattr(chunk, "id", None),
+        getattr(document, "source_type", ""),
+        getattr(document, "quality_status", ""),
+    )
 
 
 def _chunk_for_metadata(result):

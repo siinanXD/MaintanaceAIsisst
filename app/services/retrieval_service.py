@@ -1,5 +1,6 @@
 """Retrieval orchestration for structured data and RAG knowledge chunks."""
 
+import logging
 import re
 from time import perf_counter
 
@@ -10,14 +11,23 @@ from app.services.ai_safety_service import assess_ai_safety
 from app.services.context_builder_service import build_dynamic_context
 from app.services.incident_timeline_service import timeline_context_for_query
 from app.services.knowledge_linking_service import linked_knowledge_for_sources
+from app.services.query_classifier_service import (
+    QUERY_TYPE_GENERAL,
+    QUERY_TYPE_HYBRID,
+    QUERY_TYPE_KNOWLEDGE_RAG,
+    QUERY_TYPE_LIVE_SQL,
+)
 from app.services.query_understanding_service import classify_query
-from app.services.query_classifier_service import QUERY_TYPE_GENERAL, QUERY_TYPE_LIVE_SQL
 from app.services.retrieval_candidate_service import (
     public_sources_from_candidates,
     rank_candidates,
     vector_result_candidate,
 )
-from app.services.retrieval_debug_service import empty_retrieval_debug, merge_retrieval_debug
+from app.services.retrieval_debug_service import (
+    empty_retrieval_debug,
+    merge_retrieval_debug,
+    retrieval_debug_decision,
+)
 from app.services.source_conflict_service import detect_source_conflicts
 from app.services.sql_keyword_retrieval_service import retrieve_sql_keyword_fallback
 from app.services.vector_store_service import get_vector_store
@@ -27,6 +37,7 @@ EXACT_SQL_LOOKUP_PATTERN = re.compile(
     r"\b(?:task|aufgabe)\s*#?\s*\d+\b|\b[A-Z]{1,6}[-_ ]?\d{2,6}\b",
     re.IGNORECASE,
 )
+logger = logging.getLogger(__name__)
 
 
 def retrieve_context(
@@ -40,7 +51,11 @@ def retrieve_context(
     started_at = perf_counter()
     retrieval_message = _retrieval_message(message, conversation_context)
     understanding = classify_query(retrieval_message, requested_scopes=requested_scopes)
-    effective_scopes = _effective_scopes(requested_scopes, understanding)
+    effective_scopes = _effective_scopes(
+        requested_scopes,
+        understanding,
+        query_classification,
+    )
     strategy = understanding.retrieval_strategy
     structured = retrieve_ai_context(retrieval_message, user, effective_scopes)
     structured_context = structured.get("context", "")
@@ -96,6 +111,13 @@ def retrieve_context(
             conversation_context=conversation_context,
         )
         duration_ms = _duration_ms(started_at)
+        final_debug = _final_retrieval_debug(
+            retrieval_debug,
+            rag_enabled=False,
+            sources=sources,
+            duration_ms=duration_ms,
+        )
+        _log_retrieval_summary(final_debug)
         return _retrieval_payload(
             context=dynamic_context["context"],
             sources=sources,
@@ -108,13 +130,7 @@ def retrieve_context(
             retrieval_duration_ms=duration_ms,
             knowledge_links={"links": []},
             timeline_context={"context": "", "sources": [], "summary": {}},
-            retrieval_debug=merge_retrieval_debug(
-                retrieval_debug,
-                rag_enabled=False,
-                final_visible_sources=len(sources),
-                source_types=_source_type_counts(sources),
-                duration_ms=duration_ms,
-            ),
+            retrieval_debug=final_debug,
             query_classification=_classification_payload(query_classification),
         )
 
@@ -139,7 +155,11 @@ def retrieve_context(
         include_score_debug=_score_debug_enabled(),
     )
     ranked_sources = public_sources_from_candidates(
-        rank_candidates([*structured_candidates, *vector_candidates]),
+        _rank_candidates_for_query(
+            structured_candidates,
+            vector_candidates,
+            query_classification,
+        ),
         include_score_debug=_score_debug_enabled(),
     )
     sources = _deduplicate_sources(ranked_sources)
@@ -166,7 +186,11 @@ def retrieve_context(
     if fallback["candidates"]:
         structured_candidates = [*structured_candidates, *fallback["candidates"]]
         ranked_sources = public_sources_from_candidates(
-            rank_candidates([*structured_candidates, *vector_candidates]),
+            _rank_candidates_for_query(
+                structured_candidates,
+                vector_candidates,
+                query_classification,
+            ),
             include_score_debug=_score_debug_enabled(),
         )
         sources = _deduplicate_sources(ranked_sources)
@@ -197,6 +221,14 @@ def retrieve_context(
         timeline_context=timeline_context,
     )
     duration_ms = _duration_ms(started_at)
+    final_debug = _final_retrieval_debug(
+        retrieval_debug,
+        vector_debug,
+        rag_enabled=True,
+        sources=sources,
+        duration_ms=duration_ms,
+    )
+    _log_retrieval_summary(final_debug)
     return _retrieval_payload(
         context=dynamic_context["context"],
         sources=sources,
@@ -209,14 +241,7 @@ def retrieve_context(
         retrieval_duration_ms=duration_ms,
         knowledge_links=knowledge_links,
         timeline_context=timeline_context,
-        retrieval_debug=merge_retrieval_debug(
-            retrieval_debug,
-            vector_debug,
-            rag_enabled=True,
-            final_visible_sources=len(sources),
-            source_types=_source_type_counts(sources),
-            duration_ms=duration_ms,
-        ),
+        retrieval_debug=final_debug,
         query_classification=_classification_payload(query_classification),
     )
 
@@ -478,13 +503,63 @@ def _score_debug_enabled():
     return bool(current_app.config.get("RAG_SCORE_DEBUG", False))
 
 
-def _effective_scopes(requested_scopes, understanding):
+def _effective_scopes(requested_scopes, understanding, query_classification=None):
     """Return requested scopes enriched by query understanding."""
     scopes = list(requested_scopes or [])
     for scope in understanding.recommended_scopes:
         if scope not in scopes:
             scopes.append(scope)
+    for scope in _classification_scope_hints(query_classification):
+        if scope not in scopes:
+            scopes.append(scope)
     return set(scopes)
+
+
+def _rank_candidates_for_query(
+    structured_candidates,
+    vector_candidates,
+    query_classification,
+):
+    """Return candidates ordered according to the high-level query class."""
+    classification_type = _classification_type(query_classification)
+    structured_ranked = rank_candidates(structured_candidates)
+    vector_ranked = rank_candidates(vector_candidates)
+    if classification_type == QUERY_TYPE_LIVE_SQL:
+        return [*structured_ranked, *vector_ranked]
+    if classification_type == QUERY_TYPE_KNOWLEDGE_RAG:
+        return [*vector_ranked, *structured_ranked]
+    if classification_type == QUERY_TYPE_HYBRID:
+        return rank_candidates([*structured_candidates, *vector_candidates])
+    return rank_candidates([*structured_candidates, *vector_candidates])
+
+
+def _classification_scope_hints(query_classification):
+    """Return dashboard scopes suggested by high-level query classification."""
+    source_to_scope = {
+        "error": "errors",
+        "error_entry": "errors",
+        "errors": "errors",
+        "generated_document": "documents",
+        "inventory": "inventory",
+        "inventory_material": "inventory",
+        "machine": "machines",
+        "machine_manual": "documents",
+        "machines": "machines",
+        "maintenance_plan": "machines",
+        "manual_training": "documents",
+        "document": "documents",
+        "documents": "documents",
+        "shift_handover": "shiftplans",
+        "shiftplans": "shiftplans",
+        "task": "tasks",
+        "tasks": "tasks",
+    }
+    scopes = []
+    for source in _classification_sources(query_classification):
+        scope = source_to_scope.get(source)
+        if scope and scope not in scopes:
+            scopes.append(scope)
+    return scopes
 
 
 def _strategy_filters(strategy):
@@ -498,6 +573,50 @@ def _strategy_filters(strategy):
 def _duration_ms(started_at):
     """Return elapsed milliseconds from a perf_counter start value."""
     return int(round((perf_counter() - started_at) * 1000))
+
+
+def _final_retrieval_debug(*items, rag_enabled, sources, duration_ms):
+    """Return merged retrieval debug data with the final source decision."""
+    source_types = _source_type_counts(sources)
+    final_decision = {
+        "decision_trace": [
+            retrieval_debug_decision(
+                "final_visible_sources",
+                "ok" if sources else "empty",
+                "deduplicated_sources_exposed_to_answer_context",
+                {
+                    "source_count": len(sources or []),
+                    "source_types": source_types,
+                },
+            )
+        ]
+    }
+    return merge_retrieval_debug(
+        *items,
+        final_decision,
+        rag_enabled=rag_enabled,
+        final_visible_sources=len(sources or []),
+        source_types=source_types,
+        duration_ms=duration_ms,
+    )
+
+
+def _log_retrieval_summary(debug):
+    """Log prompt-safe retrieval diagnostics for one request."""
+    logger.info(
+        "retrieval_diagnostics sql=%s keyword=%s vector=%s permission_filtered=%s "
+        "quality_filtered=%s score_anchor_filtered=%s final_visible_sources=%s "
+        "rag_enabled=%s duration_ms=%s",
+        debug.get("sql_candidates_found"),
+        debug.get("keyword_candidates_found"),
+        debug.get("vector_candidates_found"),
+        debug.get("permission_filtered"),
+        debug.get("quality_filtered"),
+        debug.get("score_anchor_filtered") or debug.get("score_filtered"),
+        debug.get("final_visible_sources"),
+        debug.get("rag_enabled"),
+        debug.get("duration_ms"),
+    )
 
 
 def _retrieval_message(message, conversation_context):

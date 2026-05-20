@@ -19,6 +19,7 @@ from app.services.retrieval_candidate_service import (
     rank_candidates,
     structured_candidate_score,
 )
+from app.services.retrieval_debug_service import retrieval_debug_decision
 from app.services.task_service import visible_tasks_query
 from app.services.text_normalization_service import tokenize_text
 
@@ -67,6 +68,18 @@ def retrieve_ai_context(message, user, requested_scopes=None):
     debug = {
         "sql_candidates_found": len(ranked_candidates),
         "sql_candidates_by_scope": _candidate_count_by_scope(ranked_candidates),
+        "decision_trace": [
+            retrieval_debug_decision(
+                "structured_sql_retrieval",
+                "ok" if ranked_candidates else "empty",
+                "ranked_visible_structured_candidates",
+                {
+                    "candidate_count": len(ranked_candidates),
+                    "searchable_scope_count": len(searchable_scopes),
+                    "requested_scope_count": len(requested_scopes),
+                },
+            )
+        ],
     }
     return {
         "context": _context_from_sources(ranked_candidates),
@@ -116,6 +129,7 @@ def _task_sources(message, user, requested_scopes):
             _task_context(task),
             score,
             reason,
+            metadata=_safe_source_metadata(task),
         )
         for task, score, reason in tasks
     ], [task for task, _score, _reason in tasks]
@@ -135,6 +149,7 @@ def _error_sources(message, user, requested_scopes):
             _error_context(entry),
             score,
             reason,
+            metadata=_safe_source_metadata(entry),
         )
         for entry, score, reason in errors
     ], [entry for entry, _score, _reason in errors]
@@ -160,6 +175,7 @@ def _machine_sources(message, requested_scopes):
             _machine_context(machine),
             score,
             reason,
+            metadata=_safe_source_metadata(machine),
         )
         for machine, score, reason in ranked
     ], [machine for machine, _score, _reason in ranked]
@@ -191,6 +207,7 @@ def _inventory_sources(message, requested_scopes):
             _material_context(material),
             score,
             reason,
+            metadata=_safe_source_metadata(material),
         )
         for material, score, reason in ranked
     ], [material for material, _score, _reason in ranked]
@@ -218,6 +235,7 @@ def _document_sources(message, user, requested_scopes):
             _document_context(document),
             score,
             reason,
+            metadata=_safe_source_metadata(document),
         )
         for document, score, reason in ranked
     ], [document for document, _score, _reason in ranked]
@@ -245,6 +263,7 @@ def _shiftplan_sources(message, user, requested_scopes):
             _shiftplan_context(plan),
             score,
             reason,
+            metadata=_safe_source_metadata(plan),
         )
         for plan, score, reason in ranked
     ], [plan for plan, _score, _reason in ranked]
@@ -271,6 +290,7 @@ def _employee_sources(message, user, requested_scopes):
             _employee_context(employee, access_level),
             score,
             reason,
+            metadata={},
         )
         for employee, score, reason in ranked
     ], [employee for employee, _score, _reason in ranked]
@@ -309,8 +329,10 @@ def _candidate_count_by_scope(candidates):
     return counts
 
 
-def _source(item_type, item_id, title, module, url, context, score, reason):
+def _source(item_type, item_id, title, module, url, context, score, reason, metadata=None):
     """Return one internal source object."""
+    safe_metadata = {"source_kind": "structured"}
+    safe_metadata.update(metadata or {})
     return RetrievalCandidate(
         source_type=item_type,
         source_id=item_id,
@@ -322,8 +344,28 @@ def _source(item_type, item_id, title, module, url, context, score, reason):
         normalized_score=normalize_retrieval_score(score, "structured"),
         permission_scope=module,
         explanation=reason,
-        metadata={"source_kind": "structured"},
+        metadata=safe_metadata,
     )
+
+
+def _safe_source_metadata(record):
+    """Return display-safe metadata for a structured source."""
+    if isinstance(record, Task):
+        return {"department": record.department.name if record.department else ""}
+    if isinstance(record, ErrorEntry):
+        return {
+            "machine": record.machine,
+            "department": record.department.name if record.department else "",
+        }
+    if isinstance(record, Machine):
+        return {"machine": record.name}
+    if isinstance(record, InventoryMaterial):
+        return {"machine": record.machine.name if record.machine else ""}
+    if isinstance(record, GeneratedDocument):
+        return {"machine": record.machine, "department": record.department}
+    if isinstance(record, ShiftPlan):
+        return {"department": record.department}
+    return {}
 
 
 def _context_from_sources(sources):
