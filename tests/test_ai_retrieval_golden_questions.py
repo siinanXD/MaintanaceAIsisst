@@ -1,6 +1,5 @@
 """Golden tests for AI chat retrieval questions."""
 
-from dataclasses import dataclass
 from datetime import date, timedelta
 
 from app.domain_models.common import utc_now
@@ -22,44 +21,16 @@ from app.models import (
     TaskStatus,
     User,
 )
-
-GOLDEN_ALLOWED_SOURCE_TYPES = (
-    "document",
-    "error",
-    "inventory",
-    "knowledge",
-    "machine",
-    "machine_manual",
-    "maintenance_plan",
-    "manual_training",
-    "shift_handover",
-    "task",
+from app.services.golden_retrieval_question_service import (
+    REQUIRED_GOLDEN_CATEGORIES,
+    allowed_source_types,
+    build_golden_questions,
+    dummy_source_ids,
+    golden_categories,
 )
+
 MIN_RECALL_AT_K = 0.95
 MIN_MRR = 0.5
-REQUIRED_GOLDEN_CATEGORIES = {
-    "Tasks",
-    "Fehler",
-    "Maschinen",
-    "Materialien",
-    "Wartungen",
-    "Dokumente",
-    "Schichtuebergaben",
-}
-
-
-@dataclass(frozen=True)
-class GoldenQuestion:
-    """Describe one fixed AI retrieval question and its source expectations."""
-
-    question: str
-    expected_source_types: tuple[str, ...]
-    expected_sources: tuple[tuple[str, str], ...] = ()
-    allowed_source_types: tuple[str, ...] = ()
-    min_source_count: int = 1
-    forbidden_sources: tuple[tuple[str, str], ...] = ()
-    expected_query_type: str = ""
-    top_k: int = 8
 
 
 def test_ai_chat_golden_retrieval_questions(
@@ -90,7 +61,7 @@ def test_ai_chat_golden_retrieval_questions(
     with app.app_context():
         db_user = db.session.get(User, user["id"])
         source_ids = _seed_golden_sources(db_user)
-        cases = _golden_questions(source_ids)
+        cases = build_golden_questions(source_ids)
 
     failures = []
     evaluations = []
@@ -106,8 +77,8 @@ def test_ai_chat_golden_retrieval_questions(
         source_keys = _source_keys(sources)
         missing_sources = set(case.expected_sources) - source_keys
         missing_types = set(case.expected_source_types) - _source_types(sources)
-        allowed_source_types = _allowed_source_types(case)
-        disallowed_types = _source_types(sources) - allowed_source_types
+        case_allowed_types = allowed_source_types(case)
+        disallowed_types = _source_types(sources) - case_allowed_types
         forbidden_hits = source_keys & set(case.forbidden_sources)
         evaluation = _evaluate_golden_question(case, sources)
         evaluations.append(evaluation)
@@ -134,7 +105,7 @@ def test_ai_chat_golden_retrieval_questions(
         if disallowed_types:
             failures.append(
                 f"{case.question}: disallowed source types {sorted(disallowed_types)}, "
-                f"allowed {sorted(allowed_source_types)}"
+                f"allowed {sorted(case_allowed_types)}"
             )
         if forbidden_hits:
             failures.append(f"{case.question}: forbidden sources {sorted(forbidden_hits)}")
@@ -154,16 +125,16 @@ def test_ai_chat_golden_retrieval_questions(
 
 def test_golden_question_set_has_required_coverage():
     """Verify the golden question structure covers core retrieval domains."""
-    cases = _golden_questions(_dummy_source_ids())
+    cases = build_golden_questions(dummy_source_ids())
     categories = set()
     for case in cases:
-        categories.update(_case_categories(case))
+        categories.update(golden_categories(case))
 
     assert len(cases) >= 20
     assert REQUIRED_GOLDEN_CATEGORIES.issubset(categories)
     assert all(case.expected_sources for case in cases)
     assert all(case.min_source_count >= 1 for case in cases)
-    assert all(_allowed_source_types(case) for case in cases)
+    assert all(allowed_source_types(case) for case in cases)
 
 
 def _seed_golden_sources(user):
@@ -378,185 +349,6 @@ def _seed_golden_sources(user):
         "foreign_doc": foreign_doc.id,
     }
 
-
-def _golden_questions(ids):
-    """Return the fixed golden AI retrieval question set."""
-    forbidden = (
-        ("error", str(ids["foreign_error"])),
-        ("knowledge", str(ids["foreign_doc"])),
-    )
-    return (
-        GoldenQuestion(
-            "Welche Tasks sind heute offen?",
-            ("task",),
-            (("task", str(ids["task_today"])),),
-            forbidden_sources=forbidden,
-        ),
-        GoldenQuestion(
-            "Welche offenen Aufgaben gibt es heute an Presse Golden 7?",
-            ("task",),
-            (("task", str(ids["task_today"])),),
-            forbidden_sources=forbidden,
-        ),
-        GoldenQuestion(
-            "Welche Maschine hat offene Aufgaben?",
-            ("machine", "task"),
-            (("machine", str(ids["machine"])), ("task", str(ids["task_today"]))),
-            min_source_count=2,
-            forbidden_sources=forbidden,
-        ),
-        GoldenQuestion(
-            "Welche Tasks sind ueberfaellig?",
-            ("task",),
-            (("task", str(ids["task_overdue"])),),
-            forbidden_sources=forbidden,
-        ),
-        GoldenQuestion(
-            f"Zeige Task #{ids['task_today']} fuer Golden Sonderpruefung.",
-            ("task",),
-            (("task", str(ids["task_today"])),),
-            forbidden_sources=forbidden,
-        ),
-        GoldenQuestion(
-            "Was bedeutet Fehler E104?",
-            ("error",),
-            (("error", str(ids["error_e104"])),),
-            forbidden_sources=forbidden,
-        ),
-        GoldenQuestion(
-            "Welche Loesung gibt es fuer Fehler E104?",
-            ("error", "knowledge"),
-            (("error", str(ids["error_e104"])),),
-            forbidden_sources=forbidden,
-        ),
-        GoldenQuestion(
-            "Was ist die Ursache von Fehler X900 an Presse Golden 7?",
-            ("error", "machine"),
-            (("error", str(ids["error_x900"])), ("machine", str(ids["machine"]))),
-            min_source_count=2,
-            forbidden_sources=forbidden,
-        ),
-        GoldenQuestion(
-            "Welche Fehler sind an Presse Golden 7 bekannt?",
-            ("error", "machine"),
-            (("error", str(ids["error_e104"])), ("machine", str(ids["machine"]))),
-            min_source_count=2,
-            forbidden_sources=forbidden,
-        ),
-        GoldenQuestion(
-            "Wie behebe ich Hydraulikdruckverlust?",
-            ("knowledge",),
-            (("knowledge", str(ids["knowledge_hydraulic"])),),
-            forbidden_sources=forbidden,
-        ),
-        GoldenQuestion(
-            "Welche Maschine ist kritisch?",
-            ("machine",),
-            (("machine", str(ids["machine"])),),
-            forbidden_sources=forbidden,
-        ),
-        GoldenQuestion(
-            "Wie ist der Maschinenstatus von Maschine Presse Golden 7?",
-            ("machine",),
-            (("machine", str(ids["machine"])),),
-            forbidden_sources=forbidden,
-        ),
-        GoldenQuestion(
-            "Welche Maschine braucht Golden Hydraulikpruefung Wartung?",
-            ("machine",),
-            (("machine", str(ids["machine"])),),
-            forbidden_sources=forbidden,
-        ),
-        GoldenQuestion(
-            "Welche Materialien sind kritisch?",
-            ("inventory",),
-            (("inventory", str(ids["material_filter"])),),
-            forbidden_sources=forbidden,
-        ),
-        GoldenQuestion(
-            "Welche Ersatzteile sind unter Mindestbestand?",
-            ("inventory",),
-            (("inventory", str(ids["material_filter"])),),
-            forbidden_sources=forbidden,
-        ),
-        GoldenQuestion(
-            "Welche Materialien gehoeren zu Presse Golden 7?",
-            ("inventory", "machine"),
-            (("inventory", str(ids["material_filter"])), ("machine", str(ids["machine"]))),
-            min_source_count=2,
-            forbidden_sources=forbidden,
-        ),
-        GoldenQuestion(
-            "Welche Wartungen Golden Hydraulikpruefung sind faellig?",
-            ("knowledge",),
-            (("knowledge", str(ids["knowledge_training"])),),
-            forbidden_sources=forbidden,
-        ),
-        GoldenQuestion(
-            "Welche Wartung Golden Hydraulikpruefung ist fuer Presse Golden 7 geplant?",
-            ("knowledge",),
-            (("knowledge", str(ids["knowledge_training"])),),
-            forbidden_sources=forbidden,
-        ),
-        GoldenQuestion(
-            "Wann ist die Golden Hydraulikpruefung faellig?",
-            ("knowledge",),
-            (("knowledge", str(ids["knowledge_training"])),),
-            forbidden_sources=forbidden,
-        ),
-        GoldenQuestion(
-            "Welche Anleitung beschreibt Hydraulikdruckverlust?",
-            ("knowledge",),
-            (("knowledge", str(ids["knowledge_hydraulic"])),),
-            forbidden_sources=forbidden,
-        ),
-        GoldenQuestion(
-            "Was steht im Handbuch zu Sensorabgleich E104?",
-            ("knowledge",),
-            (("knowledge", str(ids["knowledge_e104"])),),
-            forbidden_sources=forbidden,
-        ),
-        GoldenQuestion(
-            "Welche Dokumentation hilft bei X900?",
-            ("document", "error"),
-            (("document", str(ids["document"])), ("error", str(ids["error_x900"]))),
-            min_source_count=2,
-            forbidden_sources=forbidden,
-        ),
-        GoldenQuestion(
-            "Welche Trainingsantwort gibt es zur Hydraulikpruefung?",
-            ("knowledge",),
-            (("knowledge", str(ids["knowledge_training"])),),
-            forbidden_sources=forbidden,
-        ),
-        GoldenQuestion(
-            "Was war zur Presse Golden 7 in der letzten Schichtuebergabe offen?",
-            ("shift_handover", "machine"),
-            (("shift_handover", str(ids["handover"])), ("machine", str(ids["machine"]))),
-            min_source_count=2,
-            forbidden_sources=forbidden,
-        ),
-        GoldenQuestion(
-            "Welche Quellen helfen bei Fehler E104 und offener Aufgabe?",
-            ("error", "task"),
-            (("error", str(ids["error_e104"])), ("task", str(ids["task_today"]))),
-            min_source_count=2,
-            forbidden_sources=forbidden,
-        ),
-        GoldenQuestion(
-            "Welche Maschine hat offene Aufgaben und passende Fehlerdokumentation?",
-            ("machine", "task", "error"),
-            (
-                ("machine", str(ids["machine"])),
-                ("task", str(ids["task_today"])),
-                ("error", str(ids["error_e104"])),
-            ),
-            min_source_count=3,
-            forbidden_sources=forbidden,
-        ),
-    )
-
-
 def _error_entry(
     machine,
     code,
@@ -643,68 +435,12 @@ def _source_types(sources):
     return {str(source.get("type") or "") for source in sources}
 
 
-def _dummy_source_ids():
-    """Return deterministic ids for golden question structure tests."""
-    return {
-        "task_today": 101,
-        "task_overdue": 102,
-        "task_done": 103,
-        "error_e104": 201,
-        "error_x900": 202,
-        "foreign_error": 203,
-        "machine": 301,
-        "normal_machine": 302,
-        "material_filter": 401,
-        "material_sensor": 402,
-        "plan": 501,
-        "document": 601,
-        "manual": 701,
-        "training": 801,
-        "handover": 901,
-        "knowledge_hydraulic": 1001,
-        "knowledge_e104": 1002,
-        "knowledge_training": 1003,
-        "foreign_doc": 1004,
-    }
-
-
-def _case_categories(case):
-    """Return coverage categories represented by one golden question."""
-    categories = set()
-    source_types = set(case.expected_source_types)
-    question = case.question.lower()
-    if "task" in source_types:
-        categories.add("Tasks")
-    if "error" in source_types:
-        categories.add("Fehler")
-    if "machine" in source_types:
-        categories.add("Maschinen")
-    if "inventory" in source_types:
-        categories.add("Materialien")
-    if "maintenance_plan" in source_types or "wartung" in question:
-        categories.add("Wartungen")
-    if source_types & {"document", "machine_manual", "manual_training"} or any(
-        keyword in question for keyword in ("dokument", "handbuch", "anleitung")
-    ):
-        categories.add("Dokumente")
-    if "shift_handover" in source_types or "schichtuebergabe" in question:
-        categories.add("Schichtuebergaben")
-    return categories
-
-
-def _allowed_source_types(case):
-    """Return allowed public source types for one golden question."""
-    if case.allowed_source_types:
-        return set(case.allowed_source_types)
-    return set(GOLDEN_ALLOWED_SOURCE_TYPES)
-
-
 def _evaluate_golden_question(case, sources):
     """Return retrieval metrics for one golden question."""
     ranked_keys = _ranked_source_keys(sources, limit=case.top_k)
     expected_sources = set(case.expected_sources)
     forbidden_sources = set(case.forbidden_sources)
-    allowed_types = _allowed_source_types(case)
+    allowed_types = allowed_source_types(case)
     expected_hits = [key for key in ranked_keys if key in expected_sources]
     forbidden_hits = [key for key in ranked_keys if key in forbidden_sources]
     disallowed_type_hits = [

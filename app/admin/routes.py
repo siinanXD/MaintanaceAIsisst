@@ -65,7 +65,10 @@ from app.services.knowledge_service import (
 from app.services.mail_service import mail_config_status
 from app.services.notification_service import delivery_query, send_test_email
 from app.services.operations_tracking_service import aggregate_operations, record_event
-from app.services.retrieval_evaluation_service import retrieval_evaluation_history
+from app.services.retrieval_evaluation_service import (
+    retrieval_evaluation_history,
+    run_admin_golden_retrieval_evaluation,
+)
 from app.services.retrieval_telemetry_service import retrieval_quality_analytics
 from app.services.site_service import create_site, list_sites, update_site
 
@@ -465,6 +468,24 @@ def ai_retrieval_evaluations():
         retrieval_evaluation_history(limit=limit),
         message="Retrieval evaluation history loaded",
     )
+
+
+@admin_bp.post("/ai/retrieval-evaluations/run")
+@roles_required(Role.MASTER_ADMIN)
+def ai_run_retrieval_evaluation():
+    """Run a bounded prompt-safe golden retrieval evaluation."""
+    try:
+        payload = request.get_json(silent=True) or {}
+        limit = int(payload.get("limit", 20))
+    except (TypeError, ValueError):
+        return error_response("limit must be an integer between 1 and 50", 400)
+    if limit < 1 or limit > 50:
+        return error_response("limit must be an integer between 1 and 50", 400)
+    result = run_admin_golden_retrieval_evaluation(
+        current_admin_user(),
+        limit=limit,
+    )
+    return success_response(result, status_code=201, message="Retrieval evaluation run completed")
 
 
 @admin_bp.get("/ai/retrieval-debug")

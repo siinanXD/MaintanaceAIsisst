@@ -7,13 +7,20 @@ from app.domain_models.common import utc_now
 from app.extensions import db
 from app.models import (
     AssistantTrainingEntry,
+    ErrorEntry,
+    InventoryMaterial,
     KnowledgeChunk,
     KnowledgeDocument,
+    Machine,
+    Priority,
     RetrievalEvaluationRun,
     Role,
+    Task,
+    TaskStatus,
     User,
 )
 from app.services.retrieval_evaluation_service import (
+    RETRIEVAL_MODE_FULL,
     GoldenRetrievalQuery,
     evaluate_and_persist_golden_queries,
     evaluate_golden_queries,
@@ -170,6 +177,45 @@ def test_golden_retrieval_evaluation_reports_missing_expected_results(
     assert result["no_result_count"] == 1
 
 
+def test_golden_retrieval_evaluation_uses_full_retrieval_pipeline(
+    app,
+    make_user,
+    set_dashboard_permission,
+):
+    """Verify full-mode golden evaluation uses the chat retrieval pipeline."""
+    user_data = make_user(
+        username="golden_eval_full_pipeline_user",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+    set_dashboard_permission(user_data["username"], "documents", can_view=True)
+    app.config["RAG_ENABLED"] = True
+    app.config["RAG_VECTOR_STORE"] = "local"
+
+    with app.app_context():
+        user = db.session.get(User, user_data["id"])
+        source_ids = _seed_golden_retrieval_documents(user.id)
+        result = evaluate_golden_queries(
+            (
+                GoldenRetrievalQuery(
+                    query="GEV900 Filterdruck Messpunkt",
+                    expected_sources=(("knowledge", str(source_ids["filter"])),),
+                    expected_source_types=("knowledge",),
+                    top_k=3,
+                ),
+            ),
+            user,
+            retrieval_mode=RETRIEVAL_MODE_FULL,
+        )
+
+    query_result = result["queries"][0]
+    assert result["query_count"] == 1
+    assert result["recall_at_k"] == 1.0
+    assert query_result["retrieval_mode"] == RETRIEVAL_MODE_FULL
+    assert query_result["retrieved_sources"][0]["source_type"] == "knowledge"
+    assert query_result["retrieved_sources"][0]["source_id"] == source_ids["filter"]
+
+
 def test_golden_retrieval_evaluation_persists_prompt_safe_run(
     app,
     make_user,
@@ -303,6 +349,58 @@ def test_admin_retrieval_evaluation_history_endpoint_is_admin_only(
     assert payload["unavailable"] is False
 
 
+def test_admin_retrieval_evaluation_run_endpoint_persists_prompt_safe_run(
+    app,
+    client,
+    make_user,
+    auth_headers,
+    set_dashboard_permission,
+):
+    """Verify master admins can run full golden evaluations from the API."""
+    regular = make_user(username="retrieval_eval_run_user")
+    admin = make_user(
+        username="retrieval_eval_run_admin",
+        role=Role.MASTER_ADMIN,
+        department_name="Instandhaltung",
+    )
+    for dashboard in ("tasks", "errors", "machines", "inventory", "documents"):
+        set_dashboard_permission(admin["username"], dashboard, can_view=True)
+    app.config["RAG_ENABLED"] = True
+    app.config["RAG_VECTOR_STORE"] = "local"
+
+    with app.app_context():
+        db_user = db.session.get(User, admin["id"])
+        _seed_demo_runtime_sources(db_user)
+
+    forbidden_response = client.post(
+        "/api/v1/admin/ai/retrieval-evaluations/run",
+        headers=auth_headers(regular["username"]),
+        json={"limit": 5},
+    )
+    admin_response = client.post(
+        "/api/v1/admin/ai/retrieval-evaluations/run",
+        headers=auth_headers(admin["username"]),
+        json={"limit": 5},
+    )
+    payload = admin_response.get_json()["data"]
+
+    assert forbidden_response.status_code == 403
+    assert admin_response.status_code == 201
+    assert payload["evaluation_run"]["id"]
+    assert payload["retrieval_mode"] == "full"
+    assert payload["question_set"] == "demo"
+    assert payload["query_count"] >= 1
+    assert payload["privacy"]["stores_query_text"] is False
+    assert "queries" not in payload
+
+    history_response = client.get(
+        "/api/v1/admin/ai/retrieval-evaluations?limit=1",
+        headers=auth_headers(admin["username"]),
+    )
+    history_payload = history_response.get_json()["data"]
+    assert history_payload["latest"]["id"] == payload["evaluation_run"]["id"]
+
+
 def _seed_golden_retrieval_documents(user_id):
     """Create deterministic knowledge documents for golden retrieval tests."""
     training = AssistantTrainingEntry(
@@ -347,6 +445,65 @@ def _seed_golden_retrieval_documents(user_id):
     }
     db.session.commit()
     return {key: document.id for key, document in documents.items()}
+
+
+def _seed_demo_runtime_sources(user):
+    """Create enough demo-like records for the admin golden run endpoint."""
+    timestamp = utc_now()
+    machine = Machine(
+        name="Hydraulikpresse 03",
+        produced_item="Blechformteile",
+        required_employees=2,
+        criticality="critical",
+        status="maintenance_required",
+    )
+    db.session.add(machine)
+    db.session.flush()
+    task = Task(
+        title="Hydraulikpresse 03 - Dichtigkeitspruefung",
+        description="Hydraulikverbindungen pruefen und Druckverlust dokumentieren.",
+        priority=Priority.URGENT,
+        status=TaskStatus.IN_PROGRESS,
+        due_date=timestamp.date(),
+        department=user.department,
+        created_by=user.id,
+    )
+    error = ErrorEntry(
+        machine="Hydraulikpresse 03",
+        machine_id=machine.id,
+        error_code="INS-E-103",
+        title="Druck faellt ab",
+        description="Hydraulikdruck faellt an Hydraulikpresse 03 ab.",
+        possible_causes="Leckage, defektes Ventil oder Filter zugesetzt.",
+        solution="Lecktest durchfuehren, Ventilspule messen und Filter tauschen.",
+        department=user.department,
+    )
+    material = Machine(
+        name="Spritzgussanlage 04",
+        produced_item="Kunststoffclips",
+        required_employees=4,
+        criticality="high",
+        status="running",
+    )
+    db.session.add_all([task, error, material])
+    db.session.flush()
+    db.session.add(
+        InventoryMaterial(
+            name="Dichtungssatz Presse",
+            unit_cost=115,
+            quantity=0,
+            min_quantity=3,
+            criticality="critical",
+            machine=machine,
+        )
+    )
+    _create_indexed_document(
+        title="Betriebsanweisung Hydraulikpresse 03",
+        text="Hydraulikdruckverlust: Anlage sichern, Druck abbauen und Lecktest machen.",
+        created_by=user.id,
+        department=user.department.name,
+    )
+    db.session.commit()
 
 
 def _create_indexed_document(

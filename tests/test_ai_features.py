@@ -3392,6 +3392,7 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
     assert "data-retrieval-slo-warnings" in html
     assert "data-retrieval-evaluation-history-panel" in html
     assert 'data-retrieval-evaluation-kpi="recall_at_k"' in html
+    assert "data-retrieval-evaluation-run" in html
     assert "data-retrieval-evaluation-regression" in html
     assert "data-retrieval-evaluation-runs" in html
     assert "data-ai-workflows" in html
@@ -3460,6 +3461,7 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
     assert "loadRetrievalTelemetry" in script
     assert "/api/v1/admin/ai/knowledge-network" in source
     assert "/api/v1/admin/ai/retrieval-telemetry" in source
+    assert "/api/v1/admin/ai/retrieval-evaluations/run" in source
     assert "/api/v1/admin/ai/retrieval-debug" in source
     assert "/api/v1/admin/ai/knowledge/reindex/jobs" in source
     assert "/api/v1/admin/ai/knowledge/reindex?mode=stale" in source

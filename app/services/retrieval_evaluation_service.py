@@ -7,13 +7,16 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
 from app.models import RetrievalEvaluationRun
-from app.services.retrieval_service import retrieve_vector_chunks
+from app.services.golden_retrieval_question_service import runtime_golden_questions
+from app.services.retrieval_service import retrieve_context, retrieve_vector_chunks
 from app.services.text_normalization_service import normalize_query
 
 REGRESSION_DROP_THRESHOLD = 0.05
 REGRESSION_COUNT_INCREASE_THRESHOLD = 1
 DEFAULT_HISTORY_LIMIT = 10
 MAX_HISTORY_LIMIT = 50
+RETRIEVAL_MODE_VECTOR = "vector"
+RETRIEVAL_MODE_FULL = "full"
 
 
 @dataclass(frozen=True)
@@ -23,15 +26,22 @@ class GoldenRetrievalQuery:
     query: str
     expected_source_ids: tuple[int, ...] = ()
     expected_source_types: tuple[str, ...] = ()
+    expected_sources: tuple[tuple[str, str], ...] = ()
     forbidden_source_ids: tuple[int, ...] = ()
     forbidden_source_types: tuple[str, ...] = ()
+    forbidden_sources: tuple[tuple[str, str], ...] = ()
+    allowed_source_types: tuple[str, ...] = ()
+    min_source_count: int = 1
     required_permission_context: dict = field(default_factory=dict)
     top_k: int = 4
 
 
-def evaluate_golden_queries(golden_queries, user):
+def evaluate_golden_queries(golden_queries, user, retrieval_mode=RETRIEVAL_MODE_VECTOR):
     """Evaluate golden retrieval queries and return aggregate quality metrics."""
-    query_results = [_evaluate_query(_coerce_golden_query(item), user) for item in golden_queries]
+    mode = _retrieval_mode(retrieval_mode)
+    query_results = [
+        _evaluate_query(_coerce_golden_query(item), user, mode) for item in golden_queries
+    ]
     metric_results = [item for item in query_results if item["expected_count"] > 0]
     return {
         "query_count": len(query_results),
@@ -48,12 +58,53 @@ def evaluate_golden_queries(golden_queries, user):
     }
 
 
-def evaluate_and_persist_golden_queries(golden_queries, user, commit=True):
+def evaluate_and_persist_golden_queries(
+    golden_queries,
+    user,
+    commit=True,
+    retrieval_mode=RETRIEVAL_MODE_VECTOR,
+):
     """Evaluate golden retrieval queries and persist the prompt-safe aggregate run."""
-    result = evaluate_golden_queries(golden_queries, user)
+    result = evaluate_golden_queries(
+        golden_queries,
+        user,
+        retrieval_mode=retrieval_mode,
+    )
     run = persist_retrieval_evaluation_result(result, commit=commit)
     result["evaluation_run"] = run.to_dict()
     return result
+
+
+def run_admin_golden_retrieval_evaluation(user, limit=20, commit=True):
+    """Run the bounded admin golden evaluation against the full retrieval pipeline."""
+    runtime_set = runtime_golden_questions(user=user, limit=limit)
+    queries = [
+        golden_retrieval_query_from_question(question)
+        for question in runtime_set["questions"]
+    ]
+    result = evaluate_and_persist_golden_queries(
+        queries,
+        user,
+        commit=commit,
+        retrieval_mode=RETRIEVAL_MODE_FULL,
+    )
+    return _admin_evaluation_payload(
+        result,
+        question_set=runtime_set["question_set"],
+    )
+
+
+def golden_retrieval_query_from_question(question):
+    """Return an evaluation query from a public golden question definition."""
+    return GoldenRetrievalQuery(
+        query=question.question,
+        expected_source_types=tuple(question.expected_source_types),
+        expected_sources=tuple(question.expected_sources),
+        forbidden_sources=tuple(question.forbidden_sources),
+        allowed_source_types=tuple(question.allowed_source_types),
+        min_source_count=_positive_int(question.min_source_count, default=1),
+        top_k=_positive_int(question.top_k, default=4),
+    )
 
 
 def persist_retrieval_evaluation_result(evaluation_result, commit=True):
@@ -141,19 +192,17 @@ def detect_retrieval_regression(current_run, previous_run):
     return {"regressed": bool(signals), "signals": signals}
 
 
-def _evaluate_query(golden_query, user):
+def _evaluate_query(golden_query, user, retrieval_mode):
     """Evaluate one golden query against the active retrieval stack."""
     top_k = _positive_int(golden_query.top_k, default=4)
-    results = retrieve_vector_chunks(golden_query.query, user, limit=top_k)
-    retrieved_sources = [
-        _retrieved_source(result, rank=index + 1) for index, result in enumerate(results)
-    ]
+    retrieved_sources = _retrieved_sources(golden_query, user, top_k, retrieval_mode)
     expected_units = _expected_units(golden_query)
     relevances, covered_units = _relevance_by_rank(retrieved_sources, expected_units)
     return {
         "query": golden_query.query,
         "normalized_query": normalize_query(golden_query.query),
         "top_k": top_k,
+        "retrieval_mode": retrieval_mode,
         "expected_count": len(expected_units),
         "expected_hit_count": len(covered_units),
         "recall_at_k": _recall_at_k(covered_units, expected_units),
@@ -185,14 +234,49 @@ def _coerce_golden_query(value):
         query=str(value.get("query") or ""),
         expected_source_ids=tuple(_normalized_ints(value.get("expected_source_ids"))),
         expected_source_types=tuple(_normalized_strings(value.get("expected_source_types"))),
+        expected_sources=tuple(_normalized_source_pairs(value.get("expected_sources"))),
         forbidden_source_ids=tuple(_normalized_ints(value.get("forbidden_source_ids"))),
         forbidden_source_types=tuple(_normalized_strings(value.get("forbidden_source_types"))),
+        forbidden_sources=tuple(_normalized_source_pairs(value.get("forbidden_sources"))),
+        allowed_source_types=tuple(_normalized_strings(value.get("allowed_source_types"))),
+        min_source_count=_positive_int(value.get("min_source_count"), default=1),
         required_permission_context=dict(value.get("required_permission_context") or {}),
         top_k=_positive_int(value.get("top_k"), default=4),
     )
 
 
-def _retrieved_source(result, rank):
+def _retrieved_sources(golden_query, user, top_k, retrieval_mode):
+    """Return retrieved source payloads for the selected evaluation mode."""
+    if retrieval_mode == RETRIEVAL_MODE_FULL:
+        retrieval = retrieve_context(golden_query.query, user)
+        sources = (retrieval.get("sources") or [])[:top_k]
+        return [
+            _retrieved_public_source(source, rank=index + 1)
+            for index, source in enumerate(sources)
+        ]
+    results = retrieve_vector_chunks(golden_query.query, user, limit=top_k)
+    return [
+        _retrieved_vector_source(result, rank=index + 1)
+        for index, result in enumerate(results)
+    ]
+
+
+def _retrieved_public_source(source, rank):
+    """Return a compact source payload from one public retrieval source."""
+    metadata = dict(source or {})
+    return {
+        "rank": rank,
+        "source_id": _optional_int(metadata.get("id")),
+        "source_type": str(metadata.get("type") or ""),
+        "source_record_id": _optional_int(metadata.get("source_record_id")),
+        "chunk_id": _optional_int(metadata.get("chunk_id")),
+        "title": str(metadata.get("title") or ""),
+        "score": round(float(metadata.get("score", 0.0) or 0.0), 4),
+        "quality_status": metadata.get("quality_status"),
+    }
+
+
+def _retrieved_vector_source(result, rank):
     """Return a compact source payload from one vector result."""
     metadata = dict(getattr(result, "metadata", {}) or {})
     source_type = str(metadata.get("source_type") or metadata.get("document_type") or "")
@@ -218,6 +302,10 @@ def _expected_units(golden_query):
         ("source_type", source_type)
         for source_type in _normalized_strings(golden_query.expected_source_types)
     )
+    expected.update(
+        ("source_pair", source_type, source_id)
+        for source_type, source_id in _normalized_source_pairs(golden_query.expected_sources)
+    )
     return expected
 
 
@@ -228,6 +316,8 @@ def _source_units(source):
         units.add(("source_id", source["source_id"]))
     if source["source_type"]:
         units.add(("source_type", source["source_type"]))
+    if source["source_id"] is not None and source["source_type"]:
+        units.add(("source_pair", source["source_type"], str(source["source_id"])))
     return units
 
 
@@ -299,11 +389,36 @@ def _forbidden_source_hit_count(golden_query, retrieved_sources):
     """Return how many forbidden sources appeared in retrieval results."""
     forbidden_ids = set(_normalized_ints(golden_query.forbidden_source_ids))
     forbidden_types = set(_normalized_strings(golden_query.forbidden_source_types))
+    forbidden_sources = set(_normalized_source_pairs(golden_query.forbidden_sources))
+    allowed_types = set(_normalized_strings(golden_query.allowed_source_types))
     return sum(
         1
         for source in retrieved_sources
-        if source["source_id"] in forbidden_ids or source["source_type"] in forbidden_types
+        if source["source_id"] in forbidden_ids
+        or source["source_type"] in forbidden_types
+        or (source["source_type"], str(source["source_id"])) in forbidden_sources
+        or (allowed_types and source["source_type"] not in allowed_types)
     )
+
+
+def _admin_evaluation_payload(result, question_set):
+    """Return prompt-safe admin output for a completed evaluation run."""
+    return {
+        "query_count": _nonnegative_int(result.get("query_count")),
+        "metric_query_count": _nonnegative_int(result.get("metric_query_count")),
+        "recall_at_k": _clamped_metric(result.get("recall_at_k")),
+        "mrr": _clamped_metric(result.get("mrr")),
+        "ndcg_at_k": _clamped_metric(result.get("ndcg_at_k")),
+        "permission_leak_count": _nonnegative_int(result.get("permission_leak_count")),
+        "forbidden_source_hit_count": _nonnegative_int(
+            result.get("forbidden_source_hit_count")
+        ),
+        "no_result_count": _nonnegative_int(result.get("no_result_count")),
+        "evaluation_run": result.get("evaluation_run") or {},
+        "question_set": question_set,
+        "retrieval_mode": RETRIEVAL_MODE_FULL,
+        "privacy": _history_privacy_payload(),
+    }
 
 
 def _average_metric(query_results, key):
@@ -349,6 +464,21 @@ def _normalized_strings(values):
     return [str(value).strip() for value in values if str(value).strip()]
 
 
+def _normalized_source_pairs(values):
+    """Return normalized public source type/id pairs."""
+    if values in (None, ""):
+        return []
+    normalized = []
+    for value in values:
+        if not isinstance(value, list | tuple) or len(value) != 2:
+            continue
+        source_type = str(value[0] or "").strip()
+        source_id = str(value[1] or "").strip()
+        if source_type and source_id:
+            normalized.append((source_type, source_id))
+    return normalized
+
+
 def _optional_int(value):
     """Return an integer when value can be parsed, otherwise None."""
     if value in (None, ""):
@@ -389,6 +519,14 @@ def _nonnegative_int(value):
 def _history_limit(value):
     """Return a bounded history limit."""
     return min(MAX_HISTORY_LIMIT, _positive_int(value, default=DEFAULT_HISTORY_LIMIT))
+
+
+def _retrieval_mode(value):
+    """Return a supported retrieval evaluation mode."""
+    mode = str(value or RETRIEVAL_MODE_VECTOR).strip().lower()
+    if mode in {RETRIEVAL_MODE_VECTOR, RETRIEVAL_MODE_FULL}:
+        return mode
+    raise ValueError("retrieval_mode must be 'vector' or 'full'")
 
 
 def _run_metrics(run):

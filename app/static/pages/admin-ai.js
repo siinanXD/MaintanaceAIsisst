@@ -2362,6 +2362,32 @@
     renderRetrievalEvaluationHistory(telemetry);
   }
 
+  async function runRetrievalEvaluation() {
+    const button = root.querySelector("[data-retrieval-evaluation-run]");
+    setButtonBusy(button, true, "Eval laeuft...");
+    setAdminMessage("Golden Retrieval Evaluation laeuft...");
+    try {
+      const result = await api("/api/v1/admin/ai/retrieval-evaluations/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ limit: 20 })
+      });
+      setAdminMessage(
+        "Golden Eval #" + text(result.evaluation_run && result.evaluation_run.id)
+        + " abgeschlossen: Recall "
+        + percentText(result.recall_at_k)
+        + ", MRR "
+        + percentText(result.mrr)
+        + "."
+      );
+      await loadRetrievalTelemetry();
+    } catch (error) {
+      setAdminMessage(safeErrorMessage(error, "Golden Eval ausfuehren"), true);
+    } finally {
+      setButtonBusy(button, false);
+    }
+  }
+
   function renderAiStatus(status) {
     latestAiStatus = status || {};
     const card = root.querySelector("[data-ai-model-card]");
@@ -3324,6 +3350,9 @@
   });
   bind("[data-retrieval-debug-refresh]", "click", () => {
     runAdminLoad(loadRetrievalDebug, "Retrieval Debug laden");
+  });
+  bind("[data-retrieval-evaluation-run]", "click", () => {
+    runAdminLoad(runRetrievalEvaluation, "Golden Eval ausfuehren");
   });
   bind("[data-ai-observability-refresh]", "click", () => {
     runAdminLoad(loadAiObservability, "Monitoring aktualisieren");

@@ -104,6 +104,7 @@ def test_new_ai_frontend_routes_exist(app, client):
         ("/api/v1/admin/ai/training/<int:entry_id>", "DELETE"),
         ("/api/v1/admin/ai/knowledge-network", "GET"),
         ("/api/v1/admin/ai/retrieval-telemetry", "GET"),
+        ("/api/v1/admin/ai/retrieval-evaluations/run", "POST"),
         ("/api/v1/admin/ai/knowledge/status", "GET"),
         ("/api/v1/admin/ai/knowledge-gaps", "GET"),
         ("/api/v1/admin/ai/retrieval-debug", "GET"),
@@ -132,6 +133,7 @@ def test_new_ai_frontend_routes_exist(app, client):
     assert "/api/v1/ai/error-assistant" in script
     assert "/api/v1/admin/ai/knowledge-network" in script
     assert "/api/v1/admin/ai/retrieval-telemetry" in script
+    assert "/api/v1/admin/ai/retrieval-evaluations/run" in script
     assert "/api/v1/admin/ai/knowledge/status" in script
     assert "/api/v1/admin/ai/knowledge-gaps" in script
     assert "/api/v1/admin/ai/retrieval-debug" in script
