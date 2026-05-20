@@ -4,6 +4,26 @@ from flask import Blueprint, render_template
 
 web_bp = Blueprint("web", __name__)
 
+AI_ADMIN_VIEWS = {
+    "overview": "/admin/ai",
+    "models": "/admin/ai/models",
+    "retrieval": "/admin/ai/retrieval",
+    "knowledge": "/admin/ai/knowledge",
+    "training": "/admin/ai/training",
+    "diagnostics": "/admin/ai/diagnostics",
+    "feedback": "/admin/ai/feedback",
+    "indexing": "/admin/ai/indexing",
+}
+
+
+def render_ai_admin_page(view_name):
+    """Render a specific AI admin subpage inside the shared shell."""
+    return render_template(
+        "admin_ai.html",
+        admin_ai_view=view_name,
+        ai_admin_views=AI_ADMIN_VIEWS,
+    )
+
 
 @web_bp.get("/")
 def dashboard():
@@ -43,8 +63,50 @@ def admin_users_page():
 
 @web_bp.get("/admin/ai")
 def admin_ai_page():
-    """Render the AI administration and knowledge page."""
-    return render_template("admin_ai.html")
+    """Render the AI administration overview page."""
+    return render_ai_admin_page("overview")
+
+
+@web_bp.get("/admin/ai/models")
+def admin_ai_models_page():
+    """Render the AI model administration page."""
+    return render_ai_admin_page("models")
+
+
+@web_bp.get("/admin/ai/retrieval")
+def admin_ai_retrieval_page():
+    """Render the AI retrieval administration page."""
+    return render_ai_admin_page("retrieval")
+
+
+@web_bp.get("/admin/ai/knowledge")
+def admin_ai_knowledge_page():
+    """Render the AI knowledge source administration page."""
+    return render_ai_admin_page("knowledge")
+
+
+@web_bp.get("/admin/ai/training")
+def admin_ai_training_page():
+    """Render the AI training data administration page."""
+    return render_ai_admin_page("training")
+
+
+@web_bp.get("/admin/ai/diagnostics")
+def admin_ai_diagnostics_page():
+    """Render the AI diagnostics administration page."""
+    return render_ai_admin_page("diagnostics")
+
+
+@web_bp.get("/admin/ai/feedback")
+def admin_ai_feedback_page():
+    """Render the AI feedback administration page."""
+    return render_ai_admin_page("feedback")
+
+
+@web_bp.get("/admin/ai/indexing")
+def admin_ai_indexing_page():
+    """Render the AI indexing administration page."""
+    return render_ai_admin_page("indexing")
 
 
 @web_bp.get("/employees")

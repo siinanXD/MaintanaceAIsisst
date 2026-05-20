@@ -104,6 +104,15 @@
       permissionKey: "admin_users",
       label: "AI Admin",
       route: "/admin/ai",
+      routeAliases: [
+        "/admin/ai/models",
+        "/admin/ai/retrieval",
+        "/admin/ai/knowledge",
+        "/admin/ai/training",
+        "/admin/ai/diagnostics",
+        "/admin/ai/feedback",
+        "/admin/ai/indexing"
+      ],
       group: "Administration",
       module: "page",
       moduleUrl: "/static/pages/admin-ai.js",
@@ -118,7 +127,11 @@
   }
 
   function featureForPath(pathname) {
-    return byRoute[pathname] || null;
+    const directFeature = byRoute[pathname];
+    if (directFeature) return directFeature;
+    return FEATURES.find((feature) => (
+      Array.isArray(feature.routeAliases) && feature.routeAliases.includes(pathname)
+    )) || null;
   }
 
   function permissionKeyFor(featureKey) {

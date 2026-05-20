@@ -12,8 +12,14 @@
   }
 
   const featureRegistry = window.maintenanceFeatures || { all: [] };
+  function featureRoutes(feature) {
+    return [feature.route].concat(Array.isArray(feature.routeAliases) ? feature.routeAliases : []);
+  }
+
   const DASHBOARD_PATHS = Object.fromEntries(
-    featureRegistry.all.map((feature) => [feature.route, feature.key])
+    featureRegistry.all.flatMap((feature) => (
+      featureRoutes(feature).map((route) => [route, feature.key])
+    ))
   );
   const DASHBOARD_DESTINATIONS = Object.fromEntries(
     featureRegistry.all.map((feature) => [feature.key, feature.route])

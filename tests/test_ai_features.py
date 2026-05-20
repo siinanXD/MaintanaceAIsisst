@@ -175,7 +175,14 @@ def test_ai_chat_returns_sources_and_audit_metadata(
     audit_id = payload["diagnostics"]["audit_event_id"]
     assert response.status_code == 200
     assert payload["chat_message_id"]
-    assert payload["sources"][0]["type"] == "machine"
+    source = payload["sources"][0]
+    assert source["type"] == "machine"
+    assert source["title"] == "Anlage Quelle"
+    assert source["machine"] == "Anlage Quelle"
+    assert source["source_kind"] == "structured"
+    assert source["relevance"] == source["normalized_score"]
+    assert source["relevance"] >= 0
+    assert "content" not in source
     assert payload["diagnostics"]["source_count"] == len(payload["sources"])
     assert payload["diagnostics"]["confidence_score"] == payload["confidence"]["score"]
     assert payload["diagnostics"]["confidence_level"] == payload["confidence"]["level"]
@@ -364,6 +371,7 @@ def test_ai_chat_blocks_hallucination_when_retrieval_is_empty(
     assert "Gepruefte Datenquellen" in payload["answer"]
     assert "Fehlerkatalog" in payload["answer"]
     assert "Erkannte Suchsignale" in payload["answer"]
+    assert "Wahrscheinlicher Grund" in payload["answer"]
     assert "Fehlercode: QX999" in payload["answer"]
     assert "Maschinenhinweis: Omega" in payload["answer"]
     assert "Kandidaten gefunden" not in payload["answer"]
@@ -401,6 +409,11 @@ def test_ai_chat_empty_retrieval_admin_answer_includes_debug_counters(
     assert "Permission" in payload["answer"]
     assert "Quality" in payload["answer"]
     assert "Score/Anchor" in payload["answer"]
+    assert "SQL candidate count" in payload["answer"]
+    assert "vector candidate count" in payload["answer"]
+    assert "filtered by permission" in payload["answer"]
+    assert "filtered by quality" in payload["answer"]
+    assert "filtered by score" in payload["answer"]
     assert "Wie behebe ich" not in payload["answer"]
 
 
@@ -424,9 +437,41 @@ def test_empty_retrieval_general_question_stays_neutral():
     assert "Gepruefte Datenquellen" in answer
     assert "Tasks" in answer
     assert "Fehlerkatalog" in answer
+    assert "Wahrscheinlicher Grund" in answer
+    assert "keine passenden Treffer ermittelt" in answer
     assert "Ohne Quelle" in answer
     assert "konkrete Loesung" in answer
     assert "Kandidaten gefunden" not in answer
+
+
+def test_empty_retrieval_answer_explains_filtered_candidates_without_counts():
+    """Verify non-admin empty answers explain filtering without exposing counters."""
+    answer = build_empty_retrieval_answer(
+        "Was bedeutet Fehler E404?",
+        retrieval={
+            "rag": {
+                "query_classification": {
+                    "query_type": "HYBRID",
+                    "extracted_keywords": ["fehler"],
+                    "possible_entities": {"error_codes": ["E404"]},
+                    "suggested_sources": ["errors", "knowledge"],
+                },
+                "retrieval_debug": {
+                    "sql_candidates_found": 1,
+                    "vector_candidates_found": 2,
+                    "permission_filtered": 1,
+                    "quality_filtered": 1,
+                    "score_anchor_filtered": 1,
+                    "final_visible_sources": 0,
+                },
+            }
+        },
+    )
+
+    assert "Wahrscheinlicher Grund" in answer
+    assert "Sichtbarkeits-, Qualitaets- oder Relevanzpruefung" in answer
+    assert "SQL candidate count" not in answer
+    assert "vector candidate count" not in answer
 
 
 def test_ai_chat_tracks_knowledge_gap_when_no_sources_match(
@@ -1720,6 +1765,13 @@ def test_ai_chat_admin_exposes_retrieval_debug_counters(
     assert debug["sql_candidates_found"] >= 1
     assert debug["vector_candidates_found"] >= 1
     assert debug["final_visible_sources"] == len(payload["sources"])
+    assert debug["candidate_counts"]["sql"] == debug["sql_candidates_found"]
+    assert debug["candidate_counts"]["vector"] == debug["vector_candidates_found"]
+    assert debug["filtered_by"]["score_anchor"] == debug["score_anchor_filtered"]
+    assert any(
+        decision["step"] == "final_visible_sources"
+        for decision in debug["decision_trace"]
+    )
     assert "DBG900" not in json.dumps(debug)
 
 
@@ -1813,6 +1865,14 @@ def test_ai_chat_retrieval_debug_counts_filtered_candidates(
     assert debug["quality_filtered"] >= 1
     assert debug["permission_filtered"] >= 1
     assert debug["score_filtered"] >= 1
+    assert debug["score_anchor_filtered"] >= 1
+    assert debug["filtered_by"]["permissions"] == debug["permission_filtered"]
+    assert debug["filtered_by"]["quality"] == debug["quality_filtered"]
+    assert debug["filtered_by"]["score_anchor"] == debug["score_anchor_filtered"]
+    assert any(
+        decision["step"] == "score_anchor_filter"
+        for decision in debug["decision_trace"]
+    )
     assert debug["final_visible_sources"] == len(response.get_json()["sources"])
 
 
@@ -2027,20 +2087,40 @@ def test_master_admin_can_update_knowledge_quality_status(
             status="indexed",
             quality_status="draft",
         )
-        db.session.add(document)
+        rejected_document = KnowledgeDocument(
+            source_type="upload",
+            title="Blockierte OCR Quelle",
+            original_filename="ocr.txt",
+            content_type="text/plain",
+            department="Instandhaltung",
+            status="indexed",
+            quality_status="low_quality",
+        )
+        db.session.add_all([document, rejected_document])
         db.session.commit()
         document_id = document.id
+        rejected_document_id = rejected_document.id
 
     response = client.put(
         f"/api/v1/admin/ai/knowledge/{document_id}/quality-status",
         headers=auth_headers(admin["username"]),
         json={"quality_status": "admin_approved"},
     )
+    rejected_response = client.put(
+        f"/api/v1/admin/ai/knowledge/{rejected_document_id}/quality-status",
+        headers=auth_headers(admin["username"]),
+        json={"quality_status": "rejected"},
+    )
 
     assert response.status_code == 200
     assert response.get_json()["data"]["quality_status"] == "admin_approved"
+    assert rejected_response.status_code == 200
+    assert rejected_response.get_json()["data"]["quality_status"] == "rejected"
     with app.app_context():
         assert db.session.get(KnowledgeDocument, document_id).quality_status == "admin_approved"
+        assert (
+            db.session.get(KnowledgeDocument, rejected_document_id).quality_status == "rejected"
+        )
 
 
 def test_technician_quality_status_permissions_are_scoped(
@@ -2441,8 +2521,13 @@ def test_knowledge_status_reports_rag_index_diagnostics(
     assert payload["diagnostics"]["rag_enabled"] is True
     assert payload["diagnostics"]["vector_store"] == "local"
     assert set(payload["chunk_quality"]) == {
+        "accepted_chunks",
+        "total_chunks_seen",
+        "skipped_empty_chunks",
+        "skipped_short_chunks",
         "skipped_duplicate_chunks",
         "skipped_low_quality_chunks",
+        "skipped_bad_ocr_chunks",
         "affected_documents",
     }
     assert 0 <= payload["readiness_score"] < 100
@@ -3210,6 +3295,8 @@ def test_dashboard_contains_daily_briefing_and_priority_ui(client):
     assert "confidenceMeter" in chat_script
     assert "renderAnswerBasis" in chat_script
     assert "renderExplainability" in chat_script
+    assert "sourceKindLabel" in chat_script
+    assert "sourceRelevanceLabel" in chat_script
     assert "Warum diese Antwort?" in chat_script
     assert "chat-answer-card" in css
     assert "chat-answer-badge" in css
@@ -3217,6 +3304,8 @@ def test_dashboard_contains_daily_briefing_and_priority_ui(client):
     assert "chat-answer-basis" in css
     assert "chat-answer-alert-title" in css
     assert "chat-source-chip" in css
+    assert "chat-source-kind" in css
+    assert "chat-source-facts" in css
     assert "chat-explainability" in css
 
 
@@ -3245,16 +3334,57 @@ def test_admin_users_page_contains_ai_analytics_ui(client):
 
 
 def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
-    """Verify the dedicated AI admin page exposes management UI hooks."""
-    page_response = client.get("/admin/ai")
+    """Verify AI admin pages expose route-specific management UI hooks."""
     script_response = client.get("/static/pages/admin-ai.js")
-    html = page_response.get_data(as_text=True)
     script = script_response.get_data(as_text=True)
+    routes = {
+        "/admin/ai": ("overview", "AI-Admin f&uuml;r Modelle, Retrieval, Wissen und Diagnose"),
+        "/admin/ai/models": ("models", "id=\"ai-models\""),
+        "/admin/ai/retrieval": ("retrieval", "id=\"ai-retrieval\""),
+        "/admin/ai/knowledge": ("knowledge", "id=\"ai-knowledge-sources\""),
+        "/admin/ai/training": ("training", "id=\"ai-training-data\""),
+        "/admin/ai/diagnostics": ("diagnostics", "id=\"ai-diagnostics\""),
+        "/admin/ai/feedback": ("feedback", "id=\"ai-feedback\""),
+        "/admin/ai/indexing": ("indexing", "id=\"ai-indexing-status\""),
+    }
+    pages = {}
+    for route, (view_name, marker) in routes.items():
+        response = client.get(route)
+        page_html = response.get_data(as_text=True)
+        pages[route] = page_html
+        assert response.status_code == 200
+        assert "data-admin-ai-page" in page_html
+        assert f'data-ai-admin-view="{view_name}"' in page_html
+        assert marker in page_html
+        assert f'href="{route}" class="is-active"' in page_html
+        assert 'aria-current="page"' in page_html
+
+    overview_html = pages["/admin/ai"]
+    html = "\n".join(pages.values())
     source = html + script
 
-    assert page_response.status_code == 200
     assert script_response.status_code == 200
-    assert "data-admin-ai-page" in html
+    for route in routes:
+        assert f'href="{route}"' in overview_html
+    for section_id in (
+        "ai-models",
+        "ai-retrieval",
+        "ai-knowledge-sources",
+        "ai-training-data",
+        "ai-diagnostics",
+        "ai-feedback",
+        "ai-indexing-status",
+    ):
+        assert f'id="{section_id}"' in html
+    assert "data-ai-failed-queries" in html
+    assert "ai-setting-flow" in html
+    assert "indexed" in html
+    assert "rejected" in html
+    assert "active" in html
+    assert "disabled" in html
+    assert "low quality" in html
+    assert "duplicate" in html
+    assert "low_quality" in script
     assert "data-ai-health-panel" in html
     assert "data-retrieval-slo-panel" in html
     assert 'data-retrieval-slo-kpi="retrieval_p95_ms"' in html
@@ -3316,6 +3446,8 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
     assert "data-ai-jobs" in html
     assert "data-ai-job-status" in html
     assert "data-queue-knowledge" in script
+    assert "adminLoadersForView" in script
+    assert "root.dataset.aiAdminView" in script
     assert "/api/v1/admin/ai/events" in source
     assert "/api/v1/admin/ai/chats" in source
     assert "/api/v1/admin/ai/knowledge-gaps" in source
@@ -3347,6 +3479,7 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
     assert "focus_type" in script
     assert "task_context" in script
     assert "loadRetrievalDebug" in script
+    assert "renderFailedQueries" in script
     assert "renderRetrievalFlow" in script
     assert "data-retrieval-flow-select" in script
     assert "flow_steps" in script

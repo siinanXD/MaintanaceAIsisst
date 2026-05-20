@@ -1,12 +1,15 @@
 (function () {
   const root = document.querySelector("[data-admin-ai-page]");
   if (!root) return;
+  const adminView = (root.dataset.aiAdminView || "overview").toLowerCase();
 
   const QUALITY_STATUS_OPTIONS = [
     "draft",
     "ai_suggested",
     "technician_confirmed",
     "admin_approved",
+    "low_quality",
+    "duplicate",
     "outdated",
     "rejected"
   ];
@@ -22,6 +25,12 @@
   let latestJobSummary = null;
   let latestTrainingSummary = null;
   let latestKnowledgeGaps = null;
+
+  function bind(selector, eventName, handler) {
+    const element = root.querySelector(selector);
+    if (!element) return;
+    element.addEventListener(eventName, handler);
+  }
 
   function token() {
     return window.localStorage.getItem("maintenance_access_token");
@@ -563,6 +572,8 @@
       ["Permission-gefiltert", numberText(permissionFiltered)],
       ["Quality-geblockt", numberText(qualityBlocked)],
       ["Rejected", numberText((lifecycle && lifecycle.rejected) || 0)],
+      ["Low Quality", numberText((lifecycle && lifecycle.low_quality) || 0)],
+      ["Duplikate", numberText((lifecycle && lifecycle.duplicate) || 0)],
       ["Nicht freigegeben", numberText(qualityGate.non_approved_indexed_documents || 0)],
       ["Gewichtet statt voll", numberText(qualityGate.quality_weighted_indexed_documents || 0)]
     ];
@@ -933,6 +944,8 @@
       ai_suggested: "AI-Vorschlag",
       technician_confirmed: "Techniker bestaetigt",
       admin_approved: "Admin freigegeben",
+      low_quality: "Niedrige Qualität",
+      duplicate: "Duplikat",
       outdated: "Veraltet",
       rejected: "Abgelehnt"
     };
@@ -941,7 +954,9 @@
 
   function qualityStatusClass(status) {
     if (status === "admin_approved" || status === "technician_confirmed") return "is-active";
-    if (status === "outdated") return "is-stale";
+    if (status === "outdated" || status === "low_quality" || status === "duplicate") {
+      return "is-stale";
+    }
     if (status === "rejected") return "is-error";
     return "is-muted";
   }
@@ -2523,6 +2538,7 @@
       const reviewQueue = data.review_queue || {};
       const hasReview = Number(reviewQueue.needs_technician_review || 0) > 0
         || Number(reviewQueue.needs_admin_approval || 0) > 0
+        || Number(reviewQueue.needs_quality_review || 0) > 0
         || Number(reviewQueue.needs_refresh || 0) > 0;
       state.textContent = hasProblems ? "kritisch" : (hasReview ? "Review offen" : "bereit");
       state.className = "badge badge-ai "
@@ -2542,6 +2558,9 @@
     list.append(
       statusRow("Techniker-Review", numberText(reviewQueue.needs_technician_review || 0)),
       statusRow("Admin-Freigabe", numberText(reviewQueue.needs_admin_approval || 0)),
+      statusRow("Quality-Review", numberText(reviewQueue.needs_quality_review || 0)),
+      statusRow("Low Quality", numberText(reviewQueue.low_quality || 0)),
+      statusRow("Duplikate", numberText(reviewQueue.duplicate || 0)),
       statusRow("Refresh", numberText(reviewQueue.needs_refresh || 0)),
       statusRow("Abgelehnt", numberText(reviewQueue.rejected || 0))
     );
@@ -2651,30 +2670,34 @@
     );
 
     const sourceList = root.querySelector("[data-rag-source-status]");
-    sourceList.innerHTML = "";
-    const sourceTypes = status.source_types || [];
-    if (!sourceTypes.length) {
-      sourceList.appendChild(statusRow("Quellen", "Noch keine Daten indexiert"));
-    } else {
-      sourceTypes.forEach((item) => {
-        sourceList.appendChild(statusRow(
-          sourceTypeLabel(item.source_type),
-          item.searchable_documents + "/" + item.documents + " durchsuchbar, " + item.chunks + " Chunks"
-        ));
-      });
+    if (sourceList) {
+      sourceList.innerHTML = "";
+      const sourceTypes = status.source_types || [];
+      if (!sourceTypes.length) {
+        sourceList.appendChild(statusRow("Quellen", "Noch keine Daten indexiert"));
+      } else {
+        sourceTypes.forEach((item) => {
+          sourceList.appendChild(statusRow(
+            sourceTypeLabel(item.source_type),
+            item.searchable_documents + "/" + item.documents + " durchsuchbar, " + item.chunks + " Chunks"
+          ));
+        });
+      }
     }
 
     const diagnostics = status.diagnostics || {};
     const diagnosticList = root.querySelector("[data-rag-diagnostics]");
-    diagnosticList.innerHTML = "";
-    diagnosticList.append(
-      statusRow("RAG aktiv", diagnostics.rag_enabled ? "ja" : "nein"),
-      statusRow("Suchindex", diagnostics.vector_store),
-      statusRow("Embedding-Anbieter", diagnostics.embedding_provider),
-      statusRow("Chunking", diagnostics.chunk_size + " / " + diagnostics.chunk_overlap),
-      statusRow("Top K", diagnostics.top_k),
-      statusRow("Scan Limit", diagnostics.scan_limit)
-    );
+    if (diagnosticList) {
+      diagnosticList.innerHTML = "";
+      diagnosticList.append(
+        statusRow("RAG aktiv", diagnostics.rag_enabled ? "ja" : "nein"),
+        statusRow("Suchindex", diagnostics.vector_store),
+        statusRow("Embedding-Anbieter", diagnostics.embedding_provider),
+        statusRow("Chunking", diagnostics.chunk_size + " / " + diagnostics.chunk_overlap),
+        statusRow("Top K", diagnostics.top_k),
+        statusRow("Scan Limit", diagnostics.scan_limit)
+      );
+    }
 
     const reasonList = root.querySelector("[data-rag-readiness-reasons]");
     if (reasonList) {
@@ -2834,10 +2857,57 @@
     renderOperationsMetrics(data);
   }
 
+  function isFailedAiEvent(event) {
+    const status = String((event && event.status) || "").toLowerCase();
+    return Boolean(
+      event
+      && (
+        event.error_category
+        || status.includes("error")
+        || status.includes("failed")
+        || status.includes("timeout")
+      )
+    );
+  }
+
+  function renderFailedQueries(events) {
+    const target = root.querySelector("[data-ai-failed-queries]");
+    if (!target) return;
+    target.innerHTML = "";
+    const failedEvents = (events || []).filter(isFailedAiEvent).slice(0, 6);
+    if (!failedEvents.length) {
+      renderAdminEmptyState(
+        target,
+        "Keine fehlgeschlagenen AI-Queries im aktuellen Filter.",
+        "Provider-, Modell-, Timeout- und Retrieval-Fehler erscheinen hier metadata-only."
+      );
+      return;
+    }
+    failedEvents.forEach((event) => {
+      const item = document.createElement("article");
+      const title = document.createElement("strong");
+      const detail = document.createElement("small");
+      const badge = statusPill(event.error_category || event.status || "failed", "is-error");
+      item.className = "list-card ai-failed-query-card";
+      title.textContent = recordReference("Audit", event.id);
+      detail.textContent = [
+        dateTimeText(event.created_at),
+        "Workflow " + text(event.workflow),
+        "Status " + text(event.status),
+        "Tokens " + numberText(event.total_tokens || 0)
+      ].join(" - ");
+      item.append(title, badge, detail);
+      target.appendChild(item);
+    });
+  }
+
   async function loadEvents() {
-    const error = root.querySelector("[data-ai-event-error]").value;
+    const errorInput = root.querySelector("[data-ai-event-error]");
+    const error = errorInput ? errorInput.value : "";
     const data = await api("/api/v1/admin/ai/events?limit=20&error=" + encodeURIComponent(error));
     const tbody = root.querySelector("[data-ai-events]");
+    renderFailedQueries(data.items || []);
+    if (!tbody) return;
     tbody.innerHTML = "";
     if (!data.items.length) {
       renderAdminEmptyState(
@@ -3136,100 +3206,139 @@
     return select;
   }
 
+  function adminLoadersForView() {
+    const loadersByView = {
+      overview: [
+        loadAiStatus,
+        loadSummary,
+        loadKnowledgeGaps,
+        loadKnowledgeStatus,
+        loadOperationsMetrics
+      ],
+      models: [
+        loadAiStatus,
+        loadSummary,
+        loadEvents,
+        loadChats,
+        loadOperationsMetrics
+      ],
+      retrieval: [
+        loadRetrievalDebug,
+        loadRetrievalTelemetry,
+        loadSummary
+      ],
+      knowledge: [
+        loadKnowledgeStatus,
+        loadTrainingSummary,
+        loadKnowledge,
+        loadKnowledgeNetwork,
+        loadKnowledgeGaps,
+        loadOperationsMetrics
+      ],
+      training: [
+        loadTrainingSummary,
+        loadTraining,
+        loadKnowledgeStatus
+      ],
+      diagnostics: [
+        loadSummary,
+        loadEvents,
+        loadKnowledgeGaps,
+        loadAiObservability
+      ],
+      feedback: [
+        loadSummary,
+        loadKnowledgeGaps,
+        loadRetrievalTelemetry,
+        loadAiObservability
+      ],
+      indexing: [
+        loadKnowledgeStatus,
+        loadJobs,
+        loadOperationsMetrics
+      ]
+    };
+    return loadersByView[adminView] || loadersByView.overview;
+  }
+
   async function refreshAll() {
     renderCapabilities();
     renderAnswerQualityGuide();
-    await Promise.all([
-      loadAiStatus(),
-      loadSummary(),
-      loadEvents(),
-      loadChats(),
-      loadKnowledgeGaps(),
-      loadTrainingSummary(),
-      loadTraining(),
-      loadKnowledge(),
-      loadKnowledgeNetwork(),
-      loadRetrievalDebug(),
-      loadRetrievalTelemetry(),
-      loadAiObservability(),
-      loadKnowledgeStatus(),
-      loadJobs(),
-      loadOperationsMetrics()
-    ]);
+    await Promise.all(adminLoadersForView().map((loader) => loader()));
   }
 
-  root.querySelector("[data-ai-event-error]").addEventListener("change", () => {
+  bind("[data-ai-event-error]", "change", () => {
     runAdminLoad(loadEvents, "AI-Fehler laden");
   });
-  root.querySelector("[data-ai-chat-search]").addEventListener("input", () => {
+  bind("[data-ai-chat-search]", "input", () => {
     window.clearTimeout(root._chatTimer);
     root._chatTimer = window.setTimeout(() => runAdminLoad(loadChats, "AI-Anfragen laden"), 250);
   });
-  root.querySelector("[data-ai-training-search]").addEventListener("input", () => {
+  bind("[data-ai-training-search]", "input", () => {
     window.clearTimeout(root._trainingTimer);
     root._trainingTimer = window.setTimeout(() => runAdminLoad(loadTraining, "Training laden"), 250);
   });
-  root.querySelector("[data-ai-training-active]").addEventListener("change", () => {
+  bind("[data-ai-training-active]", "change", () => {
     runAdminLoad(loadTraining, "Training laden");
   });
-  root.querySelector("[data-ai-training-reset]").addEventListener("click", resetTrainingForm);
-  root.querySelector("[data-ai-knowledge-search]").addEventListener("input", () => {
+  bind("[data-ai-training-reset]", "click", resetTrainingForm);
+  bind("[data-ai-knowledge-search]", "input", () => {
     window.clearTimeout(root._knowledgeTimer);
     root._knowledgeTimer = window.setTimeout(() => runAdminLoad(loadKnowledge, "Wissen laden"), 250);
   });
-  root.querySelector("[data-ai-knowledge-source]").addEventListener("change", () => {
+  bind("[data-ai-knowledge-source]", "change", () => {
     runAdminLoad(loadKnowledge, "Wissen laden");
   });
-  root.querySelector("[data-ai-knowledge-status]").addEventListener("change", () => {
+  bind("[data-ai-knowledge-status]", "change", () => {
     runAdminLoad(loadKnowledge, "Wissen laden");
   });
-  root.querySelector("[data-ai-knowledge-quality]").addEventListener("change", () => {
+  bind("[data-ai-knowledge-quality]", "change", () => {
     runAdminLoad(loadKnowledge, "Wissen laden");
   });
-  root.querySelector("[data-knowledge-network-search]").addEventListener("input", () => {
+  bind("[data-knowledge-network-search]", "input", () => {
     window.clearTimeout(root._knowledgeNetworkTimer);
     root._knowledgeNetworkTimer = window.setTimeout(() => runAdminLoad(loadKnowledgeNetwork, "Knowledge Network laden"), 250);
   });
-  root.querySelector("[data-knowledge-network-focus]").addEventListener("input", () => {
+  bind("[data-knowledge-network-focus]", "input", () => {
     window.clearTimeout(root._knowledgeNetworkFocusTimer);
     root._knowledgeNetworkFocusTimer = window.setTimeout(() => runAdminLoad(loadKnowledgeNetwork, "Knowledge Network laden"), 250);
   });
-  root.querySelector("[data-knowledge-network-source]").addEventListener("change", () => {
+  bind("[data-knowledge-network-source]", "change", () => {
     runAdminLoad(loadKnowledgeNetwork, "Knowledge Network laden");
   });
-  root.querySelector("[data-knowledge-network-quality]").addEventListener("change", () => {
+  bind("[data-knowledge-network-quality]", "change", () => {
     runAdminLoad(loadKnowledgeNetwork, "Knowledge Network laden");
   });
-  root.querySelector("[data-knowledge-network-focus-type]").addEventListener("change", () => {
+  bind("[data-knowledge-network-focus-type]", "change", () => {
     runAdminLoad(loadKnowledgeNetwork, "Knowledge Network laden");
   });
-  root.querySelector("[data-knowledge-network-refresh]").addEventListener("click", () => {
+  bind("[data-knowledge-network-refresh]", "click", () => {
     runAdminLoad(loadKnowledgeNetwork, "Knowledge Network laden");
   });
-  root.querySelector("[data-retrieval-debug-search]").addEventListener("input", () => {
+  bind("[data-retrieval-debug-search]", "input", () => {
     window.clearTimeout(root._retrievalDebugTimer);
     root._retrievalDebugTimer = window.setTimeout(() => runAdminLoad(loadRetrievalDebug, "Retrieval Debug laden"), 250);
   });
-  root.querySelector("[data-retrieval-debug-type]").addEventListener("change", () => {
+  bind("[data-retrieval-debug-type]", "change", () => {
     runAdminLoad(loadRetrievalDebug, "Retrieval Debug laden");
   });
-  root.querySelector("[data-retrieval-debug-refresh]").addEventListener("click", () => {
+  bind("[data-retrieval-debug-refresh]", "click", () => {
     runAdminLoad(loadRetrievalDebug, "Retrieval Debug laden");
   });
-  root.querySelector("[data-ai-observability-refresh]").addEventListener("click", () => {
+  bind("[data-ai-observability-refresh]", "click", () => {
     runAdminLoad(loadAiObservability, "Monitoring aktualisieren");
   });
-  root.querySelector("[data-ai-debug-request]").addEventListener("change", (event) => {
+  bind("[data-ai-debug-request]", "change", (event) => {
     loadAiObservability(event.currentTarget.value)
       .catch((error) => setAdminMessage(safeErrorMessage(error, "Debug laden"), true));
   });
-  root.querySelector("[data-ai-observability-logs]").addEventListener("click", (event) => {
+  bind("[data-ai-observability-logs]", "click", (event) => {
     const button = event.target.closest("[data-ai-debug-select]");
     if (!button) return;
     loadAiObservability(button.dataset.aiDebugSelect)
       .catch((error) => setAdminMessage(safeErrorMessage(error, "Debug laden"), true));
   });
-  root.querySelector("[data-retrieval-debug-rows]").addEventListener("click", (event) => {
+  bind("[data-retrieval-debug-rows]", "click", (event) => {
     const button = event.target.closest("[data-retrieval-flow-select]");
     if (!button) return;
     selectedRetrievalFlowId = Number(button.dataset.retrievalFlowSelect);
@@ -3242,7 +3351,7 @@
       );
     });
   });
-  root.querySelector("[data-ai-training-form]").addEventListener("submit", async (event) => {
+  bind("[data-ai-training-form]", "submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
     const entryId = form.elements.id.value;
@@ -3295,19 +3404,19 @@
     }
   }
 
-  root.querySelector("[data-ai-reindex]").addEventListener("click", async () => {
+  bind("[data-ai-reindex]", "click", async () => {
     await runReindex(
       root.querySelector("[data-ai-reindex]"),
       "/api/v1/admin/ai/knowledge/reindex"
     );
   });
-  root.querySelector("[data-ai-reindex-stale]").addEventListener("click", async () => {
+  bind("[data-ai-reindex-stale]", "click", async () => {
     await runReindex(
       root.querySelector("[data-ai-reindex-stale]"),
       "/api/v1/admin/ai/knowledge/reindex?mode=stale"
     );
   });
-  root.querySelector("[data-ai-queue-stale]").addEventListener("click", async () => {
+  bind("[data-ai-queue-stale]", "click", async () => {
     const button = root.querySelector("[data-ai-queue-stale]");
     setButtonBusy(button, true, "Plant...");
     setAdminMessage("RAG-Reindex-Job wird eingeplant...");
@@ -3325,7 +3434,7 @@
       setButtonBusy(button, false);
     }
   });
-  root.querySelector("[data-ai-knowledge-upload]").addEventListener("submit", async (event) => {
+  bind("[data-ai-knowledge-upload]", "submit", async (event) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     setFormBusy(event.currentTarget, true, "Lädt...");

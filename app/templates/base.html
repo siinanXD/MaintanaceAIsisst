@@ -102,7 +102,7 @@
               <svg class="nav-icon" aria-hidden="true"><use href="#icon-admin"></use></svg>
               <span>Benutzer</span>
             </a>
-            <a data-feature-key="admin_ai" data-dashboard-nav="admin_users" hidden class="nav-link is-admin-link {% if request.path == '/admin/ai' %}is-active{% endif %}" href="/admin/ai" {% if request.path == '/admin/ai' %}aria-current="page"{% endif %}>
+            <a data-feature-key="admin_ai" data-dashboard-nav="admin_users" hidden class="nav-link is-admin-link {% if request.path.startswith('/admin/ai') %}is-active{% endif %}" href="/admin/ai" {% if request.path.startswith('/admin/ai') %}aria-current="page"{% endif %}>
               <svg class="nav-icon" aria-hidden="true"><use href="#icon-ai"></use></svg>
               <span>AI Admin</span>
             </a>
@@ -150,7 +150,7 @@
                 <section class="mobile-nav-group" data-nav-group>
                   <h2>Administration</h2>
                   <a data-dashboard-nav="admin_users" hidden class="top-nav-link is-admin-link {% if request.path == '/admin/users' %}is-active{% endif %}" href="/admin/users" {% if request.path == '/admin/users' %}aria-current="page"{% endif %}>Benutzer</a>
-                  <a data-feature-key="admin_ai" data-dashboard-nav="admin_users" hidden class="top-nav-link is-admin-link {% if request.path == '/admin/ai' %}is-active{% endif %}" href="/admin/ai" {% if request.path == '/admin/ai' %}aria-current="page"{% endif %}>AI Admin</a>
+                  <a data-feature-key="admin_ai" data-dashboard-nav="admin_users" hidden class="top-nav-link is-admin-link {% if request.path.startswith('/admin/ai') %}is-active{% endif %}" href="/admin/ai" {% if request.path.startswith('/admin/ai') %}aria-current="page"{% endif %}>AI Admin</a>
                 </section>
               </div>
             </details>

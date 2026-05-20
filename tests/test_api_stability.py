@@ -167,15 +167,18 @@ def test_operations_migration_contains_site_and_event_tables():
 def test_feature_registry_covers_permissions_and_frontend_assets(client):
     """Verify the shared frontend feature registry stays aligned with permissions."""
     registry_response = client.get("/static/core/feature-registry.js")
+    auth_response = client.get("/static/auth.js")
     app_js_response = client.get("/static/app.js")
     workflows_response = client.get("/static/pages/workflows.js")
     base_response = client.get("/")
     registry = registry_response.get_data(as_text=True)
+    auth_js = auth_response.get_data(as_text=True)
     app_js = app_js_response.get_data(as_text=True)
     workflows = workflows_response.get_data(as_text=True)
     html = base_response.get_data(as_text=True)
 
     assert registry_response.status_code == 200
+    assert auth_response.status_code == 200
     assert app_js_response.status_code == 200
     assert workflows_response.status_code == 200
     assert "window.maintenanceFeatures" in registry
@@ -198,6 +201,10 @@ def test_feature_registry_covers_permissions_and_frontend_assets(client):
     assert 'permissionKey: "shiftplans"' in registry
     assert 'module: "page"' in registry
     assert 'moduleUrl: "/static/pages/admin-ai.js"' in registry
+    assert "routeAliases" in registry
+    assert '"/admin/ai/models"' in registry
+    assert "featureRoutes(feature)" in auth_js
+    assert "feature.routeAliases" in auth_js
     assert 'moduleUrl: "/static/pages/handover.js"' in registry
     assert 'moduleUrl: "/static/pages/shiftplans.js"' in registry
     assert 'key: "vacations"' in registry
