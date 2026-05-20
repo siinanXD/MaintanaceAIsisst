@@ -15,6 +15,9 @@ langchain-openai>=0.2.8,<0.3.0
 chromadb>=0.5.20,<0.6.0
 openpyxl==3.1.5
 pypdf==5.1.0
+Faker>=33.1.0,<34.0.0
+reportlab>=4.2.5,<5.0.0
+Pillow>=11.0.0,<12.0.0
 cryptography==46.0.3
 pytest==8.3.3
 pytest-cov==5.0.0
