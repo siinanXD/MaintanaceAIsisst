@@ -227,7 +227,11 @@ def update_error_entry(entry, data, user):
             setattr(entry, field, normalize_text_field(data[field]))
     try:
         if "machine_id" in data:
-            machine = db.session.get(Machine, int(data["machine_id"])) if data.get("machine_id") else None
+            machine = (
+                db.session.get(Machine, int(data["machine_id"]))
+                if data.get("machine_id")
+                else None
+            )
             entry.machine_id = machine.id if machine else None
             if machine:
                 entry.machine = machine.name
