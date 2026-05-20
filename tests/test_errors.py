@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, timedelta
 
 from app.extensions import db
-from app.models import ErrorEntry, Role, User
+from app.models import ErrorEntry, Machine, Role, User
 from app.services.recurring_issue_service import analyze_recurring_issues
 
 
@@ -43,6 +43,112 @@ def test_error_entry_create_search_update_and_delete(client, make_user, auth_hea
     assert update_response.status_code == 200
     assert "Abstand" in update_response.get_json()["solution"]
     assert delete_response.status_code == 204
+
+
+def test_error_entry_rejects_duplicate_code_in_same_department(
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify duplicate error codes are blocked per department."""
+    user = make_user(
+        username="error_duplicate_code",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    headers = auth_headers(user["username"])
+    payload = {
+        "machine": "Maschine 3",
+        "error_code": "E777",
+        "title": "Hydraulik Stoerung",
+        "department": "Instandhaltung",
+    }
+
+    first_response = client.post("/api/v1/errors", headers=headers, json=payload)
+    duplicate_response = client.post(
+        "/api/v1/errors",
+        headers=headers,
+        json={**payload, "error_code": " e777 ", "title": "Andere Stoerung"},
+    )
+
+    assert first_response.status_code == 201
+    assert duplicate_response.status_code == 409
+
+
+def test_error_entry_allows_same_code_in_other_department(
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify the same error code can exist in different departments."""
+    maintenance = make_user(
+        username="error_code_maintenance",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    production = make_user(
+        username="error_code_production",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+
+    first_response = client.post(
+        "/api/v1/errors",
+        headers=auth_headers(maintenance["username"]),
+        json={
+            "machine": "Maschine 3",
+            "error_code": "E778",
+            "title": "Hydraulik Stoerung",
+            "department": "Instandhaltung",
+        },
+    )
+    second_response = client.post(
+        "/api/v1/errors",
+        headers=auth_headers(production["username"]),
+        json={
+            "machine": "Maschine 3",
+            "error_code": "E778",
+            "title": "Produktions Stoerung",
+            "department": "Produktion",
+        },
+    )
+
+    assert first_response.status_code == 201
+    assert second_response.status_code == 201
+
+
+def test_error_entry_uses_canonical_machine_name(
+    app,
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify exact machine matches set machine_id and canonical name."""
+    user = make_user(
+        username="error_machine_canonical",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    with app.app_context():
+        machine = Machine(name="Presse Canon 1", produced_item="Teil")
+        db.session.add(machine)
+        db.session.commit()
+        machine_id = machine.id
+
+    response = client.post(
+        "/api/v1/errors",
+        headers=auth_headers(user["username"]),
+        json={
+            "machine": "presse canon 1",
+            "error_code": "E779",
+            "title": "Sensor Stoerung",
+            "department": "Instandhaltung",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.get_json()["machine_id"] == machine_id
+    assert response.get_json()["machine"] == "Presse Canon 1"
 
 
 def test_error_entry_validates_required_fields(client, make_user, auth_headers):

@@ -9,27 +9,25 @@
     <div>
       <span class="section-kicker">AI Control Center</span>
       <h2>AI-System, Datenquellen und Retrieval nachvollziehbar betreiben</h2>
-      <p class="panel-meta">Betriebsstatus, RAG-Gesundheit, Datenqualit&auml;t und Antwortvertrauen an einem Ort.</p>
+      <p class="panel-meta">Betriebsstatus, Provider, RAG-Gesundheit, Jobs, Retrieval-Tests und Antwortqualit&auml;t an einem Ort.</p>
     </div>
-    <div class="ai-admin-actions">
-      <button class="btn btn-primary" type="button" data-ai-reindex>Wissen neu indexieren</button>
-      <button class="btn btn-secondary" type="button" data-ai-reindex-stale>Nur veraltete indexieren</button>
-      <button class="btn btn-ghost" type="button" data-ai-queue-stale>Job einplanen</button>
-      <span class="panel-meta" data-ai-reindex-message></span>
+    <div class="ai-admin-hero-status" aria-label="AI Admin Schnellstatus">
+      <span class="badge badge-ai" data-ai-overview-state>Noch nicht geladen</span>
+      <span class="panel-meta">Read-only Status zuerst, operative Aktionen in der Job-Sektion.</span>
     </div>
   </header>
 
   <nav class="ai-admin-nav" aria-label="AI Admin Bereiche">
-    <a href="#ai-overview">AI &Uuml;bersicht</a>
-    <a href="#ai-monitoring">Monitoring</a>
-    <a href="#ai-data-sources">Datenquellen</a>
-    <a href="#ai-retrieval-rag">Retrieval &amp; RAG</a>
-    <a href="#ai-capabilities">AI F&auml;higkeiten</a>
-    <a href="#ai-answer-quality">Antworten verbessern</a>
-    <a href="#ai-knowledge-care">Wissenspflege</a>
+    <a href="#ai-status-mode">Status &amp; Modus</a>
+    <a href="#ai-provider-config">Provider</a>
+    <a href="#ai-rag-knowledge">RAG / Wissen</a>
+    <a href="#ai-reindex-jobs">Reindex / Jobs</a>
+    <a href="#ai-retrieval-testing">Retrieval Testing</a>
+    <a href="#ai-answer-quality">Prompt-Qualit&auml;t</a>
+    <a href="#ai-safety-fallbacks">Safety / Fallback</a>
   </nav>
 
-  <section class="context-help" aria-label="So arbeitet die KI">
+  <section class="context-help ai-workflow-help" aria-label="So arbeitet die KI">
     <strong>So arbeitet die KI</strong>
     <ol class="next-step-list">
       <li><strong>Frage verstehen:</strong> Absicht, Maschine, Fehlercode und Bereich erkennen.</li>
@@ -44,15 +42,78 @@
     </details>
   </section>
 
-  <section class="ai-admin-area" id="ai-overview" data-ai-admin-area="overview">
+  <section class="ai-admin-area" id="ai-status-mode" data-ai-admin-area="overview">
     <div class="ai-admin-area-header">
       <div>
-        <span class="section-kicker">1. AI &Uuml;bersicht</span>
-        <h3>Systemzustand und wichtigste Betriebssignale</h3>
-        <p class="panel-meta">F&uuml;r schnelle Entscheidungen: l&auml;uft die AI, ist RAG bereit und wo liegen Risiken?</p>
+        <span class="section-kicker">1. AI Status &amp; Betriebsmodus</span>
+        <h3>Ist die AI einsatzbereit und welcher Betriebsmodus ist aktiv?</h3>
+        <p class="panel-meta">Schnelle Lage f&uuml;r AI-Betrieb, RAG-Bereitschaft, Queue und aktuelle Nutzungsmetriken.</p>
       </div>
-      <span class="badge badge-ai" data-ai-overview-state>Noch nicht geladen</span>
+      <span class="badge badge-ai" data-ai-section-status="status">Status wird geladen</span>
     </div>
+
+    <div class="ai-section-guide" aria-label="Status und Betriebsmodus Hinweise">
+      <article>
+        <span>Was beeinflusst das?</span>
+        <strong>Chat-Antworten, lokale Fallbacks, RAG-Nutzung und Wartungsdiagnosen.</strong>
+      </article>
+      <article>
+        <span>Wann &auml;ndern?</span>
+        <strong>Wenn Provider nicht bereit ist, die Queue steht, Latenz steigt oder Fallbacks zunehmen.</strong>
+      </article>
+      <article>
+        <span>Betroffen</span>
+        <strong><code>/api/v1/ai/status</code> <code>/api/v1/admin/ai/summary</code> <code>/api/v1/health/operations</code></strong>
+      </article>
+    </div>
+    <p class="ai-section-explain">Diese Sektion ist der schnelle Betriebscheck: Erst wenn AI, Provider, Fallback, RAG und Jobs hier gr&uuml;n sind, lohnt sich Detailanalyse in den unteren Bereichen.</p>
+
+    <div class="ai-status-overview" data-ai-status-overview aria-label="AI Funktionsstatus">
+      <article class="ai-status-overview-card is-muted" data-ai-status-overview-item="ai">
+        <span>AI</span>
+        <strong data-ai-status-overview-label>Wird geladen</strong>
+        <small data-ai-status-overview-detail>Status aus /api/v1/ai/status</small>
+      </article>
+      <article class="ai-status-overview-card is-muted" data-ai-status-overview-item="openai">
+        <span>OpenAI</span>
+        <strong data-ai-status-overview-label>Wird geladen</strong>
+        <small data-ai-status-overview-detail>Provider- und Modellverf&uuml;gbarkeit</small>
+      </article>
+      <article class="ai-status-overview-card is-muted" data-ai-status-overview-item="fallback">
+        <span>Lokaler Fallback</span>
+        <strong data-ai-status-overview-label>Wird geladen</strong>
+        <small data-ai-status-overview-detail>Ausweichantworten ohne externes Modell</small>
+      </article>
+      <article class="ai-status-overview-card is-muted" data-ai-status-overview-item="rag">
+        <span>RAG</span>
+        <strong data-ai-status-overview-label>Wird geladen</strong>
+        <small data-ai-status-overview-detail>Readiness der Wissensdatenbank</small>
+      </article>
+      <article class="ai-status-overview-card is-muted" data-ai-status-overview-item="reindex">
+        <span>Letzter Reindex</span>
+        <strong data-ai-status-overview-label>Wird geladen</strong>
+        <small data-ai-status-overview-detail>J&uuml;ngster Worker-Job</small>
+      </article>
+    </div>
+
+    <section class="panel ai-clarity-panel">
+      <div class="panel-header">
+        <div>
+          <h3>AI Admin &Uuml;berblick</h3>
+          <p class="panel-meta">Die wichtigsten Betriebsfragen auf einen Blick: Quellen, Chunks, Training, fehlgeschlagene Fragen, geblockte Sources und Feedback.</p>
+        </div>
+        <span class="status-pill is-muted" data-ai-clarity-state>Wird geladen</span>
+      </div>
+      <div class="ai-clarity-grid" data-ai-clarity-summary aria-label="AI Admin &Uuml;berblick"></div>
+      <div class="ai-clarity-detail-grid mt-4">
+        <div class="stats-list" data-ai-indexed-source-summary></div>
+        <div class="stats-list" data-ai-active-chunk-summary></div>
+        <div class="stats-list" data-ai-training-summary></div>
+        <div class="stats-list" data-ai-failure-summary></div>
+        <div class="stats-list" data-ai-blocked-source-summary></div>
+        <div class="stats-list" data-ai-feedback-summary></div>
+      </div>
+    </section>
 
     <section class="panel ai-status-panel" data-ai-health-panel>
       <div class="panel-header">
@@ -94,34 +155,13 @@
       <article class="metric-card"><span>Kosten / 1k</span><strong data-ai-kpi="cost_per_1k_tokens">0</strong></article>
     </div>
 
-    <section class="panel" data-retrieval-slo-panel>
-      <div class="panel-header">
-        <div>
-          <h3>Suchqualit&auml;t SLO</h3>
-          <p class="panel-meta">Qualit&auml;ts- und Betriebsmetriken f&uuml;r AI-Antworten.</p>
-        </div>
-        <span class="badge badge-ai" data-retrieval-slo-status>Noch nicht geladen</span>
-      </div>
-      <div class="dashboard-grid dashboard-grid-4">
-        <article class="metric-card"><span>P95 Suchzeit</span><strong data-retrieval-slo-kpi="retrieval_p95_ms">0 ms</strong></article>
-        <article class="metric-card"><span>Ohne Quellen</span><strong data-retrieval-slo-kpi="no_source_rate">0%</strong></article>
-        <article class="metric-card"><span>Niedrige Sicherheit</span><strong data-retrieval-slo-kpi="low_confidence_rate">0%</strong></article>
-        <article class="metric-card"><span>Berechtigungsfilter</span><strong data-retrieval-slo-kpi="permission_filtered_candidate_count">0</strong></article>
-        <article class="metric-card"><span>Negatives Feedback</span><strong data-retrieval-slo-kpi="negative_feedback_rate">0%</strong></article>
-        <article class="metric-card"><span>Safety Risiken</span><strong data-retrieval-slo-kpi="safety_risk_count">0</strong></article>
-        <article class="metric-card"><span>Ausweichantworten</span><strong data-retrieval-slo-kpi="fallback_rate">0%</strong></article>
-        <article class="metric-card"><span>Index/Sync Risiken</span><strong data-retrieval-slo-kpi="index_sync_risks">0</strong></article>
-      </div>
-      <div class="content-grid two-columns mt-4">
-        <div class="stats-list" data-retrieval-slo-trends></div>
-        <div class="stats-list" data-retrieval-slo-warnings></div>
-      </div>
-    </section>
-
     <div class="content-grid two-columns">
       <section class="panel">
         <div class="panel-header">
-          <h3>Letzte AI-Fehler</h3>
+          <div>
+            <h3>Letzte AI-Fehler</h3>
+            <p class="panel-meta">Metadata-only Audit-Events zum Eingrenzen von Provider-, Modell- und Timeout-Problemen.</p>
+          </div>
           <select class="input input-bordered" data-ai-event-error>
             <option value="">Alle Fehler</option>
             <option value="rate_limit">Rate Limit</option>
@@ -142,7 +182,10 @@
 
       <section class="panel">
         <div class="panel-header">
-          <h3>Letzte AI-Anfragen</h3>
+          <div>
+            <h3>Letzte AI-Anfragen</h3>
+            <p class="panel-meta">Schneller Blick auf reale Chat-Nutzung und betroffene Workflows.</p>
+          </div>
           <input class="input input-bordered" data-ai-chat-search placeholder="Chats durchsuchen">
         </div>
         <div class="stack" data-ai-chats></div>
@@ -150,105 +193,119 @@
     </div>
   </section>
 
-  <section class="ai-admin-area" id="ai-monitoring" data-ai-admin-area="monitoring">
+  <section class="ai-admin-area" id="ai-provider-config" data-ai-admin-area="provider">
     <div class="ai-admin-area-header">
       <div>
-        <span class="section-kicker">AI Monitoring</span>
-        <h3>Antwortqualit&auml;t und Retrieval-Probleme erkennen</h3>
-        <p class="panel-meta">Betriebsmetriken, Retrieval-Hits, AI-Logs und Debug-Blueprints aus bestehenden Auditdaten.</p>
+        <span class="section-kicker">2. Provider-Konfiguration</span>
+        <h3>Welcher AI-Provider und welches Modell sind aktiv?</h3>
+        <p class="panel-meta">Read-only Sicht auf Provider, Modell, Streaming, Fallback-Modus und letzte Provider-Fehler.</p>
       </div>
-      <div class="toolbar">
-        <span class="badge badge-ai" data-ai-observability-status>Noch nicht geladen</span>
-        <button class="btn btn-secondary" type="button" data-ai-observability-refresh>Monitoring aktualisieren</button>
-      </div>
+      <span class="badge badge-ai" data-ai-section-status="provider">Provider wird geladen</span>
     </div>
 
-    <section class="panel ai-observability-panel">
+    <div class="ai-section-guide" aria-label="Provider-Konfiguration Hinweise">
+      <article>
+        <span>Was beeinflusst das?</span>
+        <strong>Generierte Antworten, Kosten, Latenz, Streaming und ob lokale Regeln statt Modellaufruf genutzt werden.</strong>
+      </article>
+      <article>
+        <span>Wann &auml;ndern?</span>
+        <strong>Wenn API-Key, Modellfreigabe, Rate Limits oder unerwartete lokale Antworten auffallen.</strong>
+      </article>
+      <article>
+        <span>Betroffen</span>
+        <strong><code>/api/v1/ai/status</code> <code>app.ai.services.ai_status</code> <code>.env</code></strong>
+      </article>
+    </div>
+    <p class="ai-section-explain">Provider-Konfiguration ist bewusst read-only: Admins sehen, ob die Laufzeit bereit ist, &auml;ndern Secrets oder Modelle aber au&szlig;erhalb der Weboberfl&auml;che.</p>
+
+    <section class="panel ai-provider-panel">
       <div class="panel-header">
         <div>
-          <h3>AI Metrics Dashboard</h3>
-          <p class="panel-meta">Latenz, Tokens, Fehler, leere Retrievals und Halluzinationswarnungen.</p>
+          <h3>Provider Snapshot</h3>
+          <p class="panel-meta">Diese Ansicht &auml;ndert keine Secrets. Provider- und Modellwechsel laufen &uuml;ber Umgebungskonfiguration.</p>
         </div>
+        <span class="status-pill is-muted" data-ai-provider-summary>Konfiguration wird geladen</span>
       </div>
       <div class="dashboard-grid dashboard-grid-4">
-        <article class="metric-card"><span>Antwortzeit Ø</span><strong data-ai-monitoring-kpi="average_response_ms">0 ms</strong></article>
-        <article class="metric-card"><span>Retrieval Ø</span><strong data-ai-monitoring-kpi="average_retrieval_ms">0 ms</strong></article>
-        <article class="metric-card"><span>Tokenverbrauch</span><strong data-ai-monitoring-kpi="total_tokens">0</strong></article>
-        <article class="metric-card"><span>Fehlerquote</span><strong data-ai-monitoring-kpi="error_rate">0%</strong></article>
-        <article class="metric-card"><span>Leere Retrievals</span><strong data-ai-monitoring-kpi="empty_retrieval_rate">0%</strong></article>
-        <article class="metric-card"><span>Halluzinationswarnungen</span><strong data-ai-monitoring-kpi="hallucination_warning_count">0</strong></article>
-        <article class="metric-card"><span>Trefferquote</span><strong data-ai-monitoring-kpi="retrieval_hit_rate">0%</strong></article>
-        <article class="metric-card"><span>Similarity Ø</span><strong data-ai-monitoring-kpi="average_similarity_score">0%</strong></article>
+        <article class="metric-card ai-provider-card">
+          <span>Provider</span>
+          <strong data-ai-provider-field="provider">--</strong>
+          <small>Aktiver AI-Backend-Anbieter.</small>
+        </article>
+        <article class="metric-card ai-provider-card">
+          <span>Modell</span>
+          <strong data-ai-provider-field="model">--</strong>
+          <small>Modell f&uuml;r generative Antworten.</small>
+        </article>
+        <article class="metric-card ai-provider-card">
+          <span>Betriebsmodus</span>
+          <strong data-ai-provider-field="mode">--</strong>
+          <small>Externes Modell oder lokaler Fallback.</small>
+        </article>
+        <article class="metric-card ai-provider-card">
+          <span>Streaming</span>
+          <strong data-ai-provider-field="streaming">--</strong>
+          <small>Antwortausgabe im Chat-Frontend.</small>
+        </article>
       </div>
       <div class="content-grid two-columns mt-4">
-        <div class="ai-monitor-list" data-ai-top-questions></div>
-        <div class="ai-monitor-list" data-ai-source-distribution></div>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-header">
-        <h3>Retrieval Monitoring</h3>
-        <span class="panel-meta">Top Treffer, schlechte Treffer, Chunk-Nutzung und Dokumentverteilung.</span>
-      </div>
-      <div class="content-grid two-columns">
-        <div class="ai-monitor-list" data-ai-top-hits></div>
-        <div class="ai-monitor-list" data-ai-poor-hits></div>
-      </div>
-      <div class="content-grid two-columns mt-4">
-        <div class="ai-monitor-list" data-ai-chunk-usage></div>
-        <div class="ai-monitor-list" data-ai-quality-metrics></div>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-header">
-        <h3>AI Logs</h3>
-        <span class="panel-meta">Frage, Quellen, Confidence, Antwortqualit&auml;t, Fehler und Dauer.</span>
-      </div>
-      <div class="table-wrap">
-        <table class="data-table">
-          <caption>AI-Monitoring-Logs mit Antwortqualit&auml;t, Confidence und Quellen</caption>
-          <thead><tr><th scope="col">Zeit</th><th scope="col">Frage</th><th scope="col">Qualit&auml;t</th><th scope="col">Confidence</th><th scope="col">Quellen</th><th scope="col">Dauer</th><th scope="col">Debug</th></tr></thead>
-          <tbody data-ai-observability-logs></tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-header">
-        <h3>Debug Tools</h3>
-        <div class="toolbar">
-          <select class="input input-bordered" data-ai-debug-request aria-label="AI-Anfrage analysieren"></select>
-        </div>
-      </div>
-      <div class="content-grid two-columns">
-        <div class="ai-monitor-list" data-ai-debug-analysis></div>
-        <pre class="ai-debug-prompt" data-ai-debug-prompt>Kein Prompt-Blueprint geladen.</pre>
+        <div class="stats-list" data-ai-provider-details></div>
+        <div class="stats-list" data-ai-provider-actions></div>
       </div>
     </section>
   </section>
 
-  <section class="ai-admin-area" id="ai-data-sources" data-ai-admin-area="data-sources">
+  <section class="ai-admin-area" id="ai-rag-knowledge" data-ai-admin-area="data-sources">
     <div class="ai-admin-area-header">
       <div>
-        <span class="section-kicker">2. Datenquellen</span>
+        <span class="section-kicker">3. RAG / Wissensdatenbank</span>
         <h3>Welche Quellen speisen strukturierte Antworten und RAG?</h3>
         <p class="panel-meta">Fehlerkatalog, Dokumente, Tasks, Maschinen, Schichtdaten und Trainingsdaten getrennt bewerten.</p>
       </div>
+      <span class="badge badge-ai" data-ai-section-status="knowledge">Wissen wird geladen</span>
+    </div>
+
+    <div class="ai-section-guide" aria-label="RAG und Wissensdatenbank Hinweise">
+      <article>
+        <span>Was beeinflusst das?</span>
+        <strong>Welche Quellen semantisch gefunden werden und ob Antworten belegte Dokument- oder App-Kontexte enthalten.</strong>
+      </article>
+      <article>
+        <span>Wann &auml;ndern?</span>
+        <strong>Nach Uploads, Training, schlechter Quellenqualit&auml;t, veralteten Chunks oder offenen Knowledge-Gaps.</strong>
+      </article>
+      <article>
+        <span>Betroffen</span>
+        <strong><code>/api/v1/admin/ai/knowledge/status</code> <code>/api/v1/admin/ai/knowledge</code> <code>/api/v1/admin/ai/training</code></strong>
+      </article>
+    </div>
+    <p class="ai-section-explain">Hier entscheidet sich, ob die KI belastbare Quellen findet: fehlende Chunks, veraltete Dokumente oder ungepr&uuml;fte Trainingsdaten senken die Antwortqualit&auml;t direkt.</p>
+
+    <div class="ai-info-box-grid">
+      <article class="ai-info-box">
+        <span>Was ist RAG?</span>
+        <strong>Retrieval Augmented Generation verbindet Suche und Antwort.</strong>
+        <p>Die App sucht zuerst passende Wissensquellen, Dokument-Chunks oder strukturierte Datens&auml;tze und gibt diese als Kontext an die KI. Dadurch werden Antworten nachvollziehbarer und weniger frei erfunden.</p>
+      </article>
     </div>
 
     <section class="panel">
       <div class="panel-header">
-        <h3>Source Health Matrix</h3>
-        <span class="panel-meta">Eintr&auml;ge, Chunks, RAG-Aktivierung und Health je Quelle</span>
+        <div>
+          <h3>Source Health Matrix</h3>
+          <p class="panel-meta">Eintr&auml;ge, Chunks, RAG-Aktivierung und Health je Quelle.</p>
+        </div>
       </div>
       <div class="ai-source-grid" data-ai-source-health></div>
     </section>
 
     <section class="panel">
       <div class="panel-header">
-        <h3>RAG-Index Status</h3>
+        <div>
+          <h3>RAG-Index Status</h3>
+          <p class="panel-meta">Readiness, Vektor-Sync, Problemquellen und Indexabdeckung.</p>
+        </div>
         <span class="badge badge-ai" data-rag-readiness>RAG</span>
       </div>
       <div class="dashboard-grid dashboard-grid-4">
@@ -273,176 +330,13 @@
         <div class="stats-list" data-rag-vector-issues></div>
       </div>
     </section>
-  </section>
-
-  <section class="ai-admin-area" id="ai-retrieval-rag" data-ai-admin-area="retrieval">
-    <div class="ai-admin-area-header">
-      <div>
-        <span class="section-kicker">3. Retrieval &amp; RAG</span>
-        <h3>Debugging ohne Prompt- oder Chunk-Leaks</h3>
-        <p class="panel-meta">Kandidaten, Chunks, Scores, Permission-Filter, Hybrid Search und Re-Ranking sichtbar machen.</p>
-      </div>
-    </div>
-
-    <section class="panel" data-retrieval-debug-panel>
-      <div class="panel-header">
-        <div>
-          <h3>Retrieval Analyse</h3>
-          <p class="panel-meta">Read-only Nachvollziehbarkeit ohne Roh-Prompts, Antworten oder Chunk-Volltexte.</p>
-        </div>
-        <div class="toolbar">
-          <input class="input input-bordered" data-retrieval-debug-search placeholder="Fragen filtern">
-          <select class="input input-bordered" data-retrieval-debug-type aria-label="Nach Query-Typ filtern">
-            <option value="">Alle Query-Typen</option>
-            <option value="error_analysis">Fehleranalyse</option>
-            <option value="machine_question">Maschinenfrage</option>
-            <option value="inventory_question">Inventarfrage</option>
-            <option value="task_question">Taskfrage</option>
-            <option value="document_question">Dokumentfrage</option>
-            <option value="safety_question">Sicherheitsfrage</option>
-            <option value="knowledge_gap">Wissensl&uuml;cke</option>
-            <option value="trend_history_question">Trend/Historie</option>
-            <option value="general_question">Allgemein</option>
-          </select>
-          <button class="btn btn-secondary" type="button" data-retrieval-debug-refresh>Aktualisieren</button>
-        </div>
-      </div>
-
-      <div class="ai-retrieval-inspector" data-retrieval-inspector>
-        <div class="ai-retrieval-metrics" data-retrieval-analysis></div>
-        <section class="retrieval-flow-panel" data-retrieval-flow-panel aria-label="AI Retrieval Flow">
-          <div class="retrieval-flow-header">
-            <div>
-              <span class="section-kicker">Warum diese Antwort?</span>
-              <h4>AI Retrieval Flow</h4>
-              <p class="panel-meta">Prompt-sichere Timeline vom Query-Verst&auml;ndnis bis zur finalen Antwort.</p>
-            </div>
-            <div class="retrieval-flow-header-actions">
-              <span class="badge badge-ai" data-retrieval-flow-status>Noch nicht geladen</span>
-              <span class="panel-meta" data-retrieval-flow-duration>-</span>
-            </div>
-          </div>
-          <div class="retrieval-flow-summary" data-retrieval-flow-summary></div>
-          <div class="retrieval-flow-timeline" data-retrieval-flow-timeline></div>
-          <div class="content-grid two-columns mt-4">
-            <div class="retrieval-flow-source-map" data-retrieval-flow-source-map></div>
-            <div class="retrieval-flow-answer" data-retrieval-flow-answer></div>
-          </div>
-        </section>
-      </div>
-
-      <div class="table-wrap">
-        <table class="data-table">
-          <caption>Prompt-sichere Retrieval-Debug-Daten mit Query-Typ, Quellen, Confidence und Konflikten</caption>
-          <thead><tr><th scope="col">Zeit</th><th scope="col">Frage</th><th scope="col">Typ</th><th scope="col">Quellen</th><th scope="col">Confidence</th><th scope="col">Konflikte</th><th scope="col">Dauer</th><th scope="col">Flow</th></tr></thead>
-          <tbody data-retrieval-debug-rows></tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="panel" data-retrieval-evaluation-history-panel>
-      <div class="panel-header">
-        <h3>Golden Eval Historie</h3>
-        <span class="badge badge-ai" data-retrieval-evaluation-status>Noch nicht geladen</span>
-      </div>
-      <div class="dashboard-grid dashboard-grid-4">
-        <article class="metric-card"><span>Recall@K</span><strong data-retrieval-evaluation-kpi="recall_at_k">0%</strong></article>
-        <article class="metric-card"><span>MRR</span><strong data-retrieval-evaluation-kpi="mrr">0%</strong></article>
-        <article class="metric-card"><span>nDCG@K</span><strong data-retrieval-evaluation-kpi="ndcg_at_k">0%</strong></article>
-        <article class="metric-card"><span>Keine Treffer</span><strong data-retrieval-evaluation-kpi="no_result_count">0</strong></article>
-      </div>
-      <div class="content-grid two-columns mt-4">
-        <div class="stats-list" data-retrieval-evaluation-regression></div>
-        <div class="stats-list" data-retrieval-evaluation-runs></div>
-      </div>
-    </section>
-  </section>
-
-  <section class="ai-admin-area" id="ai-capabilities" data-ai-admin-area="capabilities">
-    <div class="ai-admin-area-header">
-      <div>
-        <span class="section-kicker">4. AI F&auml;higkeiten</span>
-        <h3>Was kann die KI aktuell?</h3>
-        <p class="panel-meta">Eine bewusst einfache Produktansicht: unterst&uuml;tzt, teilweise unterst&uuml;tzt oder noch nicht unterst&uuml;tzt.</p>
-      </div>
-    </div>
-    <div class="ai-capability-grid">
-      <section class="panel ai-capability-column">
-        <div class="panel-header"><h3>Unterst&uuml;tzt</h3><span class="status-pill is-active">aktiv</span></div>
-        <div class="stack" data-ai-capabilities="supported"></div>
-      </section>
-      <section class="panel ai-capability-column">
-        <div class="panel-header"><h3>Teilweise unterst&uuml;tzt</h3><span class="status-pill is-stale">abh&auml;ngig von Daten</span></div>
-        <div class="stack" data-ai-capabilities="partial"></div>
-      </section>
-      <section class="panel ai-capability-column">
-        <div class="panel-header"><h3>Nicht unterst&uuml;tzt</h3><span class="status-pill is-muted">bewusst gesperrt</span></div>
-        <div class="stack" data-ai-capabilities="unsupported"></div>
-      </section>
-    </div>
-  </section>
-
-  <section class="ai-admin-area" id="ai-answer-quality" data-ai-admin-area="answers">
-    <div class="ai-admin-area-header">
-      <div>
-        <span class="section-kicker">5. AI Antworten verbessern</span>
-        <h3>Antwortqualit&auml;t, Feedback und Wissensl&uuml;cken</h3>
-        <p class="panel-meta">Admins sehen, ob Antworten belegt, sicher und verbesserbar sind.</p>
-      </div>
-    </div>
-
-    <section class="panel ai-answer-quality-panel">
-      <div class="panel-header">
-        <h3>Antwortqualit&auml;t im Chat</h3>
-        <span class="panel-meta">Jede Antwort zeigt Quellen, Confidence, Unsicherheit, Safety und verwendete Dokumente.</span>
-      </div>
-      <div class="ai-answer-quality-grid" data-ai-answer-quality-guide></div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-header">
-        <h3>Workflow-Kosten und Fehler</h3>
-        <span class="panel-meta">Metadata-only Auswertung ohne Prompt- oder Antworttexte</span>
-      </div>
-      <div class="content-grid two-columns">
-        <div class="table-wrap">
-          <table class="data-table">
-            <caption>AI-Workflows nach Events, Fehlern, Fallbacks, Tokens und Kosten</caption>
-            <thead><tr><th scope="col">Workflow</th><th scope="col">Events</th><th scope="col">Fallback</th><th scope="col">Fehler</th><th scope="col">Tokens</th><th scope="col">Kosten</th><th scope="col">Latenz</th></tr></thead>
-            <tbody data-ai-workflows></tbody>
-          </table>
-        </div>
-        <div class="stats-list" data-ai-top-errors></div>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-header">
-        <h3>Knowledge Gaps</h3>
-        <span class="panel-meta" data-ai-knowledge-gap-count>0 offen</span>
-      </div>
-      <div class="table-wrap">
-        <table class="data-table">
-          <caption>Offene Wissensl&uuml;cken aus AI-Fragen ohne belastbare Quellen</caption>
-          <thead><tr><th scope="col">Frage</th><th scope="col">Bereich</th><th scope="col">Maschine</th><th scope="col">Status</th><th scope="col">Treffer</th><th scope="col">Zuletzt</th></tr></thead>
-          <tbody data-ai-knowledge-gaps></tbody>
-        </table>
-      </div>
-    </section>
-  </section>
-
-  <section class="ai-admin-area" id="ai-knowledge-care" data-ai-admin-area="knowledge-care">
-    <div class="ai-admin-area-header">
-      <div>
-        <span class="section-kicker">Wissenspflege</span>
-        <h3>Lifecycle, Netzwerk, Training und Dokumentverwaltung</h3>
-        <p class="panel-meta">Pflegeaufgaben und tiefere Analyse bleiben erreichbar, aber getrennt vom Betriebs&uuml;berblick.</p>
-      </div>
-    </div>
 
     <section class="panel" data-knowledge-lifecycle-panel>
       <div class="panel-header">
-        <h3>Knowledge Lifecycle</h3>
+        <div>
+          <h3>Knowledge Lifecycle</h3>
+          <p class="panel-meta">Qualit&auml;tsstatus, Review-Gates und Freigaben der indexierbaren Wissensbasis.</p>
+        </div>
         <span class="badge badge-ai" data-knowledge-lifecycle-state>Noch nicht geladen</span>
       </div>
       <div class="dashboard-grid dashboard-grid-4">
@@ -471,7 +365,7 @@
           <h3>Knowledge Network</h3>
           <p class="panel-meta">Read-only Sicht auf Maschinen, Fehler, Dokumente, Inventar, Trends und Knowledge-Gaps.</p>
         </div>
-        <div class="toolbar">
+        <div class="toolbar admin-ai-toolbar">
           <input class="input input-bordered" data-knowledge-network-search placeholder="Netzwerk durchsuchen">
           <select class="input input-bordered" data-knowledge-network-source aria-label="Netzwerk nach Quelle filtern">
             <option value="">Alle Quellen</option>
@@ -571,8 +465,11 @@
 
     <section class="panel">
       <div class="panel-header">
-        <h3>Wissensdatenbank</h3>
-        <div class="toolbar">
+        <div>
+          <h3>Wissensdatenbank</h3>
+          <p class="panel-meta">Dokumente, Trainingseintr&auml;ge und automatisch erzeugte Quellen verwalten.</p>
+        </div>
+        <div class="toolbar admin-ai-toolbar">
           <input class="input input-bordered" data-ai-knowledge-search placeholder="Wissen durchsuchen">
           <select class="input input-bordered" data-ai-knowledge-source>
             <option value="">Alle Quellen</option>
@@ -619,15 +516,68 @@
       <div class="table-wrap">
         <table class="data-table">
           <caption>Wissensdatenbank mit Quelle, Indexstatus, Qualit&auml;t, Chunks und Abteilung</caption>
-          <thead><tr><th scope="col">Titel</th><th scope="col">Quelle</th><th scope="col">Index</th><th scope="col">Qualität</th><th scope="col">Chunks</th><th scope="col">Abteilung</th><th scope="col">Aktionen</th></tr></thead>
+          <thead><tr><th scope="col">Titel</th><th scope="col">Quelle</th><th scope="col">Index</th><th scope="col">Qualit&auml;t</th><th scope="col">Chunks</th><th scope="col">Abteilung</th><th scope="col">Aktionen</th></tr></thead>
           <tbody data-ai-knowledge></tbody>
         </table>
+      </div>
+    </section>
+  </section>
+
+  <section class="ai-admin-area" id="ai-reindex-jobs" data-ai-admin-area="jobs">
+    <div class="ai-admin-area-header">
+      <div>
+        <span class="section-kicker">4. Reindex / Worker Jobs</span>
+        <h3>Index-Aufbau, Hintergrundjobs und operative Diagnose</h3>
+        <p class="panel-meta">Reindex-Aktionen sind bewusst getrennt vom Status, damit Admins operative Eingriffe gezielt ausl&ouml;sen.</p>
+      </div>
+      <span class="badge badge-ai" data-ai-section-status="jobs">Jobs werden geladen</span>
+    </div>
+
+    <div class="ai-section-guide" aria-label="Reindex und Worker Hinweise">
+      <article>
+        <span>Was beeinflusst das?</span>
+        <strong>Welche Dokumente und Trainingsdaten im RAG-Index landen und ob Worker-Aufgaben sauber abgearbeitet werden.</strong>
+      </article>
+      <article>
+        <span>Wann &auml;ndern?</span>
+        <strong>Nach neuen Quellen, veralteten Dokumenten, fehlenden Chunks, Queue-R&uuml;ckstau oder fehlgeschlagenen Jobs.</strong>
+      </article>
+      <article>
+        <span>Betroffen</span>
+        <strong><code>/api/v1/admin/ai/knowledge/reindex</code> <code>/api/v1/admin/ai/knowledge/reindex/jobs</code> <code>/api/v1/admin/jobs</code></strong>
+      </article>
+    </div>
+    <p class="ai-section-explain">Reindex ist eine operative Aktion: Sie aktualisiert den Suchindex und sollte gezielt nach neuen, veralteten oder reparierten Wissensquellen laufen.</p>
+
+    <div class="ai-info-box-grid">
+      <article class="ai-info-box">
+        <span>Was bedeutet Reindex?</span>
+        <strong>Der Suchindex wird aus den aktuellen Wissensquellen neu aufgebaut.</strong>
+        <p>Nach Uploads, Training oder Qualit&auml;ts&auml;nderungen muss der Index wissen, welche Inhalte durchsuchbar sind. Direkter Reindex blockiert den Request; der Job-Weg ist besser f&uuml;r gr&ouml;&szlig;ere Datenmengen.</p>
+      </article>
+    </div>
+
+    <section class="panel ai-reindex-command-panel">
+      <div class="panel-header">
+        <div>
+          <h3>Reindex-Kommandos</h3>
+          <p class="panel-meta">Direkter Reindex blockiert den Request; Job einplanen nutzt die Background-Queue.</p>
+        </div>
+        <span class="panel-meta" data-ai-reindex-message></span>
+      </div>
+      <div class="ai-admin-actions">
+        <button class="btn btn-primary" type="button" data-ai-reindex>Wissen neu indexieren</button>
+        <button class="btn btn-secondary" type="button" data-ai-reindex-stale>Nur veraltete indexieren</button>
+        <button class="btn btn-ghost" type="button" data-ai-queue-stale>Job einplanen</button>
       </div>
     </section>
 
     <section class="panel">
       <div class="panel-header">
-        <h3>Background Jobs</h3>
+        <div>
+          <h3>Background Jobs</h3>
+          <p class="panel-meta">RAG-Reindex und Wartungsdiagnose-Aufgaben mit Status und Ergebnis.</p>
+        </div>
         <span class="panel-meta" data-ai-job-count>0 Jobs</span>
       </div>
       <div class="table-wrap">
@@ -641,7 +591,10 @@
 
     <section class="panel">
       <div class="panel-header">
-        <h3>Operationsdiagnose</h3>
+        <div>
+          <h3>Operationsdiagnose</h3>
+          <p class="panel-meta">Queue, DB-Latenz, AI-Latenz, Jobdauer und langsame Endpoints.</p>
+        </div>
         <span class="panel-meta" data-ops-generated>-</span>
       </div>
       <div class="dashboard-grid dashboard-grid-4">
@@ -659,6 +612,357 @@
         <div class="stats-list" data-ops-slow-endpoints></div>
       </div>
     </section>
+  </section>
+
+  <section class="ai-admin-area" id="ai-retrieval-testing" data-ai-admin-area="retrieval">
+    <div class="ai-admin-area-header">
+      <div>
+        <span class="section-kicker">5. Retrieval Testing</span>
+        <h3>Warum wurden diese Quellen und diese Antwort gew&auml;hlt?</h3>
+        <p class="panel-meta">Prompt-sichere Analyse f&uuml;r Kandidaten, Chunks, Scores, Permission-Filter, Hybrid Search und Re-Ranking.</p>
+      </div>
+      <span class="badge badge-ai" data-ai-section-status="retrieval">Retrieval wird geladen</span>
+    </div>
+
+    <div class="ai-section-guide" aria-label="Retrieval Testing Hinweise">
+      <article>
+        <span>Was beeinflusst das?</span>
+        <strong>Trefferqualit&auml;t, Quellenabdeckung, Confidence und ob Berechtigungsfilter relevante Quellen entfernen.</strong>
+      </article>
+      <article>
+        <span>Wann pr&uuml;fen?</span>
+        <strong>Bei falschen Quellen, niedriger Confidence, Antworten ohne Quellen oder Regressionen nach Reindex/Training.</strong>
+      </article>
+      <article>
+        <span>Betroffen</span>
+        <strong><code>/api/v1/admin/ai/retrieval-debug</code> <code>/api/v1/admin/ai/retrieval-telemetry</code> <code>retrieval_debug_items</code></strong>
+      </article>
+    </div>
+    <p class="ai-section-explain">Retrieval Testing erkl&auml;rt nicht die Antwort im Wortlaut, sondern den Weg dorthin: Query-Typ, Treffer, Filter, Scores und Safety-Signale bleiben prompt-sicher sichtbar.</p>
+
+    <section class="panel" data-retrieval-slo-panel>
+      <div class="panel-header">
+        <div>
+          <h3>Suchqualit&auml;t SLO</h3>
+          <p class="panel-meta">Qualit&auml;ts- und Betriebsmetriken f&uuml;r AI-Antworten.</p>
+        </div>
+        <span class="badge badge-ai" data-retrieval-slo-status>Noch nicht geladen</span>
+      </div>
+      <div class="dashboard-grid dashboard-grid-4">
+        <article class="metric-card"><span>P95 Suchzeit</span><strong data-retrieval-slo-kpi="retrieval_p95_ms">0 ms</strong></article>
+        <article class="metric-card"><span>Ohne Quellen</span><strong data-retrieval-slo-kpi="no_source_rate">0%</strong></article>
+        <article class="metric-card"><span>Niedrige Sicherheit</span><strong data-retrieval-slo-kpi="low_confidence_rate">0%</strong></article>
+        <article class="metric-card"><span>Berechtigungsfilter</span><strong data-retrieval-slo-kpi="permission_filtered_candidate_count">0</strong></article>
+        <article class="metric-card"><span>Negatives Feedback</span><strong data-retrieval-slo-kpi="negative_feedback_rate">0%</strong></article>
+        <article class="metric-card"><span>Safety Risiken</span><strong data-retrieval-slo-kpi="safety_risk_count">0</strong></article>
+        <article class="metric-card"><span>Ausweichantworten</span><strong data-retrieval-slo-kpi="fallback_rate">0%</strong></article>
+        <article class="metric-card"><span>Index/Sync Risiken</span><strong data-retrieval-slo-kpi="index_sync_risks">0</strong></article>
+      </div>
+      <div class="content-grid two-columns mt-4">
+        <div class="stats-list" data-retrieval-slo-trends></div>
+        <div class="stats-list" data-retrieval-slo-warnings></div>
+      </div>
+    </section>
+
+    <section class="panel" data-retrieval-debug-panel>
+      <div class="panel-header">
+        <div>
+          <h3>Retrieval Analyse</h3>
+          <p class="panel-meta">Read-only Nachvollziehbarkeit ohne Roh-Prompts, Antworten oder Chunk-Volltexte.</p>
+        </div>
+        <div class="toolbar admin-ai-toolbar">
+          <input class="input input-bordered" data-retrieval-debug-search placeholder="Retrieval-Fälle filtern">
+          <select class="input input-bordered" data-retrieval-debug-type aria-label="Nach Query-Typ filtern">
+            <option value="">Alle Query-Typen</option>
+            <option value="error_analysis">Fehleranalyse</option>
+            <option value="machine_question">Maschinenfrage</option>
+            <option value="inventory_question">Inventarfrage</option>
+            <option value="task_question">Taskfrage</option>
+            <option value="document_question">Dokumentfrage</option>
+            <option value="safety_question">Sicherheitsfrage</option>
+            <option value="knowledge_gap">Wissensl&uuml;cke</option>
+            <option value="trend_history_question">Trend/Historie</option>
+            <option value="general_question">Allgemein</option>
+          </select>
+          <button class="btn btn-secondary" type="button" data-retrieval-debug-refresh>Aktualisieren</button>
+        </div>
+      </div>
+
+      <div class="ai-retrieval-inspector" data-retrieval-inspector>
+        <div class="ai-retrieval-metrics" data-retrieval-analysis></div>
+        <section class="retrieval-flow-panel" data-retrieval-flow-panel aria-label="AI Retrieval Flow">
+          <div class="retrieval-flow-header">
+            <div>
+              <span class="section-kicker">Warum diese Antwort?</span>
+              <h4>AI Retrieval Flow</h4>
+              <p class="panel-meta">Prompt-sichere Timeline vom Query-Verst&auml;ndnis bis zur finalen Antwort.</p>
+            </div>
+            <div class="retrieval-flow-header-actions">
+              <span class="badge badge-ai" data-retrieval-flow-status>Noch nicht geladen</span>
+              <span class="panel-meta" data-retrieval-flow-duration>-</span>
+            </div>
+          </div>
+          <div class="retrieval-flow-summary" data-retrieval-flow-summary></div>
+          <div class="retrieval-flow-timeline" data-retrieval-flow-timeline></div>
+          <div class="content-grid two-columns mt-4">
+            <div class="retrieval-flow-source-map" data-retrieval-flow-source-map></div>
+            <div class="retrieval-flow-answer" data-retrieval-flow-answer></div>
+          </div>
+        </section>
+      </div>
+
+      <div class="table-wrap">
+        <table class="data-table">
+          <caption>Prompt-sichere Retrieval-Debug-Daten mit Query-Typ, Quellen, Confidence und Konflikten</caption>
+            <thead><tr><th scope="col">Zeit</th><th scope="col">Referenz</th><th scope="col">Typ</th><th scope="col">Quellen</th><th scope="col">Confidence</th><th scope="col">Konflikte</th><th scope="col">Dauer</th><th scope="col">Flow</th></tr></thead>
+          <tbody data-retrieval-debug-rows></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel" data-retrieval-evaluation-history-panel>
+      <div class="panel-header">
+        <div>
+          <h3>Golden Eval Historie</h3>
+          <p class="panel-meta">Regressionen und Qualit&auml;tstrends f&uuml;r bekannte Retrieval-Fragen.</p>
+        </div>
+        <span class="badge badge-ai" data-retrieval-evaluation-status>Noch nicht geladen</span>
+      </div>
+      <div class="dashboard-grid dashboard-grid-4">
+        <article class="metric-card"><span>Recall@K</span><strong data-retrieval-evaluation-kpi="recall_at_k">0%</strong></article>
+        <article class="metric-card"><span>MRR</span><strong data-retrieval-evaluation-kpi="mrr">0%</strong></article>
+        <article class="metric-card"><span>nDCG@K</span><strong data-retrieval-evaluation-kpi="ndcg_at_k">0%</strong></article>
+        <article class="metric-card"><span>Keine Treffer</span><strong data-retrieval-evaluation-kpi="no_result_count">0</strong></article>
+      </div>
+      <div class="content-grid two-columns mt-4">
+        <div class="stats-list" data-retrieval-evaluation-regression></div>
+        <div class="stats-list" data-retrieval-evaluation-runs></div>
+      </div>
+    </section>
+  </section>
+
+  <section class="ai-admin-area" id="ai-answer-quality" data-ai-admin-area="answers">
+    <div class="ai-admin-area-header">
+      <div>
+        <span class="section-kicker">6. Prompt-/Antwortqualit&auml;t</span>
+        <h3>Antwortqualit&auml;t, Prompt-Debugging, Feedback und Wissensl&uuml;cken</h3>
+        <p class="panel-meta">Admins sehen, ob Antworten belegt, sicher, verst&auml;ndlich und verbesserbar sind.</p>
+      </div>
+      <div class="toolbar">
+        <span class="badge badge-ai" data-ai-observability-status>Noch nicht geladen</span>
+        <button class="btn btn-secondary" type="button" data-ai-observability-refresh>Monitoring aktualisieren</button>
+      </div>
+    </div>
+
+    <div class="ai-section-guide" aria-label="Prompt- und Antwortqualitaet Hinweise">
+      <article>
+        <span>Was beeinflusst das?</span>
+        <strong>Antwortstruktur, belegte Quellen, Confidence, Debug-Blueprints, Feedback und Knowledge-Gap-Erkennung.</strong>
+      </article>
+      <article>
+        <span>Wann pr&uuml;fen?</span>
+        <strong>Bei negativem Feedback, niedriger Antwortqualit&auml;t, h&auml;ufigen Fragen ohne Quellen oder neuen Prompt-Risiken.</strong>
+      </article>
+      <article>
+        <span>Betroffen</span>
+        <strong><code>/api/v1/admin/ai/observability</code> <code>/api/v1/admin/ai/knowledge-gaps</code> <code>/api/v1/admin/ai/summary</code></strong>
+      </article>
+    </div>
+    <p class="ai-section-explain">Diese Sektion hilft bei Qualit&auml;tsentscheidungen: Admins sehen Metadaten zu Confidence, Quellen und Feedback, ohne Rohfragen, Prompts oder Antworttexte offenzulegen.</p>
+
+    <div class="ai-info-box-grid">
+      <article class="ai-info-box">
+        <span>Warum kann die KI manche Fragen nicht beantworten?</span>
+        <strong>Fehlende Quellen, niedrige Confidence oder Safety-Regeln stoppen unsichere Antworten.</strong>
+        <p>Wenn keine freigegebene Quelle passt, Berechtigungen Quellen ausblenden oder die Frage sicherheitskritisch ist, zeigt die UI einen Gap, Fallback oder Warnstatus statt eine riskante Antwort zu erzwingen.</p>
+      </article>
+    </div>
+
+    <section class="panel ai-answer-quality-panel">
+      <div class="panel-header">
+          <h3>Antwortqualität im Chat</h3>
+        <span class="panel-meta">Jede Antwort zeigt Quellen, Confidence, Unsicherheit, Safety und verwendete Dokumente.</span>
+      </div>
+      <div class="ai-answer-quality-grid" data-ai-answer-quality-guide></div>
+    </section>
+
+    <section class="panel ai-observability-panel">
+      <div class="panel-header">
+        <div>
+          <h3>AI Metrics Dashboard</h3>
+          <p class="panel-meta">Latenz, Tokens, Fehler, leere Retrievals und Halluzinationswarnungen.</p>
+        </div>
+      </div>
+      <div class="dashboard-grid dashboard-grid-4">
+        <article class="metric-card"><span>Antwortzeit &Oslash;</span><strong data-ai-monitoring-kpi="average_response_ms">0 ms</strong></article>
+        <article class="metric-card"><span>Retrieval &Oslash;</span><strong data-ai-monitoring-kpi="average_retrieval_ms">0 ms</strong></article>
+        <article class="metric-card"><span>Tokenverbrauch</span><strong data-ai-monitoring-kpi="total_tokens">0</strong></article>
+        <article class="metric-card"><span>Fehlerquote</span><strong data-ai-monitoring-kpi="error_rate">0%</strong></article>
+        <article class="metric-card"><span>Leere Retrievals</span><strong data-ai-monitoring-kpi="empty_retrieval_rate">0%</strong></article>
+        <article class="metric-card"><span>Halluzinationswarnungen</span><strong data-ai-monitoring-kpi="hallucination_warning_count">0</strong></article>
+        <article class="metric-card"><span>Trefferquote</span><strong data-ai-monitoring-kpi="retrieval_hit_rate">0%</strong></article>
+        <article class="metric-card"><span>Similarity &Oslash;</span><strong data-ai-monitoring-kpi="average_similarity_score">0%</strong></article>
+      </div>
+      <div class="content-grid two-columns mt-4">
+        <div class="ai-monitor-list" data-ai-top-questions></div>
+        <div class="ai-monitor-list" data-ai-source-distribution></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h3>Retrieval Monitoring</h3>
+        <span class="panel-meta">Top Treffer, schlechte Treffer, Chunk-Nutzung und Dokumentverteilung.</span>
+      </div>
+      <div class="content-grid two-columns">
+        <div class="ai-monitor-list" data-ai-top-hits></div>
+        <div class="ai-monitor-list" data-ai-poor-hits></div>
+      </div>
+      <div class="content-grid two-columns mt-4">
+        <div class="ai-monitor-list" data-ai-chunk-usage></div>
+        <div class="ai-monitor-list" data-ai-quality-metrics></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h3>Workflow-Kosten und Fehler</h3>
+        <span class="panel-meta">Metadata-only Auswertung ohne Prompt- oder Antworttexte</span>
+      </div>
+      <div class="content-grid two-columns">
+        <div class="table-wrap">
+          <table class="data-table">
+            <caption>AI-Workflows nach Events, Fehlern, Fallbacks, Tokens und Kosten</caption>
+            <thead><tr><th scope="col">Workflow</th><th scope="col">Events</th><th scope="col">Fallback</th><th scope="col">Fehler</th><th scope="col">Tokens</th><th scope="col">Kosten</th><th scope="col">Latenz</th></tr></thead>
+            <tbody data-ai-workflows></tbody>
+          </table>
+        </div>
+        <div class="stats-list" data-ai-top-errors></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h3>Knowledge Gaps</h3>
+        <span class="panel-meta" data-ai-knowledge-gap-count>0 offen</span>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <caption>Offene Wissensl&uuml;cken aus AI-Fragen ohne belastbare Quellen</caption>
+          <thead><tr><th scope="col">Referenz</th><th scope="col">Bereich</th><th scope="col">Maschine</th><th scope="col">Status</th><th scope="col">Treffer</th><th scope="col">Zuletzt</th></tr></thead>
+          <tbody data-ai-knowledge-gaps></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h3>AI Logs</h3>
+        <span class="panel-meta">Prompt-sichere Referenz, Quellen, Confidence, Antwortqualit&auml;t, Fehler und Dauer.</span>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <caption>AI-Monitoring-Logs mit Antwortqualit&auml;t, Confidence und Quellen</caption>
+          <thead><tr><th scope="col">Zeit</th><th scope="col">Referenz</th><th scope="col">Qualität</th><th scope="col">Confidence</th><th scope="col">Quellen</th><th scope="col">Dauer</th><th scope="col">Debug</th></tr></thead>
+          <tbody data-ai-observability-logs></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h3>Debug Tools</h3>
+        <div class="toolbar">
+          <select class="input input-bordered" data-ai-debug-request aria-label="AI-Anfrage analysieren"></select>
+        </div>
+      </div>
+      <div class="content-grid two-columns">
+        <div class="ai-monitor-list" data-ai-debug-analysis></div>
+        <pre class="ai-debug-prompt" data-ai-debug-prompt>Kein Prompt-Blueprint geladen.</pre>
+      </div>
+    </section>
+  </section>
+
+  <section class="ai-admin-area" id="ai-safety-fallbacks" data-ai-admin-area="capabilities">
+    <div class="ai-admin-area-header">
+      <div>
+        <span class="section-kicker">7. Sicherheits- und Fallback-Hinweise</span>
+        <h3>Welche Grenzen, Fallbacks und Safety-Signale gelten?</h3>
+        <p class="panel-meta">Bewusst getrennte Sicht auf unterst&uuml;tzte F&auml;higkeiten, gesperrte Aussagen, lokale Antworten und Risikosignale.</p>
+      </div>
+      <span class="badge badge-ai" data-ai-section-status="safety">Safety wird geladen</span>
+    </div>
+
+    <div class="ai-section-guide" aria-label="Safety und Fallback Hinweise">
+      <article>
+        <span>Was beeinflusst das?</span>
+        <strong>Ob Antworten entsch&auml;rft, als unsicher markiert, lokal beantwortet oder bewusst nicht unterst&uuml;tzt werden.</strong>
+      </article>
+      <article>
+        <span>Wann pr&uuml;fen?</span>
+        <strong>Bei Safety-Warnungen, hoher Fallback-Rate, Antworten ohne Quellen oder riskanten Wartungshinweisen.</strong>
+      </article>
+      <article>
+        <span>Betroffen</span>
+        <strong><code>ai_confidence_service</code> <code>retrieval_telemetry_service</code> <code>ai_observability_service</code></strong>
+      </article>
+    </div>
+    <p class="ai-section-explain">Safety und Fallbacks sind Schutzmechanismen: Sie verhindern, dass die KI ohne belastbare Daten, mit zu wenig Sicherheit oder bei riskanten Anweisungen zu viel verspricht.</p>
+
+    <div class="ai-info-box-grid">
+      <article class="ai-info-box">
+        <span>Was ist ein lokaler Fallback?</span>
+        <strong>Die App beantwortet sichere Standardf&auml;lle ohne externen Modellaufruf.</strong>
+        <p>Lokale Fallbacks greifen zum Beispiel bei Z&auml;hlungen, sichtbaren Aufgaben oder bekannten App-Daten. Das h&auml;lt Basisfunktionen verf&uuml;gbar, auch wenn der Provider nicht erreichbar ist.</p>
+      </article>
+    </div>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <h3>Safety &amp; Fallback Snapshot</h3>
+          <p class="panel-meta">Aus bestehenden Summary-, Telemetry- und Observability-Daten abgeleitet.</p>
+        </div>
+        <span class="status-pill is-muted" data-ai-safety-summary-state>Noch nicht geladen</span>
+      </div>
+      <div class="ai-safety-grid" data-ai-safety-summary>
+        <article class="ai-safety-card">
+          <span>Fallback-Rate</span>
+          <strong data-ai-safety-field="fallback_rate">0%</strong>
+          <small>Viele Fallbacks deuten auf Provider-, Quellen- oder Prompt-Probleme hin.</small>
+        </article>
+        <article class="ai-safety-card">
+          <span>Safety Risiken</span>
+          <strong data-ai-safety-field="safety_risk_count">0</strong>
+          <small>Riskante Aussagen m&uuml;ssen fachlich kontrolliert werden.</small>
+        </article>
+        <article class="ai-safety-card">
+          <span>Ohne Quellen</span>
+          <strong data-ai-safety-field="no_source_rate">0%</strong>
+          <small>Antworten ohne Quellen brauchen Datenpflege oder klarere Prompts.</small>
+        </article>
+        <article class="ai-safety-card">
+          <span>Niedrige Sicherheit</span>
+          <strong data-ai-safety-field="low_confidence_rate">0%</strong>
+          <small>Niedrige Confidence ist ein Signal f&uuml;r Review oder Knowledge-Gaps.</small>
+        </article>
+      </div>
+    </section>
+
+    <div class="ai-capability-grid">
+      <section class="panel ai-capability-column">
+        <div class="panel-header"><h3>Unterst&uuml;tzt</h3><span class="status-pill is-active">aktiv</span></div>
+        <div class="stack" data-ai-capabilities="supported"></div>
+      </section>
+      <section class="panel ai-capability-column">
+        <div class="panel-header"><h3>Teilweise unterst&uuml;tzt</h3><span class="status-pill is-stale">abh&auml;ngig von Daten</span></div>
+        <div class="stack" data-ai-capabilities="partial"></div>
+      </section>
+      <section class="panel ai-capability-column">
+        <div class="panel-header"><h3>Nicht unterst&uuml;tzt</h3><span class="status-pill is-muted">bewusst gesperrt</span></div>
+        <div class="stack" data-ai-capabilities="unsupported"></div>
+      </section>
+    </div>
   </section>
 </section>
 {% endblock %}

@@ -3,7 +3,7 @@
 from datetime import date, timedelta
 
 from app.extensions import db
-from app.models import MaintenancePlan, Priority, Role, Task
+from app.models import KnowledgeDocument, MaintenancePlan, Priority, Role, Task
 from app.services.ai_service import AIServiceError
 
 
@@ -34,6 +34,11 @@ def test_machine_create_rejects_duplicates_and_invalid_staffing(
         headers=headers,
         json={"name": "Anlage 4"},
     )
+    normalized_duplicate_response = client.post(
+        "/api/v1/machines",
+        headers=headers,
+        json={"name": "  anlage   4  "},
+    )
     invalid_response = client.post(
         "/api/v1/machines",
         headers=headers,
@@ -43,7 +48,51 @@ def test_machine_create_rejects_duplicates_and_invalid_staffing(
     assert create_response.status_code == 201
     assert create_response.get_json()["required_employees"] == 2
     assert duplicate_response.status_code == 409
+    assert normalized_duplicate_response.status_code == 409
     assert invalid_response.status_code == 400
+
+
+def test_machine_update_marks_knowledge_stale(
+    app,
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify machine metadata changes invalidate the RAG source."""
+    admin = make_user(
+        username="asset_stale_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    headers = auth_headers(admin["username"])
+    create_response = client.post(
+        "/api/v1/machines",
+        headers=headers,
+        json={"name": "Anlage Stale", "produced_item": "Alt"},
+    )
+    machine_id = create_response.get_json()["id"]
+    with app.app_context():
+        document = KnowledgeDocument.query.filter_by(
+            source_type="machine",
+            source_id=machine_id,
+        ).one()
+        document.status = "indexed"
+        db.session.commit()
+
+    update_response = client.put(
+        f"/api/v1/machines/{machine_id}",
+        headers=headers,
+        json={"name": "Anlage Stale Neu"},
+    )
+
+    assert update_response.status_code == 200
+    with app.app_context():
+        document = KnowledgeDocument.query.filter_by(
+            source_type="machine",
+            source_id=machine_id,
+        ).one()
+        assert document.title == "Anlage Stale Neu"
+        assert document.status == "stale"
 
 
 def test_maintenance_plan_creates_and_generates_due_task(

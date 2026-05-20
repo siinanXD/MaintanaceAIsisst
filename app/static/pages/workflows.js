@@ -1,4 +1,36 @@
 (function () {
+  const SHARED_MODULE_URLS = [
+    "/static/shared/dom.js",
+    "/static/shared/forms.js",
+    "/static/shared/ui.js",
+    "/static/shared/status-badges.js"
+  ];
+  let sharedModulePromise = null;
+
+  /**
+   * Load shared workflow helper scripts before page initializers run.
+   *
+   * @returns {Promise<void>} Resolves after all shared modules executed.
+   */
+  async function loadWorkflowShared() {
+    if (!sharedModulePromise) {
+      sharedModulePromise = Promise.all(SHARED_MODULE_URLS.map((url) => import(url)));
+    }
+    await sharedModulePromise;
+  }
+
+  /**
+   * Return one shared helper namespace.
+   *
+   * @param {string} name Shared namespace name.
+   * @returns {object} Shared helper namespace or an empty object.
+   */
+  function sharedNamespace(name) {
+    return window.maintenanceShared && window.maintenanceShared[name]
+      ? window.maintenanceShared[name]
+      : {};
+  }
+
   function token() {
     return window.maintenanceAuth ? window.maintenanceAuth.token() : null;
   }
@@ -42,18 +74,175 @@
   const TASK_PRIORITIES = ["urgent", "soon", "normal"];
   const TASK_STATUSES = ["open", "in_progress", "done", "cancelled"];
 
+  /**
+   * Normalize API list envelopes through the shared DOM helper.
+   *
+   * @param {unknown} result API response payload.
+   * @returns {Array} Normalized list items.
+   */
   function listData(result) {
-    if (Array.isArray(result)) return result;
-    if (result && Array.isArray(result.data)) return result.data;
-    if (result && result.data && Array.isArray(result.data.items)) return result.data.items;
-    if (result && Array.isArray(result.items)) return result.items;
-    return [];
+    return sharedNamespace("dom").listData(result);
   }
 
+  /**
+   * Resolve a paginated API total through the shared DOM helper.
+   *
+   * @param {object|null|undefined} result API response payload.
+   * @param {Array|null|undefined} fallbackItems Fallback list.
+   * @returns {number} Total item count.
+   */
   function paginationTotal(result, fallbackItems) {
-    const pagination = result && (result.pagination || (result.data && result.data.pagination));
-    if (pagination && Number.isFinite(Number(pagination.total))) return Number(pagination.total);
-    return Array.isArray(fallbackItems) ? fallbackItems.length : 0;
+    return sharedNamespace("dom").paginationTotal(result, fallbackItems);
+  }
+
+  /**
+   * Create a table row through the shared DOM helper.
+   *
+   * @param {Array} cells Cell values.
+   * @returns {HTMLTableRowElement} Table row.
+   */
+  function row(cells) {
+    return sharedNamespace("dom").row(cells);
+  }
+
+  /**
+   * Read form data through the shared forms helper.
+   *
+   * @param {HTMLFormElement} form Form to read.
+   * @returns {object} Plain form payload.
+   */
+  function formDataToObject(form) {
+    return sharedNamespace("forms").formDataToObject(form);
+  }
+
+  /**
+   * Show a toast through the shared UI helper.
+   *
+   * @param {string} message Toast message.
+   * @param {string|object} variant Toast variant or options.
+   * @returns {void}
+   */
+  function showInterfaceToast(message, variant) {
+    return sharedNamespace("ui").showInterfaceToast(message, variant);
+  }
+
+  /**
+   * Set a status message through the shared UI helper.
+   *
+   * @param {Element|null} element Target element.
+   * @param {string} message Message text.
+   * @param {boolean|undefined} isError Whether this is an error.
+   * @returns {void}
+   */
+  function setStatusMessage(element, message, isError) {
+    return sharedNamespace("ui").setStatusMessage(element, message, isError);
+  }
+
+  /**
+   * Set button busy state through the shared UI helper.
+   *
+   * @param {HTMLButtonElement|null} button Button element.
+   * @param {boolean} busy Busy state.
+   * @param {string} busyText Busy text.
+   * @returns {void}
+   */
+  function setButtonBusy(button, busy, busyText) {
+    return sharedNamespace("ui").setButtonBusy(button, busy, busyText);
+  }
+
+  /**
+   * Set form busy state through the shared UI helper.
+   *
+   * @param {HTMLFormElement|null} form Form element.
+   * @param {boolean} busy Busy state.
+   * @param {string} busyText Busy text.
+   * @returns {void}
+   */
+  function setFormBusy(form, busy, busyText) {
+    return sharedNamespace("ui").setFormBusy(form, busy, busyText);
+  }
+
+  /**
+   * Run an action through the shared UI helper.
+   *
+   * @param {object} options Action options.
+   * @returns {Promise<unknown|null>} Action result.
+   */
+  function runAction(options) {
+    return sharedNamespace("ui").runAction(options);
+  }
+
+  /**
+   * Request text through the shared UI helper.
+   *
+   * @param {object} options Dialog options.
+   * @returns {Promise<string|null>} Entered text.
+   */
+  function requestText(options) {
+    return sharedNamespace("ui").requestText(options);
+  }
+
+  /**
+   * Show information through the shared UI helper.
+   *
+   * @param {object} options Dialog options.
+   * @returns {Promise<boolean>} Acknowledgement state.
+   */
+  function showInfoDialog(options) {
+    return sharedNamespace("ui").showInfoDialog(options);
+  }
+
+  /**
+   * Confirm an action through the shared UI helper.
+   *
+   * @param {object} options Dialog options.
+   * @returns {Promise<boolean>} Confirmation state.
+   */
+  function confirmAction(options) {
+    return sharedNamespace("ui").confirmAction(options);
+  }
+
+  /**
+   * Create a badge through the shared status-badge helper.
+   *
+   * @param {string|number|null|undefined} text Badge text.
+   * @param {string} className Badge class.
+   * @returns {HTMLSpanElement} Badge element.
+   */
+  function badge(text, className) {
+    return sharedNamespace("statusBadges").badge(text, className);
+  }
+
+  /**
+   * Create a formatted badge through the shared status-badge helper.
+   *
+   * @param {string|number|null|undefined} value Raw badge value.
+   * @param {string} className Badge class.
+   * @param {Function} labelFormatter Optional label formatter.
+   * @returns {HTMLSpanElement} Badge element.
+   */
+  function labeledBadge(value, className, labelFormatter) {
+    return sharedNamespace("statusBadges").labeledBadge(value, className, labelFormatter);
+  }
+
+  /**
+   * Resolve task priority badge classes through the shared status-badge helper.
+   *
+   * @param {string} priority Task priority.
+   * @returns {string} Badge classes.
+   */
+  function priorityBadgeClass(priority) {
+    return sharedNamespace("statusBadges").taskPriorityBadgeClass(priority);
+  }
+
+  /**
+   * Resolve task status badge classes through the shared status-badge helper.
+   *
+   * @param {string} status Task status.
+   * @returns {string} Badge classes.
+   */
+  function statusBadgeClass(status) {
+    return sharedNamespace("statusBadges").taskStatusBadgeClass(status);
   }
 
   async function api(path, options) {
@@ -99,45 +288,6 @@
         }
       }
     });
-  }
-
-  function row(cells) {
-    const tr = document.createElement("tr");
-    cells.forEach((cell) => {
-      const td = document.createElement("td");
-      if (cell instanceof Node) td.appendChild(cell);
-      else td.textContent = cell || "-";
-      tr.appendChild(td);
-    });
-    return tr;
-  }
-
-  function showInterfaceToast(message, variant) {
-    if (window.maintenanceFrontend && window.maintenanceFrontend.showInterfaceToast) {
-      window.maintenanceFrontend.showInterfaceToast(message, variant);
-      return;
-    }
-    let toast = document.querySelector("[data-interface-toast]");
-    if (!toast) {
-      toast = document.createElement("div");
-      toast.className = "interface-toast";
-      toast.dataset.interfaceToast = "true";
-      toast.setAttribute("role", "status");
-      toast.setAttribute("aria-live", "polite");
-      document.body.appendChild(toast);
-    }
-    toast.textContent = message;
-    toast.classList.toggle("is-error", variant === "error");
-    toast.classList.toggle("is-success", variant === "success");
-    toast.classList.toggle("is-info", !variant || variant === "info");
-    toast.hidden = false;
-    window.clearTimeout(showInterfaceToast.timeoutId);
-    showInterfaceToast.timeoutId = window.setTimeout(() => {
-      toast.hidden = true;
-    }, 2600);
-
-    const liveRegion = document.querySelector("[data-global-live-region]");
-    if (liveRegion) liveRegion.textContent = message;
   }
 
   function sourceTypeLabel(source) {
@@ -451,19 +601,6 @@
     return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(Number(value || 0));
   }
 
-  function priorityBadgeClass(priority) {
-    if (priority === "urgent") return "badge badge-priority is-urgent";
-    if (priority === "soon") return "badge badge-priority is-soon";
-    return "badge badge-priority is-normal";
-  }
-
-  function statusBadgeClass(status) {
-    if (status === "in_progress") return "badge badge-status is-progress";
-    if (status === "done") return "badge badge-status is-done";
-    if (status === "cancelled") return "badge badge-status is-cancelled";
-    return "badge badge-status is-open";
-  }
-
   function priorityLabel(priority) {
     const labels = {
       urgent: "Kritisch",
@@ -483,135 +620,10 @@
     return labels[status] || status || "-";
   }
 
-  function badge(text, className) {
-    const element = document.createElement("span");
-    element.className = className;
-    element.textContent = text || "-";
-    return element;
-  }
-
-  function labeledBadge(value, className, labelFormatter) {
-    return badge(labelFormatter ? labelFormatter(value) : value, className);
-  }
-
   function setText(selector, value) {
     document.querySelectorAll(selector).forEach((element) => {
       element.textContent = String(value);
     });
-  }
-
-  function setStatusMessage(element, message, isError) {
-    if (!element) return;
-    element.textContent = message || "";
-    element.classList.toggle("is-error", Boolean(isError));
-    element.classList.toggle("is-success", Boolean(message && !isError));
-    element.classList.toggle("is-info", Boolean(message && isError === undefined));
-    if (message) {
-      element.setAttribute("role", isError ? "alert" : "status");
-      element.setAttribute("aria-live", isError ? "assertive" : "polite");
-      return;
-    }
-    element.removeAttribute("role");
-    element.removeAttribute("aria-live");
-  }
-
-  function setButtonBusy(button, busy, busyText) {
-    if (window.maintenanceFrontend && window.maintenanceFrontend.setButtonBusy) {
-      window.maintenanceFrontend.setButtonBusy(button, busy, busyText);
-      return;
-    }
-    if (!button) return;
-    if (busy) {
-      if (!button.dataset.originalText) {
-        button.dataset.originalText = button.textContent;
-      }
-      if (!button.dataset.originalDisabled) {
-        button.dataset.originalDisabled = button.disabled ? "true" : "false";
-      }
-      button.disabled = true;
-      button.classList.add("is-busy");
-      button.setAttribute("aria-busy", "true");
-      if (busyText) {
-        button.dataset.busyText = busyText;
-        button.textContent = busyText;
-      }
-      return;
-    }
-    button.disabled = button.dataset.originalDisabled === "true";
-    button.classList.remove("is-busy");
-    button.removeAttribute("aria-busy");
-    if (button.dataset.originalText) {
-      if (!button.dataset.busyText || button.textContent === button.dataset.busyText) {
-        button.textContent = button.dataset.originalText;
-      }
-      delete button.dataset.originalText;
-      delete button.dataset.busyText;
-      delete button.dataset.originalDisabled;
-    }
-  }
-
-  function setFormBusy(form, busy, busyText) {
-    if (window.maintenanceFrontend && window.maintenanceFrontend.setFormBusy) {
-      window.maintenanceFrontend.setFormBusy(form, busy, busyText);
-      return;
-    }
-    if (!form) return;
-    const submitButton = form.querySelector("button[type='submit']");
-    setButtonBusy(submitButton, busy, busyText);
-    form.setAttribute("aria-busy", String(Boolean(busy)));
-  }
-
-  async function runAction(options) {
-    const settings = options || {};
-    if (window.maintenanceFrontend && window.maintenanceFrontend.runAction) {
-      return window.maintenanceFrontend.runAction(settings);
-    }
-    const control = settings.button || settings.control || null;
-    const form = settings.form || null;
-    if (form) setFormBusy(form, true, settings.busyText || "Läuft...");
-    else setButtonBusy(control, true, settings.busyText || "Läuft...");
-    if (settings.pendingMessage) setStatusMessage(settings.statusElement, settings.pendingMessage);
-    try {
-      const result = await settings.action();
-      if (settings.successMessage) {
-        setStatusMessage(settings.statusElement, settings.successMessage, false);
-        if (settings.toast !== false) showInterfaceToast(settings.successMessage, "success");
-      }
-      return result;
-    } catch (error) {
-      const message = error.message || settings.errorMessage || "Aktion fehlgeschlagen.";
-      setStatusMessage(settings.statusElement, message, true);
-      showInterfaceToast(message, "error");
-      if (settings.rethrow) throw error;
-      return null;
-    } finally {
-      if (form) setFormBusy(form, false);
-      else setButtonBusy(control, false);
-    }
-  }
-
-  async function requestText(options) {
-    if (window.maintenanceFrontend && window.maintenanceFrontend.requestText) {
-      return window.maintenanceFrontend.requestText(options);
-    }
-    showInterfaceToast("Eingabedialog konnte nicht geoeffnet werden.", "error");
-    return null;
-  }
-
-  async function showInfoDialog(options) {
-    if (window.maintenanceFrontend && window.maintenanceFrontend.showInfoDialog) {
-      return window.maintenanceFrontend.showInfoDialog(options);
-    }
-    showInterfaceToast((options && options.message) || "Information nicht verfuegbar.", "info");
-    return true;
-  }
-
-  async function confirmAction(options) {
-    if (window.maintenanceFrontend && window.maintenanceFrontend.confirmAction) {
-      return window.maintenanceFrontend.confirmAction(options);
-    }
-    showInterfaceToast("Bestaetigungsdialog konnte nicht geoeffnet werden.", "error");
-    return false;
   }
 
   function actionButton(label, onClick, dangerOrOptions) {
@@ -712,7 +724,7 @@
   }
 
   function taskFormPayload(form) {
-    const data = Object.fromEntries(new FormData(form).entries());
+    const data = formDataToObject(form);
     Object.keys(data).forEach((key) => {
       if (data[key] === "") delete data[key];
     });
@@ -5644,6 +5656,7 @@
       if (window.maintenanceAuth && window.maintenanceAuth.ensureReady) {
         await window.maintenanceAuth.ensureReady();
       }
+      await loadWorkflowShared();
       const initializers = workflowInitializersForCurrentPage();
       for (const initializer of initializers) {
         await initializer();

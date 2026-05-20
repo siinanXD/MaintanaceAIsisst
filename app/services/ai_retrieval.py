@@ -64,6 +64,10 @@ def retrieve_ai_context(message, user, requested_scopes=None):
         data["employees"] = [employee.to_dict(access_level) for employee in employees]
 
     ranked_candidates = rank_candidates(candidates, MAX_SOURCES)
+    debug = {
+        "sql_candidates_found": len(ranked_candidates),
+        "sql_candidates_by_scope": _candidate_count_by_scope(ranked_candidates),
+    }
     return {
         "context": _context_from_sources(ranked_candidates),
         "sources": public_sources_from_candidates(ranked_candidates),
@@ -71,6 +75,7 @@ def retrieve_ai_context(message, user, requested_scopes=None):
         "data": data,
         "allowed_scopes": sorted(allowed_scopes),
         "requested_scopes": sorted(requested_scopes),
+        "debug": debug,
     }
 
 
@@ -293,6 +298,15 @@ def _rank_records(records, message, text_fn, scope, requested_scopes):
 def _tokens(value):
     """Return normalized search tokens for matching."""
     return set(tokenize_text(value))
+
+
+def _candidate_count_by_scope(candidates):
+    """Return structured candidate counts grouped by permission scope."""
+    counts = {}
+    for candidate in candidates or []:
+        scope = str(getattr(candidate, "permission_scope", "") or "unknown")
+        counts[scope] = counts.get(scope, 0) + 1
+    return counts
 
 
 def _source(item_type, item_id, title, module, url, context, score, reason):

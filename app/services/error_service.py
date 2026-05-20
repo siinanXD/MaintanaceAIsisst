@@ -7,7 +7,7 @@ and do nothing more than validate input, call the service, and return a response
 import logging
 from datetime import UTC, datetime
 
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import joinedload
 
 from app.extensions import db
@@ -28,10 +28,36 @@ logger = logging.getLogger(__name__)
 
 def _resolve_machine_id(name):
     """Return the Machine.id for an exact case-insensitive name match, or None."""
+    machine = _resolve_machine(name)
+    return machine.id if machine else None
+
+
+def _resolve_machine(name):
+    """Return the machine for an exact case-insensitive name match, or None."""
     if not name:
         return None
-    machine = Machine.query.filter(Machine.name.ilike(name)).first()
-    return machine.id if machine else None
+    return Machine.query.filter(Machine.name.ilike(normalize_text_field(name))).first()
+
+
+def normalize_text_field(value):
+    """Return text stripped and collapsed to single spaces."""
+    return " ".join(str(value or "").strip().split())
+
+
+def normalize_error_code(value):
+    """Return a canonical uppercase error code."""
+    return normalize_text_field(value).upper()
+
+
+def duplicate_error_code_exists(department_id, error_code, exclude_id=None):
+    """Return whether a department already uses an error code."""
+    query = ErrorEntry.query.filter(
+        ErrorEntry.department_id == department_id,
+        func.lower(ErrorEntry.error_code) == error_code.lower(),
+    )
+    if exclude_id is not None:
+        query = query.filter(ErrorEntry.id != exclude_id)
+    return db.session.query(query.exists()).scalar()
 
 
 def _non_negative_int(value, field_name):
@@ -99,7 +125,7 @@ def create_error_entry(data, user):
 
     """
     required = ["machine", "error_code", "title"]
-    missing = [field for field in required if not data.get(field)]
+    missing = [field for field in required if not normalize_text_field(data.get(field))]
     if missing:
         return (
             None,
@@ -118,19 +144,27 @@ def create_error_entry(data, user):
         return None, {"error": str(exc)}, 400
 
     try:
-        machine_id = (
-            int(data["machine_id"])
-            if data.get("machine_id")
-            else _resolve_machine_id(data["machine"])
-        )
+        error_code = normalize_error_code(data["error_code"])
+        if duplicate_error_code_exists(department.id, error_code):
+            return None, {"error": "error_code already exists in department"}, 409
+        machine_name = normalize_text_field(data["machine"])
+        machine = None
+        if data.get("machine_id"):
+            machine = db.session.get(Machine, int(data["machine_id"]))
+            machine_id = machine.id if machine else int(data["machine_id"])
+            machine_name = machine.name if machine else machine_name
+        else:
+            machine = _resolve_machine(machine_name)
+            machine_id = machine.id if machine else None
+            machine_name = machine.name if machine else machine_name
         entry = ErrorEntry(
-            machine=data["machine"],
+            machine=machine_name,
             machine_id=machine_id,
-            error_code=data["error_code"].upper(),
-            title=data["title"],
-            description=data.get("description", ""),
-            possible_causes=data.get("possible_causes", ""),
-            solution=data.get("solution", ""),
+            error_code=error_code,
+            title=normalize_text_field(data["title"]),
+            description=normalize_text_field(data.get("description", "")),
+            possible_causes=normalize_text_field(data.get("possible_causes", "")),
+            solution=normalize_text_field(data.get("solution", "")),
             department=department,
             severity=str(data.get("severity") or "medium").strip(),
             cause_category=str(data.get("cause_category") or "").strip(),
@@ -188,14 +222,20 @@ def update_error_entry(entry, data, user):
     except ValueError as exc:
         return None, {"error": str(exc)}, 400
 
-    for field in ["machine", "title", "description", "possible_causes", "solution"]:
+    for field in ["title", "description", "possible_causes", "solution"]:
         if field in data:
-            setattr(entry, field, data[field])
+            setattr(entry, field, normalize_text_field(data[field]))
     try:
         if "machine_id" in data:
-            entry.machine_id = int(data["machine_id"]) if data.get("machine_id") else None
+            machine = db.session.get(Machine, int(data["machine_id"])) if data.get("machine_id") else None
+            entry.machine_id = machine.id if machine else None
+            if machine:
+                entry.machine = machine.name
         elif "machine" in data:
-            entry.machine_id = _resolve_machine_id(data["machine"])
+            machine_name = normalize_text_field(data["machine"])
+            machine = _resolve_machine(machine_name)
+            entry.machine_id = machine.id if machine else None
+            entry.machine = machine.name if machine else machine_name
         for field in ["severity", "cause_category", "impact"]:
             if field in data:
                 setattr(entry, field, str(data.get(field) or "").strip())
@@ -205,7 +245,10 @@ def update_error_entry(entry, data, user):
     except ValueError as exc:
         return None, {"error": str(exc)}, 400
     if "error_code" in data:
-        entry.error_code = data["error_code"].upper()
+        error_code = normalize_error_code(data["error_code"])
+        if duplicate_error_code_exists(entry.department_id, error_code, exclude_id=entry.id):
+            return None, {"error": "error_code already exists in department"}, 409
+        entry.error_code = error_code
     entry.last_seen_at = datetime.now(UTC)
 
     record_event(

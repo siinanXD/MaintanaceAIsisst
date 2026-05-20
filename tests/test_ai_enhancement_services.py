@@ -9,6 +9,13 @@ from app.extensions import db
 from app.models import ErrorEntry, KnowledgeChunk, KnowledgeDocument, Role, User
 from app.services.incident_timeline_service import incident_timeline
 from app.services.knowledge_linking_service import knowledge_links_for_document
+from app.services.query_classifier_service import (
+    QUERY_TYPE_GENERAL,
+    QUERY_TYPE_HYBRID,
+    QUERY_TYPE_KNOWLEDGE_RAG,
+    QUERY_TYPE_LIVE_SQL,
+    QueryClassifierService,
+)
 from app.services.query_understanding_service import classify_query
 from app.services.rag_service import build_rag_context
 from app.services.technical_entity_service import entities_to_json
@@ -59,6 +66,41 @@ def test_query_understanding_classifies_safety_and_routes_retrieval():
     assert result.retrieval_strategy["top_k"] >= 6
 
 
+def test_query_classifier_routes_typical_live_sql_questions():
+    """Verify high-level classification detects live structured-data questions."""
+    classifier = QueryClassifierService()
+
+    tasks = classifier.classify("Welche Tasks stehen heute an?")
+    machines = classifier.classify("Welche Maschine ist kritisch?")
+
+    assert tasks.query_type == QUERY_TYPE_LIVE_SQL
+    assert "tasks" in tasks.suggested_sources
+    assert machines.query_type == QUERY_TYPE_LIVE_SQL
+    assert "machines" in machines.suggested_sources
+
+
+def test_query_classifier_routes_hybrid_error_code_questions():
+    """Verify error-code questions are treated as hybrid retrieval."""
+    result = QueryClassifierService().classify("Was bedeutet Fehler E104?")
+
+    assert result.query_type == QUERY_TYPE_HYBRID
+    assert "E104" in result.possible_entities["error_codes"]
+    assert {"errors", "knowledge"}.issubset(set(result.suggested_sources))
+
+
+def test_query_classifier_routes_knowledge_and_general_questions():
+    """Verify knowledge-only and general questions are classified separately."""
+    classifier = QueryClassifierService()
+
+    knowledge = classifier.classify("Wie loese ich Hydraulikdruckverlust?")
+    general = classifier.classify("Welche Funktionen hat diese App?")
+
+    assert knowledge.query_type == QUERY_TYPE_KNOWLEDGE_RAG
+    assert "knowledge" in knowledge.suggested_sources
+    assert general.query_type == QUERY_TYPE_GENERAL
+    assert general.suggested_sources == []
+
+
 def test_rag_context_adds_query_type_conflicts_links_and_context_builder(
     app,
     make_user,
@@ -104,6 +146,7 @@ def test_rag_context_adds_query_type_conflicts_links_and_context_builder(
         "trend_history_question",
         "error_analysis",
     }
+    assert payload["rag"]["query_classification"]["query_type"] == QUERY_TYPE_HYBRID
     assert payload["rag"]["conflicts"]["has_conflicts"] is True
     assert payload["rag"]["context_builder"]["sections"]
     assert links["links"]
@@ -122,6 +165,11 @@ def test_safety_answer_is_marked_and_audited(app, make_user):
     diagnostics = result["diagnostics"]
     assert result["answer"].startswith("## Sicherheitshinweis")
     assert diagnostics["safety"]["safety_relevant"] is True
+    assert diagnostics["query_classification"]["query_type"] in {
+        QUERY_TYPE_LIVE_SQL,
+        QUERY_TYPE_KNOWLEDGE_RAG,
+        QUERY_TYPE_HYBRID,
+    }
     assert diagnostics["query_understanding"]["query_type"] == "safety_question"
     assert diagnostics["retrieval_explainability"]["safety"]["safety_relevant"] is True
 

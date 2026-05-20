@@ -21,7 +21,12 @@ from app.responses import (
     success_response,
 )
 from app.security import current_user, dashboard_permission_required
+from app.services.knowledge_service import (
+    delete_source_knowledge_document,
+    mark_machine_knowledge_stale,
+)
 from app.services.operations_tracking_service import record_event
+from app.services.text_normalization_service import normalize_text
 
 machines_bp = Blueprint("machines", __name__)
 
@@ -35,6 +40,20 @@ def parse_required_employees(value):
     if amount < 1:
         raise ValueError("required_employees must be at least 1")
     return amount
+
+
+def normalize_machine_name(value):
+    """Return a canonical machine name from user input."""
+    return " ".join(str(value or "").strip().split())
+
+
+def machine_name_exists(name, exclude_id=None):
+    """Return whether a normalized machine name already exists."""
+    normalized_name = normalize_text(name)
+    query = Machine.query
+    if exclude_id is not None:
+        query = query.filter(Machine.id != exclude_id)
+    return any(normalize_text(machine.name) == normalized_name for machine in query.all())
 
 
 def site_for_payload(data):
@@ -69,13 +88,14 @@ def list_machines():
 def create_machine():
     """Create a machine with production output and staffing requirement."""
     data = request.get_json(silent=True) or {}
-    if not data.get("name"):
+    machine_name = normalize_machine_name(data.get("name"))
+    if not machine_name:
         return error_response("name is required", 400)
-    if Machine.query.filter_by(name=data["name"]).first():
+    if machine_name_exists(machine_name):
         return error_response("machine already exists", 409)
     try:
         machine = Machine(
-            name=data["name"].strip(),
+            name=machine_name,
             produced_item=data.get("produced_item", "").strip(),
             required_employees=parse_required_employees(data.get("required_employees")),
             site=site_for_payload(data),
@@ -86,6 +106,7 @@ def create_machine():
         return error_response(str(exc), 400)
     db.session.add(machine)
     db.session.flush()
+    mark_machine_knowledge_stale(machine)
     record_event(
         "machine.created",
         "machines",
@@ -239,7 +260,12 @@ def update_machine(machine_id):
     machine = db.get_or_404(Machine, machine_id)
     data = request.get_json(silent=True) or {}
     if "name" in data:
-        machine.name = data["name"].strip()
+        machine_name = normalize_machine_name(data["name"])
+        if not machine_name:
+            return error_response("name is required", 400)
+        if machine_name_exists(machine_name, exclude_id=machine.id):
+            return error_response("machine already exists", 409)
+        machine.name = machine_name
     if "produced_item" in data:
         machine.produced_item = data["produced_item"].strip()
     if "required_employees" in data:
@@ -262,6 +288,7 @@ def update_machine(machine_id):
         machine=machine,
         metadata={"criticality": machine.criticality, "status": machine.status},
     )
+    mark_machine_knowledge_stale(machine)
     db.session.commit()
     return jsonify(machine.to_dict())
 
@@ -282,6 +309,7 @@ def delete_machine(machine_id):
     )
     InventoryMaterial.query.filter_by(machine_id=machine.id).update({"machine_id": None})
     ShiftPlanEntry.query.filter_by(machine_id=machine.id).update({"machine_id": None})
+    delete_source_knowledge_document("machine", machine.id)
     db.session.delete(machine)
     db.session.commit()
     return "", 204

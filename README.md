@@ -111,6 +111,9 @@ Open `http://127.0.0.1:5050`. Demo credentials after `python seed.py demo`:
 | `produktion.leitung` | `Demo1234!` | Production lead |
 | `instandhaltung.leitung` | `Demo1234!` | Maintenance lead |
 
+For presentations, use the source-backed AI prompt list in
+[`docs/AI_DEMO_QUESTIONS.md`](docs/AI_DEMO_QUESTIONS.md).
+
 ### Docker
 
 ```bash

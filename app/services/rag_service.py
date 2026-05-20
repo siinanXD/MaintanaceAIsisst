@@ -6,6 +6,7 @@ from app.services.ai_safety_service import (
     enforce_post_generation_safety,
 )
 from app.services.ai_service import get_ai_provider
+from app.services.query_classifier_service import classify_ai_query
 from app.services.retrieval_explainability_service import retrieval_explainability_summary
 from app.services.retrieval_service import is_rag_enabled, retrieve_context
 
@@ -22,11 +23,13 @@ RAG_PIPELINE_STEPS = [
 
 def build_rag_context(message, user, requested_scopes=None, conversation_context=None):
     """Return retrieved context, sources, and RAG diagnostics for a question."""
+    query_classification = classify_ai_query(message)
     retrieval = retrieve_context(
         message,
         user,
         requested_scopes,
         conversation_context=conversation_context,
+        query_classification=query_classification,
     )
     retrieval["rag"] = {
         "enabled": is_rag_enabled(),
@@ -35,12 +38,14 @@ def build_rag_context(message, user, requested_scopes=None, conversation_context
         "knowledge_source_count": _knowledge_source_count(retrieval.get("sources") or []),
         "explainability": retrieval_explainability_summary(retrieval.get("sources") or []),
         "query_understanding": retrieval.get("query_understanding") or {},
+        "query_classification": query_classification.to_dict(),
         "safety": retrieval.get("safety") or {},
         "conflicts": retrieval.get("conflicts") or {},
         "context_builder": retrieval.get("context_builder") or {},
         "knowledge_links": retrieval.get("knowledge_links") or {},
         "incident_timeline": retrieval.get("timeline_context") or {},
         "retrieval_duration_ms": retrieval.get("retrieval_duration_ms", 0),
+        "retrieval_debug": retrieval.get("retrieval_debug") or {},
     }
     if conversation_context is not None:
         retrieval["rag"]["conversation_context"] = conversation_context.diagnostics()

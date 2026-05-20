@@ -3,6 +3,7 @@
 import json
 import math
 from datetime import timedelta
+from unittest.mock import patch
 
 import pytest
 
@@ -27,6 +28,10 @@ from app.services.knowledge_aging_service import (
     mark_outdated_knowledge_by_age,
 )
 from app.services.knowledge_service import chunk_vector_metadata, rebuild_chunks
+from app.services.knowledge_source_quality_service import (
+    latest_chunk_quality_summary,
+    reset_chunk_quality_reports,
+)
 from app.services.retrieval_service import knowledge_context_for_chat, retrieve_context
 from app.services.technical_entity_service import extract_technical_entities
 
@@ -307,6 +312,86 @@ def test_rebuild_chunks_persists_section_metadata(app):
     assert vector_metadata["section_title"] == "Wartungsschritte"
     assert vector_metadata["source_section"] == "section-1"
     assert "wartungsschritte" in chunk.token_text
+
+
+def test_rebuild_chunks_deduplicates_and_skips_low_quality_chunks(app):
+    """Verify source-quality filtering avoids duplicate and weak chunks."""
+    with app.app_context():
+        reset_chunk_quality_reports()
+        document = KnowledgeDocument(
+            source_type="upload",
+            title="Qualitaetstest",
+            original_filename="quality.txt",
+            relative_path="uploads/quality.txt",
+            content_type="text/plain",
+            department="Instandhaltung",
+            status="indexed",
+            is_public=True,
+            chunk_count=0,
+            created_at=utc_now(),
+            updated_at=utc_now(),
+        )
+        db.session.add(document)
+        db.session.flush()
+        useful_chunk = (
+            "Fehlercode QG-100\n"
+            "Ursache: Sensor S12 liefert kein Signal.\n"
+            "Loesung: Sensor reinigen und Testlauf dokumentieren."
+        )
+
+        with patch(
+            "app.services.knowledge_service.build_text_chunks",
+            return_value=[
+                {"text": useful_chunk, "metadata": {"chunk_order": 0}},
+                {"text": useful_chunk, "metadata": {"chunk_order": 1}},
+                {"text": "OK", "metadata": {"chunk_order": 2}},
+            ],
+        ):
+            rebuild_chunks(document, "ignored")
+        db.session.commit()
+
+        chunks = KnowledgeChunk.query.filter_by(document_id=document.id).all()
+        summary = latest_chunk_quality_summary()
+
+    assert len(chunks) == 1
+    assert document.chunk_count == 1
+    assert "QG-100" in chunks[0].text
+    assert summary["skipped_duplicate_chunks"] == 1
+    assert summary["skipped_low_quality_chunks"] == 1
+    assert summary["affected_documents"] == 1
+
+
+def test_rebuild_chunks_preserves_short_technical_chunks(app):
+    """Verify compact technical chunks are retained when they carry evidence."""
+    with app.app_context():
+        reset_chunk_quality_reports()
+        document = KnowledgeDocument(
+            source_type="upload",
+            title="Kurzer Fehlercode",
+            original_filename="short.txt",
+            relative_path="uploads/short.txt",
+            content_type="text/plain",
+            department="Instandhaltung",
+            status="indexed",
+            is_public=True,
+            chunk_count=0,
+            created_at=utc_now(),
+            updated_at=utc_now(),
+        )
+        db.session.add(document)
+        db.session.flush()
+
+        with patch(
+            "app.services.knowledge_service.build_text_chunks",
+            return_value=[{"text": "Fehlercode FX-1", "metadata": {}}],
+        ):
+            rebuild_chunks(document, "ignored")
+        db.session.commit()
+
+        chunk = KnowledgeChunk.query.filter_by(document_id=document.id).one()
+
+    assert chunk.text == "Fehlercode FX-1"
+    assert document.chunk_count == 1
 
 
 def test_rag_knowledge_context_respects_document_permissions(

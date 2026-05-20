@@ -29,6 +29,7 @@ from app.services.ai_routing import estimate_cost_usd, workflow_profile
 from app.services.ai_service import AIServiceError
 from app.services.conversation_context_service import conversation_context_for_chat
 from app.services.document_service import document_path
+from app.services.empty_retrieval_response_service import build_empty_retrieval_answer
 from app.services.knowledge_service import register_source_document
 from app.services.retrieval_telemetry_service import retrieval_quality_analytics
 from app.services.vector_sync_status_service import (
@@ -360,11 +361,72 @@ def test_ai_chat_blocks_hallucination_when_retrieval_is_empty(
     }
     assert response.status_code == 200
     assert "Keine belastbare Quelle gefunden" in payload["answer"]
+    assert "Gepruefte Datenquellen" in payload["answer"]
+    assert "Fehlerkatalog" in payload["answer"]
+    assert "Erkannte Suchsignale" in payload["answer"]
+    assert "Fehlercode: QX999" in payload["answer"]
+    assert "Maschinenhinweis: Omega" in payload["answer"]
+    assert "Kandidaten gefunden" not in payload["answer"]
     assert payload["diagnostics"]["answer_mode"] == "error_analysis"
     assert payload["diagnostics"]["empty_retrieval"] is True
     assert payload["diagnostics"]["hallucination_warning"] is True
     assert {"empty_retrieval", "hallucination_risk"}.issubset(warnings)
     assert payload["sources"] == []
+
+
+def test_ai_chat_empty_retrieval_admin_answer_includes_debug_counters(
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify admins see prompt-safe retrieval counters in empty answers."""
+    admin = make_user(
+        username="ai_empty_retrieval_admin_user",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(admin["username"]),
+        json={"message": "Wie behebe ich Stoerung EMPTYDBG999 an Maschine EmptyDbg?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["sources"] == []
+    assert "Keine belastbare Quelle gefunden" in payload["answer"]
+    assert "Diagnose fuer Admins" in payload["answer"]
+    assert "Kandidaten gefunden" in payload["answer"]
+    assert "Permission" in payload["answer"]
+    assert "Quality" in payload["answer"]
+    assert "Score/Anchor" in payload["answer"]
+    assert "Wie behebe ich" not in payload["answer"]
+
+
+def test_empty_retrieval_general_question_stays_neutral():
+    """Verify broad empty retrieval answers stay helpful without inventing content."""
+    answer = build_empty_retrieval_answer(
+        "Kannst du eine unbekannte Wartungsregel erklaeren?",
+        retrieval={
+            "rag": {
+                "query_classification": {
+                    "query_type": "GENERAL",
+                    "extracted_keywords": [],
+                    "possible_entities": {},
+                    "suggested_sources": [],
+                }
+            }
+        },
+    )
+
+    assert "Keine belastbare Quelle gefunden" in answer
+    assert "Gepruefte Datenquellen" in answer
+    assert "Tasks" in answer
+    assert "Fehlerkatalog" in answer
+    assert "Ohne Quelle" in answer
+    assert "konkrete Loesung" in answer
+    assert "Kandidaten gefunden" not in answer
 
 
 def test_ai_chat_tracks_knowledge_gap_when_no_sources_match(
@@ -1616,6 +1678,144 @@ def test_knowledge_upload_and_chat_retrieval_respect_permissions(
         assert document.chunk_count == 1
 
 
+def test_ai_chat_admin_exposes_retrieval_debug_counters(
+    app,
+    client,
+    make_user,
+    make_error_entry,
+    auth_headers,
+):
+    """Verify admin chat responses expose prompt-safe retrieval debug counters."""
+    admin = make_user(
+        username="retrieval_debug_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    make_error_entry(
+        machine="Presse DBG900",
+        error_code="DBG900",
+        title="Hydraulikdruck pruefen",
+        department_name="Produktion",
+        description="DBG900 Hydraulikdruck faellt ab.",
+    )
+    _create_retrieval_debug_document(
+        app,
+        title="DBG900 Hydraulik Wissen",
+        text="DBG900 Hydraulikdruck an Presse DBG900 mit Manometer pruefen.",
+        token_text="dbg900 hydraulikdruck presse manometer pruefen",
+        department="Produktion",
+        quality_status="admin_approved",
+        created_by=admin["id"],
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(admin["username"]),
+        json={"message": "Fehler DBG900 Hydraulikdruck an Presse DBG900"},
+    )
+
+    payload = response.get_json()
+    debug = payload["diagnostics"]["retrieval_debug"]
+    assert response.status_code == 200
+    assert debug["sql_candidates_found"] >= 1
+    assert debug["vector_candidates_found"] >= 1
+    assert debug["final_visible_sources"] == len(payload["sources"])
+    assert "DBG900" not in json.dumps(debug)
+
+
+def test_ai_chat_hides_retrieval_debug_for_non_admin_in_production_mode(
+    app,
+    client,
+    make_user,
+    make_error_entry,
+    auth_headers,
+):
+    """Verify non-admin production responses do not expose retrieval debug data."""
+    user = make_user(username="retrieval_debug_hidden_user")
+    make_error_entry(
+        machine="Presse DBG901",
+        error_code="DBG901",
+        title="Ventil pruefen",
+        department_name="Produktion",
+    )
+    old_testing = app.config.get("TESTING")
+    old_debug = app.config.get("DEBUG")
+    app.config["TESTING"] = False
+    app.config["DEBUG"] = False
+    try:
+        response = client.post(
+            "/api/v1/ai/chat",
+            headers=auth_headers(user["username"]),
+            json={"message": "Fehler DBG901 an Presse DBG901"},
+        )
+    finally:
+        app.config["TESTING"] = old_testing
+        app.config["DEBUG"] = old_debug
+
+    assert response.status_code == 200
+    assert "retrieval_debug" not in response.get_json()["diagnostics"]
+
+
+def test_ai_chat_retrieval_debug_counts_filtered_candidates(
+    app,
+    client,
+    make_user,
+    auth_headers,
+    set_dashboard_permission,
+):
+    """Verify retrieval debug reports quality, permission, and score filters."""
+    user = make_user(
+        username="retrieval_debug_filter_user",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+    set_dashboard_permission(user["username"], "documents", can_view=True)
+    _create_retrieval_debug_document(
+        app,
+        title="DBG902 abgelehnt",
+        text="DBG902 Hydraulik abgelehnte Quelle.",
+        token_text="dbg902 hydraulik abgelehnte quelle",
+        department="Produktion",
+        quality_status="rejected",
+        created_by=user["id"],
+    )
+    _create_retrieval_debug_document(
+        app,
+        title="DBG902 fremder Bereich",
+        text="DBG902 Hydraulik fremder Bereich.",
+        token_text="dbg902 hydraulik fremder bereich",
+        department="Instandhaltung",
+        quality_status="admin_approved",
+        created_by=user["id"],
+    )
+    _create_retrieval_debug_document(
+        app,
+        title="Unverbundene Quelle",
+        text="Kalibrierprotokoll ohne passende Begriffe.",
+        token_text="kalibrierprotokoll ohne passende begriffe",
+        department="Produktion",
+        quality_status="admin_approved",
+        created_by=user["id"],
+    )
+    old_threshold = app.config.get("RAG_SEMANTIC_ONLY_MIN_SIMILARITY")
+    app.config["RAG_SEMANTIC_ONLY_MIN_SIMILARITY"] = 1.01
+    try:
+        response = client.post(
+            "/api/v1/ai/chat",
+            headers=auth_headers(user["username"]),
+            json={"message": "Fehler DBG902 Hydraulik"},
+        )
+    finally:
+        app.config["RAG_SEMANTIC_ONLY_MIN_SIMILARITY"] = old_threshold
+
+    debug = response.get_json()["diagnostics"]["retrieval_debug"]
+    assert response.status_code == 200
+    assert debug["quality_filtered"] >= 1
+    assert debug["permission_filtered"] >= 1
+    assert debug["score_filtered"] >= 1
+    assert debug["final_visible_sources"] == len(response.get_json()["sources"])
+
+
 def test_admin_training_crud_marks_knowledge_stale_and_deletes_document(
     client,
     make_user,
@@ -1697,6 +1897,59 @@ def test_admin_training_crud_marks_knowledge_stale_and_deletes_document(
             ).first()
             is None
         )
+
+
+def test_training_active_state_controls_knowledge_document(
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify inactive manual training is removed from RAG sources."""
+    admin = make_user(
+        username="training_active_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    headers = auth_headers(admin["username"])
+    create_response = client.post(
+        "/api/v1/admin/ai/training",
+        headers=headers,
+        json={
+            "title": "Aktives Training",
+            "question": "Wie pruefe ich Training aktiv?",
+            "answer": "Training aktiv pruefen und Quelle reindexieren.",
+            "is_active": True,
+        },
+    )
+    entry_id = create_response.get_json()["data"]["id"]
+
+    inactive_response = client.put(
+        f"/api/v1/admin/ai/training/{entry_id}",
+        headers=headers,
+        json={"is_active": False},
+    )
+    with client.application.app_context():
+        inactive_document = KnowledgeDocument.query.filter_by(
+            source_type="manual_training",
+            source_id=entry_id,
+        ).first()
+
+    active_response = client.put(
+        f"/api/v1/admin/ai/training/{entry_id}",
+        headers=headers,
+        json={"is_active": True},
+    )
+    with client.application.app_context():
+        active_document = KnowledgeDocument.query.filter_by(
+            source_type="manual_training",
+            source_id=entry_id,
+        ).one()
+
+    assert create_response.status_code == 201
+    assert inactive_response.status_code == 200
+    assert inactive_document is None
+    assert active_response.status_code == 200
+    assert active_document.status == "pending"
 
 
 def test_admin_training_missing_information_complete_state(
@@ -2122,6 +2375,7 @@ def test_knowledge_reindex_registers_structured_rag_sources(
     assert reindex_response.get_json()["data"]["sources"]["error_entry"] == 1
     assert reindex_response.get_json()["data"]["sources"]["machine"] == 1
     assert reindex_response.get_json()["data"]["sources"]["inventory_material"] == 1
+    assert "chunk_quality" in reindex_response.get_json()["data"]
     assert any(source["type"] == "knowledge" for source in sources)
     assert any("Hydraulikfilter" in source["title"] for source in sources)
     assert not any(source["type"] == "knowledge" for source in blocked_sources)
@@ -2186,6 +2440,11 @@ def test_knowledge_status_reports_rag_index_diagnostics(
     assert "pending" in payload
     assert payload["diagnostics"]["rag_enabled"] is True
     assert payload["diagnostics"]["vector_store"] == "local"
+    assert set(payload["chunk_quality"]) == {
+        "skipped_duplicate_chunks",
+        "skipped_low_quality_chunks",
+        "affected_documents",
+    }
     assert 0 <= payload["readiness_score"] < 100
     assert payload["readiness_reasons"]
     assert any(item["status"] == "error" for item in payload["problem_documents"])
@@ -3538,6 +3797,45 @@ def test_search_requires_query(client, make_user, auth_headers):
     response = client.get("/api/v1/search?q=   ", headers=auth_headers(user["username"]))
 
     assert response.status_code == 400
+
+
+def _create_retrieval_debug_document(
+    app,
+    title,
+    text,
+    token_text,
+    department,
+    quality_status,
+    created_by,
+):
+    """Create one indexed knowledge document for retrieval debug tests."""
+    with app.app_context():
+        document = KnowledgeDocument(
+            source_type="upload",
+            source_id=None,
+            title=title,
+            original_filename=f"{title}.txt",
+            relative_path=f"uploads/{title}.txt",
+            content_type="text/plain",
+            department=department,
+            status="indexed",
+            quality_status=quality_status,
+            is_public=True,
+            chunk_count=1,
+            created_by=created_by,
+        )
+        db.session.add(document)
+        db.session.flush()
+        db.session.add(
+            KnowledgeChunk(
+                document_id=document.id,
+                chunk_index=0,
+                text=text,
+                token_text=token_text,
+            )
+        )
+        db.session.commit()
+        return document.id
 
 
 def _write_report(app, document_id, rows):

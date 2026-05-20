@@ -13,6 +13,8 @@ from app.models import GeneratedDocument, KnowledgeChunk, KnowledgeDocument
 from app.services.chunking_service import token_set
 from app.services.embedding_service import get_embedding_provider
 from app.services.knowledge_service import can_user_read_knowledge_document, stored_chunk_metadata
+from app.services.knowledge_quality_service import retrieval_quality_gate_for_document
+from app.services.retrieval_debug_service import empty_retrieval_debug
 from app.services.retrieval_scoring_service import HybridRetrievalScorer
 from app.services.technical_entity_service import entities_from_json, entities_to_json
 
@@ -126,6 +128,10 @@ class BaseVectorStore(ABC):
         """Return the total vector count when the backend can report it."""
         return None
 
+    def last_debug(self):
+        """Return prompt-safe debug counters for the latest search."""
+        return getattr(self, "_last_debug", empty_retrieval_debug(vector_store=self.name))
+
 
 class SqlAlchemyKnowledgeVectorStore(BaseVectorStore):
     """Use persisted knowledge chunks as the local vector-search backend."""
@@ -135,6 +141,7 @@ class SqlAlchemyKnowledgeVectorStore(BaseVectorStore):
     def __init__(self, embedding_provider=None):
         """Initialize the local knowledge vector adapter."""
         self.embedding_provider = embedding_provider or get_embedding_provider()
+        self._last_debug = empty_retrieval_debug(vector_store=self.name)
 
     def add_documents(self, records):
         """Reject direct writes because knowledge indexing owns persistence."""
@@ -144,6 +151,7 @@ class SqlAlchemyKnowledgeVectorStore(BaseVectorStore):
 
     def similarity_search(self, query_text, user=None, limit=None, filters=None):
         """Return ranked visible knowledge chunks for query text."""
+        self._last_debug = empty_retrieval_debug(vector_store=self.name, filters=filters or {})
         if not query_text or user is None:
             return []
 
@@ -175,12 +183,13 @@ class SqlAlchemyKnowledgeVectorStore(BaseVectorStore):
             .filter(KnowledgeDocument.status == "indexed")
         )
         base_query = _apply_db_filters(base_query, filters)
-        chunks = _candidate_chunks(
+        keyword_chunks, recent_chunks = _candidate_chunk_sets(
             base_query=base_query,
             query_tokens=query_tokens,
             recent_limit=scan_limit,
             keyword_limit=keyword_scan_limit,
         )
+        chunks = _deduplicate_chunks([*keyword_chunks, *recent_chunks])
 
         results = []
         permission_filtered = 0
@@ -190,12 +199,16 @@ class SqlAlchemyKnowledgeVectorStore(BaseVectorStore):
             document = chunk.document
             if not _matches_filters(document, filters):
                 continue
+            quality_gate = retrieval_quality_gate_for_document(document)
+            if not quality_gate.allowed:
+                quality_filtered += 1
+                continue
             if not can_user_read_knowledge_document(user, document):
                 permission_filtered += 1
                 continue
             score = scorer.score_chunk(chunk, document)
             if not score.allowed:
-                quality_filtered += 1
+                score_filtered += 1
                 continue
             if score.final_score < min_score:
                 score_filtered += 1
@@ -226,6 +239,16 @@ class SqlAlchemyKnowledgeVectorStore(BaseVectorStore):
             quality_filtered,
             score_filtered,
             min_score,
+        )
+        self._last_debug = empty_retrieval_debug(
+            keyword_candidates_found=len(keyword_chunks),
+            vector_candidates_found=len(results),
+            permission_filtered=permission_filtered,
+            quality_filtered=quality_filtered,
+            score_filtered=score_filtered,
+            vector_store=self.name,
+            filters=filters or {},
+            top_k=limit_value,
         )
         return results[:limit_value]
 
@@ -266,6 +289,7 @@ class ChromaVectorStore(BaseVectorStore):
         self.embedding_provider = embedding_provider or get_embedding_provider()
         self.client = chromadb.PersistentClient(path=persist_directory)
         self.collection = self.client.get_or_create_collection(name=collection_name)
+        self._last_debug = empty_retrieval_debug(vector_store=self.name)
 
     def add_documents(self, records):
         """Store vector records in Chroma and return their ids."""
@@ -307,6 +331,7 @@ class ChromaVectorStore(BaseVectorStore):
 
     def similarity_search(self, query_text, user=None, limit=None, filters=None):
         """Return Chroma vector-search results for query text."""
+        self._last_debug = empty_retrieval_debug(vector_store=self.name, filters=filters or {})
         if not query_text:
             return []
         limit_value = _positive_int(limit, _config_value("RAG_TOP_K", DEFAULT_RAG_TOP_K))
@@ -317,13 +342,21 @@ class ChromaVectorStore(BaseVectorStore):
             n_results=candidate_limit,
             where=_flat_metadata(filters or {}) or None,
         )
-        return _filter_visible_results(
+        debug = empty_retrieval_debug(
+            vector_store=self.name,
+            filters=filters or {},
+            top_k=limit_value,
+        )
+        results = _filter_visible_results(
             _chroma_results(response),
             query_text=query_text,
             user=user,
             filters=filters,
             limit=limit_value,
+            debug=debug,
         )
+        self._last_debug = debug
+        return results
 
 
 def get_vector_store():
@@ -453,6 +486,17 @@ def _apply_db_filters(query, filters):
 
 def _candidate_chunks(base_query, query_tokens, recent_limit, keyword_limit):
     """Return de-duplicated recent and keyword-matched chunks for local hybrid search."""
+    keyword_chunks, recent_chunks = _candidate_chunk_sets(
+        base_query=base_query,
+        query_tokens=query_tokens,
+        recent_limit=recent_limit,
+        keyword_limit=keyword_limit,
+    )
+    return _deduplicate_chunks([*keyword_chunks, *recent_chunks])
+
+
+def _candidate_chunk_sets(base_query, query_tokens, recent_limit, keyword_limit):
+    """Return keyword and recent candidate chunks before de-duplication."""
     recent_chunks = (
         base_query.order_by(
             KnowledgeDocument.updated_at.desc(),
@@ -462,7 +506,7 @@ def _candidate_chunks(base_query, query_tokens, recent_limit, keyword_limit):
         .all()
     )
     keyword_chunks = _keyword_candidate_chunks(base_query, query_tokens, keyword_limit)
-    return _deduplicate_chunks([*keyword_chunks, *recent_chunks])
+    return keyword_chunks, recent_chunks
 
 
 def _keyword_candidate_chunks(base_query, query_tokens, keyword_limit):
@@ -547,10 +591,13 @@ def _chroma_results(response):
     return results
 
 
-def _filter_visible_results(results, query_text, user=None, filters=None, limit=None):
+def _filter_visible_results(results, query_text, user=None, filters=None, limit=None, debug=None):
     """Return Chroma results still visible according to database permissions."""
     scorer = HybridRetrievalScorer(query_text=query_text)
     visible = []
+    permission_filtered = 0
+    quality_filtered = 0
+    score_filtered = 0
     for result in results:
         document_id = result.metadata.get("id")
         try:
@@ -561,7 +608,12 @@ def _filter_visible_results(results, query_text, user=None, filters=None, limit=
             continue
         if not _matches_filters(document, filters):
             continue
+        quality_gate = retrieval_quality_gate_for_document(document)
+        if not quality_gate.allowed:
+            quality_filtered += 1
+            continue
         if user is not None and not can_user_read_knowledge_document(user, document):
+            permission_filtered += 1
             continue
         score = scorer.score_text_result(
             text=result.text,
@@ -570,6 +622,7 @@ def _filter_visible_results(results, query_text, user=None, filters=None, limit=
             semantic_similarity=result.score,
         )
         if not score.allowed:
+            score_filtered += 1
             continue
         merged_metadata = dict(result.metadata)
         merged_metadata.update(
@@ -590,6 +643,11 @@ def _filter_visible_results(results, query_text, user=None, filters=None, limit=
         key=lambda item: (item.score, item.metadata.get("updated_at", "")),
         reverse=True,
     )
+    if isinstance(debug, dict):
+        debug["vector_candidates_found"] = len(visible)
+        debug["permission_filtered"] = permission_filtered
+        debug["quality_filtered"] = quality_filtered
+        debug["score_filtered"] = score_filtered
     return visible[:limit] if limit else visible
 
 

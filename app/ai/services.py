@@ -40,6 +40,7 @@ from app.services.ai_safety_service import (
 from app.services.ai_service import AIServiceError, MockAIProvider, get_ai_provider
 from app.services.conversation_context_service import conversation_context_for_chat
 from app.services.document_service import visible_documents_query
+from app.services.empty_retrieval_response_service import build_empty_retrieval_answer
 from app.services.error_service import search_errors
 from app.services.incident_timeline_service import daily_briefing_timeline_section
 from app.services.knowledge_service import knowledge_sources_for_chat
@@ -54,6 +55,10 @@ from app.services.order_planning_service import (
 from app.services.query_understanding_service import classify_query
 from app.services.rag_service import build_rag_context
 from app.services.recurring_issue_service import analyze_recurring_issues
+from app.services.retrieval_debug_service import (
+    is_retrieval_debug_visible,
+    public_retrieval_debug,
+)
 from app.services.retrieval_explainability_service import retrieval_explainability_summary
 from app.services.retrieval_service import knowledge_context_for_chat
 from app.services.task_service import visible_tasks_query
@@ -682,23 +687,9 @@ def should_generate_without_evidence():
     return provider.name != "mock" or configured_provider != "mock"
 
 
-def grounded_empty_retrieval_answer(message):
+def grounded_empty_retrieval_answer(message, retrieval=None, user=None):
     """Return a non-hallucinating fallback when no relevant source was retrieved."""
-    if looks_like_error_question(message):
-        return (
-            "## Keine belastbare Quelle gefunden\n"
-            "- **Status:** Kein passender Fehlerkatalog- oder Dokumenttreffer sichtbar\n"
-            "- **Unsicherheit:** Ich kann den Fehler ohne Quelle nicht fachlich sicher erklaeren\n"
-            "- **Naechster Schritt:** Fehlercode, Maschinenname oder Symptom genauer angeben\n"
-            "- **Dokumentation:** Falls der Fehler neu ist, im Fehlerkatalog erfassen"
-        )
-    return (
-        "## Keine belastbare Quelle gefunden\n"
-        "- **Status:** Keine passende freigegebene Datenquelle sichtbar\n"
-        "- **Unsicherheit:** Ich sollte daraus keine konkrete Wartungsanweisung ableiten\n"
-        "- **Naechster Schritt:** Frage mit Maschine, Fehlercode, Task oder "
-        "Dokumenttitel praezisieren"
-    )
+    return build_empty_retrieval_answer(message, retrieval=retrieval, user=user)
 
 
 def chat_quality_warnings(result, message=""):
@@ -824,6 +815,8 @@ def attach_audit_metadata(
     if not query_understanding:
         query_understanding = classify_query(message, requested_scopes).to_dict()
     diagnostics["query_understanding"] = query_understanding
+    if rag.get("query_classification"):
+        diagnostics["query_classification"] = rag.get("query_classification")
     safety = rag.get("safety")
     if not safety:
         safety_assessment = assess_ai_safety(message)
@@ -835,6 +828,8 @@ def attach_audit_metadata(
         diagnostics["context_builder"] = rag["context_builder"]
     if rag.get("retrieval_duration_ms") is not None:
         diagnostics["retrieval_duration_ms"] = rag.get("retrieval_duration_ms")
+    if rag.get("retrieval_debug") and is_retrieval_debug_visible(user):
+        diagnostics["retrieval_debug"] = public_retrieval_debug(rag.get("retrieval_debug"))
     if rag.get("knowledge_links"):
         diagnostics["knowledge_links"] = rag.get("knowledge_links")
     result = attach_confidence_to_result(message, result)
@@ -854,6 +849,7 @@ def attach_audit_metadata(
     diagnostics["retrieval_explainability"].update(
         {
             "query_understanding": diagnostics.get("query_understanding") or {},
+            "query_classification": diagnostics.get("query_classification") or {},
             "safety": diagnostics.get("safety") or {},
             "post_generation_safety": diagnostics.get("post_generation_safety") or {},
             "conflicts": diagnostics.get("source_conflicts") or {},
@@ -1538,7 +1534,7 @@ def answer_chat(message, user, session_id=""):
     if retrieval_has_evidence(retrieval) or should_generate_without_evidence():
         answer, diagnostics = openai_assistant_answer(message, retrieval["context"])
     else:
-        answer = grounded_empty_retrieval_answer(message)
+        answer = grounded_empty_retrieval_answer(message, retrieval=retrieval, user=user)
         diagnostics = ai_diagnostics("local_answer", fallback_used=True)
     if not answer:
         logger.warning("ai_fallback workflow=chat type=assistant")

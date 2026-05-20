@@ -39,6 +39,14 @@ from app.services.knowledge_quality_service import (
     mark_quality_outdated_if_reviewed,
     retrieval_quality_gate_for_document,
 )
+from app.services.knowledge_source_quality_service import (
+    aggregate_chunk_quality_reports,
+    chunk_quality_report_for_document,
+    filter_quality_chunks,
+    latest_chunk_quality_summary,
+    remember_chunk_quality_report,
+    reset_chunk_quality_reports,
+)
 from app.services.retrieval_scoring_service import HybridRetrievalScorer
 from app.services.source_visibility_policy import can_user_read_source_document
 from app.services.technical_entity_service import (
@@ -388,7 +396,8 @@ def manual_training_text(entry_id):
 def rebuild_chunks(document, text):
     """Replace all chunks for a knowledge document."""
     KnowledgeChunk.query.filter(KnowledgeChunk.document_id == document.id).delete()
-    chunks = build_text_chunks(text)
+    chunks, quality_report = filter_quality_chunks(build_text_chunks(text))
+    remember_chunk_quality_report(document.id, quality_report)
     chunk_objects = []
     entity_catalog = load_technical_entity_catalog()
     source_metadata = document_entity_metadata(document)
@@ -840,6 +849,7 @@ def knowledge_index_status():
         "lifecycle": lifecycle,
         "aging": lifecycle.get("aging", {}),
         "vector_store": vector_status,
+        "chunk_quality": latest_chunk_quality_summary(),
         "diagnostics": {
             "rag_enabled": bool(current_app.config.get("RAG_ENABLED", True)),
             "vector_store": current_app.config.get("RAG_VECTOR_STORE", "local"),
@@ -908,22 +918,28 @@ def _problem_knowledge_documents(documents, limit=10):
 
 def reindex_all_knowledge():
     """Register and reindex all supported RAG knowledge documents."""
+    reset_chunk_quality_reports()
     ensure_generated_documents_registered()
     ensure_structured_sources_registered()
     documents = KnowledgeDocument.query.order_by(KnowledgeDocument.id.asc()).all()
     for document in documents:
         index_knowledge_document(document)
     db.session.commit()
+    chunk_quality = aggregate_chunk_quality_reports(
+        chunk_quality_report_for_document(document.id) for document in documents
+    )
     return {
         "documents": len(documents),
         "indexed": sum(1 for document in documents if document.status == "indexed"),
         "chunks": sum(document.chunk_count for document in documents),
         "sources": source_type_counts(documents),
+        "chunk_quality": chunk_quality,
     }
 
 
 def reindex_stale_knowledge():
     """Reindex only stale and pending knowledge documents."""
+    reset_chunk_quality_reports()
     ensure_generated_documents_registered()
     ensure_structured_sources_registered()
     documents = (
@@ -934,11 +950,15 @@ def reindex_stale_knowledge():
     for document in documents:
         index_knowledge_document(document)
     db.session.commit()
+    chunk_quality = aggregate_chunk_quality_reports(
+        chunk_quality_report_for_document(document.id) for document in documents
+    )
     return {
         "documents": len(documents),
         "indexed": sum(1 for document in documents if document.status == "indexed"),
         "chunks": sum(document.chunk_count for document in documents),
         "sources": source_type_counts(documents),
+        "chunk_quality": chunk_quality,
     }
 
 
@@ -946,7 +966,9 @@ def reindex_knowledge_document(document):
     """Reindex one knowledge document and commit the result."""
     index_knowledge_document(document)
     db.session.commit()
-    return document.to_dict()
+    result = document.to_dict()
+    result["chunk_quality"] = chunk_quality_report_for_document(document.id).to_dict()
+    return result
 
 
 def ensure_generated_documents_registered():
@@ -1233,6 +1255,9 @@ def mark_task_knowledge_stale(task):
 
 def mark_training_entry_knowledge_stale(entry):
     """Create or mark a manual training knowledge document as stale after a change."""
+    if not entry.is_active:
+        delete_source_knowledge_document("manual_training", entry.id)
+        return
     document = source_document("manual_training", entry.id)
     if not document:
         register_training_entry_document(entry)
@@ -1258,6 +1283,27 @@ def mark_error_entry_knowledge_stale(entry):
     document.status = "stale"
     mark_quality_outdated_if_reviewed(document)
     document.error_message = "Fehlerkatalogeintrag wurde geaendert und muss neu indexiert werden."
+    document.updated_at = utc_now()
+
+
+def mark_machine_knowledge_stale(machine):
+    """Create or mark the machine knowledge document as stale after a change."""
+    document = source_document("machine", machine.id)
+    if not document:
+        register_source_document(
+            source_type="machine",
+            source_id=machine.id,
+            title=machine.name,
+            created_by=None,
+            created_at=machine.created_at,
+            url_path="/machines",
+        )
+        return
+    document.title = machine.name
+    document.relative_path = "/machines"
+    document.status = "stale"
+    mark_quality_outdated_if_reviewed(document)
+    document.error_message = "Maschinenstammdaten wurden geaendert und muessen neu indexiert werden."
     document.updated_at = utc_now()
 
 

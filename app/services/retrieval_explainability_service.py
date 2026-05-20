@@ -126,6 +126,10 @@ def sanitize_audit_explainability(value):
         payload["query_understanding"] = _sanitize_query_understanding(
             value.get("query_understanding"),
         )
+    if "query_classification" in value:
+        payload["query_classification"] = _sanitize_query_classification(
+            value.get("query_classification"),
+        )
     if "safety" in value:
         payload["safety"] = _sanitize_safety(value.get("safety"))
     if "post_generation_safety" in value:
@@ -258,6 +262,18 @@ def _sanitize_query_understanding(value):
         "recommended_scopes": _string_list(value.get("recommended_scopes")),
         "retrieval_strategy": _safe_strategy(value.get("retrieval_strategy")),
         "provider": str(value.get("provider") or "")[:80],
+    }
+
+
+def _sanitize_query_classification(value):
+    """Return safe high-level query-classification metadata for audit storage."""
+    if not isinstance(value, dict):
+        return {}
+    return {
+        "query_type": str(value.get("query_type") or "")[:80],
+        "extracted_keywords": _string_list(value.get("extracted_keywords")),
+        "possible_entities": _safe_entity_mapping(value.get("possible_entities")),
+        "suggested_sources": _string_list(value.get("suggested_sources")),
     }
 
 
@@ -414,6 +430,19 @@ def _string_int_mapping(value):
 def _mapping(value):
     """Return value when it is a dictionary, otherwise an empty dictionary."""
     return value if isinstance(value, dict) else {}
+
+
+def _safe_entity_mapping(value):
+    """Return a prompt-safe query entity mapping."""
+    if not isinstance(value, dict):
+        return {}
+    safe = {}
+    for key, item in value.items():
+        if isinstance(item, list | tuple | set):
+            safe[str(key)[:80]] = [str(entry)[:80] for entry in list(item)[:8]]
+        elif item not in (None, ""):
+            safe[str(key)[:80]] = str(item)[:80]
+    return safe
 
 
 def _list_value(value):

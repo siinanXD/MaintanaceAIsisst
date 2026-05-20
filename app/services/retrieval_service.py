@@ -1,5 +1,6 @@
 """Retrieval orchestration for structured data and RAG knowledge chunks."""
 
+import re
 from time import perf_counter
 
 from flask import current_app, has_app_context
@@ -10,16 +11,31 @@ from app.services.context_builder_service import build_dynamic_context
 from app.services.incident_timeline_service import timeline_context_for_query
 from app.services.knowledge_linking_service import linked_knowledge_for_sources
 from app.services.query_understanding_service import classify_query
+from app.services.query_classifier_service import QUERY_TYPE_GENERAL, QUERY_TYPE_LIVE_SQL
 from app.services.retrieval_candidate_service import (
     public_sources_from_candidates,
     rank_candidates,
     vector_result_candidate,
 )
+from app.services.retrieval_debug_service import empty_retrieval_debug, merge_retrieval_debug
 from app.services.source_conflict_service import detect_source_conflicts
+from app.services.sql_keyword_retrieval_service import retrieve_sql_keyword_fallback
 from app.services.vector_store_service import get_vector_store
 
+SQL_KEYWORD_FALLBACK_THRESHOLD = 2
+EXACT_SQL_LOOKUP_PATTERN = re.compile(
+    r"\b(?:task|aufgabe)\s*#?\s*\d+\b|\b[A-Z]{1,6}[-_ ]?\d{2,6}\b",
+    re.IGNORECASE,
+)
 
-def retrieve_context(message, user, requested_scopes=None, conversation_context=None):
+
+def retrieve_context(
+    message,
+    user,
+    requested_scopes=None,
+    conversation_context=None,
+    query_classification=None,
+):
     """Return permission-aware structured and vector retrieval context."""
     started_at = perf_counter()
     retrieval_message = _retrieval_message(message, conversation_context)
@@ -30,11 +46,39 @@ def retrieve_context(message, user, requested_scopes=None, conversation_context=
     structured_context = structured.get("context", "")
     structured_candidates = structured.get("candidates") or []
     data = dict(structured.get("data") or {})
+    filters = _strategy_filters(strategy)
+    retrieval_debug = merge_retrieval_debug(
+        structured.get("debug") or {},
+        rag_enabled=is_rag_enabled(),
+        filters=filters or {},
+        top_k=strategy.get("top_k"),
+        query_classification_type=_classification_type(query_classification),
+        query_classification_sources=_classification_sources(query_classification),
+    )
 
     if not is_rag_enabled():
         sources = _deduplicate_sources(
             public_sources_from_candidates(rank_candidates(structured_candidates))
         )
+        fallback = _sql_keyword_fallback(
+            retrieval_message,
+            user,
+            sources,
+            structured_candidates,
+            [],
+            query_classification,
+        )
+        if fallback["candidates"]:
+            structured_candidates = [*structured_candidates, *fallback["candidates"]]
+            sources = _deduplicate_sources(
+                public_sources_from_candidates(rank_candidates(structured_candidates))
+            )
+            structured_context = _join_context(
+                structured_context,
+                _candidate_context(fallback["candidates"]),
+            )
+            _merge_data(data, fallback["data"])
+            retrieval_debug = merge_retrieval_debug(retrieval_debug, fallback["debug"])
         conflicts = detect_source_conflicts(sources, data)
         safety = assess_ai_safety(retrieval_message, understanding, sources)
         dynamic_context = build_dynamic_context(
@@ -51,6 +95,7 @@ def retrieve_context(message, user, requested_scopes=None, conversation_context=
             conflicts=conflicts,
             conversation_context=conversation_context,
         )
+        duration_ms = _duration_ms(started_at)
         return _retrieval_payload(
             context=dynamic_context["context"],
             sources=sources,
@@ -60,16 +105,24 @@ def retrieve_context(message, user, requested_scopes=None, conversation_context=
             safety=safety,
             conflicts=conflicts,
             context_builder=dynamic_context,
-            retrieval_duration_ms=_duration_ms(started_at),
+            retrieval_duration_ms=duration_ms,
             knowledge_links={"links": []},
             timeline_context={"context": "", "sources": [], "summary": {}},
+            retrieval_debug=merge_retrieval_debug(
+                retrieval_debug,
+                rag_enabled=False,
+                final_visible_sources=len(sources),
+                source_types=_source_type_counts(sources),
+                duration_ms=duration_ms,
+            ),
+            query_classification=_classification_payload(query_classification),
         )
 
-    vector_results = retrieve_vector_chunks(
+    vector_results, vector_debug = _retrieve_vector_chunks_with_debug(
         retrieval_message,
         user,
         limit=strategy.get("top_k"),
-        filters=_strategy_filters(strategy),
+        filters=filters,
     )
     vector_candidates = rank_candidates(
         [
@@ -102,6 +155,30 @@ def retrieve_context(message, user, requested_scopes=None, conversation_context=
         sources = _deduplicate_sources(sources + timeline_context["sources"])
         data["incident_timeline"] = timeline_context.get("summary", {})
 
+    fallback = _sql_keyword_fallback(
+        retrieval_message,
+        user,
+        sources,
+        structured_candidates,
+        vector_candidates,
+        query_classification,
+    )
+    if fallback["candidates"]:
+        structured_candidates = [*structured_candidates, *fallback["candidates"]]
+        ranked_sources = public_sources_from_candidates(
+            rank_candidates([*structured_candidates, *vector_candidates]),
+            include_score_debug=_score_debug_enabled(),
+        )
+        sources = _deduplicate_sources(ranked_sources)
+        if timeline_context.get("sources"):
+            sources = _deduplicate_sources(sources + timeline_context["sources"])
+        structured_context = _join_context(
+            structured_context,
+            _candidate_context(fallback["candidates"]),
+        )
+        _merge_data(data, fallback["data"])
+        retrieval_debug = merge_retrieval_debug(retrieval_debug, fallback["debug"])
+
     conflicts = detect_source_conflicts(sources, data)
     safety = assess_ai_safety(retrieval_message, understanding, sources)
     dynamic_context = build_dynamic_context(
@@ -119,6 +196,7 @@ def retrieve_context(message, user, requested_scopes=None, conversation_context=
         conversation_context=conversation_context,
         timeline_context=timeline_context,
     )
+    duration_ms = _duration_ms(started_at)
     return _retrieval_payload(
         context=dynamic_context["context"],
         sources=sources,
@@ -128,22 +206,89 @@ def retrieve_context(message, user, requested_scopes=None, conversation_context=
         safety=safety,
         conflicts=conflicts,
         context_builder=dynamic_context,
-        retrieval_duration_ms=_duration_ms(started_at),
+        retrieval_duration_ms=duration_ms,
         knowledge_links=knowledge_links,
         timeline_context=timeline_context,
+        retrieval_debug=merge_retrieval_debug(
+            retrieval_debug,
+            vector_debug,
+            rag_enabled=True,
+            final_visible_sources=len(sources),
+            source_types=_source_type_counts(sources),
+            duration_ms=duration_ms,
+        ),
+        query_classification=_classification_payload(query_classification),
     )
 
 
 def retrieve_vector_chunks(message, user, limit=None, filters=None):
     """Return vector-store knowledge chunks visible to the user."""
+    results, _debug = _retrieve_vector_chunks_with_debug(message, user, limit, filters)
+    return results
+
+
+def _retrieve_vector_chunks_with_debug(message, user, limit=None, filters=None):
+    """Return vector chunks and prompt-safe retrieval debug counters."""
     if not is_rag_enabled():
-        return []
-    return get_vector_store().similarity_search(
+        return [], empty_retrieval_debug(rag_enabled=False, filters=filters or {})
+    store = get_vector_store()
+    results = store.similarity_search(
         query_text=message,
         user=user,
         limit=limit,
         filters=filters,
     )
+    debug = store.last_debug() if hasattr(store, "last_debug") else {}
+    return results, debug
+
+
+def _sql_keyword_fallback(
+    message,
+    user,
+    sources,
+    structured_candidates,
+    vector_candidates,
+    query_classification,
+):
+    """Return SQL keyword fallback data when visible sources are below threshold."""
+    if not _should_run_sql_keyword_fallback(message, sources, query_classification):
+        return {"candidates": [], "data": {}, "debug": {}}
+    fallback = retrieve_sql_keyword_fallback(
+        message,
+        user,
+        existing_sources=sources,
+        limit=max(SQL_KEYWORD_FALLBACK_THRESHOLD - len(sources or []), 1),
+    )
+    existing_keys = {
+        (candidate.source_type, candidate.source_id)
+        for candidate in [*(structured_candidates or []), *(vector_candidates or [])]
+    }
+    candidates = [
+        candidate
+        for candidate in fallback.get("candidates") or []
+        if (candidate.source_type, candidate.source_id) not in existing_keys
+    ]
+    return {
+        "candidates": candidates,
+        "data": fallback.get("data") or {},
+        "debug": fallback.get("debug") or {},
+    }
+
+
+def _should_run_sql_keyword_fallback(message, sources, query_classification=None):
+    """Return whether SQL fallback should supplement current retrieval sources."""
+    classification_type = _classification_type(query_classification)
+    if classification_type == QUERY_TYPE_GENERAL and not _classification_entities(
+        query_classification
+    ):
+        return False
+    if classification_type == QUERY_TYPE_LIVE_SQL and _classification_entities(
+        query_classification
+    ):
+        return True
+    if len(sources or []) < SQL_KEYWORD_FALLBACK_THRESHOLD:
+        return True
+    return bool(EXACT_SQL_LOOKUP_PATTERN.search(str(message or "")))
 
 
 def knowledge_context_for_chat(message, user, limit=None, conversation_context=None):
@@ -224,6 +369,8 @@ def _retrieval_payload(
     retrieval_duration_ms,
     knowledge_links,
     timeline_context,
+    retrieval_debug,
+    query_classification=None,
 ):
     """Return the normalized retrieval payload used by RAG and chat."""
     return {
@@ -246,6 +393,8 @@ def _retrieval_payload(
             "summary": timeline_context.get("summary", {}),
             "source_count": len(timeline_context.get("sources") or []),
         },
+        "retrieval_debug": retrieval_debug,
+        "query_classification": query_classification or {},
     }
 
 
@@ -260,6 +409,66 @@ def _deduplicate_sources(sources):
         seen.add(key)
         unique_sources.append(source)
     return unique_sources
+
+
+def _source_type_counts(sources):
+    """Return prompt-safe counts grouped by public source type."""
+    counts = {}
+    for source in sources or []:
+        source_type = str(source.get("type") or "unknown")
+        counts[source_type] = counts.get(source_type, 0) + 1
+    return counts
+
+
+def _candidate_context(candidates):
+    """Return context blocks for fallback candidates."""
+    return "\n\n".join(candidate.context_block() for candidate in candidates or [])
+
+
+def _join_context(*parts):
+    """Join non-empty retrieval context parts."""
+    return "\n\n".join(part for part in parts if part)
+
+
+def _merge_data(target, additions):
+    """Merge fallback data payloads into retrieval data without replacing keys."""
+    if not additions:
+        return target
+    fallback_data = target.setdefault("sql_keyword_fallback", {})
+    for key, items in additions.items():
+        fallback_data.setdefault(key, []).extend(items or [])
+    return target
+
+
+def _classification_payload(query_classification):
+    """Return a JSON-safe query classification payload."""
+    if query_classification is None:
+        return {}
+    if hasattr(query_classification, "to_dict"):
+        return query_classification.to_dict()
+    if isinstance(query_classification, dict):
+        return dict(query_classification)
+    return {}
+
+
+def _classification_type(query_classification):
+    """Return the high-level query classification type."""
+    payload = _classification_payload(query_classification)
+    return str(payload.get("query_type") or "")
+
+
+def _classification_sources(query_classification):
+    """Return suggested source names from a query classification."""
+    payload = _classification_payload(query_classification)
+    sources = payload.get("suggested_sources") or []
+    return [str(source) for source in sources if source]
+
+
+def _classification_entities(query_classification):
+    """Return entity hints from a query classification."""
+    payload = _classification_payload(query_classification)
+    entities = payload.get("possible_entities") or {}
+    return entities if isinstance(entities, dict) else {}
 
 
 def _score_debug_enabled():
