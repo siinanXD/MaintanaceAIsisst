@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Login - Maintenance Assistant{% endblock %}
+{% block title %}Anmelden - Maintenance Assistant{% endblock %}
 
 {% block content %}
 <section class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
@@ -23,7 +23,7 @@
         </div>
       </div>
       <div class="field">
-        <label for="login">Login</label>
+        <label for="login">Benutzername oder E-Mail</label>
         <input class="input input-bordered" id="login" name="login" placeholder="admin@example.com">
       </div>
       <div class="field">
@@ -62,8 +62,8 @@
         <span class="badge badge-success badge-outline">aktiv</span>
       </div>
       <div class="toolbar">
-        <a class="btn btn-primary" href="/">Zum Dashboard</a>
-        <button class="btn btn-ghost" type="button" data-logout-button>Logout</button>
+        <a class="btn btn-primary" href="/">Zum Cockpit</a>
+        <button class="btn btn-ghost" type="button" data-logout-button>Abmelden</button>
       </div>
     </div>
   </article>

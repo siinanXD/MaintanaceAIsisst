@@ -31,7 +31,7 @@
     if (response.status === 204) return null;
     const data = await parseJson(response);
     if (!response.ok) {
-      throw new Error((data && (data.message || data.error)) || "API error");
+      throw new Error((data && (data.message || data.error)) || "API-Fehler");
     }
     return data;
   }
@@ -40,7 +40,7 @@
     const response = await fetch(url, {
       headers: { Authorization: "Bearer " + token() }
     });
-    if (!response.ok) throw new Error("Download fehlgeschlagen");
+    if (!response.ok) throw new Error("Herunterladen fehlgeschlagen");
     const blob = await response.blob();
     const objectUrl = window.URL.createObjectURL(blob);
     const link = document.createElement("a");

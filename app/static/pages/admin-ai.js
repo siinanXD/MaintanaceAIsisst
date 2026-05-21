@@ -56,7 +56,7 @@
   }
 
   /**
-   * Return a user-facing API error that never exposes tokens, request payloads, or raw backend details.
+   * Return a user-facing API-Fehler that never exposes tokens, request payloads, or raw backend details.
    */
   function safeErrorMessage(error, context) {
     const status = Number(error && error.status);
@@ -70,16 +70,16 @@
       422: "Die Eingaben passen nicht zum API-Vertrag.",
       429: "Das Rate Limit ist erreicht. Bitte kurz warten.",
       500: "Das Backend konnte die Aktion nicht ausführen.",
-      502: "Der AI-Provider oder ein Gateway antwortet nicht.",
+      502: "Der KI-Anbieter oder ein Gateway antwortet nicht.",
       503: "Der Service ist gerade nicht verfügbar.",
       504: "Die Aktion hat zu lange gedauert."
     };
     const summary = messages[status] || "Die Aktion konnte nicht abgeschlossen werden.";
     return [
-      context || "AI Admin",
+      context || "KI-Administration",
       summary,
       status ? "Status " + status : "",
-      endpoint ? "Endpoint " + endpoint : ""
+      endpoint ? "Endpunkt " + endpoint : ""
     ].filter(Boolean).join(" - ");
   }
 
@@ -263,7 +263,7 @@
     setOverviewStatus(
       "ai",
       aiLoaded ? (aiReady ? "aktiv" : "inaktiv") : "Wird geladen",
-      aiLoaded ? "Providerstatus aus /api/v1/ai/status" : "Status wird geladen",
+      aiLoaded ? "Anbieterstatus aus /api/v1/ai/status" : "Status wird geladen",
       aiLoaded ? (aiReady ? "ok" : "critical") : "muted"
     );
     setOverviewStatus(
@@ -285,7 +285,7 @@
     setOverviewStatus(
       "rag",
       knowledgeLoaded ? (ragReady ? "verfügbar" : "nicht verfügbar") : "Wird geladen",
-      knowledgeLoaded ? ("Readiness " + ragScore + "/100") : "RAG-Status wird geladen",
+      knowledgeLoaded ? ("Bereitschaft " + ragScore + "/100") : "RAG-Status wird geladen",
       knowledgeLoaded ? (ragReady ? "ok" : (ragScore >= 40 ? "warning" : "critical")) : "muted"
     );
     setOverviewStatus(
@@ -344,7 +344,7 @@
   }
 
   /**
-   * Render one compact card in the AI Admin overview.
+   * Render one compact card in the KI-Administration overview.
    */
   function renderClarityCard(target, label, value, detail, status) {
     const card = document.createElement("article");
@@ -380,7 +380,7 @@
   }
 
   /**
-   * Render the one-screen AI Admin overview from already loaded API payloads.
+   * Render the one-screen KI-Administration overview from already loaded API payloads.
    */
   function renderAiClaritySummary() {
     const target = root.querySelector("[data-ai-clarity-summary]");
@@ -392,13 +392,13 @@
     const feedback = (latestAiSummary && latestAiSummary.feedback) || {};
     const trainingItems = (latestTrainingSummary && latestTrainingSummary.items) || [];
     const activeTraining = trainingItems.filter((item) => item.is_active);
-    const manualTrainingSource = sourceTypeStatus("manual_training");
+    const manualTrainingQuelle = sourceTypeStatus("manual_training");
     const gaps = latestKnowledgeGaps || {};
     const sourceTypes = status.source_types || [];
     const indexed = Number(status.indexed || lifecycle.indexed_documents || 0);
     const searchable = Number(status.searchable_documents || 0);
     const chunks = Number(status.chunks || 0);
-    const missingChunks = Number(vectorStore.missing_chunk_count || 0);
+    const missingTextabschnitte = Number(vectorStore.missing_chunk_count || 0);
     const chunkMismatches = Number(vectorStore.chunk_mismatch_count || 0);
     const permissionFiltered = sloCount("permission_filtered_candidate_count");
     const qualityBlocked = Number(qualityGate.quality_blocked_indexed_documents || 0);
@@ -407,7 +407,7 @@
     const negativeFeedback = Number(feedback.not_helpful || 0);
     const clarityState = root.querySelector("[data-ai-clarity-state]");
     const blockedTotal = permissionFiltered + qualityBlocked;
-    const hasWarnings = openGaps || blockedTotal || negativeFeedback || missingChunks || chunkMismatches;
+    const hasWarnings = openGaps || blockedTotal || negativeFeedback || missingTextabschnitte || chunkMismatches;
     const hasCritical = openGaps >= 5 || blockedTotal >= 10 || qualityBlocked >= 5;
 
     target.innerHTML = "";
@@ -420,30 +420,30 @@
     );
     renderClarityCard(
       target,
-      "Aktive Chunks",
+      "Aktive Textabschnitte",
       numberText(chunks),
-      missingChunks + chunkMismatches
-        ? numberText(missingChunks + chunkMismatches) + " Chunk-Probleme"
-        : "Chunk-Zaehlung konsistent",
-      missingChunks || chunkMismatches ? "warning" : (chunks ? "ok" : "muted")
+      missingTextabschnitte + chunkMismatches
+        ? numberText(missingTextabschnitte + chunkMismatches) + " Textabschnitt-Probleme"
+        : "Textabschnitt-Zaehlung konsistent",
+      missingTextabschnitte || chunkMismatches ? "warning" : (chunks ? "ok" : "muted")
     );
     renderClarityCard(
       target,
       "Aktive Trainingsdaten",
       numberText(activeTraining.length),
-      numberText(manualTrainingSource.chunks || 0) + " Training-Chunks im Index",
+      numberText(manualTrainingQuelle.chunks || 0) + " Training-Textabschnitte im Index",
       activeTraining.length ? "ok" : "muted"
     );
     renderClarityCard(
       target,
       "Fehlgeschlagene Fragen",
       numberText(openGaps),
-      "Offene Knowledge-Gaps aus AI-Fragen",
+      "Offene Wissenslücken aus KI-Fragen",
       openGaps ? "warning" : "ok"
     );
     renderClarityCard(
       target,
-      "Geblockte Sources",
+      "Geblockte Quelles",
       numberText(blockedTotal),
       "Permission-Filter und Quality-Gate",
       blockedTotal ? "warning" : "ok"
@@ -463,23 +463,23 @@
       clarityState.className = "status-pill " + (hasCritical ? "is-error" : (hasWarnings ? "is-stale" : "is-active"));
     }
 
-    renderIndexedSourceSummary(sourceTypes);
-    renderChunkSummary(status, vectorStore);
-    renderTrainingSummary(trainingItems, manualTrainingSource);
+    renderIndexedQuelleSummary(sourceTypes);
+    renderTextabschnittSummary(status, vectorStore);
+    renderTrainingSummary(trainingItems, manualTrainingQuelle);
     renderFailureSummary(gaps);
-    renderBlockedSourceSummary(permissionFiltered, qualityBlocked, lifecycle);
+    renderBlockedQuelleSummary(permissionFiltered, qualityBlocked, lifecycle);
     renderFeedbackSummary(feedback);
   }
 
   /**
    * Render indexed source-type coverage.
    */
-  function renderIndexedSourceSummary(sourceTypes) {
+  function renderIndexedQuelleSummary(sourceTypes) {
     const rows = (sourceTypes || []).slice(0, 8).map((item) => [
       sourceTypeLabel(item.source_type),
       numberText(item.searchable_documents || 0) + "/"
         + numberText(item.documents || 0) + " suchbar, "
-        + numberText(item.chunks || 0) + " Chunks"
+        + numberText(item.chunks || 0) + " Textabschnitte"
     ]);
     renderClarityList(
       "[data-ai-indexed-source-summary]",
@@ -492,35 +492,35 @@
   /**
    * Render active chunk and vector-store consistency information.
    */
-  function renderChunkSummary(status, vectorStore) {
+  function renderTextabschnittSummary(status, vectorStore) {
     const rows = [
-      ["Aktive Chunks", numberText(status.chunks || 0)],
+      ["Aktive Textabschnitte", numberText(status.chunks || 0)],
       ["Durchsuchbare Dokumente", numberText(status.searchable_documents || 0)],
       ["Soll Vektoren", numberText(vectorStore.expected_vector_count || 0)],
       ["Ist Vektoren", vectorStore.actual_vector_count == null ? "-" : numberText(vectorStore.actual_vector_count)],
-      ["Fehlende Chunks", numberText(vectorStore.missing_chunk_count || 0)],
-      ["Chunk-Mismatch", numberText(vectorStore.chunk_mismatch_count || 0)]
+      ["Fehlende Textabschnitte", numberText(vectorStore.missing_chunk_count || 0)],
+      ["Textabschnitt-Mismatch", numberText(vectorStore.chunk_mismatch_count || 0)]
     ];
     renderClarityList(
       "[data-ai-active-chunk-summary]",
-      "Aktive Chunks",
+      "Aktive Textabschnitte",
       rows,
-      "Noch keine Chunk-Daten geladen."
+      "Noch keine Textabschnitt-Daten geladen."
     );
   }
 
   /**
    * Render active manual training coverage.
    */
-  function renderTrainingSummary(trainingItems, manualTrainingSource) {
+  function renderTrainingSummary(trainingItems, manualTrainingQuelle) {
     const activeTraining = (trainingItems || []).filter((item) => item.is_active);
     const inactiveTraining = (trainingItems || []).length - activeTraining.length;
     const rows = [
       ["Aktiv", numberText(activeTraining.length)],
       ["Inaktiv", numberText(inactiveTraining)],
-      ["Index-Dokumente", numberText(manualTrainingSource.documents || 0)],
-      ["Suchbar", numberText(manualTrainingSource.searchable_documents || 0)],
-      ["Training-Chunks", numberText(manualTrainingSource.chunks || 0)]
+      ["Index-Dokumente", numberText(manualTrainingQuelle.documents || 0)],
+      ["Suchbar", numberText(manualTrainingQuelle.searchable_documents || 0)],
+      ["Training-Textabschnitte", numberText(manualTrainingQuelle.chunks || 0)]
     ];
     activeTraining.slice(0, 3).forEach((entry) => {
       rows.push([
@@ -544,7 +544,7 @@
     const rows = [
       ["Offene Gaps", numberText((gaps && gaps.open_count) || 0)],
       ["Ohne Quellen", percentText(values.no_source_rate)],
-      ["Niedrige Confidence", percentText(values.low_confidence_rate)],
+      ["Niedrige Konfidenz", percentText(values.low_confidence_rate)],
       ["Fallback-Rate", percentText(values.fallback_rate)]
     ];
     ((gaps && gaps.items) || []).slice(0, 4).forEach((gap) => {
@@ -566,7 +566,7 @@
   /**
    * Render permission and quality blocking signals.
    */
-  function renderBlockedSourceSummary(permissionFiltered, qualityBlocked, lifecycle) {
+  function renderBlockedQuelleSummary(permissionFiltered, qualityBlocked, lifecycle) {
     const qualityGate = (lifecycle && lifecycle.rag_quality_gate) || {};
     const rows = [
       ["Permission-gefiltert", numberText(permissionFiltered)],
@@ -579,9 +579,9 @@
     ];
     renderClarityList(
       "[data-ai-blocked-source-summary]",
-      "Geblockte Sources",
+      "Geblockte Quelles",
       rows,
-      "Keine geblockten Sources im aktuellen Fenster."
+      "Keine geblockten Quelles im aktuellen Fenster."
     );
   }
 
@@ -674,13 +674,13 @@
     const fallbackRate = latestAiSummary && latestAiSummary.fallback_rate != null
       ? latestAiSummary.fallback_rate
       : values.fallback_rate;
-    const noSourceRate = values.no_source_rate;
+    const noQuelleRate = values.no_source_rate;
     const lowConfidenceRate = values.low_confidence_rate;
     const safetyRiskCount = Number(values.safety_risk_count || 0);
     const fieldValues = {
       fallback_rate: percentText(fallbackRate),
       safety_risk_count: numberText(safetyRiskCount),
-      no_source_rate: percentText(noSourceRate),
+      no_source_rate: percentText(noQuelleRate),
       low_confidence_rate: percentText(lowConfidenceRate)
     };
     Object.keys(fieldValues).forEach((key) => {
@@ -701,12 +701,12 @@
 
     const critical = safetyRiskCount >= 5
       || Number(fallbackRate || 0) >= 0.5
-      || Number(noSourceRate || 0) >= 0.4
+      || Number(noQuelleRate || 0) >= 0.4
       || Number(lowConfidenceRate || 0) >= 0.4;
     const warning = !critical && (
       safetyRiskCount > 0
       || Number(fallbackRate || 0) >= 0.2
-      || Number(noSourceRate || 0) >= 0.2
+      || Number(noQuelleRate || 0) >= 0.2
       || Number(lowConfidenceRate || 0) >= 0.2
     );
     const state = root.querySelector("[data-ai-safety-summary-state]");
@@ -757,7 +757,7 @@
     setSectionStatus("retrieval", readinessLabel(sloStatus), sloStatus);
     setSectionStatus(
       "safety",
-      safetyCritical ? "Safety kritisch" : (safetyWarning ? "Safety beobachten" : "Safety unauffällig"),
+      safetyCritical ? "Sicherheit kritisch" : (safetyWarning ? "Sicherheit beobachten" : "Sicherheit unauffällig"),
       safetyCritical ? "critical" : (safetyWarning ? "warning" : "ok")
     );
     renderStatusOverview();
@@ -768,7 +768,7 @@
       upload: "Uploads",
       generated_document: "Berichte",
       error_entry: "Fehlerkatalog",
-      task: "Tasks",
+      task: "Aufgaben",
       machine: "Maschinen",
       inventory_material: "Inventar",
       maintenance_plan: "Wartungspläne",
@@ -779,7 +779,7 @@
     return labels[sourceType] || sourceType;
   }
 
-  function dataSourceDefinitions() {
+  function dataQuelleDefinitions() {
     return [
       {
         key: "error_catalog",
@@ -795,7 +795,7 @@
       },
       {
         key: "tasks",
-        label: "Tasks",
+        label: "Aufgaben",
         description: "Wartungs- und Eskalationsaufgaben",
         types: ["task"]
       },
@@ -839,7 +839,7 @@
       return { label: "leer", className: "is-muted", detail: "noch keine Quelle registriert" };
     }
     if (metrics.active && metrics.searchable === metrics.documents) {
-      return { label: "gesund", className: "is-active", detail: "vollst&auml;ndig im Retrieval nutzbar" };
+      return { label: "gesund", className: "is-active", detail: "vollst&auml;ndig im Quellenabruf nutzbar" };
     }
     if (metrics.active) {
       return { label: "teilweise", className: "is-stale", detail: "ein Teil ist suchbar" };
@@ -847,7 +847,7 @@
     return { label: "nicht aktiv", className: "is-error", detail: "nicht im RAG-Kontext verf&uuml;gbar" };
   }
 
-  function appendSourceStat(target, label, value) {
+  function appendQuelleStat(target, label, value) {
     const item = document.createElement("span");
     const key = document.createElement("small");
     const count = document.createElement("strong");
@@ -857,7 +857,7 @@
     target.appendChild(item);
   }
 
-  function renderSourceHealth(status) {
+  function renderQuelleHealth(status) {
     const target = root.querySelector("[data-ai-source-health]");
     if (!target) return;
     const data = status || {};
@@ -867,7 +867,7 @@
       || (vectorStatus.last_successful_sync && vectorStatus.last_successful_sync.synced_at)
       || "";
     target.innerHTML = "";
-    dataSourceDefinitions().forEach((definition) => {
+    dataQuelleDefinitions().forEach((definition) => {
       const metrics = sourceMetrics(data, definition.types);
       const health = sourceHealth(metrics, ragEnabled);
       const card = document.createElement("article");
@@ -882,9 +882,9 @@
       title.textContent = definition.label;
       description.innerHTML = definition.description;
       stats.className = "ai-source-stats";
-      appendSourceStat(stats, "Einträge", numberText(metrics.documents));
-      appendSourceStat(stats, "Chunks", numberText(metrics.chunks));
-      appendSourceStat(stats, "Suchbar", numberText(metrics.searchable));
+      appendQuelleStat(stats, "Einträge", numberText(metrics.documents));
+      appendQuelleStat(stats, "Textabschnitte", numberText(metrics.chunks));
+      appendQuelleStat(stats, "Suchbar", numberText(metrics.searchable));
       meta.innerHTML = [
         "Embedding: " + text(data.diagnostics && data.diagnostics.embedding_provider),
         "RAG: " + (metrics.active ? "aktiv genutzt" : "nicht aktiv"),
@@ -927,7 +927,7 @@
     return classes[origin] || classes.automatic;
   }
 
-  function knowledgeSourceCell(documentItem) {
+  function knowledgeQuelleCell(documentItem) {
     const item = document.createElement("td");
     const origin = knowledgeOriginKind(documentItem);
     item.className = "knowledge-source-cell";
@@ -967,10 +967,10 @@
       error: "Fehler",
       solution: "Lösung",
       document: "Dokument",
-      task: "Task",
+      task: "Aufgabe",
       inventory_part: "Inventar",
       recurring_issue: "Wiederkehrender Fehler",
-      knowledge_gap: "Knowledge-Gap",
+      knowledge_gap: "Wissenslücke",
       component: "Komponente",
       sensor: "Sensor"
     };
@@ -982,7 +982,7 @@
       error_analysis: "Fehleranalyse",
       machine_question: "Maschinenfrage",
       inventory_question: "Inventarfrage",
-      task_question: "Taskfrage",
+      task_question: "Aufgabenfrage",
       document_question: "Dokumentfrage",
       safety_question: "Sicherheitsfrage",
       general_question: "Allgemein",
@@ -1027,7 +1027,7 @@
     if (source.source_label) return source.source_label;
     let label = text(source.type || "knowledge");
     if (source.id != null) label += " #" + source.id;
-    if (source.chunk_id != null) label += " / Chunk #" + source.chunk_id;
+    if (source.chunk_id != null) label += " / Textabschnitt #" + source.chunk_id;
     if (source.section_title) label += " - " + truncateLabel(source.section_title, 52);
     return label;
   }
@@ -1126,8 +1126,8 @@
       source_relation: "Direkte Quelle",
       mentions: "Entity-Erwaehnung",
       recurring_pattern: "Wiederkehrendes Muster",
-      knowledge_gap: "Knowledge-Gap",
-      task_context: "Task-Kontext"
+      knowledge_gap: "Wissenslücke",
+      task_context: "Aufgabenkontext"
     };
     return labels[edge.type] || text(edge.type);
   }
@@ -1309,7 +1309,7 @@
     const nodes = payload.nodes || [];
     const edges = payload.edges || [];
     if (!nodes.length) {
-      container.appendChild(statusRow("Knowledge Network", "Keine Daten für diesen Filter."));
+      container.appendChild(statusRow("Wissensnetz", "Keine Daten für diesen Filter."));
       renderKnowledgeNetworkDetail(null, payload);
       return;
     }
@@ -1319,7 +1319,7 @@
     const svg = document.createElementNS(svgNamespace, "svg");
     svg.setAttribute("viewBox", "0 0 " + layout.width + " " + layout.height);
     svg.setAttribute("role", "img");
-    svg.setAttribute("aria-label", "Knowledge Network");
+    svg.setAttribute("aria-label", "Wissensnetz");
     svg.style.width = "100%";
     svg.style.minHeight = "440px";
     svg.style.display = "block";
@@ -1469,7 +1469,7 @@
     if (!items.length) {
       renderAdminEmptyState(
         tbody,
-        "Keine Retrieval-Debug-Daten für diesen Filter.",
+        "Keine Quellenabruf-Debug-Daten für diesen Filter.",
         "Passe Zeitraum, Suchbegriff oder Query-Typ an."
       );
       return;
@@ -1483,7 +1483,7 @@
       const sourceText = (item.used_sources || []).length + " Quellen";
       const conflictText = conflicts.has_conflicts
         ? conflicts.count + " Konflikte"
-        : (safety.safety_relevant ? "Safety " + safety.risk_level : "-");
+        : (safety.safety_relevant ? "Sicherheit " + safety.risk_level : "-");
       row.className = selectedRetrievalFlowId === item.chat_message_id ? "is-selected" : "";
       button.type = "button";
       button.className = "btn btn-ghost btn-sm";
@@ -1530,7 +1530,7 @@
         statusTarget.className = "badge badge-ai is-muted";
       }
       if (durationTarget) durationTarget.textContent = "-";
-      summaryTarget.appendChild(statusRow("Flow", "Noch keine Retrieval-Debug-Daten vorhanden."));
+      summaryTarget.appendChild(statusRow("Flow", "Noch keine Quellenabruf-Debug-Daten vorhanden."));
       renderRetrievalAnalysis(null);
       return;
     }
@@ -1542,7 +1542,7 @@
     if (durationTarget) durationTarget.textContent = msText(item.retrieval_duration_ms || 0);
     renderRetrievalFlowSummary(summaryTarget, item);
     renderRetrievalFlowTimeline(timelineTarget, item);
-    renderRetrievalFlowSources(sourceMapTarget, item);
+    renderRetrievalFlowQuelles(sourceMapTarget, item);
     renderRetrievalFlowAnswer(answerTarget, item);
     renderRetrievalAnalysis(item);
   }
@@ -1555,7 +1555,7 @@
     const reranking = empty ? {} : (item.reranking || {});
     const metrics = [
       {
-        label: "Gefundene Chunks",
+        label: "Gefundene Textabschnitte",
         value: empty ? "0" : numberText((item.rag_chunks || []).length),
         detail: "RAG-Kontext"
       },
@@ -1575,7 +1575,7 @@
         detail: "bestbewertete Quelle"
       },
       {
-        label: "Permission Status",
+        label: "Berechtigungsstatus",
         value: empty ? "-" : "gefiltert",
         detail: "nur erlaubte Quellen im Flow"
       },
@@ -1590,9 +1590,9 @@
         detail: "prompt-sicher nicht persistiert"
       },
       {
-        label: "Chunk IDs",
+        label: "Textabschnitt IDs",
         value: empty ? "-" : (item.rag_chunks || []).map((chunk) => chunk.chunk_id).filter(Boolean).slice(0, 3).join(", ") || "-",
-        detail: "Top sichtbare Chunks"
+        detail: "Top sichtbare Textabschnitte"
       }
     ];
     metrics.forEach((metric) => {
@@ -1629,8 +1629,8 @@
     [
       ["Query-Typ", queryTypeLabel(item.query_type)],
       ["Strukturierte Quellen", numberText((item.structured_sources || []).length)],
-      ["RAG-Chunks", numberText((item.rag_chunks || []).length)],
-      ["Confidence", confidenceLabel(item.confidence)]
+      ["RAG-Textabschnitte", numberText((item.rag_chunks || []).length)],
+      ["Konfidenz", confidenceLabel(item.confidence)]
     ].forEach(([label, value]) => {
       meta.appendChild(statusRow(label, value));
     });
@@ -1686,9 +1686,9 @@
   function flowMetricLabel(key) {
     const labels = {
       query_type: "Query-Typ",
-      query_confidence: "Query Confidence",
+      query_confidence: "Abfragekonfidenz",
       source_count: "Quellen",
-      chunk_count: "Chunks",
+      chunk_count: "Textabschnitte",
       candidate_count: "Kandidaten",
       shown_count: "Sichtbar",
       reranked_count: "Re-Ranked",
@@ -1707,7 +1707,7 @@
     return text(value);
   }
 
-  function renderRetrievalFlowSources(target, item) {
+  function renderRetrievalFlowQuelles(target, item) {
     const heading = document.createElement("div");
     const title = document.createElement("strong");
     const meta = document.createElement("span");
@@ -1751,7 +1751,7 @@
       quality_gate: "Quality Gate",
       machine_context: "Maschinenkontext",
       section_context: "Abschnitt",
-      retrieved_context: "Retrieval",
+      retrieved_context: "Quellenabruf",
       used_as_answer_context: "Antwortkontext"
     };
     return labels[reason] || text(reason);
@@ -1764,7 +1764,7 @@
     const answer = document.createElement("p");
     const checks = document.createElement("div");
     heading.className = "retrieval-flow-card-header";
-    title.textContent = "Finale Antwort und Safety";
+    title.textContent = "Finale Antwort und Sicherheit";
     meta.textContent = confidenceLabel(item.confidence);
     answer.className = "retrieval-flow-answer-preview";
     answer.textContent = redactSensitiveText(
@@ -1901,7 +1901,7 @@
       low_confidence_rate: "Niedrige Sicherheit",
       permission_filtered_candidate_count: "Berechtigungsfilter",
       negative_feedback_rate: "Negatives Feedback",
-      safety_risk_count: "Safety Risiken",
+      safety_risk_count: "Sicherheitsrisiken",
       fallback_rate: "Ausweichantworten",
       vector_sync_failure_count: "Index-Sync-Fehler",
       stale_index_count: "Veralteter Index"
@@ -1965,7 +1965,7 @@
       warningList.innerHTML = "";
       const warnings = slo.warnings || [];
       if (!warnings.length) {
-        warningList.appendChild(statusRow("SLO Status", "keine Warnungen"));
+        warningList.appendChild(statusRow("SLO-Status", "keine Warnungen"));
       } else {
         warnings.forEach((warning) => {
           warningList.appendChild(statusRow(
@@ -2063,7 +2063,7 @@
       target.textContent = monitoringKpiValue(key, metrics, quality);
     });
     renderTopQuestions(metrics.top_questions || []);
-    renderSourceDistribution(metrics.source_distribution_rows || []);
+    renderQuelleDistribution(metrics.source_distribution_rows || []);
     renderRetrievalHits(retrieval);
     renderQualityMetrics(quality, retrieval.score_summary || {});
     renderAiObservabilityLogs(latestAiObservability.ai_logs || []);
@@ -2082,12 +2082,12 @@
       (row, index) => monitoringRow(
         "Fragegruppe " + (index + 1),
         numberText(row.count) + "x",
-        "Ø Confidence " + text(row.average_confidence) + " - Inhalt ausgeblendet"
+        "Ø Konfidenz " + text(row.average_confidence) + " - Inhalt ausgeblendet"
       )
     );
   }
 
-  function renderSourceDistribution(rows) {
+  function renderQuelleDistribution(rows) {
     const target = root.querySelector("[data-ai-source-distribution]");
     if (!target) return;
     target.innerHTML = "";
@@ -2130,13 +2130,13 @@
     );
     renderMonitoringList(
       root.querySelector("[data-ai-chunk-usage]"),
-      "Chunk-Nutzung",
+      "Textabschnitt-Nutzung",
       retrieval.chunk_usage || [],
-      "noch keine Chunk-Nutzung",
+      "noch keine Textabschnitt-Nutzung",
       (row) => monitoringRow(
         truncateLabel(row.label || row.source_type + " #" + row.source_id, 120),
         numberText(row.uses) + " Nutzungen",
-        row.chunk_id ? "Chunk #" + row.chunk_id : "ohne Chunk"
+        row.chunk_id ? "Textabschnitt #" + row.chunk_id : "ohne Textabschnitt"
       )
     );
   }
@@ -2249,7 +2249,7 @@
     target.appendChild(statusRow("Suchdauer", msText(retrieval.retrieval_duration_ms || 0)));
     target.appendChild(statusRow("Context Sections", numberText((contextBuilder.sections || []).length)));
     target.appendChild(statusRow("Kontextbudget", numberText(stats.used_chars) + " / " + numberText(stats.max_chars)));
-    target.appendChild(statusRow("Confidence", confidenceLabel(analysis.confidence)));
+    target.appendChild(statusRow("Konfidenz", confidenceLabel(analysis.confidence)));
     target.appendChild(statusRow("Warnungen", numberText((analysis.quality_warnings || []).length)));
   }
 
@@ -2365,7 +2365,7 @@
   async function runRetrievalEvaluation() {
     const button = root.querySelector("[data-retrieval-evaluation-run]");
     setButtonBusy(button, true, "Eval laeuft...");
-    setAdminMessage("Golden Retrieval Evaluation laeuft...");
+    setAdminMessage("Golden Quellenabruf Evaluation laeuft...");
     try {
       const result = await api("/api/v1/admin/ai/retrieval-evaluations/run", {
         method: "POST",
@@ -2436,29 +2436,29 @@
     const modelReady = !latestAiStatus || latestAiStatus.ready !== false;
     return {
       supported: [
-        ["Permission-aware Retrieval", "Quellen werden rollen- und berechtigungsbewusst gefiltert."],
+        ["Permission-aware Quellenabruf", "Quellen werden rollen- und berechtigungsbewusst gefiltert."],
         ["Fehlerkatalog-Assistenz", "Fehlercodes, Ursachen und L&ouml;sungen bleiben strukturiert nutzbar."],
-        ["Confidence & Explainability", "Antworten zeigen Score, Begr&uuml;ndung und verwendete Quellen."],
-        ["Safety Checks", "Riskante Wartungshinweise werden vor und nach der Generierung gepr&uuml;ft."]
+        ["Konfidenz & Nachvollziehbarkeit", "Antworten zeigen Score, Begr&uuml;ndung und verwendete Quellen."],
+        ["Sicherheitsprüfungen", "Riskante Wartungshinweise werden vor und nach der Generierung gepr&uuml;ft."]
       ],
       partial: [
         [
           "RAG & Dokumentwissen",
           ragReady
             ? "Aktiv, aber abh&auml;ngig von Indexfrische und Quellenqualit&auml;t."
-            : "Nur eingeschr&auml;nkt, solange Readiness oder Chunks fehlen."
+            : "Nur eingeschr&auml;nkt, solange Bereitschaft oder Textabschnitte fehlen."
         ],
-        ["Golden Retrieval Evaluation", "Historie ist vorhanden, ben&ouml;tigt regelm&auml;&szlig;ige Runs f&uuml;r Trends."],
+        ["Golden Quellenabruf Evaluation", "Historie ist vorhanden, ben&ouml;tigt regelm&auml;&szlig;ige Runs f&uuml;r Trends."],
         [
           "OpenAI-Anbindung",
           modelReady ? "Konfiguriert; Fallbacks bleiben m&ouml;glich." : "Nicht voll bereit; lokale/strukturierte Antworten bleiben m&ouml;glich."
         ],
-        ["Knowledge Network", "Read-only Analyse verf&uuml;gbar; keine GraphDB erforderlich."]
+        ["Wissensnetz", "Nur-Lese Analyse verf&uuml;gbar; keine GraphDB erforderlich."]
       ],
       unsupported: [
         ["Autonome Maschinenfreigaben", "Die KI darf keine sicherheitskritischen Freigaben erteilen."],
         ["Arbeiten unter Spannung", "Gef&auml;hrliche Schritt-f&uuml;r-Schritt-Anleitungen werden entsch&auml;rft."],
-        ["Ungefilterte Prompt-/Chunk-Einsicht", "Admin-Debug bleibt prompt-sicher und zeigt keine sensiblen Rohtexte."]
+        ["Ungefilterte Prompt-/Textabschnitt-Einsicht", "Admin-Debug bleibt prompt-sicher und zeigt keine sensiblen Rohtexte."]
       ]
     };
   }
@@ -2491,11 +2491,11 @@
     target.innerHTML = "";
     [
       ["Quellen", "Verwendete Quellen und Dokumente werden als Chips angezeigt.", "is-active"],
-      ["Confidence Score", "Hoch, mittel oder niedrig mit visueller Skala.", "is-active"],
+      ["Konfidenzwert", "Hoch, mittel oder niedrig mit visueller Skala.", "is-active"],
       ["Antwortqualit&auml;t", "SLOs, Feedback und Golden Eval zeigen Qualit&auml;t &uuml;ber Zeit.", "is-stale"],
         ["Unsicherheit", "Niedrige Sicherheit, Konflikte und fehlende Quellen werden sichtbar markiert.", "is-stale"],
-      ["Safety", "Sicherheitsrelevante Inhalte erhalten klare Warnhinweise.", "is-error"],
-      ["Dokumentbezug", "Abschnitte, Chunks und Quelle-zu-Antwort-Bezug bleiben nachvollziehbar.", "is-active"]
+      ["Sicherheit", "Sicherheitsrelevante Inhalte erhalten klare Warnhinweise.", "is-error"],
+      ["Dokumentbezug", "Abschnitte, Textabschnitte und Quelle-zu-Antwort-Bezug bleiben nachvollziehbar.", "is-active"]
     ].forEach(([title, detail, tone]) => {
       renderCapabilityCard(target, title, detail, tone);
     });
@@ -2661,8 +2661,8 @@
       issueList.append(
         statusRow("Reindex empfohlen", data.reindex_recommended ? "ja" : "nein"),
         statusRow("Stale Dokumente", numberText(data.stale_document_count || 0)),
-        statusRow("Fehlende Chunks", numberText(data.missing_chunk_count || 0)),
-        statusRow("Chunk Mismatch", numberText(data.chunk_mismatch_count || 0)),
+        statusRow("Fehlende Textabschnitte", numberText(data.missing_chunk_count || 0)),
+        statusRow("Textabschnitt Mismatch", numberText(data.chunk_mismatch_count || 0)),
         statusRow("Sync-Fehler", numberText(data.vector_sync_failure_count || 0))
       );
       const reasons = data.reindex_reasons || [];
@@ -2705,7 +2705,7 @@
         sourceTypes.forEach((item) => {
           sourceList.appendChild(statusRow(
             sourceTypeLabel(item.source_type),
-            item.searchable_documents + "/" + item.documents + " durchsuchbar, " + item.chunks + " Chunks"
+            item.searchable_documents + "/" + item.documents + " durchsuchbar, " + item.chunks + " Textabschnitte"
           ));
         });
       }
@@ -2719,7 +2719,7 @@
         statusRow("RAG aktiv", diagnostics.rag_enabled ? "ja" : "nein"),
         statusRow("Suchindex", diagnostics.vector_store),
         statusRow("Embedding-Anbieter", diagnostics.embedding_provider),
-        statusRow("Chunking", diagnostics.chunk_size + " / " + diagnostics.chunk_overlap),
+        statusRow("Textabschnitting", diagnostics.chunk_size + " / " + diagnostics.chunk_overlap),
         statusRow("Top K", diagnostics.top_k),
         statusRow("Scan Limit", diagnostics.scan_limit)
       );
@@ -2728,8 +2728,8 @@
     const reasonList = root.querySelector("[data-rag-readiness-reasons]");
     if (reasonList) {
       reasonList.innerHTML = "";
-      (status.readiness_reasons || ["Keine Readiness-Daten vorhanden."]).forEach((reason) => {
-        reasonList.appendChild(statusRow("Readiness", reason));
+      (status.readiness_reasons || ["Keine Bereitschaft-Daten vorhanden."]).forEach((reason) => {
+        reasonList.appendChild(statusRow("Bereitschaft", reason));
       });
     }
 
@@ -2751,7 +2751,7 @@
 
     renderLifecycle(status.lifecycle || {});
     renderVectorStoreStatus(status.vector_store || {});
-    renderSourceHealth(status);
+    renderQuelleHealth(status);
     renderCapabilities();
     renderOverviewState();
     renderSafetyFallbackSummary();
@@ -2819,7 +2819,7 @@
     if (job.status === "failed") return "Fehlerdetails ausgeblendet";
     const result = job.result || {};
     if (result.indexed != null || result.chunks != null) {
-      return "Indexiert: " + numberText(result.indexed || 0) + " / Chunks: " + numberText(result.chunks || 0);
+      return "Indexiert: " + numberText(result.indexed || 0) + " / Textabschnitte: " + numberText(result.chunks || 0);
     }
     if (job.status === "done") return "abgeschlossen";
     if (job.status === "running") return "läuft";
@@ -2905,7 +2905,7 @@
       renderAdminEmptyState(
         target,
         "Keine fehlgeschlagenen AI-Queries im aktuellen Filter.",
-        "Provider-, Modell-, Timeout- und Retrieval-Fehler erscheinen hier metadata-only."
+        "Provider-, Modell-, Timeout- und Quellenabruf-Fehler erscheinen hier metadata-only."
       );
       return;
     }
@@ -2983,7 +2983,7 @@
       meta.textContent = [
         "Typ " + text(chat.response_type),
         "Quellen " + numberText(chat.source_count || 0),
-        "Confidence " + confidenceLabel({
+        "Konfidenz " + confidenceLabel({
           score: chat.confidence_score,
           level: chat.confidence_level
         }),
@@ -3005,7 +3005,7 @@
     if (!data.items.length) {
       renderAdminEmptyState(
         tbody,
-        "Keine offenen Knowledge Gaps.",
+        "Keine offenen Wissenslücken.",
         "Die KI hat aktuell keine unbeantworteten Fragen mit Pflegebedarf gemeldet."
       );
       renderAiClaritySummary();
@@ -3139,7 +3139,7 @@
   }
 
   /**
-   * Load an unfiltered training snapshot for the AI Admin clarity overview.
+   * Load an unfiltered training snapshot for the KI-Administration clarity overview.
    */
   async function loadTrainingSummary() {
     const data = await api("/api/v1/admin/ai/training?limit=100&active=");
@@ -3203,7 +3203,7 @@
       row.setAttribute("data-knowledge-origin", knowledgeOriginKind(documentItem));
       row.append(
         cell(documentItem.title),
-        knowledgeSourceCell(documentItem),
+        knowledgeQuelleCell(documentItem),
         cell(documentItem.status),
         pillCell(
           qualityStatusLabel(documentItem.quality_status),
@@ -3221,7 +3221,7 @@
     const select = document.createElement("select");
     select.className = "input input-bordered";
     select.dataset.knowledgeQualitySelect = documentItem.id;
-    select.setAttribute("aria-label", "Knowledge-Qualitätsstatus setzen");
+    select.setAttribute("aria-label", "Wissens-Qualitätsstatus setzen");
     QUALITY_STATUS_OPTIONS.forEach((status) => {
       const option = document.createElement("option");
       option.value = status;
@@ -3323,33 +3323,33 @@
   });
   bind("[data-knowledge-network-search]", "input", () => {
     window.clearTimeout(root._knowledgeNetworkTimer);
-    root._knowledgeNetworkTimer = window.setTimeout(() => runAdminLoad(loadKnowledgeNetwork, "Knowledge Network laden"), 250);
+    root._knowledgeNetworkTimer = window.setTimeout(() => runAdminLoad(loadKnowledgeNetwork, "Wissensnetz laden"), 250);
   });
   bind("[data-knowledge-network-focus]", "input", () => {
     window.clearTimeout(root._knowledgeNetworkFocusTimer);
-    root._knowledgeNetworkFocusTimer = window.setTimeout(() => runAdminLoad(loadKnowledgeNetwork, "Knowledge Network laden"), 250);
+    root._knowledgeNetworkFocusTimer = window.setTimeout(() => runAdminLoad(loadKnowledgeNetwork, "Wissensnetz laden"), 250);
   });
   bind("[data-knowledge-network-source]", "change", () => {
-    runAdminLoad(loadKnowledgeNetwork, "Knowledge Network laden");
+    runAdminLoad(loadKnowledgeNetwork, "Wissensnetz laden");
   });
   bind("[data-knowledge-network-quality]", "change", () => {
-    runAdminLoad(loadKnowledgeNetwork, "Knowledge Network laden");
+    runAdminLoad(loadKnowledgeNetwork, "Wissensnetz laden");
   });
   bind("[data-knowledge-network-focus-type]", "change", () => {
-    runAdminLoad(loadKnowledgeNetwork, "Knowledge Network laden");
+    runAdminLoad(loadKnowledgeNetwork, "Wissensnetz laden");
   });
   bind("[data-knowledge-network-refresh]", "click", () => {
-    runAdminLoad(loadKnowledgeNetwork, "Knowledge Network laden");
+    runAdminLoad(loadKnowledgeNetwork, "Wissensnetz laden");
   });
   bind("[data-retrieval-debug-search]", "input", () => {
     window.clearTimeout(root._retrievalDebugTimer);
-    root._retrievalDebugTimer = window.setTimeout(() => runAdminLoad(loadRetrievalDebug, "Retrieval Debug laden"), 250);
+    root._retrievalDebugTimer = window.setTimeout(() => runAdminLoad(loadRetrievalDebug, "Quellenabruf Debug laden"), 250);
   });
   bind("[data-retrieval-debug-type]", "change", () => {
-    runAdminLoad(loadRetrievalDebug, "Retrieval Debug laden");
+    runAdminLoad(loadRetrievalDebug, "Quellenabruf Debug laden");
   });
   bind("[data-retrieval-debug-refresh]", "click", () => {
-    runAdminLoad(loadRetrievalDebug, "Retrieval Debug laden");
+    runAdminLoad(loadRetrievalDebug, "Quellenabruf Debug laden");
   });
   bind("[data-retrieval-evaluation-run]", "click", () => {
     runAdminLoad(runRetrievalEvaluation, "Golden Eval ausfuehren");
@@ -3417,7 +3417,7 @@
     try {
       const result = await api(path, { method: "POST" });
       setAdminMessage(
-        "Indexiert: " + result.indexed + " Dokumente, " + result.chunks + " Chunks."
+        "Indexiert: " + result.indexed + " Dokumente, " + result.chunks + " Textabschnitte."
       );
       await Promise.all([
         loadKnowledge(),
@@ -3515,7 +3515,7 @@
       const select = row && row.querySelector("[data-knowledge-quality-select]");
       if (!select) return;
       setButtonBusy(qualityButton, true, "Speichert...");
-      setAdminMessage("Knowledge-Qualitätsstatus wird aktualisiert...");
+      setAdminMessage("Wissens-Qualitätsstatus wird aktualisiert...");
       try {
         const documentItem = await api(
           "/api/v1/admin/ai/knowledge/"
@@ -3528,7 +3528,7 @@
           }
         );
         setAdminMessage(
-          "Knowledge #" + documentItem.id + " ist "
+          "Wissen #" + documentItem.id + " ist "
           + qualityStatusLabel(documentItem.quality_status) + "."
         );
         await Promise.all([
@@ -3613,6 +3613,6 @@
   });
 
   refreshAll().catch((error) => {
-    setAdminMessage(safeErrorMessage(error, "AI Admin konnte nicht vollständig geladen werden"), true);
+    setAdminMessage(safeErrorMessage(error, "KI-Administration konnte nicht vollständig geladen werden"), true);
   });
 })();

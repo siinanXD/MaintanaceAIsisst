@@ -109,15 +109,34 @@ def test_handover_create_and_complete(client, make_user, auth_headers):
             "content": "Alles erledigt.",
             "open_tasks": "",
             "machine_notes": "",
+            "area": "Linie 2",
+            "production_status": "running",
+            "machine_status": "ok",
+            "safety_notes": "Schutzeinhausung geprüft.",
+            "material_notes": "Reservefilter liegt bereit.",
+            "responsible_employee": "Max Mustermann",
+            "problem_category": "Organisation",
+            "cause": "Regelbetrieb",
+            "action_taken": "Rundgang dokumentiert.",
+            "duration_minutes": 15,
+            "follow_up_task": "Filter nach Spätschicht prüfen.",
+            "involved_employees": "Team A",
             "next_notes": "Maschine läuft gut.",
         },
     )
     assert create_resp.status_code == 201
-    ho_id = create_resp.get_json()["data"]["id"]
+    created = create_resp.get_json()["data"]
+    ho_id = created["id"]
+    assert created["previous_shift"] == "Nacht"
+    assert created["next_shift"] == "Spaet"
+    assert created["production_status"] == "running"
+    assert created["machine_status"] == "ok"
+    assert created["confirmed"] is False
 
     complete_resp = client.post(f"/api/v1/handover/{ho_id}/complete", headers=headers)
     assert complete_resp.status_code == 200
     assert complete_resp.get_json()["data"]["status"] == "completed"
+    assert complete_resp.get_json()["data"]["confirmed"] is True
 
 
 def test_handover_edit_blocked_after_complete(client, make_user, auth_headers):
@@ -396,6 +415,93 @@ def test_vacation_summary_reserves_pending_days(client, make_user, make_employee
     assert emp_bal["pending"] == days_used
     assert emp_bal["remaining"] == emp_bal["total"]
     assert emp_bal["available"] == emp_bal["total"] - days_used
+
+
+def test_vacation_request_stores_shift_representative_and_impact(
+    client,
+    make_user,
+    make_employee,
+    auth_headers,
+):
+    """Vacation requests store operational planning fields."""
+    admin = make_user(username="vac_impact_admin", role=Role.MASTER_ADMIN, department_name=None)
+    emp_id = make_employee(
+        personnel_number="P-813",
+        name="Vac Impact Emp",
+        department="Produktion",
+    )
+    rep_id = make_employee(
+        personnel_number="P-814",
+        name="Vac Rep Emp",
+        department="Produktion",
+    )
+    headers = auth_headers(admin["username"])
+
+    impact_resp = client.get(
+        (
+            "/api/v1/vacations/impact?"
+            f"employee_id={emp_id}&start_date=2026-12-21&end_date=2026-12-23"
+        ),
+        headers=headers,
+    )
+    assert impact_resp.status_code == 200
+    assert impact_resp.get_json()["impact"]["representative_ok"] is False
+
+    create_resp = client.post(
+        "/api/v1/vacations",
+        headers=headers,
+        json={
+            "employee_id": emp_id,
+            "start_date": "2026-12-21",
+            "end_date": "2026-12-23",
+            "shift_type": "Frueh",
+            "representative_employee_id": rep_id,
+            "reason": "Erholungsurlaub",
+            "notes": "Vertretung eingewiesen",
+        },
+    )
+    assert create_resp.status_code == 201
+    data = create_resp.get_json()["data"]
+    assert data["shift_type"] == "Frueh"
+    assert data["representative"]["id"] == rep_id
+    assert data["reason"] == "Erholungsurlaub"
+    assert data["impact_summary"]
+
+
+def test_vacation_cancel_keeps_history_and_restores_balance(
+    client,
+    make_user,
+    make_employee,
+    auth_headers,
+):
+    """Cancelling an approved request keeps history but removes used balance."""
+    admin = make_user(username="vac_cancel_admin", role=Role.MASTER_ADMIN, department_name=None)
+    emp_id = make_employee(
+        personnel_number="P-815",
+        name="Vac Cancel Emp",
+        department="Produktion",
+    )
+    headers = auth_headers(admin["username"])
+
+    create_resp = client.post(
+        "/api/v1/vacations",
+        headers=headers,
+        json={
+            "employee_id": emp_id,
+            "start_date": "2026-12-28",
+            "end_date": "2026-12-30",
+        },
+    )
+    vac_id = create_resp.get_json()["data"]["id"]
+    client.post(f"/api/v1/vacations/{vac_id}/approve", headers=headers)
+
+    cancel_resp = client.post(f"/api/v1/vacations/{vac_id}/cancel", headers=headers)
+    assert cancel_resp.status_code == 200
+    assert cancel_resp.get_json()["data"]["status"] == "cancelled"
+
+    summary = client.get("/api/v1/vacations/summary?year=2026", headers=headers).get_json()["data"]
+    emp_bal = next(s for s in summary if s["employee_id"] == emp_id)
+    assert emp_bal["used"] == 0
 
 
 def test_department_lead_can_decide_own_department_only(

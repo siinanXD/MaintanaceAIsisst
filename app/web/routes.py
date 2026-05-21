@@ -127,6 +127,12 @@ def machines_page():
     return render_template("machines.html")
 
 
+@web_bp.get("/machines/<int:machine_id>")
+def machine_detail_page(machine_id):
+    """Render the machine-centered detail page."""
+    return render_template("machine_detail.html", machine_id=machine_id)
+
+
 @web_bp.get("/inventory")
 def inventory_page():
     """Render the inventory page."""

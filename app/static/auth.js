@@ -56,7 +56,10 @@
   }
 
   function dashboardForPath(pathname) {
-    return DASHBOARD_PATHS[pathname] || null;
+    const exactDashboard = DASHBOARD_PATHS[pathname];
+    if (exactDashboard) return exactDashboard;
+    const feature = featureRegistry.forPath ? featureRegistry.forPath(pathname) : null;
+    return feature ? feature.key : null;
   }
 
   function currentPathWithSearch() {
@@ -240,7 +243,7 @@
       element.hidden = !loggedIn;
     });
 
-    const requiredDashboard = DASHBOARD_PATHS[window.location.pathname];
+    const requiredDashboard = dashboardForPath(window.location.pathname);
     if (!loggedIn && requiredDashboard) {
       window.location.href = loginUrlFor(currentPathWithSearch());
       return;

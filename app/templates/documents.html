@@ -1,13 +1,14 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}Dokumente - Maintenance Assistant{% endblock %}
+{% block header_title %}Dokumente{% endblock %}
 
 {% block content %}
 <section class="page-hero">
   <div>
     <p class="page-kicker">Berichte</p>
-    <h1 class="page-title">Dokumentenübersicht</h1>
-    <p class="page-description">Generierte Wartungsberichte suchen, filtern und herunterladen.</p>
+    <h1 class="page-title">DokumentenÜbersicht</h1>
+    <p class="page-description">Berichte und Handbücher als Wissensbasis prüfen, freigeben und herunterladen.</p>
   </div>
 </section>
 
@@ -21,19 +22,42 @@
     <strong>Handb&uuml;cher</strong>
   </a>
   <a class="quick-action-row" href="/admin/ai" data-dashboard-nav="admin_users" hidden>
-    <span>Indexstatus analysieren</span>
-    <strong>AI</strong>
+    <span>Quellenstatus prüfen</span>
+    <strong>Admin</strong>
   </a>
 </nav>
 
 <aside class="context-help" aria-label="Dokumente Orientierung">
   <strong>Warum sind Dokumente wichtig?</strong>
-  <p>Handb&uuml;cher und Berichte liefern der AI belastbare Quellen. Gute Dokumente werden gepr&uuml;ft, in Abschnitte aufgeteilt und f&uuml;r die Suche indexiert.</p>
+  <p>Handb&uuml;cher und Berichte liefern belastbare Quellen. Gute Dokumente werden gepr&uuml;ft, freigegeben und f&uuml;r die Suche nutzbar gemacht.</p>
   <details class="help-disclosure">
     <summary>Was bedeutet Index-Nutzung?</summary>
-    <p>Nur freigegebene und erfolgreich indexierte Inhalte k&ouml;nnen als Quelle in AI-Antworten erscheinen. Der Admin-Bereich zeigt, wenn ein Dokument veraltet oder nicht synchron ist.</p>
+    <p>Nur freigegebene und erfolgreich vorbereitete Inhalte k&ouml;nnen als Quelle in Antworten erscheinen. Der Admin-Bereich zeigt, wenn ein Dokument veraltet oder nicht synchron ist.</p>
   </details>
 </aside>
+
+<section class="surface-stat-grid" aria-label="Dokumentenstatus">
+  <article class="surface-stat-card is-primary">
+    <span>Berichte</span>
+    <strong data-document-count>0 Dokumente</strong>
+    <small>Generierte Wartungsberichte mit Prüf- und Versionsstatus.</small>
+  </article>
+  <article class="surface-stat-card is-ai">
+    <span>Handb&uuml;cher</span>
+    <strong data-manual-count>0 Handb&uuml;cher</strong>
+    <small>Maschinenwissen f&uuml;r Suche, Analyse und Quellenangaben.</small>
+  </article>
+  <article class="surface-stat-card is-warning">
+    <span>Quality Gate</span>
+    <strong>Pr&uuml;fen vor Index</strong>
+    <small>Schwache Dokumente werden sichtbar, bevor sie als Quelle dienen.</small>
+  </article>
+  <article class="surface-stat-card is-neutral">
+    <span>Wissensbasis</span>
+    <strong>Freigabe &amp; Sync</strong>
+    <small>Freigabe- und Quellenstatus bleiben im KI-Administration verkn&uuml;pft.</small>
+  </article>
+</section>
 
 <section class="dashboard-grid">
   <details class="card app-card mobile-action-section lg:order-3 lg:col-span-12" data-mobile-collapsible data-default-collapsed="true">
@@ -48,12 +72,12 @@
       <div class="panel-header">
         <div>
           <h2 class="panel-title">Filter</h2>
-          <p class="panel-meta">Nach Task, Bereich, Maschine oder Datum suchen</p>
+          <p class="panel-meta">Nach Aufgabe, Bereich, Maschine oder Datum suchen</p>
         </div>
       </div>
       <div class="form-grid">
         <div class="field">
-          <label for="document-task-id">Task-ID</label>
+          <label for="document-task-id">Aufgaben-ID</label>
           <input class="input input-bordered" id="document-task-id" name="task_id" type="number" min="1">
         </div>
         <div class="field">
@@ -87,13 +111,13 @@
       <div class="card-body">
         <div class="panel-header">
           <div>
-            <h2 class="panel-title">Upload prüfen</h2>
+            <h2 class="panel-title">Hochladen prüfen</h2>
             <p class="panel-meta">HTML- oder TXT-Bericht prüfen, ohne ihn zu speichern</p>
           </div>
           <span class="badge badge-ai">Prüfung</span>
         </div>
         <div class="status-explainer">
-          <p><strong>Upload-Pr&uuml;fung:</strong> Die Datei wird auf Vollst&auml;ndigkeit und Nutzbarkeit gepr&uuml;ft, ohne sie dauerhaft zu speichern.</p>
+          <p><strong>Hochladepr&uuml;fung:</strong> Die Datei wird auf Vollst&auml;ndigkeit und Nutzbarkeit gepr&uuml;ft, ohne sie dauerhaft zu speichern.</p>
         </div>
         <div class="upload-check-panel">
           <div class="field">
@@ -120,7 +144,7 @@
           <span class="badge badge-ai">Handbuch</span>
         </div>
         <div class="status-explainer">
-          <p><strong>Handbuch-Upload:</strong> Ordne die Datei m&ouml;glichst einer Maschine und einem Bereich zu, damit Suche und Berechtigungen pr&auml;zise bleiben.</p>
+          <p><strong>Handbuch hochladen:</strong> Ordne die Datei m&ouml;glichst einer Maschine und einem Bereich zu, damit Suche und Berechtigungen pr&auml;zise bleiben.</p>
         </div>
         <div class="form-grid">
           <div class="field">
@@ -192,37 +216,20 @@
       <div class="panel-header">
         <div>
           <h2 class="panel-title">Generierte Dokumente</h2>
-          <p class="panel-meta">HTML-Berichte aus abgeschlossenen Tasks mit Review-Status</p>
+          <p class="panel-meta">HTML-Berichte aus abgeschlossenen Aufgaben mit Prüfstatus</p>
         </div>
         <span class="badge badge-status is-open" data-document-count>0 Dokumente</span>
       </div>
       <div class="status-explainer">
-        <p><strong>Review-Status:</strong> Schwache oder unvollst&auml;ndige Berichte sollten nachgearbeitet werden, bevor sie als verl&auml;ssliche Wissensquelle dienen.</p>
+        <p><strong>Prüfstatus:</strong> Schwache oder unvollst&auml;ndige Berichte sollten nachgearbeitet werden, bevor sie als verl&auml;ssliche Wissensquelle dienen.</p>
       </div>
       <div class="list-toolbar">
         <label class="compact-search-field" for="document-list-search">
           <span>Dokumente suchen</span>
-          <input class="input input-bordered input-sm" id="document-list-search" data-list-search data-list-search-target="[data-document-list]" placeholder="Titel, Task, Bereich, Maschine">
+          <input class="input input-bordered input-sm" id="document-list-search" data-list-search data-list-search-target="[data-document-list]" placeholder="Titel, Aufgabe, Bereich, Maschine">
         </label>
       </div>
-      <div class="table-wrap bounded-table-wrap">
-        <table class="table data-table">
-          <caption>Generierte Wartungsdokumente mit Review-Status und Aktionen</caption>
-          <thead>
-            <tr>
-              <th scope="col">Titel</th>
-              <th scope="col">Task</th>
-              <th scope="col">Bereich</th>
-              <th scope="col">Maschine</th>
-              <th scope="col">Status</th>
-              <th scope="col">Version</th>
-              <th scope="col">Erstellt</th>
-              <th scope="col">Aktionen</th>
-            </tr>
-          </thead>
-          <tbody data-document-list></tbody>
-        </table>
-      </div>
+      <div class="record-card-grid document-record-grid" data-document-list data-list-search-items=".record-card"></div>
     </div>
   </article>
 
@@ -231,29 +238,14 @@
       <div class="panel-header">
         <div>
           <h2 class="panel-title">Maschinenhandbücher</h2>
-          <p class="panel-meta">Gespeicherte Handbücher mit Analyse- und Summary-Status</p>
+          <p class="panel-meta">Gespeicherte Handbücher mit Analyse- und Zusammenfassungsstatus</p>
         </div>
         <span class="badge badge-status is-open" data-manual-count>0 Handbücher</span>
       </div>
       <div class="status-explainer">
-        <p><strong>F&uuml;r AI-Antworten:</strong> Maschinenhandb&uuml;cher liefern technische Details. Je klarer Maschine und Bereich gesetzt sind, desto besser werden Treffer und Quellenangaben.</p>
+        <p><strong>F&uuml;r Antworten:</strong> Maschinenhandb&uuml;cher liefern technische Details. Je klarer Maschine und Bereich gesetzt sind, desto besser werden Treffer und Quellenangaben.</p>
       </div>
-      <div class="table-wrap bounded-table-wrap">
-        <table class="table data-table">
-          <caption>Gespeicherte Maschinenhandbücher mit Analyse-, Summary- und Löschaktionen</caption>
-          <thead>
-            <tr>
-              <th scope="col">Titel</th>
-              <th scope="col">Maschine</th>
-              <th scope="col">Bereich</th>
-              <th scope="col">Analyse</th>
-              <th scope="col">Summary</th>
-              <th scope="col">Aktionen</th>
-            </tr>
-          </thead>
-          <tbody data-manual-list></tbody>
-        </table>
-      </div>
+      <div class="record-card-grid document-record-grid" data-manual-list data-list-search-items=".record-card"></div>
     </div>
   </article>
 </section>

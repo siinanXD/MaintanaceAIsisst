@@ -75,6 +75,24 @@ def minutes_between(start, end):
     return (normalized_end - normalized_start).total_seconds() / 60
 
 
+def task_event_state(task):
+    """Return compact task state for audit old/new values."""
+    return {
+        "id": task.id,
+        "title": task.title,
+        "status": task.status.value if task.status else "",
+        "priority": task.priority.value if task.priority else "",
+        "department_id": task.department_id,
+        "due_date": task.due_date.isoformat() if task.due_date else None,
+        "planned_minutes": task.planned_minutes,
+        "actual_minutes": task.actual_minutes,
+        "blocked": bool(task.blocked_reason),
+        "current_worker_id": task.current_worker_id,
+        "started_at": task.started_at.isoformat() if task.started_at else None,
+        "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Department resolution
 # ---------------------------------------------------------------------------
@@ -180,6 +198,8 @@ def create_task(data, user):
                 "status": task.status.value,
                 "planned_minutes": task.planned_minutes,
             },
+            new_value=task_event_state(task),
+            description=f"Task erstellt: {task.title}",
         )
         mark_task_knowledge_stale(task)
         db.session.commit()
@@ -204,6 +224,9 @@ def update_task(task, data, user):
 
     Returns (task, None, 200) on success or (None, error_dict, status) on failure.
     """
+    old_state = task_event_state(task)
+    old_status = task.status
+    old_priority = task.priority
     try:
         validate_task_payload(data, require_title=False)
         if "department_id" in data or "department" in data:
@@ -214,7 +237,6 @@ def update_task(task, data, user):
             task.description = data["description"]
         if "priority" in data:
             task.priority = parse_enum(Priority, data["priority"], task.priority)
-        old_status = task.status
         if "status" in data:
             status = parse_enum(TaskStatus, data["status"], task.status)
             update_task_status(task, status, user)
@@ -238,7 +260,19 @@ def update_task(task, data, user):
         return None, {"error": str(exc)}, 400
 
     try:
-        event_type = "task.status_changed" if old_status != task.status else "task.updated"
+        if old_status != task.status:
+            event_type = "task.status_changed"
+            description = (
+                f"Task-Status geaendert: {old_status.value} -> {task.status.value}"
+            )
+        elif old_priority != task.priority:
+            event_type = "task.priority_changed"
+            description = (
+                f"Task-Prioritaet geaendert: {old_priority.value} -> {task.priority.value}"
+            )
+        else:
+            event_type = "task.updated"
+            description = f"Task aktualisiert: {task.title}"
         record_event(
             event_type,
             "tasks",
@@ -253,7 +287,31 @@ def update_task(task, data, user):
                 "priority": task.priority.value,
                 "blocked": bool(task.blocked_reason),
             },
+            old_value=old_state,
+            new_value=task_event_state(task),
+            description=description,
         )
+        if old_status != task.status and old_priority != task.priority:
+            record_event(
+                "task.priority_changed",
+                "tasks",
+                entity_type="task",
+                entity_id=task.id,
+                task=task,
+                user=user,
+                department=task.department,
+                metadata={
+                    "old_priority": old_priority.value,
+                    "new_priority": task.priority.value,
+                    "status": task.status.value,
+                },
+                old_value=old_priority.value,
+                new_value=task.priority.value,
+                description=(
+                    "Task-Prioritaet geaendert: "
+                    f"{old_priority.value} -> {task.priority.value}"
+                ),
+            )
         mark_task_knowledge_stale(task)
         db.session.commit()
     except SQLAlchemyError:
@@ -334,6 +392,7 @@ def start_task(task, user):
     if task.status == TaskStatus.IN_PROGRESS:
         return None, {"error": "Task is already in progress"}, 409
 
+    old_state = task_event_state(task)
     task.status = TaskStatus.IN_PROGRESS
     task.current_worker = user
     task.started_at = datetime.now(UTC)
@@ -350,6 +409,9 @@ def start_task(task, user):
             user=user,
             department=task.department,
             metadata={"priority": task.priority.value},
+            old_value=old_state,
+            new_value=task_event_state(task),
+            description=f"Task gestartet: {task.title}",
         )
         mark_task_knowledge_stale(task)
         db.session.commit()
@@ -372,6 +434,7 @@ def complete_task(task, user):
     if task.status == TaskStatus.CANCELLED:
         return None, {"error": "Cancelled tasks cannot be completed"}, 400
 
+    old_state = task_event_state(task)
     task.status = TaskStatus.DONE
     task.completed_by_user = user
     task.completed_at = datetime.now(UTC)
@@ -395,6 +458,9 @@ def complete_task(task, user):
                 "actual_minutes": task.actual_minutes,
                 "planned_minutes": task.planned_minutes,
             },
+            old_value=old_state,
+            new_value=task_event_state(task),
+            description=f"Task abgeschlossen: {task.title}",
         )
         mark_task_knowledge_stale(task)
         db.session.commit()

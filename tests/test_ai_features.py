@@ -3919,10 +3919,70 @@ def test_search_returns_only_dashboards_visible_to_user(
     )
 
     result_types = {result["type"] for result in response.get_json()["results"]}
+    visible_results = response.get_json()["results"]
+    task_result = next(result for result in visible_results if result["type"] == "task")
+    error_result = next(result for result in visible_results if result["type"] == "error")
     assert response.status_code == 200
     assert "task" in result_types
     assert "error" in result_types
     assert "document" not in result_types
+    assert task_result["entity_id"] == task_id
+    assert task_result["ui_url"].startswith("/tasks?search=")
+    assert task_result["url"] == f"/api/tasks/{task_id}"
+    assert error_result["ui_url"].startswith("/errors?search=")
+    assert "status" in error_result
+
+
+def test_search_results_include_ui_links_for_core_entities(
+    client,
+    make_user,
+    make_task,
+    make_error_entry,
+    make_document,
+    auth_headers,
+):
+    """Verify search results expose UI deeplinks without removing API URLs."""
+    user = make_user(
+        username="search_admin_user",
+        role=Role.MASTER_ADMIN,
+        department_name="Produktion",
+    )
+    task_id = make_task(
+        "Anlage Hydraulik pruefen",
+        creator_username=user["username"],
+        department_name="Produktion",
+    )
+    error_id = make_error_entry(
+        "Anlage Hydraulik",
+        "HYD-42",
+        "Hydraulikdruck faellt",
+        department_name="Produktion",
+    )
+    document_id = make_document(
+        task_id=task_id,
+        created_by=user["id"],
+        department="Produktion",
+        machine="Anlage Hydraulik",
+    )
+
+    response = client.get(
+        "/api/v1/search?q=Anlage",
+        headers=auth_headers(user["username"]),
+    )
+
+    results_by_type = {
+        result["type"]: result for result in response.get_json()["results"]
+    }
+    assert response.status_code == 200
+    assert results_by_type["task"]["entity_id"] == task_id
+    assert results_by_type["task"]["ui_url"].startswith("/tasks?search=")
+    assert results_by_type["task"]["url"] == f"/api/tasks/{task_id}"
+    assert results_by_type["error"]["entity_id"] == error_id
+    assert results_by_type["error"]["ui_url"].startswith("/errors?search=")
+    assert results_by_type["error"]["url"] == f"/api/errors/{error_id}"
+    assert results_by_type["document"]["entity_id"] == document_id
+    assert results_by_type["document"]["ui_url"].startswith("/documents?search=")
+    assert results_by_type["document"]["url"].startswith("/api/v1/documents/")
 
 
 def test_search_requires_query(client, make_user, auth_headers):

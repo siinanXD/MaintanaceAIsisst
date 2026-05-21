@@ -12,7 +12,11 @@ from app.machines.maintenance_services import (
     update_maintenance_plan,
     visible_maintenance_plans_query,
 )
-from app.machines.services import answer_machine_assistant, build_machine_history
+from app.machines.services import (
+    answer_machine_assistant,
+    build_machine_history,
+    build_machine_profile,
+)
 from app.models import InventoryMaterial, Machine, MaintenancePlan, ShiftPlanEntry, Site
 from app.responses import (
     error_response,
@@ -61,6 +65,22 @@ def site_for_payload(data):
     if not data.get("site_id"):
         return None
     return db.session.get(Site, int(data["site_id"]))
+
+
+def machine_event_state(machine):
+    """Return compact machine state for audit old/new values."""
+    return {
+        "id": machine.id,
+        "name": machine.name,
+        "produced_item": machine.produced_item,
+        "required_employees": machine.required_employees,
+        "site_id": machine.site_id,
+        "criticality": machine.criticality,
+        "status": machine.status,
+        "last_downtime_at": (
+            machine.last_downtime_at.isoformat() if machine.last_downtime_at else None
+        ),
+    }
 
 
 @machines_bp.get("")
@@ -115,6 +135,8 @@ def create_machine():
         user=current_user(),
         machine=machine,
         metadata={"criticality": machine.criticality, "status": machine.status},
+        new_value=machine_event_state(machine),
+        description=f"Maschine erstellt: {machine.name}",
     )
     db.session.commit()
     return jsonify(machine.to_dict()), 201
@@ -222,6 +244,17 @@ def machine_history(machine_id):
     )
 
 
+@machines_bp.get("/<int:machine_id>/profile")
+@dashboard_permission_required("machines", "view")
+def machine_profile(machine_id):
+    """Return the full operational profile for one machine."""
+    machine = db.get_or_404(Machine, machine_id)
+    return success_response(
+        build_machine_profile(machine, current_user()),
+        message="Machine profile loaded",
+    )
+
+
 @machines_bp.post("/<int:machine_id>/assistant")
 @dashboard_permission_required("machines", "view")
 def machine_assistant(machine_id):
@@ -259,6 +292,8 @@ def update_machine(machine_id):
     """Update machine metadata used by inventory and shift planning."""
     machine = db.get_or_404(Machine, machine_id)
     data = request.get_json(silent=True) or {}
+    old_state = machine_event_state(machine)
+    old_status = machine.status
     if "name" in data:
         machine_name = normalize_machine_name(data["name"])
         if not machine_name:
@@ -279,15 +314,36 @@ def update_machine(machine_id):
         machine.criticality = str(data.get("criticality") or "normal").strip()
     if "status" in data:
         machine.status = str(data.get("status") or "running").strip()
+    user = current_user()
     record_event(
         "machine.updated",
         "machines",
         entity_type="machine",
         entity_id=machine.id,
-        user=current_user(),
+        user=user,
         machine=machine,
         metadata={"criticality": machine.criticality, "status": machine.status},
+        old_value=old_state,
+        new_value=machine_event_state(machine),
+        description=f"Maschine aktualisiert: {machine.name}",
     )
+    if old_status != machine.status:
+        record_event(
+            "machine.status_changed",
+            "machines",
+            entity_type="machine",
+            entity_id=machine.id,
+            user=user,
+            machine=machine,
+            metadata={
+                "old_status": old_status,
+                "new_status": machine.status,
+                "criticality": machine.criticality,
+            },
+            old_value=old_status,
+            new_value=machine.status,
+            description=f"Maschinenstatus geaendert: {old_status} -> {machine.status}",
+        )
     mark_machine_knowledge_stale(machine)
     db.session.commit()
     return jsonify(machine.to_dict())
@@ -306,6 +362,8 @@ def delete_machine(machine_id):
         user=current_user(),
         machine=machine,
         metadata={"name": machine.name, "criticality": machine.criticality},
+        old_value=machine_event_state(machine),
+        description=f"Maschine geloescht: {machine.name}",
     )
     InventoryMaterial.query.filter_by(machine_id=machine.id).update({"machine_id": None})
     ShiftPlanEntry.query.filter_by(machine_id=machine.id).update({"machine_id": None})

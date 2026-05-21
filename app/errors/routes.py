@@ -12,7 +12,9 @@ from app.security import (
 )
 from app.services.error_service import (
     analyze_error_description,
+    close_error_entry,
     create_error_entry,
+    error_event_state,
     search_errors,
     suggest_similar_errors,
     update_error_entry,
@@ -127,6 +129,19 @@ def edit_error(error_id):
     return jsonify(payload)
 
 
+@errors_bp.post("/<int:error_id>/close")
+@dashboard_permission_required("errors", "write")
+def close_error(error_id):
+    """Close a visible error catalog entry."""
+    entry = db.get_or_404(ErrorEntry, error_id)
+    if not same_department_or_admin(entry):
+        return error_response("Forbidden", 403)
+    updated, error, status = close_error_entry(entry, current_user())
+    if error:
+        return service_error_response(error, status)
+    return success_response(updated.to_dict(), status, "Error closed")
+
+
 @errors_bp.delete("/<int:error_id>")
 @dashboard_permission_required("errors", "write")
 def delete_error(error_id):
@@ -143,6 +158,8 @@ def delete_error(error_id):
         department=entry.department,
         machine_id=entry.machine_id,
         metadata={"error_code": entry.error_code, "severity": entry.severity},
+        old_value=error_event_state(entry),
+        description=f"Stoerung geloescht: {entry.error_code}",
     )
     delete_source_knowledge_document("error_entry", entry.id)
     db.session.delete(entry)

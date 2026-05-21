@@ -156,7 +156,7 @@
         (published ? "btn-warning" : "btn-success");
     }
 
-    // Status badge
+    // Status-Badge
     statusBadge.hidden = false;
     if (plan.status === "published") {
       statusBadge.textContent = "✓ Veröffentlicht";
@@ -459,7 +459,7 @@
     if (p) renderPlan(p);
   });
 
-  // ── Delete plan ───────────────────────────────────────────────────────────
+  // ── Plan l?schen ───────────────────────────────────────────────────────────
   deleteBtn.addEventListener("click", async () => {
     if (!currentPlan || !confirm("Plan \"" + currentPlan.title + "\" wirklich löschen?")) return;
     deleteBtn.disabled = true;

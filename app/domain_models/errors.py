@@ -12,10 +12,12 @@ class ErrorEntry(db.Model):
     error_code = db.Column(db.String(80), nullable=False, index=True)
     title = db.Column(db.String(160), nullable=False)
     description = db.Column(db.Text, nullable=False, default="")
+    symptoms = db.Column(db.Text, nullable=False, default="")
     possible_causes = db.Column(db.Text, nullable=False, default="")
     solution = db.Column(db.Text, nullable=False, default="")
     department_id = db.Column(db.Integer, db.ForeignKey("department.id"), nullable=False)
     machine_id = db.Column(db.Integer, db.ForeignKey("machine.id"), nullable=True)
+    status = db.Column(db.String(40), nullable=False, default="open", index=True)
     severity = db.Column(db.String(40), nullable=False, default="medium")
     cause_category = db.Column(db.String(120), nullable=False, default="")
     impact = db.Column(db.String(220), nullable=False, default="")
@@ -23,6 +25,7 @@ class ErrorEntry(db.Model):
     production_loss_minutes = db.Column(db.Integer, nullable=False, default=0)
     repeat_count = db.Column(db.Integer, nullable=False, default=0)
     last_seen_at = db.Column(db.DateTime)
+    closed_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
 
     department = db.relationship("Department", back_populates="errors")
@@ -44,9 +47,11 @@ class ErrorEntry(db.Model):
             "error_code": self.error_code,
             "title": self.title,
             "description": self.description,
+            "symptoms": self.symptoms,
             "possible_causes": self.possible_causes,
             "solution": self.solution,
             "department": self.department.to_dict() if self.department else None,
+            "status": self.status,
             "severity": self.severity,
             "cause_category": self.cause_category,
             "impact": self.impact,
@@ -54,5 +59,6 @@ class ErrorEntry(db.Model):
             "production_loss_minutes": self.production_loss_minutes,
             "repeat_count": self.repeat_count,
             "last_seen_at": self.last_seen_at.isoformat() if self.last_seen_at else None,
+            "closed_at": self.closed_at.isoformat() if self.closed_at else None,
             "created_at": self.created_at.isoformat(),
         }

@@ -3087,8 +3087,15 @@ OPENAPI_SPEC["components"]["schemas"].update(
                 "actor_hash": {"type": "string", "example": "pseudonymous-hmac"},
                 "actor_role": {"type": "string", "example": "instandhaltung"},
                 "source": {"type": "string", "example": "app"},
+                "old_value": {"type": "object", "nullable": True},
+                "new_value": {"type": "object", "nullable": True},
+                "description": {
+                    "type": "string",
+                    "example": "Task wurde abgeschlossen.",
+                },
                 "metadata": {"type": "object"},
                 "occurred_at": {"type": "string", "format": "date-time"},
+                "created_at": {"type": "string", "format": "date-time"},
             },
         },
         "OperationsSummary": {

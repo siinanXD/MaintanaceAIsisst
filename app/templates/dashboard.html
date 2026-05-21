@@ -1,85 +1,70 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - Maintenance Assistant{% endblock %}
-{% block header_title %}Dashboard{% endblock %}
+{% block title %}Cockpit - Maintenance Assistant{% endblock %}
+{% block header_title %}Cockpit{% endblock %}
 
 {% block content %}
-<section class="page-hero dashboard-command-center app-card" data-ai-ops-cockpit aria-label="Maintenance Operations Cockpit">
-  <div class="command-center-copy">
-    <p class="page-kicker">Operations Cockpit</p>
-    <h2>Maintenance Lage in einem Blick</h2>
-    <p>Kritische Arbeit, Maschinenlage, AI/RAG-Vertrauen und Indexstatus für schnelle Leitungsentscheidungen.</p>
+<section class="page-hero control-center-hero app-card" data-ai-ops-cockpit aria-label="Maintenance Control Center">
+  <div class="control-center-copy">
+    <p class="page-kicker">Maintenance Control Center</p>
+    <h1 class="page-title">Aktuelle Lage im Werk</h1>
+    <p class="page-description">Kritische Arbeit, St&ouml;rungen, Maschinen, Schicht und Personalhinweise als operative Tageslage.</p>
   </div>
-  <div class="command-center-status" aria-label="Aktueller Betriebsstatus">
-    <span class="ops-status-pill is-loading" data-ai-ops-status>Live-Daten werden geladen</span>
+  <div class="control-center-status" aria-label="Aktueller Betriebsstatus">
+    <span class="ops-status-pill is-loading" data-ai-ops-status>Daten werden geladen</span>
     <span data-ai-ops-updated>Aktualisierung ausstehend</span>
     <span data-dashboard-system-meta>Schicht- und Systemdaten werden geladen</span>
   </div>
-  <div class="command-center-actions" aria-label="Schnellzugriff">
-    <a data-dashboard-nav="tasks" hidden href="/tasks">Task erstellen</a>
-    <a data-dashboard-nav="errors" hidden href="/errors">Fehler melden</a>
-    <button class="is-button" type="button" data-dashboard-quick-ai>AI fragen</button>
-    <a data-dashboard-nav="documents" hidden href="/documents">Dokument hochladen</a>
-    <a data-dashboard-nav="admin_users" hidden href="/admin/ai">Testnachricht senden</a>
+  <div class="control-center-actions" aria-label="Schnellzugriff">
+    <a class="btn btn-primary btn-sm" data-dashboard-nav="tasks" hidden href="/tasks">Aufgabe erstellen</a>
+    <a class="btn btn-outline btn-sm" data-dashboard-nav="errors" hidden href="/errors">St&ouml;rung melden</a>
+    <a class="btn btn-outline btn-sm" data-dashboard-nav="machines" hidden href="/machines">Maschine pr&uuml;fen</a>
+    <a class="btn btn-outline btn-sm" data-feature-key="handover" data-dashboard-nav="shiftplans" hidden href="/handover">Schicht&uuml;bergabe</a>
   </div>
 </section>
 
-<aside class="context-help" aria-label="Dashboard Orientierung">
-  <strong>So liest du das Cockpit</strong>
-  <p>Rot bedeutet sofort pr&uuml;fen, Amber bedeutet beobachten oder nachfassen, Gr&uuml;n bedeutet betriebsbereit. Die Karten zeigen zuerst, wo heute Leitung oder Admin entscheiden muss.</p>
-  <details class="help-disclosure">
-    <summary>Was bedeutet das?</summary>
-    <ol class="next-step-list">
-      <li><strong>Kritisch</strong> sind St&ouml;rungen, Safety-Risiken oder &uuml;berf&auml;llige Arbeit mit Betriebswirkung.</li>
-      <li><strong>AI Trust</strong> zeigt, ob Antworten Quellen, Confidence und Safety-Hinweise sauber liefern.</li>
-      <li><strong>Indexstatus</strong> zeigt, ob Dokumente und Suchindex synchron sind.</li>
-      <li><strong>Heutige Aktivit&auml;t</strong> fasst Tasks, Fehler und Briefing-Signale zusammen.</li>
-    </ol>
-  </details>
-</aside>
-
-<section class="executive-kpi-grid" aria-label="Executive KPIs">
+<section class="executive-kpi-grid control-center-kpis" aria-label="Wichtige Kennzahlen">
+  <article class="executive-kpi-card is-red">
+    <span>Kritisch heute</span>
+    <strong data-dashboard-critical-count>0</strong>
+    <small data-dashboard-critical-meta>Heute fällig und überfällig</small>
+    <div class="kpi-progress"><span data-dashboard-critical-progress style="width: 0%"></span></div>
+  </article>
+  <article class="executive-kpi-card is-orange">
+    <span>Aktive St&ouml;rungen</span>
+    <strong data-dashboard-unresolved-errors>--</strong>
+    <small data-dashboard-machine-status-meta>St&ouml;rungen werden geladen</small>
+    <div class="kpi-progress"><span data-dashboard-error-progress style="width: 0%"></span></div>
+  </article>
   <article class="executive-kpi-card is-blue">
-    <span>Offene Tasks</span>
+    <span>Offene Aufgaben</span>
     <strong data-dashboard-open-count>0</strong>
     <small data-dashboard-open-meta>Wird geladen</small>
     <div class="kpi-progress"><span data-dashboard-open-progress style="width: 12%"></span></div>
   </article>
-  <article class="executive-kpi-card is-red">
-    <span>Kritische Fehler</span>
-    <strong data-dashboard-critical-count>0</strong>
-    <small data-dashboard-critical-meta>Sofort prüfen, überfällig zuerst</small>
-    <div class="kpi-progress"><span data-dashboard-critical-progress style="width: 0%"></span></div>
+  <article class="executive-kpi-card is-teal">
+    <span>Maschinenstatus</span>
+    <strong data-dashboard-machine-status>--</strong>
+    <small data-dashboard-machine-kpi-meta>Maschinen werden geladen</small>
+    <div class="kpi-progress"><span data-dashboard-machine-progress style="width: 0%"></span></div>
   </article>
   <article class="executive-kpi-card is-green">
-    <span>Erledigte Tasks</span>
+    <span>Erledigte Aufgaben</span>
     <strong data-dashboard-done-count>0</strong>
     <small>Abgeschlossen im aktuellen Fenster</small>
     <div class="kpi-progress"><span data-dashboard-done-progress style="width: 0%"></span></div>
   </article>
-  <article class="executive-kpi-card is-orange">
-    <span>Ungeloste Fehler</span>
-    <strong data-dashboard-unresolved-errors>--</strong>
-    <small data-dashboard-machine-status-meta>Störungen werden geladen</small>
-    <div class="kpi-progress"><span data-dashboard-error-progress style="width: 0%"></span></div>
-  </article>
   <article class="executive-kpi-card is-cyan">
-    <span>Heutige Aktivität</span>
-    <strong data-dashboard-today-activity-count>--</strong>
-    <small>Tasks, Fehler und Briefing-Signale</small>
-    <div class="kpi-progress"><span data-dashboard-activity-progress style="width: 0%"></span></div>
-  </article>
-  <article class="executive-kpi-card is-teal">
-    <span>AI Status</span>
-    <strong data-dashboard-ai-status>--</strong>
-    <small data-dashboard-ai-status-meta>AI-Anbieter wird geprüft</small>
-    <div class="kpi-progress"><span data-dashboard-ai-progress style="width: 0%"></span></div>
+    <span>Schichtlage</span>
+    <strong data-dashboard-shift-status>--</strong>
+    <small data-dashboard-shift-meta>Schichtdaten werden geladen</small>
+    <div class="kpi-progress"><span data-dashboard-shift-progress style="width: 0%"></span></div>
   </article>
   <article class="executive-kpi-card is-indigo">
-    <span>Aktive Integrationen</span>
-    <strong data-dashboard-active-integrations>--</strong>
-    <small>Admin- und Systemsignale</small>
-    <div class="kpi-progress"><span data-dashboard-integration-progress style="width: 0%"></span></div>
+    <span>Personalhinweise</span>
+    <strong data-dashboard-people-status>--</strong>
+    <small data-dashboard-people-meta>Urlaub und Team werden geladen</small>
+    <div class="kpi-progress"><span data-dashboard-people-progress style="width: 0%"></span></div>
   </article>
   <article class="executive-kpi-card is-slate">
     <span>Systemstatus</span>
@@ -89,229 +74,136 @@
   </article>
 </section>
 
-<section class="cockpit-workbench" aria-label="Maintenance Cockpit">
-  <div class="cockpit-primary-column">
-    <article class="ops-panel app-card">
-      <header class="ops-panel-header">
-        <div>
-          <h2>Heute entscheiden</h2>
-          <p class="panel-meta">Priorisierte Tasks, offene Störungen und direkte Aktionen.</p>
-        </div>
-        <a data-dashboard-nav="tasks" hidden href="/tasks">Alle Tasks</a>
-      </header>
-      <div class="machine-status-strip" data-dashboard-machine-strip>
-        <div class="empty-state">Maschinenlage wird geladen.</div>
-      </div>
-      <div class="page-command-bar is-cockpit-actions" aria-label="Quick Actions">
-        <a class="quick-action-row" data-dashboard-nav="tasks" hidden href="/tasks">
-          <span>Task erstellen</span>
-          <strong>Neu</strong>
-        </a>
-        <a class="quick-action-row" data-dashboard-nav="errors" hidden href="/errors">
-          <span>Fehler melden</span>
-          <strong>Störung</strong>
-        </a>
-        <button class="quick-action-row is-button" type="button" data-dashboard-quick-ai>
-          <span>AI fragen</span>
-          <strong>Assist</strong>
-        </button>
-        <a class="quick-action-row" data-dashboard-nav="documents" hidden href="/documents">
-          <span>Dokument hochladen</span>
-          <strong>Index</strong>
-        </a>
-      </div>
-      <div class="cockpit-board" data-dashboard-task-board>
-        <section class="cockpit-column is-urgent" aria-labelledby="cockpit-urgent-title">
-          <h3 id="cockpit-urgent-title" class="cockpit-column-title">
-            Dringend <span data-cockpit-count="urgent">0</span>
-          </h3>
-          <div class="cockpit-task-list" data-cockpit-list="urgent">
-            <article class="cockpit-task-card">
-              <h4 class="cockpit-task-title">Tasks werden geladen</h4>
-              <div class="cockpit-task-meta"><span>Priorität</span><span>Live</span></div>
-            </article>
-          </div>
-        </section>
-        <section class="cockpit-column is-today" aria-labelledby="cockpit-today-title">
-          <h3 id="cockpit-today-title" class="cockpit-column-title">
-            Heute fällig <span data-cockpit-count="today">0</span>
-          </h3>
-          <div class="cockpit-task-list" data-cockpit-list="today">
-            <article class="cockpit-task-card">
-              <h4 class="cockpit-task-title">Heute fällige Aufgaben</h4>
-              <div class="cockpit-task-meta"><span>Plan</span><span>Live</span></div>
-            </article>
-          </div>
-        </section>
-        <section class="cockpit-column is-progress" aria-labelledby="cockpit-progress-title">
-          <h3 id="cockpit-progress-title" class="cockpit-column-title">
-            In Arbeit <span data-cockpit-count="progress">0</span>
-          </h3>
-          <div class="cockpit-task-list" data-cockpit-list="progress">
-            <article class="cockpit-task-card">
-              <h4 class="cockpit-task-title">Aktive Arbeiten</h4>
-              <div class="task-progress"><span style="width: 35%"></span></div>
-            </article>
-          </div>
-        </section>
-      </div>
-    </article>
-
-    <div class="cockpit-two-column">
-      <article class="ops-panel app-card">
-        <header class="ops-panel-header">
-          <div>
-            <h2>Warnungen</h2>
-            <p class="panel-meta">Störungen, Safety, Knowledge und Index-Risiken.</p>
-          </div>
-          <a data-dashboard-nav="errors" hidden href="/errors">Störungen</a>
-        </header>
-        <div class="activity-feed is-warning-feed" data-dashboard-warning-feed>
-          <div class="empty-state">Warnsignale werden geladen.</div>
-        </div>
-        <div class="incident-list" data-dashboard-error-stats>
-          <div class="empty-state">Störungen werden geladen.</div>
-        </div>
-        <div class="frequent-code-strip" aria-label="Häufige Fehlercodes" data-dashboard-frequent-codes>
-          <span>Fehlercodes werden geladen.</span>
-        </div>
-      </article>
-
-      <article class="ops-panel app-card">
-        <header class="ops-panel-header">
-          <div>
-            <h2>Activity Feed</h2>
-            <p class="panel-meta">Neue Tasks, Fehler, Dokument- und AI-Signale.</p>
-          </div>
-          <a href="#daily-briefing">Briefing</a>
-        </header>
-        <div class="activity-feed" data-dashboard-activity-feed>
-          <div class="empty-state">Aktivitäten werden geladen.</div>
-        </div>
-      </article>
-    </div>
-  </div>
-
-  <aside class="cockpit-side-column" aria-label="AI und Betriebsstatus">
-    <article class="ops-panel app-card ai-trust-panel">
-      <header class="ops-panel-header">
-        <div>
-          <h2>AI Trust</h2>
-          <p class="panel-meta">Confidence, Retrieval, Quellen und Safety.</p>
-        </div>
-        <a data-dashboard-nav="admin_users" hidden href="/admin/ai">AI Admin</a>
-      </header>
-      <div class="status-explainer">
-        <p><strong>AI Trust</strong> zeigt, ob Antworten auf freigegebenen Quellen, ausreichender Sicherheit und sichtbaren Warnhinweisen basieren.</p>
-      </div>
-      <div data-dashboard-ai-trust>
-        <div class="empty-state">AI Trust wird geladen.</div>
-      </div>
-    </article>
-
-    <article class="ops-panel app-card daily-briefing" id="daily-briefing" data-daily-briefing-card>
-      <header class="ops-panel-header">
-        <div>
-          <h2>Daily Briefing</h2>
-          <p class="panel-meta">Automatisch verdichtete Lage.</p>
-        </div>
-        <span class="ai-label">AI</span>
-      </header>
-      <p class="briefing-summary" data-daily-briefing-summary>Briefing wird geladen.</p>
-      <div class="briefing-list" data-daily-briefing-list>
-        <div class="briefing-item is-warning"><span>AI</span><strong>Briefing wird geladen</strong><small>Bitte kurz warten.</small></div>
-      </div>
-    </article>
-
-    <article class="ops-panel app-card">
-      <header class="ops-panel-header">
-        <div>
-          <h2>Schicht &amp; Ressourcen</h2>
-          <p class="panel-meta">Planung, Lager und Teamverfügbarkeit.</p>
-        </div>
-        <a data-dashboard-nav="shiftplans" hidden href="/shiftplans">Plan</a>
-      </header>
-      <p class="sr-only" data-dashboard-calendar-message>Schichtplan heute</p>
-      <select class="select select-bordered" data-dashboard-calendar-employee hidden>
-        <option value="">Mein Kalender</option>
-      </select>
-      <div class="shift-timeline" aria-label="Schichtbelegung heute" data-dashboard-shift-timeline>
-        <div class="timeline-axis"><span>00</span><span>04</span><span>08</span><span>12</span><span>16</span><span>20</span><span>24</span></div>
-      </div>
-      <div class="dashboard-calendar-data" data-dashboard-shift-calendar hidden></div>
-      <div class="inventory-stats" data-dashboard-inventory-stats>
-        <div><strong>Kritisch</strong><span>--</span><small>Artikel</small></div>
-      </div>
-      <div class="shortage-tags" aria-label="Top Engpässe" data-dashboard-inventory-shortages>
-        <span>Lagerdaten werden geladen.</span>
-      </div>
-    </article>
-  </aside>
-</section>
-
-<details class="section-disclosure">
-  <summary>
-    <span>
-      <strong>Analyse und technische Details</strong>
-      <small>Retrieval, Knowledge Health, Operations KPIs und Admin-Drilldowns bleiben erreichbar.</small>
-    </span>
-  </summary>
-  <section class="ai-ops-command-grid" aria-label="AI Operations Signale">
-    <article class="ops-panel app-card ai-priority-panel">
-      <header class="ops-panel-header">
-        <div>
-          <h2>Prioritätslage</h2>
-          <p class="panel-meta">Kritische Fehler, Safety, Gaps und Retrieval-Risiken.</p>
-        </div>
-      </header>
-      <div class="ai-priority-rail" data-ai-ops-priority-rail>
-        <div class="empty-state">AI Operations Signale werden geladen.</div>
-      </div>
-    </article>
-    <article class="ops-panel app-card ai-system-panel">
-      <header class="ops-panel-header">
-        <div>
-          <h2>AI Systemstatus</h2>
-          <p class="panel-meta">Read-only Betriebszustand ohne Promptinhalte.</p>
-        </div>
-        <a data-dashboard-nav="admin_users" hidden href="/admin/ai">Details</a>
-      </header>
-      <div class="ai-system-rail" data-ai-system-rail>
-        <div class="empty-state">Systemstatus wird geladen.</div>
-      </div>
-    </article>
-    <article class="ops-panel app-card ai-risk-panel">
-      <header class="ops-panel-header">
-        <div>
-          <h2>AI Risk Radar</h2>
-          <p class="panel-meta">Confidence, Safety, Fallbacks und Feedback.</p>
-        </div>
-      </header>
-      <div class="ai-risk-grid" data-ai-risk-radar>
-        <div class="empty-state">Risk Radar wird geladen.</div>
-      </div>
-    </article>
-    <article class="ops-panel app-card ai-knowledge-panel">
-      <header class="ops-panel-header">
-        <div>
-          <h2>Retrieval &amp; Knowledge Health</h2>
-          <p class="panel-meta">Index, Quellen, Chunks und Wissenslücken.</p>
-        </div>
-      </header>
-      <div class="ai-knowledge-health" data-ai-knowledge-health>
-        <div class="empty-state">Knowledge Health wird geladen.</div>
-      </div>
-    </article>
-  </section>
-
-  <section class="ops-insights-shell app-card" data-operations-insights aria-labelledby="operations-insights-title">
-    <header class="ops-insights-header">
+<section class="control-center-grid" aria-label="Maintenance Control Center">
+  <article class="ops-panel app-card critical-today-card">
+    <header class="ops-panel-header">
       <div>
-        <p class="eyebrow-label">Operations Insights</p>
-        <h2 id="operations-insights-title">Werks-KPIs und Prozessqualität</h2>
-        <p data-operations-insights-status role="status" aria-live="polite">Kennzahlen werden geladen.</p>
+        <p class="section-kicker">Heute zuerst</p>
+        <h2>Kritisch heute</h2>
+        <p class="panel-meta">Dringende Aufgaben, St&ouml;rungen und Engp&auml;sse mit direkter Aktion.</p>
       </div>
-      <div class="ops-insights-controls" aria-label="Operations Filter">
+      <a data-dashboard-nav="tasks" hidden href="/tasks">Alle Aufgaben</a>
+    </header>
+    <div class="critical-today-list" data-dashboard-critical-today>
+      <div class="empty-state">Kritische Lage wird geladen.</div>
+    </div>
+  </article>
+
+  <article class="ops-panel app-card">
+    <header class="ops-panel-header">
+      <div>
+        <p class="section-kicker">Priorit&auml;t</p>
+        <h2>Offene Tasks</h2>
+        <p class="panel-meta">Nach Dringlichkeit, F&auml;lligkeit und Status gruppiert.</p>
+      </div>
+      <a data-dashboard-nav="tasks" hidden href="/tasks">Kanban &ouml;ffnen</a>
+    </header>
+    <div class="priority-task-list" data-dashboard-priority-list></div>
+    <div class="cockpit-board compact-cockpit-board" data-dashboard-task-board>
+      <section class="cockpit-column is-urgent" aria-labelledby="cockpit-urgent-title">
+        <h3 id="cockpit-urgent-title" class="cockpit-column-title">Dringend <span data-cockpit-count="urgent">0</span></h3>
+        <div class="cockpit-task-list" data-cockpit-list="urgent">
+          <article class="cockpit-task-card is-empty"><p>Aufgaben werden geladen.</p></article>
+        </div>
+      </section>
+      <section class="cockpit-column is-today" aria-labelledby="cockpit-today-title">
+        <h3 id="cockpit-today-title" class="cockpit-column-title">Heute fällig <span data-cockpit-count="today">0</span></h3>
+        <div class="cockpit-task-list" data-cockpit-list="today">
+          <article class="cockpit-task-card is-empty"><p>F&auml;lligkeiten werden geladen.</p></article>
+        </div>
+      </section>
+      <section class="cockpit-column is-progress" aria-labelledby="cockpit-progress-title">
+        <h3 id="cockpit-progress-title" class="cockpit-column-title">In Arbeit <span data-cockpit-count="progress">0</span></h3>
+        <div class="cockpit-task-list" data-cockpit-list="progress">
+          <article class="cockpit-task-card is-empty"><p>Aktive Arbeiten werden geladen.</p></article>
+        </div>
+      </section>
+    </div>
+  </article>
+
+  <article class="ops-panel app-card">
+    <header class="ops-panel-header">
+      <div>
+        <p class="section-kicker">St&ouml;rungen</p>
+        <h2>Aktive St&ouml;rungen</h2>
+        <p class="panel-meta">Neueste Fehler mit Maschine, Code und Tageskontext.</p>
+      </div>
+      <a data-dashboard-nav="errors" hidden href="/errors">Fehlerkatalog</a>
+    </header>
+    <div class="incident-list incident-card-list" data-dashboard-error-stats>
+      <div class="empty-state">St&ouml;rungen werden geladen.</div>
+    </div>
+    <div class="frequent-code-strip" aria-label="H&auml;ufige Fehlercodes" data-dashboard-frequent-codes>
+      <span>Fehlercodes werden geladen.</span>
+    </div>
+  </article>
+
+  <article class="ops-panel app-card">
+    <header class="ops-panel-header">
+      <div>
+        <p class="section-kicker">Anlagen</p>
+        <h2>Maschinenstatus</h2>
+        <p class="panel-meta">Status, Ausf&auml;lle, Wiederholungen und Materialrisiken.</p>
+      </div>
+      <a data-dashboard-nav="machines" hidden href="/machines">Maschinen</a>
+    </header>
+    <div class="machine-status-strip" data-dashboard-machine-strip>
+      <div class="empty-state">Maschinenlage wird geladen.</div>
+    </div>
+    <div class="machine-status-card-list" data-dashboard-machine-cards>
+      <div class="empty-state">Maschinen werden geladen.</div>
+    </div>
+  </article>
+
+  <article class="ops-panel app-card">
+    <header class="ops-panel-header">
+      <div>
+        <p class="section-kicker">Schicht</p>
+        <h2>Schicht&uuml;bergaben</h2>
+        <p class="panel-meta">Aktuelle Schichtbelegung und letzte &Uuml;bergaben.</p>
+      </div>
+      <a data-feature-key="handover" data-dashboard-nav="shiftplans" hidden href="/handover">Zur &Uuml;bergabe</a>
+    </header>
+    <p class="sr-only" data-dashboard-calendar-message>Schichtplan heute</p>
+    <select class="select select-bordered" data-dashboard-calendar-employee hidden>
+      <option value="">Mein Kalender</option>
+    </select>
+    <div class="shift-timeline" aria-label="Schichtbelegung heute" data-dashboard-shift-timeline>
+      <div class="timeline-axis"><span>00</span><span>04</span><span>08</span><span>12</span><span>16</span><span>20</span><span>24</span></div>
+    </div>
+    <div class="dashboard-calendar-data" data-dashboard-shift-calendar hidden></div>
+    <div class="handover-card-list" data-dashboard-handover-list>
+      <div class="empty-state">&Uuml;bergaben werden geladen.</div>
+    </div>
+  </article>
+
+  <article class="ops-panel app-card">
+    <header class="ops-panel-header">
+      <div>
+        <p class="section-kicker">Personal</p>
+        <h2>Urlaub &amp; Personalhinweise</h2>
+        <p class="panel-meta">Team&uuml;bersicht, offene Antr&auml;ge und Schichtverf&uuml;gbarkeit.</p>
+      </div>
+      <a data-dashboard-nav="employees" hidden href="/employees">Mitarbeiter</a>
+    </header>
+    <div class="people-hint-list" data-dashboard-people-hints>
+      <div class="empty-state">Personalhinweise werden geladen.</div>
+    </div>
+    <div class="employee-table control-center-employee-table" role="table" aria-label="Mitarbeiter heute" data-dashboard-employee-overview>
+      <div class="employee-row is-head" role="row">
+        <span role="columnheader">Mitarbeiter</span><span role="columnheader">Rolle</span><span role="columnheader">Schicht</span><span role="columnheader">Status</span>
+      </div>
+    </div>
+  </article>
+
+  <article class="ops-panel app-card operations-status-card">
+    <header class="ops-panel-header">
+      <div>
+        <p class="section-kicker">Kennzahlen</p>
+        <h2>Wichtige Kennzahlen</h2>
+        <p class="panel-meta" data-operations-insights-status role="status" aria-live="polite">Kennzahlen werden geladen.</p>
+      </div>
+      <div class="ops-insights-controls" aria-label="Betriebsfilter">
         <label class="field field-compact">
           <span>Werk</span>
           <select class="select select-bordered" data-operations-site-filter>
@@ -326,30 +218,133 @@
             <option value="90">90 Tage</option>
           </select>
         </label>
-        <button class="btn btn-outline btn-sm" type="button" data-operations-refresh>Kennzahlen aktualisieren</button>
+        <button class="btn btn-outline btn-sm" type="button" data-operations-refresh>Aktualisieren</button>
       </div>
     </header>
-    <div class="ops-insights-grid" data-operations-kpi-grid>
-      <article class="ops-insight-card is-loading"><span>Tasks</span><strong>--</strong><small>Offene Arbeit</small></article>
-      <article class="ops-insight-card is-loading"><span>MTTR</span><strong>--</strong><small>Ausfallzeit</small></article>
-      <article class="ops-insight-card is-loading"><span>Lager</span><strong>--</strong><small>Engpässe</small></article>
-      <article class="ops-insight-card is-loading"><span>AI</span><strong>--</strong><small>Qualität</small></article>
-    </div>
-    <div class="ops-insights-drilldown" data-operations-drilldown aria-label="Operations Drilldowns">
-      <div class="empty-state">Drilldowns erscheinen nach dem Laden der Kennzahlen.</div>
-    </div>
-  </section>
+    <section class="ops-insights-shell" data-operations-insights aria-label="Operations KPIs">
+      <div class="ops-insights-grid" data-operations-kpi-grid>
+        <article class="ops-insight-card is-loading"><span>Aufgaben</span><strong>--</strong><small>Offene Arbeit</small></article>
+        <article class="ops-insight-card is-loading"><span>Reparaturzeit</span><strong>--</strong><small>Ausfallzeit</small></article>
+        <article class="ops-insight-card is-loading"><span>Lager</span><strong>--</strong><small>Engp&auml;sse</small></article>
+        <article class="ops-insight-card is-loading"><span>Events</span><strong>--</strong><small>Prozesssignale</small></article>
+      </div>
+      <div class="ops-insights-drilldown" data-operations-drilldown aria-label="Operations Drilldowns">
+        <div class="empty-state">Drilldowns erscheinen nach dem Laden der Kennzahlen.</div>
+      </div>
+    </section>
+  </article>
 
-  <section class="ops-dashboard-grid" aria-label="Weitere Dashboard Bereiche">
+  <aside class="control-center-side-column" aria-label="Briefing und Aktivitaet">
+    <article class="ops-panel app-card daily-briefing" id="daily-briefing" data-daily-briefing-card>
+      <header class="ops-panel-header">
+        <div>
+          <p class="section-kicker">Kurzlage</p>
+          <h2>Tagesbriefing</h2>
+          <p class="panel-meta">Automatisch verdichtete Lage.</p>
+        </div>
+        <span class="ai-label">AI</span>
+      </header>
+      <p class="briefing-summary" data-daily-briefing-summary>Kurzlage wird geladen.</p>
+      <div class="briefing-list" data-daily-briefing-list>
+        <div class="briefing-item is-warning"><span>AI</span><strong>Kurzlage wird geladen</strong><small>Bitte kurz warten.</small></div>
+      </div>
+    </article>
+
     <article class="ops-panel app-card">
       <header class="ops-panel-header">
-        <h2>Mitarbeiter Übersicht (heute)</h2>
-        <a data-dashboard-nav="employees" hidden href="/employees">Alle anzeigen</a>
-      </header>
-      <div class="employee-table" role="table" aria-label="Mitarbeiter heute" data-dashboard-employee-overview>
-        <div class="employee-row is-head" role="row">
-          <span role="columnheader">Mitarbeiter</span><span role="columnheader">Rolle</span><span role="columnheader">Schicht</span><span role="columnheader">Status</span>
+        <div>
+          <p class="section-kicker">Verlauf</p>
+          <h2>Aktivit&auml;tsverlauf</h2>
+          <p class="panel-meta">Neue Aufgaben, Fehler und Briefing-Signale.</p>
         </div>
+      </header>
+      <div class="activity-feed" data-dashboard-activity-feed>
+        <div class="empty-state">Aktivit&auml;ten werden geladen.</div>
+      </div>
+    </article>
+
+    <article class="ops-panel app-card">
+      <header class="ops-panel-header">
+        <div>
+          <p class="section-kicker">Material</p>
+          <h2>Lagerhinweise</h2>
+          <p class="panel-meta">Kritische Teile und Engp&auml;sse f&uuml;r laufende Arbeit.</p>
+        </div>
+        <a data-dashboard-nav="inventory" hidden href="/inventory">Lager</a>
+      </header>
+      <div class="inventory-stats" data-dashboard-inventory-stats>
+        <div><strong>Kritisch</strong><span>--</span><small>Artikel</small></div>
+      </div>
+      <div class="shortage-tags" aria-label="Top Engp&auml;sse" data-dashboard-inventory-shortages>
+        <span>Lagerdaten werden geladen.</span>
+      </div>
+    </article>
+  </aside>
+</section>
+
+<details class="section-disclosure control-center-technical">
+  <summary>
+    <span>
+      <strong>Technische Details und Quellenstatus</strong>
+      <small>AI-, Index- und Admin-Signale bleiben sichtbar, dominieren aber nicht die operative Lage.</small>
+    </span>
+  </summary>
+  <section class="ai-ops-command-grid" aria-label="AI Operations Signale">
+    <article class="ops-panel app-card ai-priority-panel">
+      <header class="ops-panel-header">
+        <div>
+          <h2>Priorit&auml;tslage</h2>
+          <p class="panel-meta">Kritische Fehler, Sicherheit, Gaps und Quellenrisiken.</p>
+        </div>
+      </header>
+      <div class="ai-priority-rail" data-ai-ops-priority-rail>
+        <div class="empty-state">AI Operations Signale werden geladen.</div>
+      </div>
+    </article>
+    <article class="ops-panel app-card ai-system-panel">
+      <header class="ops-panel-header">
+        <div>
+          <h2>AI Systemstatus</h2>
+          <p class="panel-meta">Nur-Lese Betriebszustand ohne Promptinhalte.</p>
+        </div>
+        <a data-dashboard-nav="admin_users" hidden href="/admin/ai">Details</a>
+      </header>
+      <div class="ai-system-rail" data-ai-system-rail>
+        <div class="empty-state">Systemstatus wird geladen.</div>
+      </div>
+    </article>
+    <article class="ops-panel app-card ai-risk-panel">
+      <header class="ops-panel-header">
+        <div>
+          <h2>AI Risk Radar</h2>
+          <p class="panel-meta">Sicherheit, Fallbacks und Feedback.</p>
+        </div>
+      </header>
+      <div class="ai-risk-grid" data-ai-risk-radar>
+        <div class="empty-state">Risk Radar wird geladen.</div>
+      </div>
+    </article>
+    <article class="ops-panel app-card ai-knowledge-panel">
+      <header class="ops-panel-header">
+        <div>
+          <h2>Quellen &amp; Wissensstatus</h2>
+          <p class="panel-meta">Index, Quellen und Wissensl&uuml;cken.</p>
+        </div>
+      </header>
+      <div class="ai-knowledge-health" data-ai-knowledge-health>
+        <div class="empty-state">Wissensstatus wird geladen.</div>
+      </div>
+    </article>
+  </section>
+
+  <section class="ops-dashboard-grid" aria-label="Weitere Statusdetails">
+    <article class="ops-panel app-card">
+      <header class="ops-panel-header">
+        <h2>Warnsignale</h2>
+        <a data-dashboard-nav="errors" hidden href="/errors">St&ouml;rungen</a>
+      </header>
+      <div class="activity-feed is-warning-feed" data-dashboard-warning-feed>
+        <div class="empty-state">Warnsignale werden geladen.</div>
       </div>
     </article>
     <article class="ops-panel app-card">
@@ -364,9 +359,9 @@
           <small data-dashboard-index-status-meta>Index-Sync</small>
         </div>
         <div class="ai-system-row is-muted">
-          <span>Knowledge-Gaps</span>
+          <span>Wissensl&uuml;cken</span>
           <strong data-dashboard-knowledge-gap-count>0</strong>
-          <small data-dashboard-knowledge-gap-meta>Offene Lücken</small>
+          <small data-dashboard-knowledge-gap-meta>Offene L&uuml;cken</small>
         </div>
         <div class="ai-system-row is-muted">
           <span>Suchzeit P95</span>
@@ -376,13 +371,9 @@
         <div class="ai-system-row is-muted">
           <span>Niedrige Sicherheit</span>
           <strong data-dashboard-low-confidence-count>0%</strong>
-          <small>Antwortqualität</small>
+          <small>Antwortqualit&auml;t</small>
         </div>
       </div>
-      <details class="help-disclosure">
-        <summary>Indexstatus verstehen</summary>
-        <p>Der Index ist die Suchbasis f&uuml;r Dokumentwissen. Wenn Dokumente fehlen, veraltet sind oder nicht synchronisiert wurden, kann die AI relevante Quellen &uuml;bersehen.</p>
-      </details>
     </article>
   </section>
 </details>
@@ -399,8 +390,11 @@
   <button type="button" data-cockpit-draft-cancel>Verwerfen</button>
 </form>
 <span data-cockpit-message hidden></span>
-<div data-dashboard-priority-list hidden></div>
 <span data-dashboard-task-count hidden>0</span>
+<span data-dashboard-progress-count hidden>0</span>
+<span data-dashboard-recurring-count hidden>0</span>
+<span data-dashboard-safety-count hidden>0</span>
+<span data-dashboard-briefing-count hidden>0</span>
 
 <div class="modal task-detail-modal" data-task-detail-modal hidden>
   <div class="modal-box max-w-4xl">
@@ -409,7 +403,7 @@
         <h2 class="panel-title" id="task-detail-title" data-task-detail-title>Aufgabe</h2>
         <p class="panel-meta" data-task-detail-subtitle>Details und Workflow</p>
       </div>
-      <button class="btn btn-ghost btn-sm" type="button" data-task-detail-close>Schließen</button>
+      <button class="btn btn-ghost btn-sm" type="button" data-task-detail-close>Schlie&szlig;en</button>
     </div>
     <div class="task-detail-body" data-task-detail-body></div>
     <div class="form-grid mt-6" data-report-options>
@@ -430,13 +424,13 @@
         <input class="input input-bordered" id="report-cause" data-report-field="cause">
       </div>
       <div class="field is-full">
-        <label for="report-action">Maßnahme / Notizen</label>
+        <label for="report-action">Ma&szlig;nahme / Notizen</label>
         <textarea class="textarea textarea-bordered" id="report-action" data-report-field="action"></textarea>
       </div>
     </div>
     <div class="toolbar form-actions">
       <button class="btn btn-primary" type="button" data-task-start-button>Aufgabe starten</button>
-      <button class="btn btn-success text-white" type="button" data-task-complete-button>Aufgabe abschließen</button>
+      <button class="btn btn-success text-white" type="button" data-task-complete-button>Aufgabe abschlie&szlig;en</button>
       <span class="panel-meta" data-task-detail-message role="status" aria-live="polite"></span>
     </div>
   </div>

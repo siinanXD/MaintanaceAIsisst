@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
   const SHARED_MODULE_URLS = [
     "/static/shared/dom.js",
     "/static/shared/forms.js",
@@ -51,6 +51,22 @@
       : false;
   }
 
+  /**
+   * Normalize German maintenance text for resilient keyword matching.
+   *
+   * @param {unknown} value Raw text value.
+   * @returns {string} Lowercase ASCII-compatible keyword text.
+   */
+  function keywordText(value) {
+    return String(value || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/ue/g, "u")
+      .replace(/ae/g, "a")
+      .replace(/oe/g, "o");
+  }
+
   function employeeAccessLevel() {
     return window.maintenanceAuth && window.maintenanceAuth.employeeAccessLevel
       ? window.maintenanceAuth.employeeAccessLevel()
@@ -58,8 +74,8 @@
   }
 
   const DASHBOARD_LABELS = {
-    dashboard: "Dashboard",
-    tasks: "Tasks",
+    dashboard: "Cockpit",
+    tasks: "Aufgaben",
     errors: "Fehlerliste",
     employees: "Mitarbeiter",
     shiftplans: "Schichtplan",
@@ -203,6 +219,17 @@
   }
 
   /**
+   * Create a reusable guided empty-state element.
+   *
+   * @param {string} title Empty-state title.
+   * @param {string} hint Supporting hint text.
+   * @returns {HTMLElement} Empty-state element.
+   */
+  function emptyState(title, hint) {
+    return sharedNamespace("ui").emptyState(title, hint);
+  }
+
+  /**
    * Create a badge through the shared status-badge helper.
    *
    * @param {string|number|null|undefined} text Badge text.
@@ -228,7 +255,7 @@
   /**
    * Resolve task priority badge classes through the shared status-badge helper.
    *
-   * @param {string} priority Task priority.
+   * @param {string} priority Aufgabe priority.
    * @returns {string} Badge classes.
    */
   function priorityBadgeClass(priority) {
@@ -238,11 +265,21 @@
   /**
    * Resolve task status badge classes through the shared status-badge helper.
    *
-   * @param {string} status Task status.
+   * @param {string} status Aufgabe status.
    * @returns {string} Badge classes.
    */
   function statusBadgeClass(status) {
     return sharedNamespace("statusBadges").taskStatusBadgeClass(status);
+  }
+
+  /**
+   * Resolve generic status badge classes through the shared status-badge helper.
+   *
+   * @param {string} status Status value.
+   * @returns {string} Badge classes.
+   */
+  function genericStatusBadgeClass(status) {
+    return sharedNamespace("statusBadges").genericStatusBadgeClass(status);
   }
 
   async function api(path, options) {
@@ -293,7 +330,7 @@
   function sourceTypeLabel(source) {
     const key = String((source && (source.module || source.type)) || "knowledge");
     const labels = {
-      tasks: "Task",
+      tasks: "Aufgabe",
       errors: "Fehler",
       machines: "Maschine",
       documents: "Dokument",
@@ -305,7 +342,7 @@
     return labels[key] || labels.knowledge;
   }
 
-  function renderSourcePanel(container, sources, emptyText) {
+  function renderQuellePanel(container, sources, emptyText) {
     if (!container) return;
     const items = Array.isArray(sources) ? sources.filter(Boolean) : [];
     container.innerHTML = "";
@@ -324,7 +361,7 @@
 
     const title = document.createElement("strong");
     title.className = "rag-source-title";
-    title.textContent = "RAG-Quellen";
+    title.textContent = "Quellen";
     const list = document.createElement("div");
     list.className = "rag-source-list";
     items.slice(0, 5).forEach((source) => {
@@ -361,12 +398,12 @@
     const title = document.createElement("strong");
     title.textContent = preview.label;
     const meta = document.createElement("span");
-    meta.textContent = "Aus der Analyse kann direkt ein Task vorbereitet werden.";
+    meta.textContent = "Aus der Analyse kann direkt eine Aufgabe vorbereitet werden.";
     copy.append(title, meta);
     const button = document.createElement("button");
     button.type = "button";
     button.className = "btn btn-primary btn-sm";
-    button.textContent = "Task vorbereiten";
+    button.textContent = "Aufgabe vorbereiten";
     button.addEventListener("click", () => applyAiActionPreview(preview));
     container.append(copy, button);
     container.hidden = false;
@@ -449,7 +486,7 @@
       })),
       message: employees.length
         ? "Live aus Mitarbeiter-Schichten"
-        : "Keine Mitarbeiterdaten für die Schichtübersicht.",
+        : "Keine Mitarbeiterdaten für die SchichtÜbersicht.",
       start_date: today
     };
   }
@@ -765,8 +802,9 @@
     }
   }
 
-  async function initTasks() {
+  async function initAufgaben() {
     const list = document.querySelector("[data-task-list]");
+    const kanbanBoard = document.querySelector("[data-task-kanban-board]");
     const form = document.querySelector("[data-task-form]");
     const priorityList = document.querySelector("[data-task-priority-list]");
     const priorityRefreshButtons = document.querySelectorAll("[data-task-priority-refresh]");
@@ -775,15 +813,189 @@
     const applySuggestion = document.querySelector("[data-apply-task-suggestion]");
     const submitButton = document.querySelector("[data-task-submit-button]");
     const cancelEditButton = document.querySelector("[data-task-edit-cancel]");
-    if (!list || !form || !token()) return;
+    const taskFilterSearch = document.querySelector("[data-task-filter-search]");
+    const taskFilterStatus = document.querySelector("[data-task-filter-status]");
+    const taskFilterPriority = document.querySelector("[data-task-filter-priority]");
+    const taskFilterDepartment = document.querySelector("[data-task-filter-department]");
+    const taskFilterDue = document.querySelector("[data-task-filter-due]");
+    const taskFilterReset = document.querySelector("[data-task-filter-reset]");
+    const taskFilterSummary = document.querySelector("[data-task-filter-summary]");
+    const taskCountElements = document.querySelectorAll("[data-dashboard-task-count]");
+    if ((!list && !kanbanBoard) || !form || !token()) return;
     let currentSuggestion = null;
     let editingTaskId = null;
+    let allTasks = [];
+    const taskFilters = [
+      taskFilterSearch,
+      taskFilterStatus,
+      taskFilterPriority,
+      taskFilterDepartment,
+      taskFilterDue
+    ].filter(Boolean);
 
     function riskBadgeClass(riskLevel) {
       if (riskLevel === "critical") return "badge badge-error text-white";
       if (riskLevel === "high") return "badge badge-warning text-slate-900";
       if (riskLevel === "medium") return "badge badge-info text-white";
       return "badge badge-success text-white";
+    }
+
+    function taskTodayIso() {
+      const now = new Date();
+      const month = String(now.getMonth() + 1).padStart(2, "0");
+      const day = String(now.getDate()).padStart(2, "0");
+      return now.getFullYear() + "-" + month + "-" + day;
+    }
+
+    function taskDueState(task) {
+      if (task.status === "done" || task.status === "cancelled") return "closed";
+      if (!task.due_date) return "planned";
+      const today = taskTodayIso();
+      if (task.due_date < today) return "overdue";
+      if (task.due_date === today) return "today";
+      return "planned";
+    }
+
+    function taskDueLabel(task) {
+      const state = taskDueState(task);
+      if (state === "overdue") return "Überfällig seit " + formatDate(task.due_date);
+      if (state === "today") return "Heute fällig";
+      if (state === "closed" && task.completed_at) return "Erledigt " + formatDateTimeValue(task.completed_at);
+      return task.due_date ? "Fällig " + formatDate(task.due_date) : "Keine Fälligkeit";
+    }
+
+    function taskMachineHint(task) {
+      const explicit = task.machine_name || (task.machine && task.machine.name) || task.machine;
+      if (typeof explicit === "string" && explicit.trim()) return explicit.trim();
+      const text = [task.title, task.description].filter(Boolean).join(" ");
+      const match = text.match(/\b(Maschine|Anlage|Presse|Linie|Roboter|CNC|Band)\s*[A-Za-z0-9\-_.]*/i);
+      return match ? match[0] : "Maschine offen";
+    }
+
+    function taskTypeLabel(task) {
+      const text = keywordText([task.title, task.description].filter(Boolean).join(" "));
+      if (text.includes("sicherheit") || text.includes("not-aus") || text.includes("schutz")) return "Sicherheit";
+      if (text.includes("repar") || text.includes("defekt") || text.includes("storung")) return "Reparatur";
+      if (text.includes("pruf") || text.includes("kontroll") || text.includes("check")) return "Prüfung";
+      if (text.includes("reinig") || text.includes("sauber")) return "Reinigung";
+      if (text.includes("produktion") || text.includes("auftrag") || text.includes("linie")) return "Produktion";
+      if (text.includes("wart") || text.includes("service") || text.includes("inspektion")) return "Wartung";
+      return "Aufgabe";
+    }
+
+    function taskOwnerLabel(task) {
+      const worker = task.current_worker || task.completed_by_user || task.creator;
+      if (!worker) return "nicht zugewiesen";
+      return worker.name || worker.username || worker.email || ("User #" + worker.id);
+    }
+
+    function formatDateTimeValue(value) {
+      if (!value) return "-";
+      return new Date(value).toLocaleString("de-DE", {
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+    }
+
+    function taskMetricLabel(task) {
+      if (task.actual_minutes) return "Ist " + task.actual_minutes + " min";
+      if (task.planned_minutes) return "Plan " + task.planned_minutes + " min";
+      if (task.response_minutes) return "Reaktion " + Math.round(task.response_minutes) + " min";
+      return "Zeit offen";
+    }
+
+    function taskSearchText(task) {
+      return [
+        task.title,
+        task.description,
+        task.priority,
+        priorityLabel(task.priority),
+        task.status,
+        statusLabel(task.status),
+        task.department && task.department.name,
+        taskMachineHint(task),
+        taskTypeLabel(task),
+        taskOwnerLabel(task),
+        task.due_date
+      ].filter(Boolean).join(" ").toLowerCase();
+    }
+
+    function updateTaskStats(tasks) {
+      const open = tasks.filter((task) => task.status === "open").length;
+      const progress = tasks.filter((task) => task.status === "in_progress").length;
+      const done = tasks.filter((task) => task.status === "done").length;
+      const overdue = tasks.filter((task) => taskDueState(task) === "overdue").length;
+      taskCountElements.forEach((taskCount) => {
+        taskCount.textContent = String(tasks.length);
+      });
+      setText("[data-task-open-count]", open);
+      setText("[data-task-progress-count]", progress);
+      setText("[data-task-done-count]", done);
+      setText("[data-task-overdue-count]", overdue);
+    }
+
+    function populateTaskDepartmentFilter(tasks) {
+      if (!taskFilterDepartment) return;
+      const previous = taskFilterDepartment.value;
+      const departments = Array.from(new Set(
+        tasks
+          .map((task) => task.department && task.department.name)
+          .filter(Boolean)
+      )).sort((first, second) => first.localeCompare(second, "de-DE"));
+      taskFilterDepartment.innerHTML = '<option value="">Alle Bereiche</option>';
+      departments.forEach((department) => {
+        const option = document.createElement("option");
+        option.value = department;
+        option.textContent = department;
+        taskFilterDepartment.appendChild(option);
+      });
+      taskFilterDepartment.value = departments.includes(previous) ? previous : "";
+    }
+
+    function taskMatchesFilters(task) {
+      const search = taskFilterSearch ? taskFilterSearch.value.trim().toLowerCase() : "";
+      const status = taskFilterStatus ? taskFilterStatus.value : "";
+      const priority = taskFilterPriority ? taskFilterPriority.value : "";
+      const department = taskFilterDepartment ? taskFilterDepartment.value : "";
+      const dueState = taskFilterDue ? taskFilterDue.value : "";
+      if (search && !taskSearchText(task).includes(search)) return false;
+      if (status && task.status !== status) return false;
+      if (priority && task.priority !== priority) return false;
+      if (department && (!task.department || task.department.name !== department)) return false;
+      if (dueState && taskDueState(task) !== dueState) return false;
+      return true;
+    }
+
+    function taskSortScore(task) {
+      const priorityRank = { urgent: 0, soon: 1, normal: 2 };
+      const statusRank = { in_progress: 0, open: 1, done: 2, cancelled: 3 };
+      const dueRank = { overdue: 0, today: 1, planned: 2, closed: 3 };
+      return [
+        dueRank[taskDueState(task)] == null ? 4 : dueRank[taskDueState(task)],
+        priorityRank[task.priority] == null ? 3 : priorityRank[task.priority],
+        statusRank[task.status] == null ? 4 : statusRank[task.status],
+        task.due_date || "9999-12-31"
+      ].join("|");
+    }
+
+    function filteredTasks() {
+      return allTasks
+        .filter(taskMatchesFilters)
+        .sort((first, second) => taskSortScore(first).localeCompare(taskSortScore(second)));
+    }
+
+    function renderFilteredTasks() {
+      const tasks = filteredTasks();
+      if (list) {
+        list.innerHTML = "";
+        tasks.forEach((task) => list.appendChild(taskCard(task)));
+      }
+      renderKanban(tasks);
+      if (taskFilterSummary) {
+        taskFilterSummary.textContent = tasks.length + " von " + allTasks.length + " Aufgaben sichtbar";
+      }
     }
 
     async function loadPriorities() {
@@ -796,11 +1008,11 @@
           body: JSON.stringify({ status: "open", limit: 10 })
         });
       } catch (error) {
-        priorityList.innerHTML = '<div class="guided-empty-state"><strong>Priorisierung konnte nicht geladen werden.</strong><p>Die Taskliste bleibt nutzbar. Prüfe später erneut oder sortiere nach Fälligkeit und Risiko.</p></div>';
+        priorityList.innerHTML = '<div class="guided-empty-state"><strong>Priorisierung konnte nicht geladen werden.</strong><p>Die Aufgabeliste bleibt nutzbar. Prüfe später erneut oder sortiere nach Fälligkeit und Risiko.</p></div>';
         return;
       }
       if (!priorities.length) {
-        priorityList.innerHTML = '<div class="guided-empty-state"><strong>Keine offenen Tasks</strong><p>Wenn Arbeit entsteht, lege einen Task an oder nutze den AI-Vorschlag aus einer kurzen Beschreibung.</p><a class="btn btn-primary btn-sm" href="#task-list">Taskliste prüfen</a></div>';
+        priorityList.innerHTML = '<div class="guided-empty-state"><strong>Keine offenen Aufgaben</strong><p>Wenn Arbeit entsteht, lege einen Aufgabe an oder nutze den AI-Vorschlag aus einer kurzen Beschreibung.</p><a class="btn btn-primary btn-sm" href="#task-list">Aufgabeliste prüfen</a></div>';
         return;
       }
       priorities.forEach((item) => {
@@ -842,19 +1054,19 @@
       });
     }
 
-    function resetTaskForm() {
+    function resetAufgabeForm() {
       editingTaskId = null;
       form.reset();
       if (form.elements.status) form.elements.status.value = "open";
       if (form.elements.priority) form.elements.priority.value = "normal";
-      if (submitButton) submitButton.textContent = "Task speichern";
+      if (submitButton) submitButton.textContent = "Aufgabe speichern";
       if (cancelEditButton) cancelEditButton.hidden = true;
     }
 
     function applyTaskPreview(preview) {
       const payload = (preview && preview.payload) || {};
       if (!payload.title) return;
-      resetTaskForm();
+      resetAufgabeForm();
       form.elements.title.value = payload.title || "";
       form.elements.department.value = payload.department || form.elements.department.value;
       form.elements.priority.value = payload.priority || "normal";
@@ -871,7 +1083,7 @@
       form.elements.title.focus();
     }
 
-    async function editTask(task) {
+    async function editAufgabe(task) {
       editingTaskId = task.id;
       form.elements.title.value = task.title || "";
       form.elements.department.value = (task.department && task.department.name) || "";
@@ -879,7 +1091,7 @@
       if (form.elements.status) form.elements.status.value = task.status || "open";
       form.elements.due_date.value = task.due_date || "";
       form.elements.description.value = task.description || "";
-      if (submitButton) submitButton.textContent = "Task aktualisieren";
+      if (submitButton) submitButton.textContent = "Aufgabe aktualisieren";
       if (cancelEditButton) cancelEditButton.hidden = false;
       revealSurface(form);
       form.elements.title.focus();
@@ -890,11 +1102,11 @@
       const message = document.querySelector("[data-task-message]");
       if (button) button.disabled = true;
       try {
-        setStatusMessage(message, action === "start" ? "Task wird gestartet..." : "Task wird abgeschlossen...");
+        setStatusMessage(message, action === "start" ? "Aufgabe wird gestartet..." : "Aufgabe wird abgeschlossen...");
         await api(endpoint, { method: "POST" });
         await load();
         await loadPriorities();
-        setStatusMessage(message, action === "start" ? "Task gestartet." : "Task abgeschlossen.");
+        setStatusMessage(message, action === "start" ? "Aufgabe gestartet." : "Aufgabe abgeschlossen.");
       } catch (error) {
         setStatusMessage(message, error.message, true);
         if (button) button.disabled = false;
@@ -903,23 +1115,41 @@
 
     function taskCard(task) {
       const card = document.createElement("article");
-      card.className = "task-card";
+      const dueState = taskDueState(task);
+      card.className = [
+        "task-card",
+        "is-" + (task.status || "open"),
+        "is-priority-" + (task.priority || "normal"),
+        dueState === "overdue" ? "is-overdue" : "",
+        dueState === "today" ? "is-due-today" : ""
+      ].filter(Boolean).join(" ");
+      card.dataset.searchText = taskSearchText(task);
+      card.dataset.status = task.status || "";
+      card.dataset.priority = task.priority || "";
+      card.dataset.department = (task.department && task.department.name) || "";
+      card.dataset.dueState = dueState;
 
       const top = document.createElement("div");
       top.className = "task-card-top";
 
+      const heading = document.createElement("div");
+      heading.className = "task-card-heading";
+      const type = document.createElement("span");
+      type.className = "task-type-badge";
+      type.textContent = taskTypeLabel(task);
       const title = document.createElement("h3");
       title.className = "task-card-title";
       title.textContent = task.title;
+      heading.append(type, title);
 
       const badges = document.createElement("div");
-      badges.className = "flex flex-wrap justify-end gap-2";
+      badges.className = "task-card-badges";
       badges.append(
-        labeledBadge(task.priority, priorityBadgeClass(task.priority), priorityLabel),
-        labeledBadge(task.status, statusBadgeClass(task.status), statusLabel)
+        labeledBadge(task.priority, priorityBadgeClass(task.priority) + " priority-badge", priorityLabel),
+        labeledBadge(task.status, statusBadgeClass(task.status) + " status-badge", statusLabel)
       );
 
-      top.append(title, badges);
+      top.append(heading, badges);
 
       const description = document.createElement("p");
       description.className = "task-card-description";
@@ -928,12 +1158,32 @@
       const meta = document.createElement("div");
       meta.className = "task-card-meta";
       [
-        task.department && task.department.name,
-        task.due_date ? "Fällig: " + task.due_date : "Keine Fälligkeit"
+        "Bereich: " + ((task.department && task.department.name) || "offen"),
+        "Maschine: " + taskMachineHint(task),
+        taskDueLabel(task),
+        "Verantwortlich: " + taskOwnerLabel(task),
+        taskMetricLabel(task)
       ].filter(Boolean).forEach((value) => {
         const item = document.createElement("span");
         item.textContent = value;
+        if (value.includes("Überfällig")) item.classList.add("is-risk");
         meta.appendChild(item);
+      });
+
+      const timeline = document.createElement("div");
+      timeline.className = "task-card-timeline";
+      [
+        ["Erstellt", formatDateTimeValue(task.created_at)],
+        task.started_at ? ["Gestartet", formatDateTimeValue(task.started_at)] : null,
+        task.completed_at ? ["Abgeschlossen", formatDateTimeValue(task.completed_at)] : null
+      ].filter(Boolean).forEach(([label, value]) => {
+        const item = document.createElement("span");
+        const name = document.createElement("small");
+        const amount = document.createElement("strong");
+        name.textContent = label;
+        amount.textContent = value;
+        item.append(name, amount);
+        timeline.appendChild(item);
       });
 
       const actions = document.createElement("div");
@@ -941,26 +1191,28 @@
       if (canWrite("tasks") && task.status === "open") {
         const start = actionButton("Starten", (evt) => runTaskAction(task, "start", evt.currentTarget));
         start.className = "btn btn-primary btn-sm";
+        start.setAttribute("aria-label", "Aufgabe starten: " + task.title);
         actions.appendChild(start);
       }
       if (canWrite("tasks") && task.status !== "done" && task.status !== "cancelled") {
-        const complete = actionButton("Erledigt", (evt) => runTaskAction(task, "complete", evt.currentTarget));
+        const complete = actionButton("Abschließen", (evt) => runTaskAction(task, "complete", evt.currentTarget));
         complete.className = "btn btn-success btn-sm text-white";
+        complete.setAttribute("aria-label", "Aufgabe abschließen: " + task.title);
         actions.appendChild(complete);
       }
       if (canWrite("tasks")) {
-        actions.appendChild(actionButton("Bearbeiten", () => editTask(task)));
+        actions.appendChild(actionButton("Bearbeiten", () => editAufgabe(task)));
       }
       if (canWrite("tasks") && task.status !== "in_progress") {
         const del = actionButton("Löschen", async (evt) => {
-          if (!confirm('Task "' + task.title + '" wirklich löschen?')) return;
+          if (!confirm('Aufgabe "' + task.title + '" wirklich löschen?')) return;
           evt.currentTarget.disabled = true;
           const statusMsg = document.querySelector("[data-task-message]");
           try {
             await api("/api/v1/tasks/" + task.id, { method: "DELETE" });
             await load();
             await loadPriorities();
-            setStatusMessage(statusMsg, "Task gelöscht.");
+            setStatusMessage(statusMsg, "Aufgabe gelöscht.");
           } catch (error) {
             setStatusMessage(statusMsg, error.message, true);
             evt.currentTarget.disabled = false;
@@ -970,18 +1222,63 @@
         actions.appendChild(del);
       }
 
-      card.append(top, description, meta, actions);
+      card.append(top, description, meta, timeline, actions);
       return card;
+    }
+
+    function taskBucket(status) {
+      if (status === "done" || status === "cancelled") return "done";
+      if (status === "in_progress") return "in_progress";
+      return "open";
+    }
+
+    function renderKanban(tasks) {
+      if (!kanbanBoard) return;
+      const buckets = {
+        open: [],
+        in_progress: [],
+        done: []
+      };
+      tasks.forEach((task) => {
+        buckets[taskBucket(task.status)].push(task);
+      });
+      Object.entries(buckets).forEach(([name, group]) => {
+        const columnList = kanbanBoard.querySelector("[data-kanban-list='" + name + "']");
+        const count = kanbanBoard.querySelector("[data-kanban-count='" + name + "']");
+        if (count) count.textContent = String(group.length);
+        if (!columnList) return;
+        columnList.innerHTML = "";
+        if (!group.length) {
+          const empty = document.createElement("div");
+          empty.className = "empty-state kanban-empty-state";
+          empty.textContent = name === "open"
+            ? "Keine offenen Aufgaben."
+            : name === "in_progress"
+              ? "Nichts in Bearbeitung."
+              : "Noch nichts erledigt.";
+          columnList.appendChild(empty);
+          return;
+        }
+        group
+          .sort((first, second) => taskSortScore(first).localeCompare(taskSortScore(second)))
+          .forEach((task) => columnList.appendChild(taskCard(task)));
+      });
     }
 
     async function load() {
       const tasks = listData(await api("/api/v1/tasks?limit=100"));
-      list.innerHTML = "";
-      if (!tasks.length) {
-        list.innerHTML = '<div class="guided-empty-state md:col-span-2 xl:col-span-3"><strong>Noch keine Tasks vorhanden</strong><p>Beispiel: "Presse 3 Hydraulik prüfen". Starte mit einem neuen Task oder lasse aus einer Meldung einen Vorschlag erstellen.</p><a class="btn btn-primary btn-sm" href="#task-list">Task anlegen</a></div>';
+      allTasks = tasks;
+      updateTaskStats(allTasks);
+      populateTaskDepartmentFilter(allTasks);
+      if (!allTasks.length) {
+        renderKanban(allTasks);
+        if (list) {
+          list.innerHTML = '<div class="guided-empty-state md:col-span-2 xl:col-span-3"><strong>Noch keine Aufgaben vorhanden</strong><p>Beispiel: "Presse 3 Hydraulik prüfen". Starte mit einer neuen Aufgabe oder lasse aus einer Meldung einen Vorschlag erstellen.</p><a class="btn btn-primary btn-sm" href="#task-create">Aufgabe anlegen</a></div>';
+        }
+        if (taskFilterSummary) taskFilterSummary.textContent = "Noch keine Aufgaben vorhanden.";
         return;
       }
-      tasks.forEach((task) => list.appendChild(taskCard(task)));
+      renderFilteredTasks();
     }
 
     form.addEventListener("submit", async (event) => {
@@ -993,13 +1290,13 @@
       const message = document.querySelector("[data-task-message]");
       setFormBusy(form, true, wasEditing ? "Aktualisiert..." : "Speichert...");
       try {
-        setStatusMessage(message, wasEditing ? "Task wird aktualisiert..." : "Task wird gespeichert...");
+        setStatusMessage(message, wasEditing ? "Aufgabe wird aktualisiert..." : "Aufgabe wird gespeichert...");
         await api(path, { method, body: JSON.stringify(data) });
-        resetTaskForm();
+        resetAufgabeForm();
         await initDepartments();
         await load();
         await loadPriorities();
-        setStatusMessage(message, wasEditing ? "Task aktualisiert." : "Task gespeichert.");
+        setStatusMessage(message, wasEditing ? "Aufgabe aktualisiert." : "Aufgabe gespeichert.");
       } catch (error) {
         setStatusMessage(message, error.message, true);
       } finally {
@@ -1009,7 +1306,7 @@
 
     if (cancelEditButton) {
       cancelEditButton.addEventListener("click", () => {
-        resetTaskForm();
+        resetAufgabeForm();
         const message = document.querySelector("[data-task-message]");
         setStatusMessage(message, "Bearbeitung abgebrochen.");
       });
@@ -1066,7 +1363,7 @@
         setButtonBusy(btn, true, "Lädt...");
         btn.disabled = true;
         const original = btn.textContent;
-        btn.textContent = "Wird geladen…";
+        btn.textContent = "Wird geladen...";
         try {
           await loadPriorities();
         } finally {
@@ -1076,6 +1373,25 @@
         }
       });
     });
+
+    taskFilters.forEach((filter) => {
+      const eventName = filter.tagName === "INPUT" ? "input" : "change";
+      filter.addEventListener(eventName, renderFilteredTasks);
+    });
+
+    if (taskFilterReset) {
+      taskFilterReset.addEventListener("click", () => {
+        taskFilters.forEach((filter) => {
+          filter.value = "";
+        });
+        renderFilteredTasks();
+      });
+    }
+
+    if (taskFilterSearch) {
+      const query = new URLSearchParams(window.location.search);
+      taskFilterSearch.value = query.get("search") || query.get("q") || "";
+    }
 
     await load();
     await loadPriorities();
@@ -1091,10 +1407,16 @@
     const similarPanel = document.querySelector("[data-similar-errors-panel]");
     const similarList = document.querySelector("[data-similar-errors-list]");
     const searchInput = document.querySelector("[data-error-search]");
-    const errorCount = document.querySelector("[data-error-count]");
     const searchFocus = document.querySelector("[data-error-search-focus]");
     const analysisFocus = document.querySelector("[data-error-analysis-focus]");
-    const analysisSources = document.querySelector("[data-error-rag-sources]");
+    const similarFocus = document.querySelector("[data-error-similar-focus]");
+    const filterButtons = Array.from(document.querySelectorAll("[data-error-filter]"));
+    const statusFilter = document.querySelector("[data-error-status-filter]");
+    const severityFilter = document.querySelector("[data-error-severity-filter]");
+    const categoryFilter = document.querySelector("[data-error-category-filter]");
+    const filterReset = document.querySelector("[data-error-filter-reset]");
+    const filterSummary = document.querySelector("[data-error-filter-summary]");
+    const analysisQuelles = document.querySelector("[data-error-rag-sources]");
     const actionPreview = document.querySelector("[data-error-action-preview]");
     if (!list || !form || !token()) return;
     let currentAnalysis = null;
@@ -1106,9 +1428,17 @@
     const eedDept     = document.getElementById("eed-department");
     const eedMachine  = document.getElementById("eed-machine");
     const eedCode     = document.getElementById("eed-code");
+    const eedStatus   = document.getElementById("eed-status");
+    const eedSeverity = document.getElementById("eed-severity");
+    const eedCategory = document.getElementById("eed-category");
     const eedTitle    = document.getElementById("eed-title-input");
+    const eedSymptoms = document.getElementById("eed-symptoms");
     const eedCauses   = document.getElementById("eed-causes");
     const eedSolution = document.getElementById("eed-solution");
+    const eedImpact   = document.getElementById("eed-impact");
+    const eedDowntime = document.getElementById("eed-downtime");
+    const eedProductionLoss = document.getElementById("eed-production-loss");
+    const eedRepeatCount = document.getElementById("eed-repeat-count");
     const eedSave     = document.getElementById("eed-save");
     const eedCancel   = document.getElementById("eed-cancel");
     const eedMsg      = document.getElementById("eed-msg");
@@ -1124,9 +1454,19 @@
       eedId.value       = entry.id;
       eedMachine.value  = entry.machine || "";
       eedCode.value     = entry.error_code || "";
+      if (eedStatus) eedStatus.value = entry.status || "open";
+      if (eedSeverity) eedSeverity.value = entry.severity || "medium";
+      if (eedCategory) eedCategory.value = entry.cause_category || "";
       eedTitle.value    = entry.title || "";
+      if (eedSymptoms) eedSymptoms.value = entry.symptoms || entry.description || "";
       eedCauses.value   = entry.possible_causes || "";
       eedSolution.value = entry.solution || "";
+      if (eedImpact) eedImpact.value = entry.impact || "";
+      if (eedDowntime) eedDowntime.value = String(entry.downtime_minutes || 0);
+      if (eedProductionLoss) {
+        eedProductionLoss.value = String(entry.production_loss_minutes || 0);
+      }
+      if (eedRepeatCount) eedRepeatCount.value = String(entry.repeat_count || 0);
       if (eedDept) {
         Array.from(eedDept.options).forEach((opt) => {
           opt.selected = opt.value === (entry.department && entry.department.name);
@@ -1148,9 +1488,18 @@
           body: JSON.stringify({
             machine: eedMachine.value,
             error_code: eedCode.value,
+            status: eedStatus ? eedStatus.value : undefined,
+            severity: eedSeverity ? eedSeverity.value : undefined,
+            cause_category: eedCategory ? eedCategory.value : undefined,
             title: eedTitle.value,
+            symptoms: eedSymptoms ? eedSymptoms.value : undefined,
+            description: eedSymptoms ? eedSymptoms.value : undefined,
             possible_causes: eedCauses.value,
             solution: eedSolution.value,
+            impact: eedImpact ? eedImpact.value : undefined,
+            downtime_minutes: eedDowntime ? eedDowntime.value : undefined,
+            production_loss_minutes: eedProductionLoss ? eedProductionLoss.value : undefined,
+            repeat_count: eedRepeatCount ? eedRepeatCount.value : undefined,
             department: eedDept ? eedDept.value : undefined
           })
         });
@@ -1172,6 +1521,111 @@
       return block;
     }
 
+    function errorStatusLabel(status) {
+      const labels = {
+        open: "Offen",
+        in_progress: "In Bearbeitung",
+        closed: "Geschlossen"
+      };
+      return labels[status] || "Offen";
+    }
+
+    function errorStatusClass(status) {
+      if (status === "closed") return "badge status-badge is-done";
+      if (status === "in_progress") return "badge status-badge is-progress";
+      return "badge status-badge is-open";
+    }
+
+    function errorSeverityLabel(severity) {
+      const labels = {
+        critical: "Kritisch",
+        high: "Hoch",
+        medium: "Mittel",
+        low: "Niedrig"
+      };
+      return labels[severity] || "Mittel";
+    }
+
+    function errorSeverityClass(severity) {
+      if (severity === "critical") return "badge priority-badge is-urgent";
+      if (severity === "high") return "badge priority-badge is-soon";
+      if (severity === "low") return "badge priority-badge is-normal";
+      return "badge priority-badge is-medium";
+    }
+
+    function formatIncidentMinutes(value) {
+      const minutes = Number(value || 0);
+      if (minutes >= 60) return (minutes / 60).toFixed(1).replace(".", ",") + " h";
+      return Math.round(minutes) + " min";
+    }
+
+    function incidentDate(value) {
+      if (!value) return "-";
+      return new Date(value).toLocaleString("de-DE", {
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+    }
+
+    function incidentSearchText(entry) {
+      return [
+        entry.error_code,
+        entry.machine,
+        entry.title,
+        entry.description,
+        entry.symptoms,
+        entry.possible_causes,
+        entry.solution,
+        entry.department && entry.department.name,
+        entry.status,
+        errorStatusLabel(entry.status),
+        entry.severity,
+        errorSeverityLabel(entry.severity),
+        entry.cause_category,
+        entry.impact
+      ].filter(Boolean).join(" ").toLowerCase();
+    }
+
+    function updateIncidentStats(errors) {
+      const openCount = errors.filter((entry) => (entry.status || "open") !== "closed").length;
+      const criticalCount = errors.filter((entry) => entry.severity === "critical" || entry.severity === "high").length;
+      const downtime = errors.reduce((sum, entry) => sum + Number(entry.downtime_minutes || 0), 0);
+      const categories = new Set(errors.map((entry) => entry.cause_category).filter(Boolean));
+      document.querySelectorAll("[data-error-count]").forEach((element) => {
+        element.textContent = errors.length + " Einträge";
+      });
+      setText("[data-error-open-count]", openCount);
+      setText("[data-error-critical-count]", criticalCount);
+      setText("[data-error-downtime-count]", formatIncidentMinutes(downtime));
+      setText("[data-error-category-count]", categories.size);
+    }
+
+    function populateIncidentCategoryFilter(errors) {
+      if (!categoryFilter) return;
+      const previous = categoryFilter.value;
+      const categories = Array.from(new Set(
+        errors.map((entry) => entry.cause_category).filter(Boolean)
+      )).sort((first, second) => first.localeCompare(second, "de-DE"));
+      categoryFilter.innerHTML = '<option value="">Alle Kategorien</option>';
+      categories.forEach((category) => {
+        const option = document.createElement("option");
+        option.value = category;
+        option.textContent = category;
+        categoryFilter.appendChild(option);
+      });
+      categoryFilter.value = categories.includes(previous) ? previous : "";
+    }
+
+    function analysisValue(payload, fieldName) {
+      if (!payload) return "";
+      if (fieldName === "symptoms") {
+        return payload.symptoms || payload.description || "";
+      }
+      return payload[fieldName] || "";
+    }
+
     function renderSimilarErrors(result) {
       if (!similarPanel || !similarList) return;
       const matches = result.results || [];
@@ -1184,7 +1638,7 @@
       matches.forEach((match) => {
         similarList.appendChild(row([
           String(match.score),
-          badge(match.entry.error_code, "badge badge-status is-open"),
+          badge(match.entry.error_code, "badge status-badge is-open"),
           match.entry.machine,
           match.entry.title,
           match.reason
@@ -1196,7 +1650,7 @@
       const result = await api("/api/v1/errors/similar", {
         method: "POST",
         body: JSON.stringify({
-          text: data.description || data.title || "",
+          text: data.description || data.symptoms || data.title || "",
           machine: data.machine || "",
           limit: 5
         })
@@ -1211,7 +1665,7 @@
       if (analysisBox) {
         analysisBox.hidden = false;
         analysisBox.querySelectorAll("[data-error-analysis-field]").forEach((field) => {
-          field.value = payload[field.dataset.errorAnalysisField] || "";
+          field.value = analysisValue(payload, field.dataset.errorAnalysisField);
         });
       }
       if (form.elements.machine) form.elements.machine.value = payload.machine || "";
@@ -1222,6 +1676,9 @@
         form.elements.error_code.value = "NEU";
       }
       if (form.elements.title) form.elements.title.value = payload.title || "";
+      if (form.elements.symptoms) {
+        form.elements.symptoms.value = payload.symptoms || payload.description || "";
+      }
       if (form.elements.possible_causes) {
         form.elements.possible_causes.value = payload.possible_causes || "";
       }
@@ -1232,7 +1689,7 @@
 
     function updateErrorRagPanels(result) {
       currentAssistantResult = result || null;
-      renderSourcePanel(analysisSources, result && result.sources);
+      renderQuellePanel(analysisQuelles, result && result.sources);
       renderInlineActionPreview(actionPreview, result && result.action_preview);
     }
 
@@ -1246,69 +1703,163 @@
         if (message && result.diagnostics && result.diagnostics.rag_source_count) {
           setStatusMessage(
             message,
-            "Analyse erstellt. " + result.diagnostics.rag_source_count + " RAG-Quellen gefunden."
+            "Analyse erstellt. " + result.diagnostics.rag_source_count + " Quellen gefunden."
           );
         }
       } catch (error) {
         updateErrorRagPanels(null);
         if (message) {
-          setStatusMessage(message, "Analyse erstellt. RAG-Kontext nicht verfügbar: " + error.message);
+          setStatusMessage(message, "Analyse erstellt. Quellenkontext nicht verfügbar: " + error.message);
         }
       }
     }
 
+    function activeErrorFilter() {
+      const active = filterButtons.find((button) => button.classList.contains("is-active"));
+      return active ? active.dataset.errorFilter : "all";
+    }
+
+    function errorMatchesFilter(entry, filterName) {
+      if (!filterName || filterName === "all") return true;
+      if ((entry.cause_category || "").toLowerCase() === filterName.toLowerCase()) return true;
+      return incidentSearchText(entry).includes(filterName.toLowerCase());
+    }
+
+    function errorCard(entry) {
+      const card = document.createElement("article");
+      const status = entry.status || "open";
+      const severity = entry.severity || "medium";
+      card.className = "error-card incident-card is-status-" + status + " is-severity-" + severity;
+      card.dataset.searchText = incidentSearchText(entry);
+
+      const header = document.createElement("div");
+      header.className = "error-card-header";
+      const titleWrap = document.createElement("div");
+      const title = document.createElement("h3");
+      title.className = "error-card-title";
+      title.textContent = entry.title || "Unbenannter Fehler";
+      const meta = document.createElement("div");
+      meta.className = "error-card-meta";
+      [
+        entry.machine || "Maschine offen",
+        entry.department && entry.department.name,
+        entry.cause_category || "Kategorie offen"
+      ].filter(Boolean).forEach((value) => {
+        const item = document.createElement("span");
+        item.textContent = value;
+        meta.appendChild(item);
+      });
+      titleWrap.append(title, meta);
+      const badges = document.createElement("div");
+      badges.className = "incident-card-badges";
+      badges.append(
+        badge(entry.error_code || "CODE", "badge status-badge is-open"),
+        badge(errorStatusLabel(status), errorStatusClass(status)),
+        badge(errorSeverityLabel(severity), errorSeverityClass(severity))
+      );
+      header.append(titleWrap, badges);
+
+      const metrics = document.createElement("div");
+      metrics.className = "incident-card-metrics";
+      [
+        ["Stillstand", formatIncidentMinutes(entry.downtime_minutes)],
+        ["Produktionsverlust", formatIncidentMinutes(entry.production_loss_minutes)],
+        ["Wiederholungen", String(Number(entry.repeat_count || 0))],
+        [status === "closed" ? "Geschlossen" : "Zuletzt gesehen", incidentDate(entry.closed_at || entry.last_seen_at || entry.created_at)]
+      ].forEach(([label, value]) => {
+        const item = document.createElement("span");
+        const small = document.createElement("small");
+        const strong = document.createElement("strong");
+        small.textContent = label;
+        strong.textContent = value;
+        item.append(small, strong);
+        metrics.appendChild(item);
+      });
+
+      const blocks = document.createElement("div");
+      blocks.className = "error-card-blocks";
+      blocks.append(
+        highlightedBlock("Symptome", entry.symptoms || entry.description, "is-symptom"),
+        highlightedBlock("Ursache", entry.possible_causes, "is-cause"),
+        highlightedBlock("Lösung", entry.solution, "is-solution"),
+        highlightedBlock("Auswirkung", entry.impact, "is-impact")
+      );
+
+      const actions = document.createElement("div");
+      actions.className = "error-card-actions";
+      const similar = actionButton("Ähnliche Fehler finden", async (event) => {
+        event.currentTarget.disabled = true;
+        try {
+          await loadSimilarErrors({
+            description: [
+              entry.title,
+              entry.symptoms || entry.description,
+              entry.possible_causes,
+              entry.solution,
+              entry.impact
+            ].filter(Boolean).join(" "),
+            machine: entry.machine
+          });
+        } finally {
+          event.currentTarget.disabled = false;
+        }
+      });
+      similar.className = "btn btn-outline btn-sm";
+      actions.appendChild(similar);
+      if (canWrite("errors")) {
+        if (status !== "closed") {
+          actions.appendChild(actionButton("Schließen", async () => {
+            await api("/api/v1/errors/" + entry.id + "/close", { method: "POST" });
+            await load();
+          }, { successMessage: "Störung geschlossen.", busyText: "Schließt..." }));
+        }
+        actions.appendChild(actionButton("Bearbeiten", () => openErrorEdit(entry)));
+        actions.appendChild(actionButton("Löschen", async () => {
+          if (!window.confirm("Fehler '" + entry.title + "' wirklich löschen?")) return;
+          await api("/api/v1/errors/" + entry.id, { method: "DELETE" });
+          await load();
+        }, true));
+      }
+
+      card.append(header, metrics, blocks, actions);
+      return card;
+    }
+
     function renderErrors() {
       const query = searchInput ? searchInput.value.trim().toLowerCase() : "";
+      const selectedFilter = activeErrorFilter();
       const filteredErrors = currentErrors.filter((entry) => {
+        if (!errorMatchesFilter(entry, selectedFilter)) return false;
+        if (statusFilter && statusFilter.value && (entry.status || "open") !== statusFilter.value) return false;
+        if (severityFilter && severityFilter.value && (entry.severity || "medium") !== severityFilter.value) return false;
+        if (categoryFilter && categoryFilter.value && (entry.cause_category || "") !== categoryFilter.value) return false;
         if (!query) return true;
-        return [
-          entry.error_code,
-          entry.machine,
-          entry.title,
-          entry.possible_causes,
-          entry.solution,
-          entry.department && entry.department.name
-        ].filter(Boolean).join(" ").toLowerCase().includes(query);
+        return incidentSearchText(entry).includes(query);
       });
       list.innerHTML = "";
-      if (errorCount) errorCount.textContent = filteredErrors.length + " Einträge";
+      if (filterSummary) {
+        filterSummary.textContent = filteredErrors.length + " von " + currentErrors.length + " Einträgen sichtbar";
+      }
       if (!filteredErrors.length) {
-        list.innerHTML = '<tr><td colspan="6"><div class="guided-empty-state"><strong>Keine passenden Fehler gefunden</strong><p>Beispielsuche: Fehlercode, Maschine oder Symptom. Wenn es ein neuer Fall ist, lege ihn mit Ursache und Lösung im Katalog an.</p></div></td></tr>';
+        list.innerHTML = '<div class="guided-empty-state"><strong>Keine passenden Fehler gefunden</strong><p>Beispielsuche: Fehlercode, Maschine oder Symptom. Wenn es ein neuer Fall ist, lege ihn mit Ursache und Lösung im Katalog an.</p></div>';
         return;
       }
       filteredErrors.forEach((entry) => {
-        const cells = [
-          badge(entry.error_code, "badge badge-status is-open"),
-          entry.machine,
-          entry.title,
-          entry.department && entry.department.name,
-          highlightedBlock("Ursache", entry.possible_causes, "is-cause"),
-          highlightedBlock("Lösung", entry.solution, "is-solution")
-        ];
-        if (canWrite("errors")) {
-          const actions = document.createElement("div");
-          actions.className = "table-actions";
-          actions.appendChild(actionButton("Bearbeiten", () => openErrorEdit(entry)));
-          actions.appendChild(actionButton("Löschen", async () => {
-            if (!window.confirm("Fehler '" + entry.title + "' wirklich löschen?")) return;
-            await api("/api/v1/errors/" + entry.id, { method: "DELETE" });
-            await load();
-          }, true));
-          cells.push(actions);
-        }
-        list.appendChild(row(cells));
+        list.appendChild(errorCard(entry));
       });
     }
 
     async function load() {
       currentErrors = listData(await api("/api/v1/errors?limit=100"));
+      updateIncidentStats(currentErrors);
+      populateIncidentCategoryFilter(currentErrors);
       renderErrors();
     }
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       const data = Object.fromEntries(new FormData(form).entries());
-      data.description = data.title;
+      data.description = data.symptoms || data.title;
       const message = document.querySelector("[data-error-message]");
       setFormBusy(form, true, "Speichert...");
       try {
@@ -1340,7 +1891,7 @@
           });
           analysisBox.hidden = false;
           analysisBox.querySelectorAll("[data-error-analysis-field]").forEach((field) => {
-            field.value = currentAnalysis[field.dataset.errorAnalysisField] || "";
+            field.value = analysisValue(currentAnalysis, field.dataset.errorAnalysisField);
           });
           setStatusMessage(message, "Analyse erstellt.");
           await enrichErrorAnalysis(data, message);
@@ -1366,6 +1917,8 @@
         form.elements.machine.value = values.machine || "";
         form.elements.department.value = values.department || "";
         form.elements.title.value = values.title || "";
+        if (form.elements.symptoms) form.elements.symptoms.value = values.symptoms || "";
+        if (form.elements.description) form.elements.description.value = values.symptoms || "";
         form.elements.possible_causes.value = values.possible_causes || "";
         form.elements.solution.value = values.solution || "";
         if (currentAssistantResult) updateErrorRagPanels(currentAssistantResult);
@@ -1375,12 +1928,49 @@
     }
 
     if (searchInput) {
+      const query = new URLSearchParams(window.location.search);
+      searchInput.value = query.get("search") || query.get("q") || "";
       searchInput.addEventListener("input", renderErrors);
     }
+
+    [statusFilter, severityFilter, categoryFilter].filter(Boolean).forEach((filter) => {
+      filter.addEventListener("change", renderErrors);
+    });
+
+    if (filterReset) {
+      filterReset.addEventListener("click", () => {
+        if (searchInput) searchInput.value = "";
+        if (statusFilter) statusFilter.value = "";
+        if (severityFilter) severityFilter.value = "";
+        if (categoryFilter) categoryFilter.value = "";
+        filterButtons.forEach((item) => item.classList.toggle("is-active", item.dataset.errorFilter === "all"));
+        renderErrors();
+      });
+    }
+
+    filterButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        filterButtons.forEach((item) => item.classList.toggle("is-active", item === button));
+        renderErrors();
+      });
+    });
 
     if (searchFocus && searchInput) {
       searchFocus.addEventListener("click", () => {
         searchInput.focus();
+      });
+    }
+
+    if (similarFocus) {
+      similarFocus.addEventListener("click", async () => {
+        const description = searchInput && searchInput.value.trim()
+          ? searchInput.value.trim()
+          : (currentErrors[0] && [currentErrors[0].title, currentErrors[0].possible_causes].filter(Boolean).join(" "));
+        if (!description) {
+          if (searchInput) searchInput.focus();
+          return;
+        }
+        await loadSimilarErrors({ description });
       });
     }
 
@@ -1575,7 +2165,7 @@
       };
     }
 
-    function permissionSummary(permission) {
+    function permissionZusammenfassung(permission) {
       const parts = [];
       if (permission.can_view) parts.push("Anzeigen");
       if (permission.can_write) parts.push("Bearbeiten");
@@ -1617,7 +2207,7 @@
       return payload;
     }
 
-    function permissionChangeSummary(payload) {
+    function permissionChangeZusammenfassung(payload) {
       const changes = [];
       schemaDashboards().forEach((dashboard) => {
         const before = (selectedUser.permissions && selectedUser.permissions[dashboard]) || {
@@ -1632,8 +2222,8 @@
         };
         if (!permissionChanged(before, after)) return;
         changes.push(
-          dashboardLabel(dashboard) + ": " + permissionSummary(before)
-            + " -> " + permissionSummary(after)
+          dashboardLabel(dashboard) + ": " + permissionZusammenfassung(before)
+            + " -> " + permissionZusammenfassung(after)
         );
       });
       return changes;
@@ -1673,7 +2263,7 @@
       selectedUser = item;
       editor.hidden = false;
       if (editorTitle) {
-        editorTitle.textContent = item.username + " - Rechte je Dashboard";
+        editorTitle.textContent = item.username + " - Rechte je Cockpit";
       }
       if (permissionDefaults) {
         permissionDefaults.textContent = "Rollen-Default: " + item.role
@@ -1703,7 +2293,7 @@
           name.textContent = dashboardLabel(dashboard);
           const defaultHint = document.createElement("p");
           defaultHint.className = "panel-meta";
-          defaultHint.textContent = "Default: " + permissionSummary(defaultPermission);
+          defaultHint.textContent = "Default: " + permissionZusammenfassung(defaultPermission);
           label.append(name, defaultHint);
           permissionList.appendChild(row([
             label,
@@ -1732,7 +2322,7 @@
         event.preventDefault();
         if (!selectedUser) return;
         const payload = collectPermissionPayload();
-        const changes = permissionChangeSummary(payload);
+        const changes = permissionChangeZusammenfassung(payload);
         if (changes.length) {
           const confirmed = window.confirm("Diese Rechte speichern?\n\n" + changes.join("\n"));
           if (!confirmed) return;
@@ -2091,7 +2681,7 @@
       });
       if (!response.ok) {
         const errorData = await response.json().catch(() => null);
-        throw new Error((errorData && (errorData.message || errorData.error)) || "Upload fehlgeschlagen");
+        throw new Error((errorData && (errorData.message || errorData.error)) || "Hochladen fehlgeschlagen");
       }
       return response.json();
     }
@@ -2113,7 +2703,7 @@
       nameEl.textContent = employee.name;
       const pnr = document.createElement("p");
       pnr.className = "resource-card-subtitle";
-      pnr.textContent = employee.personnel_number || "–";
+      pnr.textContent = employee.personnel_number || "-";
       titleBlock.append(nameEl, pnr);
 
       const cardBadges = document.createElement("div");
@@ -2285,9 +2875,13 @@
     const BASE_EMP = "/api/v1/employees";
     const BASE_AUTH = "/api/v1/auth";
 
+    const form = document.querySelector("[data-vac-form]");
     const empSel = document.querySelector("[data-vac-employee]");
     const startInput = document.querySelector("[data-vac-start]");
     const endInput = document.querySelector("[data-vac-end]");
+    const shiftSelect = document.querySelector("[data-vac-shift]");
+    const representativeSelect = document.querySelector("[data-vac-representative]");
+    const reasonInput = document.querySelector("[data-vac-reason]");
     const daysWrap = document.querySelector("[data-vac-days-wrap]");
     const daysBadge = document.querySelector("[data-vac-days-count]");
     const notesInput = document.querySelector("[data-vac-notes]");
@@ -2296,13 +2890,18 @@
     const pendingList = document.querySelector("[data-vac-pending-list]");
     const pendingEmpty = document.querySelector("[data-vac-pending-empty]");
     const pendingCount = document.querySelector("[data-vac-pending-count]");
+    const conflictCount = document.querySelector("[data-vac-conflict-count]");
     const yearSel = document.querySelector("[data-vac-year]");
     const summaryList = document.querySelector("[data-vac-summary-list]");
     const filterStatus = document.querySelector("[data-vac-filter-status]");
     const filterBtn = document.querySelector("[data-vac-filter-btn]");
     const tableBody = document.querySelector("[data-vac-table-body]");
     const tableEmpty = document.querySelector("[data-vac-empty]");
+    const historyList = document.querySelector("[data-vac-history-list]");
     const balancePreview = document.querySelector("[data-vac-balance-preview]");
+    const impactPreview = document.querySelector("[data-vac-impact]");
+    const calendarList = document.querySelector("[data-vac-calendar-list]");
+    const teamStatus = document.querySelector("[data-vac-team-status]");
     const selectedAvailableEl = document.querySelector("[data-vac-selected-available]");
     const usedTotalEl = document.querySelector("[data-vac-used-total]");
     const pendingTotalEl = document.querySelector("[data-vac-pending-total]");
@@ -2310,7 +2909,9 @@
     let currentUser = user();
     let employeeBalances = new Map();
     let employees = [];
+    let allRequests = [];
     let sending = false;
+    let impactRequestToken = 0;
 
     function fmtDate(iso) {
       if (!iso) return "-";
@@ -2338,9 +2939,11 @@
       );
     }
 
-    function canWithdrawRequest(vacation) {
-      if (!currentUser || !vacation) return false;
-      return currentUser.role === "master_admin" || currentUser.employee_id === vacation.employee_id;
+    function canCancelRequest(vacation) {
+      if (!currentUser || !vacation || vacation.status === "cancelled") return false;
+      if (currentUser.role === "master_admin") return true;
+      if (currentUser.employee_id === vacation.employee_id) return true;
+      return canDecideRequest(vacation);
     }
 
     function setMessage(message, type) {
@@ -2354,9 +2957,18 @@
       if (!container) return;
       container.innerHTML = "";
       const loading = document.createElement("p");
-      loading.className = "panel-meta";
+      loading.className = "empty-state";
       loading.textContent = message;
       container.appendChild(loading);
+    }
+
+    function renderEmpty(parent, message) {
+      if (!parent) return;
+      parent.innerHTML = "";
+      const empty = document.createElement("p");
+      empty.className = "empty-state";
+      empty.textContent = message;
+      parent.appendChild(empty);
     }
 
     function countWorkdays(start, end) {
@@ -2370,15 +2982,17 @@
       return count;
     }
 
-    function selectedBalance() {
-      const employeeId = parseInt(empSel.value || "0", 10);
-      return employeeBalances.get(employeeId) || null;
+    function selectedEmployeeId() {
+      return parseInt(empSel.value || "0", 10);
     }
 
-    function selectedEmployeeName() {
-      const employeeId = parseInt(empSel.value || "0", 10);
-      const employee = employees.find((item) => item.id === employeeId);
-      return employee ? employee.name : "Mitarbeiter";
+    function selectedEmployee() {
+      const employeeId = selectedEmployeeId();
+      return employees.find((item) => item.id === employeeId) || null;
+    }
+
+    function selectedBalance() {
+      return employeeBalances.get(selectedEmployeeId()) || null;
     }
 
     function requestedDays() {
@@ -2388,12 +3002,43 @@
       return countWorkdays(start, end);
     }
 
+    function shiftLabel(value) {
+      const labels = {
+        Frueh: "Früh",
+        Spaet: "Spät",
+        Nacht: "Nacht",
+        Tag: "Tagdienst",
+        Alle: "Alle Schichten"
+      };
+      return labels[value] || "Keine feste Schicht";
+    }
+
+    function statusLabel(status) {
+      return {
+        approved: "Genehmigt",
+        rejected: "Abgelehnt",
+        pending: "Ausstehend",
+        cancelled: "Storniert"
+      }[status] || status || "-";
+    }
+
+    function statusBadge(status) {
+      const badge = document.createElement("span");
+      badge.className = "vacation-status-badge is-" + (status || "muted");
+      badge.textContent = statusLabel(status);
+      return badge;
+    }
+
+    function impactBadge(level) {
+      const badge = document.createElement("span");
+      badge.className = "vacation-impact-badge is-" + (level || "ok");
+      badge.textContent = level === "critical" ? "Kritisch" : (level === "warning" ? "Warnung" : "OK");
+      return badge;
+    }
+
     function validationError() {
-      const employeeId = empSel.value;
-      const start = startInput.value;
-      const end = endInput.value;
-      if (!employeeId || !start || !end) return "";
-      if (end < start) return "Enddatum darf nicht vor dem Startdatum liegen.";
+      if (!empSel.value || !startInput.value || !endInput.value) return "";
+      if (endInput.value < startInput.value) return "Enddatum darf nicht vor dem Startdatum liegen.";
       const days = requestedDays();
       if (!days) return "Im gewählten Zeitraum liegt kein Arbeitstag.";
       const balance = selectedBalance();
@@ -2407,20 +3052,23 @@
       const balance = selectedBalance();
       const balances = Array.from(employeeBalances.values());
       const usedTotal = balances.reduce((sum, item) => sum + (item.used || 0), 0);
-      const pendingTotal = balances.reduce((sum, item) => sum + (item.pending || 0), 0);
-      if (selectedAvailableEl) {
-        selectedAvailableEl.textContent = balance ? String(balance.available) : "-";
-      }
+      const reservedTotal = balances.reduce((sum, item) => sum + (item.pending || 0), 0);
+      const riskyRequests = allRequests.filter((item) => (
+        ["pending", "approved"].includes(item.status)
+        && ["warning", "critical"].includes(item.impact_level)
+      ));
+      if (selectedAvailableEl) selectedAvailableEl.textContent = balance ? String(balance.available) : "-";
       if (usedTotalEl) usedTotalEl.textContent = String(usedTotal);
-      if (pendingTotalEl) pendingTotalEl.textContent = String(pendingTotal);
+      if (pendingTotalEl) pendingTotalEl.textContent = String(reservedTotal);
+      if (conflictCount) conflictCount.textContent = String(riskyRequests.length);
     }
 
     function updateDaysCount() {
       const days = requestedDays();
-      if (days !== null) {
+      if (days !== null && daysBadge && daysWrap) {
         daysBadge.textContent = days + " Arbeitstage";
         daysWrap.hidden = false;
-      } else {
+      } else if (daysWrap) {
         daysWrap.hidden = true;
       }
       updateBalancePreview();
@@ -2428,6 +3076,7 @@
 
     function updateBalancePreview() {
       const balance = selectedBalance();
+      const employee = selectedEmployee();
       const days = requestedDays();
       const error = validationError();
       if (!balancePreview) return;
@@ -2435,16 +3084,16 @@
       if (error) {
         balancePreview.textContent = error;
       } else if (balance && days !== null) {
-        balancePreview.textContent = selectedEmployeeName() + ": "
+        balancePreview.textContent = employee.name + ": "
           + balance.available + " Tage verfügbar, "
           + days + " Tage angefragt.";
-      } else if (balance) {
-        balancePreview.textContent = selectedEmployeeName() + ": "
+      } else if (balance && employee) {
+        balancePreview.textContent = employee.name + ": "
           + balance.available + " verfügbar, "
           + balance.pending + " reserviert, "
           + balance.used + " genehmigt.";
       } else {
-        balancePreview.textContent = "Waehle Mitarbeiter und Zeitraum.";
+        balancePreview.textContent = "Wähle Mitarbeiter und Zeitraum.";
       }
       if (!sending) submitBtn.disabled = Boolean(error && empSel.value && startInput.value && endInput.value);
     }
@@ -2472,95 +3121,183 @@
       return false;
     }
 
-    function renderEmpty(parent, message) {
-      parent.innerHTML = "";
-      const empty = document.createElement("p");
-      empty.className = "panel-meta";
-      empty.textContent = message;
-      parent.appendChild(empty);
+    function createMetric(label, value) {
+      const item = document.createElement("span");
+      item.className = "vacation-metric";
+      const strong = document.createElement("strong");
+      strong.textContent = value || "-";
+      const small = document.createElement("small");
+      small.textContent = label;
+      item.append(strong, small);
+      return item;
     }
 
-    function statusBadge(status) {
-      const statusMap = {
-        approved: "badge-success",
-        rejected: "badge-error",
-        pending: "badge-warning"
-      };
-      const labelMap = {
-        approved: "Genehmigt",
-        rejected: "Abgelehnt",
-        pending: "Ausstehend"
-      };
-      const badge = document.createElement("span");
-      badge.className = "badge " + (statusMap[status] || "badge-neutral");
-      badge.textContent = labelMap[status] || status || "-";
-      return badge;
+    function createMetaLine(parts) {
+      const line = document.createElement("p");
+      line.className = "vacation-card-meta";
+      line.textContent = parts.filter(Boolean).join(" · ");
+      return line;
     }
 
-    function balanceCell(value, kind) {
-      const cell = document.createElement("td");
-      const badge = document.createElement("span");
-      const numericValue = Number(value || 0);
-      badge.className = "vacation-balance-chip";
-      if (kind === "available" && numericValue <= 0) {
-        badge.classList.add("is-critical");
-      } else if (kind === "available" && numericValue <= 5) {
-        badge.classList.add("is-warning");
-      } else if (kind === "pending" && numericValue >= 5) {
-        badge.classList.add("is-warning");
-      } else if (kind === "used") {
-        badge.classList.add("is-muted");
+    function requestCard(vacation, mode) {
+      const card = document.createElement("article");
+      card.className = "vacation-request-card is-" + (vacation.impact_level || "ok");
+
+      const header = document.createElement("header");
+      const titleWrap = document.createElement("div");
+      const title = document.createElement("h3");
+      title.textContent = vacation.employee ? vacation.employee.name : String(vacation.employee_id);
+      titleWrap.append(
+        title,
+        createMetaLine([
+          vacation.department || (vacation.employee && vacation.employee.department),
+          fmtDate(vacation.start_date) + " bis " + fmtDate(vacation.end_date),
+          vacation.days_used + " Tage",
+          shiftLabel(vacation.shift_type)
+        ])
+      );
+      const badges = document.createElement("div");
+      badges.className = "vacation-card-badges";
+      badges.append(statusBadge(vacation.status), impactBadge(vacation.impact_level));
+      header.append(titleWrap, badges);
+
+      const metrics = document.createElement("div");
+      metrics.className = "vacation-card-metrics";
+      const balance = employeeBalances.get(vacation.employee_id);
+      metrics.append(
+        createMetric("Verfügbar", balance ? String(balance.available) : "-"),
+        createMetric("Vertreter", vacation.representative ? vacation.representative.name : "offen"),
+        createMetric("Entscheider", vacation.approved_by || "offen")
+      );
+
+      const body = document.createElement("div");
+      body.className = "vacation-card-body";
+      if (vacation.reason) body.appendChild(createMetaLine(["Grund", vacation.reason]));
+      if (vacation.notes) body.appendChild(createMetaLine(["Notiz", vacation.notes]));
+      if (vacation.impact_summary) body.appendChild(createMetaLine(["Auswirkung", vacation.impact_summary]));
+
+      const actions = document.createElement("div");
+      actions.className = "vacation-card-actions";
+      if (mode === "pending" && canDecideRequest(vacation)) {
+        const approveBtn = document.createElement("button");
+        approveBtn.className = "btn btn-success btn-xs";
+        approveBtn.type = "button";
+        approveBtn.textContent = "Genehmigen";
+        approveBtn.addEventListener("click", () => decide(vacation.id, "approve"));
+        const rejectBtn = document.createElement("button");
+        rejectBtn.className = "btn btn-error btn-xs";
+        rejectBtn.type = "button";
+        rejectBtn.textContent = "Ablehnen";
+        rejectBtn.addEventListener("click", () => decide(vacation.id, "reject"));
+        actions.append(approveBtn, rejectBtn);
       }
-      badge.textContent = String(numericValue);
-      cell.appendChild(badge);
-      return cell;
+      if (canCancelRequest(vacation) && ["pending", "approved"].includes(vacation.status)) {
+        const cancelBtn = document.createElement("button");
+        cancelBtn.className = "btn btn-outline btn-xs";
+        cancelBtn.type = "button";
+        cancelBtn.textContent = "Stornieren";
+        cancelBtn.addEventListener("click", () => cancelVacation(vacation.id));
+        actions.appendChild(cancelBtn);
+      }
+      if (!actions.children.length) {
+        const state = document.createElement("span");
+        state.className = "vacation-card-state";
+        state.textContent = statusLabel(vacation.status);
+        actions.appendChild(state);
+      }
+
+      card.append(header, metrics, body, actions);
+      return card;
     }
 
-    function renderSummaryTable(data) {
-      const table = document.createElement("table");
-      table.className = "table table-sm vacation-summary-table";
-
-      const thead = document.createElement("thead");
-      const headerRow = document.createElement("tr");
-      ["Mitarbeiter", "Abteilung", "Verfuegbar", "Reserviert", "Genehmigt", "Gesamt"].forEach((label) => {
-        const th = document.createElement("th");
-        th.textContent = label;
-        headerRow.appendChild(th);
-      });
-      thead.appendChild(headerRow);
-
-      const tbody = document.createElement("tbody");
+    function renderSummaryCards(data) {
+      summaryList.innerHTML = "";
       data.forEach((summary) => {
-        const row = document.createElement("tr");
-        if ((summary.available || 0) <= 0) {
-          row.classList.add("is-critical");
-        } else if ((summary.available || 0) <= 5 || (summary.pending || 0) >= 5) {
-          row.classList.add("is-warning");
-        }
+        const card = document.createElement("article");
+        const available = Number(summary.available || 0);
+        card.className = "vacation-summary-card";
+        if (available <= 0) card.classList.add("is-critical");
+        else if (available <= 5 || Number(summary.pending || 0) >= 5) card.classList.add("is-warning");
 
-        const nameCell = document.createElement("td");
-        nameCell.className = "vacation-summary-name";
-        nameCell.textContent = summary.name || "-";
+        const header = document.createElement("header");
+        const title = document.createElement("h3");
+        title.textContent = summary.name || "-";
+        const department = document.createElement("p");
+        department.textContent = [
+          summary.department || "Bereich offen",
+          summary.current_shift || summary.shift_model || "",
+          summary.team ? "Team " + summary.team : ""
+        ].filter(Boolean).join(" · ");
+        header.append(title, department);
 
-        const departmentCell = document.createElement("td");
-        departmentCell.textContent = summary.department || "-";
-
-        const totalCell = document.createElement("td");
-        totalCell.textContent = String(summary.total || 0);
-
-        row.append(
-          nameCell,
-          departmentCell,
-          balanceCell(summary.available, "available"),
-          balanceCell(summary.pending, "pending"),
-          balanceCell(summary.used, "used"),
-          totalCell
+        const numbers = document.createElement("div");
+        numbers.className = "vacation-summary-numbers";
+        numbers.append(
+          createMetric("Verfügbar", String(summary.available || 0)),
+          createMetric("Reserviert", String(summary.pending || 0)),
+          createMetric("Genehmigt", String(summary.used || 0)),
+          createMetric("Gesamt", String(summary.total || 0))
         );
-        tbody.appendChild(row);
-      });
 
-      table.append(thead, tbody);
-      summaryList.appendChild(table);
+        const qualification = document.createElement("p");
+        qualification.className = "vacation-card-meta";
+        qualification.textContent = summary.qualifications
+          ? "Qualifikation: " + summary.qualifications
+          : "Qualifikation nicht hinterlegt";
+        card.append(header, numbers, qualification);
+        summaryList.appendChild(card);
+      });
+    }
+
+    function renderCalendarList(requests) {
+      if (!calendarList) return;
+      const active = requests
+        .filter((item) => ["pending", "approved"].includes(item.status))
+        .sort((a, b) => String(a.start_date).localeCompare(String(b.start_date)))
+        .slice(0, 8);
+      calendarList.innerHTML = "";
+      if (!active.length) {
+        renderEmpty(calendarList, "Keine aktiven Urlaubszeiträume im ausgewählten Jahr.");
+        if (teamStatus) teamStatus.textContent = "Keine offenen Personalwarnungen.";
+        return;
+      }
+      const critical = active.filter((item) => item.impact_level === "critical").length;
+      const warning = active.filter((item) => item.impact_level === "warning").length;
+      if (teamStatus) {
+        teamStatus.textContent = critical
+          ? critical + " kritische Personalhinweise"
+          : (warning ? warning + " Warnhinweise im Team" : "Teamlage ohne auffällige Konflikte.");
+      }
+      active.forEach((vacation) => {
+        const item = document.createElement("article");
+        item.className = "vacation-calendar-item is-" + (vacation.impact_level || "ok");
+        const title = document.createElement("strong");
+        title.textContent = vacation.employee ? vacation.employee.name : String(vacation.employee_id);
+        const meta = createMetaLine([
+          fmtDate(vacation.start_date) + " bis " + fmtDate(vacation.end_date),
+          statusLabel(vacation.status),
+          vacation.impact_summary || "keine Warnung"
+        ]);
+        item.append(title, meta);
+        calendarList.appendChild(item);
+      });
+    }
+
+    function fillHiddenHistoryTable(data) {
+      if (!tableBody) return;
+      tableBody.innerHTML = "";
+      data.forEach((vacation) => {
+        const row = document.createElement("tr");
+        ["employee", "start_date", "days_used", "status", "notes"].forEach((key) => {
+          const cell = document.createElement("td");
+          if (key === "employee") cell.textContent = vacation.employee ? vacation.employee.name : String(vacation.employee_id);
+          else if (key === "start_date") cell.textContent = fmtDate(vacation.start_date) + " - " + fmtDate(vacation.end_date);
+          else if (key === "status") cell.textContent = statusLabel(vacation.status);
+          else cell.textContent = String(vacation[key] || "-");
+          row.appendChild(cell);
+        });
+        tableBody.appendChild(row);
+      });
     }
 
     async function loadCurrentUser() {
@@ -2572,24 +3309,46 @@
     }
 
     async function loadVacEmployees() {
-      empSel.innerHTML = '<option value="" disabled selected>Bitte waehlen...</option>';
+      empSel.innerHTML = '<option value="" disabled selected>Bitte wählen...</option>';
+      representativeSelect.innerHTML = '<option value="">Noch nicht festgelegt</option>';
       try {
-        employees = listData(await api(BASE_EMP));
+        employees = listData(await api(BASE_EMP + "?limit=200"));
       } catch (err) {
         employees = currentUser && currentUser.employee ? [currentUser.employee] : [];
         setMessage("Mitarbeiter konnten nicht geladen werden: " + err.message, "error");
       }
       employees.forEach((employee) => {
-        const option = document.createElement("option");
-        option.value = employee.id;
-        option.textContent = employee.name + (employee.department ? " (" + employee.department + ")" : "");
-        empSel.appendChild(option);
+        const label = employee.name + (employee.department ? " (" + employee.department + ")" : "");
+        const employeeOption = document.createElement("option");
+        employeeOption.value = employee.id;
+        employeeOption.textContent = label;
+        empSel.appendChild(employeeOption);
+
+        const representativeOption = document.createElement("option");
+        representativeOption.value = employee.id;
+        representativeOption.textContent = label;
+        representativeSelect.appendChild(representativeOption);
       });
       if (currentUser && currentUser.role !== "master_admin" && currentUser.employee_id) {
         empSel.value = String(currentUser.employee_id);
         empSel.disabled = true;
       }
+      syncRepresentativeOptions();
       updateBalancePreview();
+    }
+
+    function syncRepresentativeOptions() {
+      const employee = selectedEmployee();
+      Array.from(representativeSelect.options).forEach((option) => {
+        if (!option.value) return;
+        const candidate = employees.find((item) => String(item.id) === option.value);
+        option.hidden = Boolean(
+          employee
+          && candidate
+          && (candidate.id === employee.id || candidate.department !== employee.department)
+        );
+      });
+      if (representativeSelect.selectedOptions[0]?.hidden) representativeSelect.value = "";
     }
 
     async function loadSummary() {
@@ -2597,14 +3356,11 @@
       try {
         const data = listData(await api(BASE_VAC + "/summary?year=" + encodeURIComponent(yearSel.value)));
         employeeBalances = new Map(data.map((item) => [item.employee_id, item]));
-        summaryList.innerHTML = "";
         if (!data.length) {
           renderEmpty(summaryList, "Keine Mitarbeiterdaten für dieses Jahr.");
-          updateKpis();
-          updateBalancePreview();
-          return;
+        } else {
+          renderSummaryCards(data);
         }
-        renderSummaryTable(data);
         updateKpis();
         updateBalancePreview();
       } catch (err) {
@@ -2612,75 +3368,17 @@
       }
     }
 
-    function renderPendingCard(vacation) {
-      const card = document.createElement("article");
-      card.className = "vacation-pending-card";
-
-      const info = document.createElement("div");
-      const title = document.createElement("strong");
-      title.textContent = vacation.employee ? vacation.employee.name : String(vacation.employee_id);
-      const meta = document.createElement("p");
-      meta.className = "panel-meta";
-      const department = vacation.employee && vacation.employee.department ? vacation.employee.department : "-";
-      meta.textContent = department + " | " + fmtDate(vacation.start_date) + " - "
-        + fmtDate(vacation.end_date) + " | " + vacation.days_used + " Tage";
-      info.append(title, meta);
-
-      const balance = employeeBalances.get(vacation.employee_id);
-      const impact = document.createElement("p");
-      impact.className = "panel-meta";
-      impact.textContent = balance
-        ? "Reserviert: " + vacation.days_used + " Tage, aktuell verfügbar: " + balance.available
-        : "Reserviert: " + vacation.days_used + " Tage";
-      info.appendChild(impact);
-
-      if (vacation.notes) {
-        const notes = document.createElement("p");
-        notes.className = "panel-meta";
-        notes.textContent = vacation.notes;
-        info.appendChild(notes);
-      }
-
-      const actions = document.createElement("div");
-      actions.className = "vacation-card-actions";
-      if (canDecideRequest(vacation)) {
-        const approveBtn = document.createElement("button");
-        approveBtn.className = "btn btn-success btn-xs";
-        approveBtn.type = "button";
-        approveBtn.textContent = "Genehmigen";
-        approveBtn.addEventListener("click", () => decide(vacation.id, "approve"));
-
-        const rejectBtn = document.createElement("button");
-        rejectBtn.className = "btn btn-error btn-xs";
-        rejectBtn.type = "button";
-        rejectBtn.textContent = "Ablehnen";
-        rejectBtn.addEventListener("click", () => decide(vacation.id, "reject"));
-        actions.append(approveBtn, rejectBtn);
-      }
-      if (canWithdrawRequest(vacation)) {
-        const withdrawBtn = document.createElement("button");
-        withdrawBtn.className = "btn btn-ghost btn-xs";
-        withdrawBtn.type = "button";
-        withdrawBtn.textContent = "Zurückziehen";
-        withdrawBtn.addEventListener("click", () => withdraw(vacation.id));
-        actions.appendChild(withdrawBtn);
-      }
-      if (!actions.children.length) {
-        const state = document.createElement("span");
-        state.className = "badge badge-warning";
-        state.textContent = "Wartet";
-        actions.appendChild(state);
-      }
-
-      card.append(info, actions);
-      return card;
+    async function loadRequests() {
+      const params = new URLSearchParams({ year: yearSel.value });
+      allRequests = listData(await api(BASE_VAC + "?" + params.toString()));
+      updateKpis();
+      renderCalendarList(allRequests);
     }
 
     async function loadPending() {
-      setLoading(pendingList, "Ausstehende Antraege werden geladen...");
+      setLoading(pendingList, "Ausstehende Anträge werden geladen...");
       try {
-        const params = new URLSearchParams({ status: "pending", year: yearSel.value });
-        const data = listData(await api(BASE_VAC + "?" + params.toString()));
+        const data = allRequests.filter((item) => item.status === "pending");
         pendingList.innerHTML = "";
         if (pendingCount) pendingCount.textContent = String(data.length);
         if (!data.length) {
@@ -2689,55 +3387,66 @@
           return;
         }
         pendingEmpty.hidden = true;
-        data.forEach((vacation) => pendingList.appendChild(renderPendingCard(vacation)));
+        data.forEach((vacation) => pendingList.appendChild(requestCard(vacation, "pending")));
       } catch (err) {
         if (pendingCount) pendingCount.textContent = "0";
-        renderEmpty(pendingList, "Ausstehende Antraege konnten nicht geladen werden: " + err.message);
+        renderEmpty(pendingList, "Ausstehende Anträge konnten nicht geladen werden: " + err.message);
       }
     }
 
     async function loadHistory() {
-      tableBody.innerHTML = "";
-      const loadingRow = document.createElement("tr");
-      const loadingCell = document.createElement("td");
-      loadingCell.colSpan = 5;
-      loadingCell.className = "panel-meta";
-      loadingCell.textContent = "Historie wird geladen...";
-      loadingRow.appendChild(loadingCell);
-      tableBody.appendChild(loadingRow);
-      if (tableEmpty) tableEmpty.hidden = true;
+      if (!historyList) return;
+      setLoading(historyList, "Historie wird geladen...");
       try {
-        const params = new URLSearchParams({ year: yearSel.value });
-        if (filterStatus.value) params.set("status", filterStatus.value);
-        let data = listData(await api(BASE_VAC + "?" + params.toString()));
-        data = filterStatus.value ? data : data.filter((item) => item.status !== "pending");
-        tableBody.innerHTML = "";
+        let data = allRequests.slice();
+        if (filterStatus.value) data = data.filter((item) => item.status === filterStatus.value);
+        historyList.innerHTML = "";
+        fillHiddenHistoryTable(data);
         if (tableEmpty) tableEmpty.hidden = data.length > 0;
-        data.forEach((vacation) => {
-          const row = document.createElement("tr");
-          const nameCell = document.createElement("td");
-          nameCell.textContent = vacation.employee ? vacation.employee.name : String(vacation.employee_id);
-          const rangeCell = document.createElement("td");
-          rangeCell.textContent = fmtDate(vacation.start_date) + " - " + fmtDate(vacation.end_date);
-          const daysCell = document.createElement("td");
-          daysCell.textContent = String(vacation.days_used);
-          const statusCell = document.createElement("td");
-          statusCell.appendChild(statusBadge(vacation.status));
-          const notesCell = document.createElement("td");
-          notesCell.textContent = vacation.notes || "-";
-          row.append(nameCell, rangeCell, daysCell, statusCell, notesCell);
-          tableBody.appendChild(row);
-        });
+        if (!data.length) {
+          renderEmpty(historyList, "Keine Einträge vorhanden.");
+          return;
+        }
+        data.forEach((vacation) => historyList.appendChild(requestCard(vacation, "history")));
       } catch (err) {
-        tableBody.innerHTML = "";
-        const row = document.createElement("tr");
-        const cell = document.createElement("td");
-        cell.colSpan = 5;
-        cell.className = "panel-meta";
-        cell.textContent = "Historie konnte nicht geladen werden: " + err.message;
-        row.appendChild(cell);
-        tableBody.appendChild(row);
+        renderEmpty(historyList, "Historie konnte nicht geladen werden: " + err.message);
         if (tableEmpty) tableEmpty.hidden = true;
+      }
+    }
+
+    async function updateImpactPreview() {
+      updateDaysCount();
+      syncRepresentativeOptions();
+      const error = validationError();
+      if (!impactPreview) return;
+      impactPreview.classList.remove("is-ok", "is-warning", "is-critical", "is-error");
+      if (!empSel.value || !startInput.value || !endInput.value) {
+        impactPreview.textContent = "Die betriebliche Auswirkung erscheint nach der Auswahl.";
+        return;
+      }
+      if (error) {
+        impactPreview.classList.add("is-error");
+        impactPreview.textContent = error;
+        return;
+      }
+      const requestId = ++impactRequestToken;
+      impactPreview.textContent = "Auswirkung wird geprüft...";
+      try {
+        const params = new URLSearchParams({
+          employee_id: empSel.value,
+          start_date: startInput.value,
+          end_date: endInput.value,
+          shift_type: shiftSelect.value || "",
+          representative_employee_id: representativeSelect.value || ""
+        });
+        const preview = await api(BASE_VAC + "/impact?" + params.toString());
+        if (requestId !== impactRequestToken) return;
+        const impact = preview.impact || {};
+        impactPreview.classList.add("is-" + (impact.level || "ok"));
+        impactPreview.textContent = impact.summary || "Keine auffälligen Konflikte erkannt.";
+      } catch (err) {
+        impactPreview.classList.add("is-error");
+        impactPreview.textContent = err.message;
       }
     }
 
@@ -2752,11 +3461,11 @@
       }
     }
 
-    async function withdraw(id) {
+    async function cancelVacation(id) {
       try {
-        setMessage("Antrag wird zurückgezogen...", "");
-        await api(BASE_VAC + "/" + id, { method: "DELETE" });
-        setMessage("Antrag wurde zurückgezogen.", "success");
+        setMessage("Antrag wird storniert...", "");
+        await api(BASE_VAC + "/" + id + "/cancel", { method: "POST" });
+        setMessage("Antrag wurde storniert.", "success");
         await refreshVacationData();
       } catch (err) {
         setMessage(err.message, "error");
@@ -2765,15 +3474,18 @@
 
     async function refreshVacationData() {
       await loadSummary();
+      await loadRequests();
       await Promise.all([loadPending(), loadHistory()]);
+      await updateImpactPreview();
     }
 
-    async function handleSubmit() {
+    async function handleSubmit(event) {
+      event.preventDefault();
       const employeeId = empSel.value;
       const start = startInput.value;
       const end = endInput.value;
       if (!employeeId || !start || !end) {
-        setMessage("Bitte alle Pflichtfelder ausfuellen.", "error");
+        setMessage("Bitte alle Pflichtfelder ausfüllen.", "error");
         return;
       }
       const error = validationError();
@@ -2783,7 +3495,7 @@
       }
       sending = true;
       submitBtn.disabled = true;
-      setMessage("Wird gesendet...", "");
+      setMessage("Antrag wird gesendet...", "");
       try {
         await api(BASE_VAC, {
           method: "POST",
@@ -2791,12 +3503,18 @@
             employee_id: parseInt(employeeId, 10),
             start_date: start,
             end_date: end,
+            shift_type: shiftSelect.value || "",
+            representative_employee_id: representativeSelect.value || null,
+            reason: reasonInput.value,
             notes: notesInput.value
           })
         });
         setMessage("Antrag gestellt.", "success");
         startInput.value = "";
         endInput.value = "";
+        shiftSelect.value = "";
+        representativeSelect.value = "";
+        reasonInput.value = "";
         notesInput.value = "";
         daysWrap.hidden = true;
         await refreshVacationData();
@@ -2814,17 +3532,17 @@
     endInput.min = today;
     fillYearOptions();
 
-    empSel.addEventListener("change", () => {
-      updateKpis();
-      updateBalancePreview();
-    });
+    empSel.addEventListener("change", updateImpactPreview);
+    representativeSelect.addEventListener("change", updateImpactPreview);
+    shiftSelect.addEventListener("change", updateImpactPreview);
     startInput.addEventListener("change", async () => {
       const changed = syncYearFromStartDate();
-      updateDaysCount();
+      await updateImpactPreview();
       if (changed) await refreshVacationData();
     });
-    endInput.addEventListener("change", updateDaysCount);
-    submitBtn.addEventListener("click", handleSubmit);
+    endInput.addEventListener("change", updateImpactPreview);
+    if (form) form.addEventListener("submit", handleSubmit);
+    else submitBtn.addEventListener("click", handleSubmit);
     yearSel.addEventListener("change", refreshVacationData);
     filterBtn.addEventListener("click", loadHistory);
 
@@ -2837,16 +3555,16 @@
     const form = document.querySelector("[data-machine-form]");
     const historyPanel = document.querySelector("[data-machine-history-panel]");
     const historyTitle = document.querySelector("[data-machine-history-title]");
-    const historySummary = document.querySelector("[data-machine-history-summary]");
+    const historyZusammenfassung = document.querySelector("[data-machine-history-summary]");
     const historyCounts = document.querySelector("[data-machine-history-counts]");
     const historyList = document.querySelector("[data-machine-history-list]");
     const assistantForm = document.querySelector("[data-machine-assistant-form]");
     const assistantAnswer = document.querySelector("[data-machine-assistant-answer]");
-    const assistantSources = document.querySelector("[data-machine-assistant-sources]");
+    const assistantQuelles = document.querySelector("[data-machine-assistant-sources]");
     const assistantFocus = document.querySelector("[data-machine-assistant-focus]");
     const recommendationPanel = document.querySelector("[data-maintenance-recommendations-panel]");
     const recommendationList = document.querySelector("[data-maintenance-recommendations-list]");
-    const recommendationSummary = document.querySelector("[data-maintenance-recommendations-summary]");
+    const recommendationZusammenfassung = document.querySelector("[data-maintenance-recommendations-summary]");
     if (!list || !form || !token()) return;
     let activeHistoryMachine = null;
 
@@ -2900,7 +3618,7 @@
       if (!historyCounts) return;
       historyCounts.innerHTML = "";
       [
-        ["Tasks", counts.tasks || 0],
+        ["Aufgaben", counts.tasks || 0],
         ["Fehler", counts.errors || 0],
         ["Dokumente", counts.documents || 0],
         ["Gesamt", counts.total || 0]
@@ -2930,7 +3648,7 @@
       activeHistoryMachine = history.machine;
       historyPanel.hidden = false;
       if (historyTitle) historyTitle.textContent = "Anlagenakte: " + history.machine.name;
-      if (historySummary) historySummary.textContent = history.summary.text || "";
+      if (historyZusammenfassung) historyZusammenfassung.textContent = history.summary.text || "";
       renderHistoryCounts(history.source_counts || {});
       historyList.innerHTML = "";
       if (!history.timeline || !history.timeline.length) {
@@ -2973,10 +3691,10 @@
             ? "Ausweichantwort: "
             : "";
           setStatusMessage(assistantAnswer, fallback + result.answer);
-          renderSourcePanel(assistantSources, result.sources);
+          renderQuellePanel(assistantQuelles, result.sources);
         } catch (error) {
           setStatusMessage(assistantAnswer, error.message, true);
-          renderSourcePanel(assistantSources, []);
+          renderQuellePanel(assistantQuelles, []);
         } finally {
           setFormBusy(assistantForm, false);
         }
@@ -3004,7 +3722,7 @@
       title.textContent = (item.machine && item.machine.name) || "Maschine";
       const subtitle = document.createElement("p");
       subtitle.className = "resource-card-subtitle";
-      subtitle.textContent = item.reason || "Historie und Wissensquellen prüfen.";
+      subtitle.textContent = item.reason || "Historie und Quellen prüfen.";
       titleBlock.append(title, subtitle);
       const badges = document.createElement("div");
       badges.className = "resource-card-badges";
@@ -3015,9 +3733,9 @@
       metrics.className = "resource-meta-grid";
       [
         ["Score", String(item.score || 0)],
-        ["Tasks", String((item.source_counts && item.source_counts.tasks) || 0)],
+        ["Aufgaben", String((item.source_counts && item.source_counts.tasks) || 0)],
         ["Fehler", String((item.source_counts && item.source_counts.errors) || 0)],
-        ["RAG", String((item.source_counts && item.source_counts.rag_sources) || 0)]
+        ["Quellen", String((item.source_counts && item.source_counts.rag_sources) || 0)]
       ].forEach(([label, value]) => {
         const metric = document.createElement("div");
         metric.className = "resource-metric";
@@ -3049,15 +3767,15 @@
       if (!recommendationList) return;
       const items = Array.isArray(payload && payload.items) ? payload.items : listData(payload);
       recommendationList.innerHTML = "";
-      if (recommendationSummary) {
-        recommendationSummary.textContent = items.length
-          ? items.length + " praeventive Hinweise aus Tasks, Fehlern und RAG-Quellen."
+      if (recommendationZusammenfassung) {
+        recommendationZusammenfassung.textContent = items.length
+          ? items.length + " präventive Hinweise aus Aufgaben, Fehlern und Quellen."
           : "Keine auffälligen Wartungssignale gefunden.";
       }
       if (!items.length) {
         const empty = document.createElement("p");
         empty.className = "panel-meta";
-        empty.textContent = "Keine praeventiven Empfehlungen vorhanden.";
+        empty.textContent = "Keine präventiven Empfehlungen vorhanden.";
         recommendationList.appendChild(empty);
         return;
       }
@@ -3073,8 +3791,8 @@
         renderMaintenanceRecommendations(payload);
       } catch (error) {
         recommendationList.innerHTML = "";
-        if (recommendationSummary) {
-          recommendationSummary.textContent = "Praeventive Wartung konnte nicht geladen werden: " + error.message;
+        if (recommendationZusammenfassung) {
+          recommendationZusammenfassung.textContent = "Praeventive Wartung konnte nicht geladen werden: " + error.message;
         }
       }
     }
@@ -3094,6 +3812,87 @@
       });
     }
 
+    function renderMachineEmptyState(message) {
+      list.innerHTML = "";
+      const empty = document.createElement("article");
+      empty.className = "guided-empty-state empty-state";
+      const title = document.createElement("strong");
+      title.textContent = message;
+      const detail = document.createElement("p");
+      detail.textContent = canWrite("machines")
+        ? "Lege die erste Maschine an, damit Aufgaben, Störungen und Dokumente sauber zugeordnet werden."
+        : "Sobald Maschinen angelegt sind, erscheinen sie hier mit Status und Schnellaktionen.";
+      empty.append(title, detail);
+      list.appendChild(empty);
+    }
+
+    function machineRecordCard(machine) {
+      const card = document.createElement("article");
+      card.className = "record-card machine-record-card";
+      card.dataset.searchText = [
+        machine.name,
+        machine.produced_item,
+        machine.required_employees
+      ].filter(Boolean).join(" ");
+
+      const header = document.createElement("div");
+      header.className = "record-card-header";
+      const titleBlock = document.createElement("div");
+      const title = document.createElement("h3");
+      title.className = "record-card-title";
+      title.textContent = machine.name || "Maschine";
+      const subtitle = document.createElement("p");
+      subtitle.className = "record-card-subtitle";
+      subtitle.textContent = machine.produced_item || "Kein Produktionsinhalt hinterlegt";
+      titleBlock.append(title, subtitle);
+      header.append(titleBlock, badge("Aktiv", "badge badge-status is-done"));
+
+      const meta = document.createElement("div");
+      meta.className = "record-card-meta";
+      [
+        ["Personalbedarf", (machine.required_employees || 1) + " MA"],
+        ["Letzte Störung", machine.last_error || "Keine Angabe"],
+        ["Offene Aufgaben", String(machine.open_tasks || 0)]
+      ].forEach(([label, value]) => {
+        const item = document.createElement("span");
+        const itemLabel = document.createElement("small");
+        const itemValue = document.createElement("strong");
+        itemLabel.textContent = label;
+        itemValue.textContent = value;
+        item.append(itemLabel, itemValue);
+        meta.appendChild(item);
+      });
+
+      const actions = document.createElement("div");
+      actions.className = "record-card-actions";
+      const profileLink = document.createElement("a");
+      profileLink.className = "btn btn-primary btn-sm";
+      profileLink.href = "/machines/" + machine.id;
+      profileLink.textContent = "Profil";
+      actions.appendChild(profileLink);
+      actions.appendChild(actionButton("Historie", () => loadMachineHistory(machine)));
+      if (canWrite("machines")) {
+        actions.appendChild(actionButton("Bearbeiten", () => openMachineEdit(machine)));
+        actions.appendChild(actionButton("Löschen", async () => {
+          const confirmed = await confirmAction({
+            title: "Maschine löschen",
+            message: machine.name + " wirklich löschen? Zugeordnete Historie bleibt in den Fachseiten sichtbar.",
+            confirmText: "Löschen"
+          });
+          if (!confirmed) return;
+          await api("/api/v1/machines/" + machine.id, { method: "DELETE" });
+          await load();
+        }, {
+          danger: true,
+          busyText: "Löscht...",
+          successMessage: "Maschine gelöscht."
+        }));
+      }
+
+      card.append(header, meta, actions);
+      return card;
+    }
+
     async function load() {
       const machinePayload = await api("/api/v1/machines?limit=200");
       const machines = listData(machinePayload);
@@ -3103,27 +3902,11 @@
         machineCount.textContent = paginationTotal(machinePayload, machines) + " Maschinen";
       }
       if (!machines.length) {
-        list.innerHTML = '<tr><td colspan="4">Keine Maschinen vorhanden.</td></tr>';
+        renderMachineEmptyState("Noch keine Maschinen vorhanden.");
         return machines;
       }
       machines.forEach((machine) => {
-        const actions = document.createElement("div");
-        actions.className = "table-actions";
-        actions.appendChild(actionButton("Historie", () => loadMachineHistory(machine)));
-        if (canWrite("machines")) {
-          actions.appendChild(actionButton("Bearbeiten", () => openMachineEdit(machine)));
-          actions.appendChild(actionButton("Löschen", async () => {
-            if (!window.confirm(machine.name + " wirklich löschen?")) return;
-            await api("/api/v1/machines/" + machine.id, { method: "DELETE" });
-            await load();
-          }, true));
-        }
-        list.appendChild(row([
-          machine.name,
-          machine.produced_item,
-          String(machine.required_employees),
-          actions
-        ]));
+        list.appendChild(machineRecordCard(machine));
       });
       return machines;
     }
@@ -3163,6 +3946,491 @@
     }
   }
 
+  async function initMachineProfile() {
+    const root = document.querySelector("[data-machine-profile-page]");
+    if (!root || !token()) return;
+    const machineId = root.dataset.machineId;
+    const message = root.querySelector("[data-machine-profile-message]");
+    if (!machineId) {
+      setStatusMessage(message, "Maschinen-ID fehlt.", true);
+      return;
+    }
+
+    function profileData(payload) {
+      return payload && payload.machine ? payload : ((payload && payload.data) || {});
+    }
+
+    function profileList(selector) {
+      return root.querySelector(selector + " .machine-profile-list");
+    }
+
+    function valueText(value) {
+      if (value === 0) return "0";
+      return value || "-";
+    }
+
+    function dateLabel(value, options) {
+      if (!value) return "-";
+      const raw = String(value);
+      const parsed = new Date(raw.includes("T") ? raw : raw + "T00:00:00");
+      if (Number.isNaN(parsed.getTime())) return raw;
+      return parsed.toLocaleDateString("de-DE", options || {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric"
+      });
+    }
+
+    function minutesLabel(value) {
+      const minutes = Number(value || 0);
+      if (!minutes) return "0 min";
+      if (minutes < 60) return minutes + " min";
+      const hours = Math.floor(minutes / 60);
+      const rest = minutes % 60;
+      return rest ? hours + " h " + rest + " min" : hours + " h";
+    }
+
+    function machineStatusLabel(status) {
+      const labels = {
+        running: "Läuft",
+        stopped: "Stillstand",
+        maintenance: "Wartung",
+        warning: "Warnung",
+        offline: "Offline"
+      };
+      return labels[status] || status || "-";
+    }
+
+    function criticalityLabel(criticality) {
+      const labels = {
+        critical: "Kritisch",
+        high: "Hoch",
+        normal: "Normal",
+        low: "Niedrig"
+      };
+      return labels[criticality] || criticality || "Normal";
+    }
+
+    function criticalityBadgeClass(criticality) {
+      if (criticality === "critical" || criticality === "high") {
+        return "badge badge-priority is-urgent";
+      }
+      if (criticality === "low") return "badge badge-priority is-normal";
+      return "badge badge-status is-done";
+    }
+
+    function severityLabel(severity) {
+      const labels = {
+        critical: "Kritisch",
+        high: "Hoch",
+        medium: "Mittel",
+        low: "Niedrig"
+      };
+      return labels[severity] || severity || "-";
+    }
+
+    function errorStatusLabel(status) {
+      const labels = {
+        open: "Offen",
+        in_progress: "In Arbeit",
+        closed: "Geschlossen"
+      };
+      return labels[status] || status || "-";
+    }
+
+    function profileEmpty(text, action) {
+      const empty = document.createElement("div");
+      empty.className = "machine-profile-empty";
+      const strong = document.createElement("strong");
+      strong.textContent = text;
+      empty.appendChild(strong);
+      if (action && action.href) {
+        const link = document.createElement("a");
+        link.className = "btn btn-outline btn-sm";
+        link.href = action.href;
+        link.textContent = action.label || "Öffnen";
+        empty.appendChild(link);
+      }
+      return empty;
+    }
+
+    function metric(label, value) {
+      const item = document.createElement("span");
+      const labelElement = document.createElement("small");
+      const valueElement = document.createElement("strong");
+      labelElement.textContent = label;
+      valueElement.textContent = valueText(value);
+      item.append(labelElement, valueElement);
+      return item;
+    }
+
+    function profileRecordCard(data) {
+      const card = document.createElement("article");
+      card.className = "machine-profile-record";
+
+      const header = document.createElement("div");
+      header.className = "machine-profile-record-header";
+      const titleBlock = document.createElement("div");
+      const title = document.createElement("h3");
+      title.textContent = data.title || "-";
+      const subtitle = document.createElement("p");
+      subtitle.textContent = data.subtitle || "";
+      titleBlock.append(title, subtitle);
+      const badges = document.createElement("div");
+      badges.className = "machine-profile-record-badges";
+      (data.badges || []).forEach((item) => {
+        badges.appendChild(badge(item[0], item[1]));
+      });
+      header.append(titleBlock, badges);
+      card.appendChild(header);
+
+      if (data.summary) {
+        const summary = document.createElement("p");
+        summary.className = "machine-profile-record-summary";
+        summary.textContent = data.summary;
+        card.appendChild(summary);
+      }
+
+      if (data.metrics && data.metrics.length) {
+        const metrics = document.createElement("div");
+        metrics.className = "machine-profile-record-metrics";
+        data.metrics.forEach((item) => metrics.appendChild(metric(item[0], item[1])));
+        card.appendChild(metrics);
+      }
+
+      if (data.url) {
+        const actions = document.createElement("div");
+        actions.className = "machine-profile-record-actions";
+        const link = document.createElement("a");
+        link.className = "btn btn-outline btn-sm";
+        link.href = data.url;
+        link.textContent = data.actionLabel || "Öffnen";
+        actions.appendChild(link);
+        card.appendChild(actions);
+      }
+      return card;
+    }
+
+    function renderRecords(container, items, emptyText, mapper, action) {
+      if (!container) return;
+      container.innerHTML = "";
+      const rows = Array.isArray(items) ? items : [];
+      if (!rows.length) {
+        container.appendChild(profileEmpty(emptyText, action));
+        return;
+      }
+      rows.forEach((item) => container.appendChild(profileRecordCard(mapper(item))));
+    }
+
+    function renderDenied(container, text) {
+      if (!container) return;
+      container.innerHTML = "";
+      container.appendChild(profileEmpty(text || "Keine Berechtigung für diesen Bereich."));
+    }
+
+    function renderHero(profile) {
+      const machine = profile.machine || {};
+      const name = root.querySelector("[data-machine-profile-name]");
+      const summary = root.querySelector("[data-machine-profile-summary]");
+      const badges = root.querySelector("[data-machine-profile-badges]");
+      const taskLink = root.querySelector("[data-machine-profile-task-link]");
+      const errorLink = root.querySelector("[data-machine-profile-error-link]");
+      const documentLink = root.querySelector("[data-machine-profile-document-link]");
+      if (name) name.textContent = machine.name || "Maschine";
+      if (summary) {
+        summary.textContent = [
+          machine.produced_item || "Kein Produkt hinterlegt",
+          (machine.required_employees || 1) + " Mitarbeiter pro Schicht",
+          machine.site && machine.site.name ? machine.site.name : "Werk nicht zugeordnet"
+        ].join(" · ");
+      }
+      if (badges) {
+        badges.innerHTML = "";
+        badges.appendChild(
+          badge(machineStatusLabel(machine.status), genericStatusBadgeClass(machine.status))
+        );
+        badges.appendChild(
+          badge(criticalityLabel(machine.criticality), criticalityBadgeClass(machine.criticality))
+        );
+      }
+      const query = encodeURIComponent(machine.name || "");
+      if (taskLink) taskLink.href = "/tasks?search=" + query;
+      if (errorLink) errorLink.href = "/errors?search=" + query;
+      if (documentLink) documentLink.href = "/documents?search=" + query;
+    }
+
+    function renderKpis(profile) {
+      const container = root.querySelector("[data-machine-profile-kpis]");
+      const kpis = profile.kpis || {};
+      if (!container) return;
+      container.innerHTML = "";
+      [
+        ["Offene Aufgaben", kpis.open_tasks || 0, "Aktive Arbeit zur Maschine", "is-work"],
+        ["Aktive Störungen", kpis.active_errors || 0, "Offen oder in Bearbeitung", "is-risk"],
+        ["Kritisch", kpis.critical_errors || 0, "Hohe Dringlichkeit", "is-critical"],
+        ["Wartung fällig", kpis.maintenance_due || 0, "Aktive Wartungspläne", "is-maintenance"],
+        ["Dokumente", kpis.documents || 0, "Berichte und Handbücher", "is-knowledge"],
+        ["Stillstand", minutesLabel(kpis.downtime_minutes), "Erfasste Ausfallzeit", "is-downtime"]
+      ].forEach(([label, value, meta, tone]) => {
+        const card = document.createElement("article");
+        card.className = "machine-profile-kpi-card " + tone;
+        const labelElement = document.createElement("span");
+        const valueElement = document.createElement("strong");
+        const metaElement = document.createElement("small");
+        labelElement.textContent = label;
+        valueElement.textContent = String(value);
+        metaElement.textContent = meta;
+        card.append(labelElement, valueElement, metaElement);
+        container.appendChild(card);
+      });
+    }
+
+    function renderMaster(profile) {
+      const container = root.querySelector("[data-machine-profile-master] .machine-profile-facts");
+      const machine = profile.machine || {};
+      if (!container) return;
+      container.innerHTML = "";
+      [
+        ["Status", machineStatusLabel(machine.status)],
+        ["Kritikalität", criticalityLabel(machine.criticality)],
+        ["Produkt", machine.produced_item || "-"],
+        ["Personalbedarf", (machine.required_employees || 1) + " MA"],
+        ["Werk", machine.site && machine.site.name ? machine.site.name : "-"],
+        ["Angelegt", dateLabel(machine.created_at)]
+      ].forEach((item) => container.appendChild(metric(item[0], item[1])));
+    }
+
+    function taskRecord(task) {
+      return {
+        title: task.title,
+        subtitle: task.department && task.department.name ? task.department.name : "Bereich offen",
+        summary: task.description || "Keine Beschreibung hinterlegt.",
+        badges: [
+          [priorityLabel(task.priority), priorityBadgeClass(task.priority)],
+          [statusLabel(task.status), statusBadgeClass(task.status)]
+        ],
+        metrics: [
+          ["Fällig", dateLabel(task.due_date)],
+          ["Zuordnung", task.current_worker ? task.current_worker.username : "Nicht gestartet"],
+          ["Bezug", task.machine_match || "-"]
+        ],
+        url: task.ui_url || "/tasks?search=" + encodeURIComponent(task.title || ""),
+        actionLabel: "Aufgabe öffnen"
+      };
+    }
+
+    function errorRecord(error) {
+      return {
+        title: [error.error_code, error.title].filter(Boolean).join(" · "),
+        subtitle: error.cause_category || error.machine || "Störung",
+        summary: error.symptoms || error.description || error.solution || "Keine Details hinterlegt.",
+        badges: [
+          [errorStatusLabel(error.status), genericStatusBadgeClass(error.status)],
+          [severityLabel(error.severity), criticalityBadgeClass(error.severity)]
+        ],
+        metrics: [
+          ["Auswirkung", error.impact || "-"],
+          ["Stillstand", minutesLabel(error.downtime_minutes)],
+          ["Erfasst", dateLabel(error.created_at)]
+        ],
+        url: error.ui_url || "/errors?search=" + encodeURIComponent(error.error_code || ""),
+        actionLabel: "Störung öffnen"
+      };
+    }
+
+    function maintenanceRecord(plan) {
+      return {
+        title: plan.title,
+        subtitle: plan.department && plan.department.name ? plan.department.name : "Wartungsplan",
+        summary: plan.description || "Kein Ablauf hinterlegt.",
+        badges: [
+          [priorityLabel(plan.priority), priorityBadgeClass(plan.priority)],
+          [plan.is_due ? "Fällig" : "Geplant", plan.is_due ? "badge badge-priority is-soon" : "badge badge-status is-progress"]
+        ],
+        metrics: [
+          ["Intervall", (plan.interval_days || 0) + " Tage"],
+          ["Nächster Termin", dateLabel(plan.next_due_date)],
+          ["Letzte Erzeugung", dateLabel(plan.last_generated_at)]
+        ],
+        url: plan.ui_url || "/machines",
+        actionLabel: "Wartungspläne"
+      };
+    }
+
+    function documentRecord(document, typeLabel) {
+      return {
+        title: document.title || document.original_filename || typeLabel,
+        subtitle: typeLabel,
+        summary: document.summary || document.analysis || "Noch keine Zusammenfassung hinterlegt.",
+        badges: [
+          [document.status || document.analysis_status || "not_started", genericStatusBadgeClass(document.status || document.analysis_status)]
+        ],
+        metrics: [
+          ["Bereich", document.department || "-"],
+          ["Version", document.version || "-"],
+          ["Erstellt", dateLabel(document.created_at)]
+        ],
+        url: document.ui_url || "/documents",
+        actionLabel: "Dokumente öffnen"
+      };
+    }
+
+    function handoverRecord(handover) {
+      return {
+        title: dateLabel(handover.shift_date) + " · " + valueText(handover.shift_type),
+        subtitle: handover.area || handover.department || "Schichtübergabe",
+        summary: handover.machine_status || handover.action_taken || handover.content || "Keine Maschinennotiz hinterlegt.",
+        badges: [
+          [handover.status === "completed" ? "Bestätigt" : "Offen", genericStatusBadgeClass(handover.status)]
+        ],
+        metrics: [
+          ["Vorher", handover.previous_shift || "-"],
+          ["Nächste", handover.next_shift || "-"],
+          ["Verantwortlich", handover.responsible_employee || handover.handed_over_by || "-"]
+        ],
+        url: handover.ui_url || "/handover",
+        actionLabel: "Übergabe öffnen"
+      };
+    }
+
+    function materialRecord(material) {
+      return {
+        title: material.name,
+        subtitle: material.manufacturer || "Ersatzteil",
+        summary: material.is_below_minimum
+          ? "Mindestbestand unterschritten."
+          : "Bestand im Profil hinterlegt.",
+        badges: [
+          [material.is_below_minimum ? "Prüfen" : "OK", material.is_below_minimum ? "badge badge-priority is-soon" : "badge badge-status is-done"]
+        ],
+        metrics: [
+          ["Bestand", material.quantity || 0],
+          ["Minimum", material.min_quantity || 0],
+          ["Wert", (material.total_value || 0) + " EUR"]
+        ],
+        url: "/inventory",
+        actionLabel: "Lager öffnen"
+      };
+    }
+
+    function timelineRecord(item) {
+      return {
+        title: item.title,
+        subtitle: dateLabel(item.date),
+        summary: item.summary || "Kein Kurztext hinterlegt.",
+        badges: [[item.label || item.type, genericStatusBadgeClass(item.status)]],
+        metrics: [
+          ["Typ", item.label || item.type],
+          ["Status", item.status || "-"]
+        ],
+        url: item.ui_url,
+        actionLabel: "Quelle öffnen"
+      };
+    }
+
+    function renderProfile(profile) {
+      const permissions = profile.permissions || {};
+      renderHero(profile);
+      renderKpis(profile);
+      renderMaster(profile);
+
+      if (permissions.tasks === false) {
+        renderDenied(profileList("[data-machine-profile-tasks]"));
+      } else {
+        renderRecords(
+          profileList("[data-machine-profile-tasks]"),
+          profile.open_tasks,
+          "Keine offenen Aufgaben zur Maschine.",
+          taskRecord,
+          { href: "/tasks", label: "Aufgabe anlegen" }
+        );
+      }
+
+      if (permissions.errors === false) {
+        renderDenied(profileList("[data-machine-profile-errors]"));
+        renderDenied(profileList("[data-machine-profile-error-history]"));
+      } else {
+        renderRecords(
+          profileList("[data-machine-profile-errors]"),
+          profile.active_errors,
+          "Keine aktive Störung zur Maschine.",
+          errorRecord,
+          { href: "/errors", label: "Störung melden" }
+        );
+        renderRecords(
+          profileList("[data-machine-profile-error-history]"),
+          profile.error_history,
+          "Noch keine Fehlerhistorie vorhanden.",
+          errorRecord
+        );
+      }
+
+      if (permissions.documents === false) {
+        renderDenied(profileList("[data-machine-profile-documents]"));
+      } else {
+        const documents = profile.documents || {};
+        const reportRecords = (documents.reports || []).map((item) => ({ item, type: "Bericht" }));
+        const manualRecords = (documents.manuals || []).map((item) => ({ item, type: "Handbuch" }));
+        renderRecords(
+          profileList("[data-machine-profile-documents]"),
+          reportRecords.concat(manualRecords),
+          "Keine Dokumente oder Handbücher zugeordnet.",
+          (entry) => documentRecord(entry.item, entry.type),
+          { href: "/documents", label: "Dokument hochladen" }
+        );
+      }
+
+      renderRecords(
+        profileList("[data-machine-profile-maintenance]"),
+        profile.maintenance_plans,
+        "Keine Wartungspläne für diese Maschine.",
+        maintenanceRecord,
+        { href: "/machines", label: "Wartungsplan prüfen" }
+      );
+
+      if (permissions.shiftplans === false) {
+        renderDenied(profileList("[data-machine-profile-handovers]"));
+      } else {
+        renderRecords(
+          profileList("[data-machine-profile-handovers]"),
+          profile.shift_handovers,
+          "Keine Übergaben zur Maschine.",
+          handoverRecord,
+          { href: "/handover", label: "Übergabe erfassen" }
+        );
+      }
+
+      if (permissions.inventory === false) {
+        renderDenied(profileList("[data-machine-profile-materials]"));
+      } else {
+        renderRecords(
+          profileList("[data-machine-profile-materials]"),
+          profile.materials,
+          "Keine Ersatzteile zugeordnet.",
+          materialRecord,
+          { href: "/inventory", label: "Lager öffnen" }
+        );
+      }
+
+      renderRecords(
+        profileList("[data-machine-profile-timeline]"),
+        profile.timeline,
+        "Noch keine Signale im Maschinenverlauf.",
+        timelineRecord
+      );
+    }
+
+    try {
+      setStatusMessage(message, "Maschinenprofil wird geladen...");
+      const payload = await api("/api/v1/machines/" + machineId + "/profile");
+      const profile = profileData(payload);
+      renderProfile(profile);
+      setStatusMessage(message, "Maschinenprofil bereit.");
+    } catch (error) {
+      setStatusMessage(message, error.message || "Maschinenprofil konnte nicht geladen werden.", true);
+    }
+  }
+
   async function initInventory() {
     const list = document.querySelector("[data-inventory-list]");
     const form = document.querySelector("[data-inventory-form]");
@@ -3176,6 +4444,97 @@
       if (riskLevel === "critical") return "badge badge-error text-white";
       if (riskLevel === "high") return "badge badge-warning text-slate-900";
       return "badge badge-info text-white";
+    }
+
+    /**
+     * Update inventory KPI cards from the loaded material list.
+     *
+     * @param {Array<object>} materials Loaded inventory materials.
+     * @returns {void}
+     */
+    function updateInventoryStats(materials) {
+      const thresholdInput = document.querySelector("#forecast-threshold");
+      const threshold = Number(thresholdInput && thresholdInput.value ? thresholdInput.value : 5);
+      const totalValue = materials.reduce((sum, material) => {
+        return sum + Number(material.total_value || 0);
+      }, 0);
+      const lowStock = materials.filter((material) => Number(material.quantity || 0) <= threshold).length;
+      const linked = materials.filter((material) => material.machine && material.machine.name).length;
+      setText("[data-inventory-count]", materials.length + " Artikel");
+      setText("[data-inventory-low-count]", lowStock + " kritisch");
+      setText("[data-inventory-total-value]", formatMoney(totalValue));
+      setText("[data-inventory-linked-count]", linked + " zugeordnet");
+    }
+
+    /**
+     * Render one material as an operational inventory card.
+     *
+     * @param {object} material Inventory material payload.
+     * @returns {HTMLElement} Rendered card.
+     */
+    function inventoryCard(material) {
+      const quantity = Number(material.quantity || 0);
+      const machineName = material.machine && material.machine.name ? material.machine.name : "Keine Maschine";
+      const card = document.createElement("article");
+      card.className = "record-card inventory-card" + (quantity <= 5 ? " is-low-stock" : "");
+      card.dataset.searchText = [
+        material.name,
+        material.manufacturer,
+        machineName,
+        String(quantity)
+      ].filter(Boolean).join(" ").toLowerCase();
+
+      const header = document.createElement("div");
+      header.className = "record-card-header";
+      const titleBlock = document.createElement("div");
+      const title = document.createElement("h3");
+      title.className = "record-card-title";
+      title.textContent = material.name || "Material";
+      const subtitle = document.createElement("p");
+      subtitle.className = "record-card-subtitle";
+      subtitle.textContent = [material.manufacturer || "Hersteller offen", machineName].join(" · ");
+      titleBlock.append(title, subtitle);
+      header.append(
+        titleBlock,
+        badge(quantity <= 5 ? "niedrig" : "verfügbar", quantity <= 5 ? "badge badge-priority is-soon" : "badge badge-status is-done")
+      );
+
+      const meta = document.createElement("div");
+      meta.className = "record-card-meta inventory-card-meta";
+      [
+        ["Bestand", String(quantity)],
+        ["Einzelkosten", formatMoney(material.unit_cost)],
+        ["Gesamtwert", formatMoney(material.total_value)],
+        ["Maschine", machineName]
+      ].forEach(([label, value]) => {
+        const item = document.createElement("span");
+        const small = document.createElement("small");
+        const strong = document.createElement("strong");
+        small.textContent = label;
+        strong.textContent = value || "-";
+        item.append(small, strong);
+        meta.appendChild(item);
+      });
+
+      const actions = document.createElement("div");
+      actions.className = "record-card-actions";
+      if (material.machine && material.machine.id) {
+        const machineLink = document.createElement("a");
+        machineLink.className = "btn btn-outline btn-sm";
+        machineLink.href = "/machines/" + material.machine.id;
+        machineLink.textContent = "Maschinenprofil";
+        actions.appendChild(machineLink);
+      }
+      if (canWrite("inventory")) {
+        actions.appendChild(actionButton("Löschen", async () => {
+          if (!window.confirm(material.name + " wirklich löschen?")) return;
+          await api("/api/v1/inventory/" + material.id, { method: "DELETE" });
+          await load();
+        }, true));
+      }
+
+      card.append(header, meta, actions);
+      return card;
     }
 
     function renderForecast(forecast) {
@@ -3198,13 +4557,13 @@
         });
       }
       if (forecastUnmatched) {
-        const unmatchedTasks = forecast.unmatched_tasks || [];
-        if (unmatchedTasks.length) {
+        const unmatchedAufgaben = forecast.unmatched_tasks || [];
+        if (unmatchedAufgaben.length) {
           const title = document.createElement("h3");
           title.className = "panel-title";
-          title.textContent = "Tasks ohne Maschinenbezug";
+          title.textContent = "Aufgaben ohne Maschinenbezug";
           forecastUnmatched.appendChild(title);
-          unmatchedTasks.forEach((item) => {
+          unmatchedAufgaben.forEach((item) => {
             const rowItem = document.createElement("div");
             rowItem.className = "stat-row";
             rowItem.innerHTML = `<span>${item.task.title}</span><strong>${item.risk_level}</strong>`;
@@ -3243,25 +4602,16 @@
       const materialPayload = await api("/api/v1/inventory?limit=200");
       const materials = listData(materialPayload);
       list.innerHTML = "";
+      updateInventoryStats(materials);
+      if (!materials.length) {
+        list.appendChild(emptyState(
+          "Noch kein Material angelegt.",
+          "Lege die ersten Ersatzteile an, damit Lagerwert und Maschinenbezug sichtbar werden."
+        ));
+        return;
+      }
       materials.forEach((material) => {
-        const actions = document.createElement("div");
-        actions.className = "table-actions";
-        if (canWrite("inventory")) {
-          actions.appendChild(actionButton("Löschen", async () => {
-            if (!window.confirm(material.name + " wirklich löschen?")) return;
-            await api("/api/v1/inventory/" + material.id, { method: "DELETE" });
-            await load();
-          }, true));
-        }
-        list.appendChild(row([
-          material.name,
-          formatMoney(material.unit_cost),
-          String(material.quantity),
-          material.machine && material.machine.name,
-          material.manufacturer,
-          formatMoney(material.total_value),
-          actions
-        ]));
+        list.appendChild(inventoryCard(material));
       });
     }
 
@@ -3482,7 +4832,7 @@
     const inventoryShortages = document.querySelector("[data-dashboard-inventory-shortages]");
     const employeeOverview = document.querySelector("[data-dashboard-employee-overview]");
     const priorityList = document.querySelector("[data-dashboard-priority-list]");
-    const briefingSummary = document.querySelector("[data-daily-briefing-summary]");
+    const briefingZusammenfassung = document.querySelector("[data-daily-briefing-summary]");
     const briefingList = document.querySelector("[data-daily-briefing-list]");
     const operationsInsights = document.querySelector("[data-operations-insights]");
     const operationsStatus = document.querySelector("[data-operations-insights-status]");
@@ -3501,6 +4851,10 @@
     const executiveWarningFeed = document.querySelector("[data-dashboard-warning-feed]");
     const executiveAiTrust = document.querySelector("[data-dashboard-ai-trust]");
     const executiveMachineStrip = document.querySelector("[data-dashboard-machine-strip]");
+    const criticalTodayPanel = document.querySelector("[data-dashboard-critical-today]");
+    const machineCards = document.querySelector("[data-dashboard-machine-cards]");
+    const handoverList = document.querySelector("[data-dashboard-handover-list]");
+    const peopleHints = document.querySelector("[data-dashboard-people-hints]");
     const quickAiButtons = document.querySelectorAll("[data-dashboard-quick-ai]");
     const shiftCalendar = document.querySelector("[data-dashboard-shift-calendar]");
     const shiftTimeline = document.querySelector("[data-dashboard-shift-timeline]");
@@ -3514,11 +4868,15 @@
       aiStatus: null,
       briefing: null,
       errors: [],
+      handovers: [],
+      employees: [],
       inventory: null,
       knowledgeGaps: null,
       knowledgeStatus: null,
+      machines: [],
       operations: null,
       retrievalTelemetry: null,
+      vacations: [],
       tasks: []
     };
 
@@ -3588,6 +4946,213 @@
       return empty;
     }
 
+    function controlCenterBadge(label, severity) {
+      return badge(label, "badge badge-status " + (
+        severity === "critical" ? "is-open" :
+          severity === "warning" ? "is-progress" :
+            severity === "good" ? "is-done" : "is-neutral"
+      ));
+    }
+
+    function controlCenterLinkCard(kind, title, meta, severity, href, actionLabel) {
+      const card = document.createElement(href ? "a" : "article");
+      card.className = "control-center-item " + dashboardSignalClass(severity);
+      if (href) card.href = href;
+      const marker = document.createElement("span");
+      marker.className = "control-center-item-marker";
+      marker.textContent = kind;
+      const body = document.createElement("div");
+      const heading = document.createElement("strong");
+      const detail = document.createElement("small");
+      heading.textContent = title || "Hinweis";
+      detail.textContent = meta || "";
+      body.append(heading, detail);
+      const action = document.createElement("span");
+      action.className = "control-center-item-action";
+      action.textContent = actionLabel || (href ? "Öffnen" : "Status");
+      card.append(marker, body, action);
+      return card;
+    }
+
+    function taskMachineHint(task) {
+      const text = [task.title, task.description].filter(Boolean).join(" ");
+      const match = text.match(/\b(Maschine|Anlage|Presse|Linie)\s*[A-Za-z0-9\-_.]*/i);
+      return match ? match[0] : ((task.department && task.department.name) || "Bereich offen");
+    }
+
+    function taskMetaLine(task) {
+      const parts = [
+        priorityLabel(task.priority),
+        statusLabel(task.status),
+        task.due_date ? "fällig " + task.due_date : "",
+        taskMachineHint(task)
+      ].filter(Boolean);
+      return parts.join(" · ");
+    }
+
+    function renderCriticalToday() {
+      if (!criticalTodayPanel) return;
+      const activeTasks = dashboardState.tasks.filter((task) => task.status !== "done" && task.status !== "cancelled");
+      const criticalTasks = activeTasks.filter((task) => task.priority === "urgent" || isOverdue(task));
+      const inventory = dashboardState.inventory || (dashboardState.operations && dashboardState.operations.inventory) || {};
+      const machines = (dashboardState.operations && dashboardState.operations.machines) || {};
+      const items = [];
+      criticalTasks.slice(0, 4).forEach((task) => {
+        items.push(controlCenterLinkCard("TA", task.title, taskMetaLine(task), "critical", "/tasks", task.status === "open" ? "Starten" : "Prüfen"));
+      });
+      dashboardState.errors.slice(0, 4).forEach((entry) => {
+        const machine = (entry.machine_obj && entry.machine_obj.name) || entry.machine || "Maschine offen";
+        items.push(controlCenterLinkCard("ST", entry.title || entry.error_code || "Störung", machine + " · " + (entry.error_code || "ohne Code"), "warning", "/errors", "Fehler öffnen"));
+      });
+      if (Number(machines.machines_down || 0)) {
+        items.push(controlCenterLinkCard("MA", machines.machines_down + " Maschinen down", (machines.faults || 0) + " Störungen im Zeitraum", "critical", "/machines", "Maschinen"));
+      }
+      if (Number(inventory.critical_shortage_count || 0)) {
+        items.push(controlCenterLinkCard("LG", inventory.critical_shortage_count + " kritische Lagerengpässe", (inventory.low_stock_count || 0) + " Artikel unter Mindestbestand", "critical", "/inventory", "Lager"));
+      }
+      criticalTodayPanel.innerHTML = "";
+      if (!items.length) {
+        criticalTodayPanel.appendChild(emptyRailMessage("Keine kritischen Punkte für heute. Beobachte neue Störungen, Fälligkeiten und Engpässe."));
+        return;
+      }
+      items.slice(0, 8).forEach((item) => criticalTodayPanel.appendChild(item));
+    }
+
+    function machineStatusSeverity(machine) {
+      const status = keywordText(machine.status);
+      if (status.includes("down") || status.includes("stor") || status.includes("error") || status.includes("stop")) {
+        return "critical";
+      }
+      if (status.includes("wart") || status.includes("maintenance") || status.includes("pause") || status.includes("pruf")) {
+        return "warning";
+      }
+      if (status.includes("run") || status.includes("aktiv") || status.includes("ok") || status.includes("bereit")) {
+        return "good";
+      }
+      return "muted";
+    }
+
+    function machineStatusText(machine) {
+      const status = String(machine.status || "unbekannt");
+      if (status === "running") return "Läuft";
+      if (status === "down") return "Stillstand";
+      if (status === "maintenance") return "Wartung";
+      return status;
+    }
+
+    function updateMachineKpis() {
+      const operations = dashboardState.operations || {};
+      const machineMetrics = operations.machines || {};
+      const machines = dashboardState.machines || [];
+      const total = Number(machineMetrics.machines_total || machines.length || 0);
+      const down = Number(machineMetrics.machines_down || machines.filter((machine) => machineStatusSeverity(machine) === "critical").length || 0);
+      const warning = machines.filter((machine) => machineStatusSeverity(machine) === "warning").length;
+      const healthy = Math.max(0, total - down - warning);
+      setDashboardText("[data-dashboard-machine-status]", total ? (healthy + "/" + total) : "--");
+      setDashboardText(
+        "[data-dashboard-machine-kpi-meta]",
+        total ? down + " kritisch, " + warning + " beobachten" : "Keine Maschinen geladen"
+      );
+      setProgress("[data-dashboard-machine-progress]", total ? (healthy / total) * 100 : 4);
+    }
+
+    function renderMachineCards() {
+      if (!machineCards) {
+        updateMachineKpis();
+        return;
+      }
+      machineCards.innerHTML = "";
+      const machines = dashboardState.machines || [];
+      if (!machines.length) {
+        machineCards.appendChild(emptyRailMessage("Keine Maschinen im aktuellen Zugriff."));
+        updateMachineKpis();
+        return;
+      }
+      machines.slice(0, 6).forEach((machine) => {
+        const severity = machineStatusSeverity(machine);
+        const card = document.createElement("a");
+        card.className = "machine-status-card " + dashboardSignalClass(severity);
+        card.href = "/machines";
+        const title = document.createElement("strong");
+        title.textContent = machine.name || "Maschine";
+        const meta = document.createElement("small");
+        meta.textContent = machine.produced_item || "Produktionsdaten offen";
+        const footer = document.createElement("div");
+        footer.append(
+          controlCenterBadge(machineStatusText(machine), severity),
+          controlCenterBadge(machine.criticality || "normal", machine.criticality === "critical" ? "critical" : "muted")
+        );
+        card.append(title, meta, footer);
+        machineCards.appendChild(card);
+      });
+      updateMachineKpis();
+    }
+
+    function formatDashboardDate(value) {
+      if (!value) return "-";
+      return new Date(value).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" });
+    }
+
+    function renderHandoverList(handovers) {
+      if (!handoverList) return;
+      dashboardState.handovers = handovers || [];
+      handoverList.innerHTML = "";
+      setDashboardText("[data-dashboard-shift-status]", dashboardState.handovers.length || "--");
+      setDashboardText(
+        "[data-dashboard-shift-meta]",
+        dashboardState.handovers.length ? dashboardState.handovers.length + " Übergaben heute" : "Keine Übergabe heute"
+      );
+      setProgress("[data-dashboard-shift-progress]", dashboardState.handovers.length ? 72 : 18);
+      if (!dashboardState.handovers.length) {
+        handoverList.appendChild(emptyRailMessage("Heute gibt es noch keine gespeicherte Schichtübergabe."));
+        return;
+      }
+      dashboardState.handovers.slice(0, 4).forEach((handover) => {
+        const card = document.createElement("a");
+        card.className = "handover-card " + (handover.status === "completed" ? "is-good" : "is-warning");
+        card.href = "/handover";
+        const title = document.createElement("strong");
+        title.textContent = (handover.shift_type || "Schicht") + " · " + (handover.department || "Bereich");
+        const meta = document.createElement("small");
+        meta.textContent = [
+          formatDashboardDate(handover.shift_date),
+          handover.open_tasks ? "offene Punkte vorhanden" : "keine offenen Punkte erfasst",
+          handover.machine_notes ? "Maschinenhinweise" : ""
+        ].filter(Boolean).join(" · ");
+        card.append(title, meta, controlCenterBadge(handover.status === "completed" ? "Bestätigt" : "Offen", handover.status === "completed" ? "good" : "warning"));
+        handoverList.appendChild(card);
+      });
+    }
+
+    function renderPeopleHints() {
+      if (!peopleHints) return;
+      const vacations = dashboardState.vacations || [];
+      const employees = dashboardState.employees || [];
+      const absent = employees.filter((employee) => employeeStatus(employee) === "Abwesend");
+      const hints = [];
+      if (vacations.length) {
+        hints.push(controlCenterLinkCard("UR", vacations.length + " offene Urlaubsanträge", "Genehmigen oder ablehnen", "warning", "/vacations", "Urlaub"));
+      }
+      if (absent.length) {
+        hints.push(controlCenterLinkCard("AB", absent.length + " abwesend markiert", absent.slice(0, 2).map((employee) => employee.name).join(", "), "warning", "/employees", "Team"));
+      }
+      if (employees.length && !hints.length) {
+        hints.push(controlCenterLinkCard("PE", employees.length + " Mitarbeitende sichtbar", "Keine offenen Personalwarnungen", "good", "/employees", "Personal"));
+      }
+      peopleHints.innerHTML = "";
+      if (!hints.length) {
+        peopleHints.appendChild(emptyRailMessage("Keine Personalhinweise im aktuellen Zugriff."));
+      } else {
+        hints.forEach((hint) => peopleHints.appendChild(hint));
+      }
+      setDashboardText("[data-dashboard-people-status]", vacations.length || absent.length || employees.length || "--");
+      setDashboardText(
+        "[data-dashboard-people-meta]",
+        vacations.length ? vacations.length + " offene Urlaubsanträge" : (absent.length ? absent.length + " abwesend" : "Keine offenen Personalwarnungen")
+      );
+      setProgress("[data-dashboard-people-progress]", vacations.length || absent.length ? 45 : 88);
+    }
+
     function cockpitSignal(label, value, detail, severity, href) {
       const element = document.createElement(href ? "a" : "article");
       element.className = "ai-signal-card " + dashboardSignalClass(severity);
@@ -3651,12 +5216,12 @@
       const gapCount = dashboardState.knowledgeGaps ? Number(dashboardState.knowledgeGaps.open_count || 0) : 0;
       const safetyRiskCount = Number(sloValues.safety_risk_count || 0);
       const lowConfidenceRate = Number(sloValues.low_confidence_rate || 0);
-      const noSourceRate = Number(sloValues.no_source_rate || 0);
+      const noQuelleRate = Number(sloValues.no_source_rate || 0);
       const staleIndexCount = Number(sloValues.stale_index_count || 0);
 
       if (criticalTasks.length) {
         signals.push({
-          label: "Kritische Tasks",
+          label: "Kritische Aufgaben",
           value: criticalTasks.length,
           detail: criticalTasks[0].title || "Sofort prüfen",
           severity: "critical",
@@ -3692,28 +5257,28 @@
       }
       if (safetyRiskCount) {
         signals.push({
-          label: "Safety-Risiken",
+          label: "Sicherheitsrisiken",
           value: safetyRiskCount,
-          detail: "AI Safety Events im Fenster",
+          detail: "KI-Sicherheit Events im Fenster",
           severity: "critical",
           href: "/admin/ai"
         });
       }
       if (gapCount) {
         signals.push({
-          label: "Knowledge-Gaps",
+          label: "Wissenslücken",
           value: gapCount,
           detail: "offene Wissenslücken",
           severity: gapCount > 3 ? "critical" : "warning",
           href: "/admin/ai"
         });
       }
-      if (lowConfidenceRate >= 0.15 || noSourceRate >= 0.1) {
+      if (lowConfidenceRate >= 0.15 || noQuelleRate >= 0.1) {
         signals.push({
           label: "Suchqualität",
-          value: formatRatePercent(Math.max(lowConfidenceRate, noSourceRate)),
+          value: formatRatePercent(Math.max(lowConfidenceRate, noQuelleRate)),
           detail: "Niedrige Sicherheit oder fehlende Quellen",
-          severity: lowConfidenceRate >= 0.25 || noSourceRate >= 0.2 ? "critical" : "warning",
+          severity: lowConfidenceRate >= 0.25 || noQuelleRate >= 0.2 ? "critical" : "warning",
           href: "/admin/ai"
         });
       }
@@ -3749,11 +5314,11 @@
       if (!aiRiskRadar) return;
       const sloValues = retrievalSloValues();
       const rows = [
-        ["Safety", Number(sloValues.safety_risk_count || 0), "Safety Events", Number(sloValues.safety_risk_count || 0) ? "critical" : "good"],
+        ["Sicherheit", Number(sloValues.safety_risk_count || 0), "Sicherheitsereignisse", Number(sloValues.safety_risk_count || 0) ? "critical" : "good"],
         ["Niedrige Sicherheit", formatRatePercent(sloValues.low_confidence_rate), "Antworten unter Schwelle", Number(sloValues.low_confidence_rate || 0) >= 0.15 ? "warning" : "good"],
-        ["Ohne Quellen", formatRatePercent(sloValues.no_source_rate), "Antworten ohne Source", Number(sloValues.no_source_rate || 0) >= 0.1 ? "warning" : "good"],
-        ["Ausweichantworten", formatRatePercent(sloValues.fallback_rate), "AI-Anbieter oder Suche", Number(sloValues.fallback_rate || 0) >= 0.1 ? "warning" : "good"],
-        ["Negatives Feedback", formatRatePercent(sloValues.negative_feedback_rate), "User-Rückmeldungen", Number(sloValues.negative_feedback_rate || 0) >= 0.1 ? "warning" : "good"],
+        ["Ohne Quellen", formatRatePercent(sloValues.no_source_rate), "Antworten ohne Quelle", Number(sloValues.no_source_rate || 0) >= 0.1 ? "warning" : "good"],
+        ["Ausweichantworten", formatRatePercent(sloValues.fallback_rate), "KI-Anbieter oder Suche", Number(sloValues.fallback_rate || 0) >= 0.1 ? "warning" : "good"],
+        ["Negatives Feedback", formatRatePercent(sloValues.negative_feedback_rate), "Nutzerrückmeldungen", Number(sloValues.negative_feedback_rate || 0) >= 0.1 ? "warning" : "good"],
         ["Berechtigungsfilter", Number(sloValues.permission_filtered_candidate_count || 0), "gefilterte Kandidaten", "muted"]
       ];
       aiRiskRadar.innerHTML = "";
@@ -3771,7 +5336,7 @@
         aiSystemRail.appendChild(systemStatusRow(
           "Admin-Metriken",
           "eingeschränkt",
-          "AI Safety, Retrieval und Indexdetails sind nur für Master Admins sichtbar.",
+          "KI-Sicherheit, Quellenabruf und Indexdetails sind nur für Master-Admins sichtbar.",
           "muted"
         ));
         setDashboardText("[data-dashboard-ai-status]", "Basis");
@@ -3780,14 +5345,14 @@
       }
       const ready = aiStatus.ready === true;
       aiSystemRail.append(
-        systemStatusRow("AI-Anbieter", aiStatus.provider || "-", ready ? "bereit" : "prüfen", ready ? "good" : "warning"),
+        systemStatusRow("KI-Anbieter", aiStatus.provider || "-", ready ? "bereit" : "prüfen", ready ? "good" : "warning"),
         systemStatusRow("Modell", aiStatus.model || "-", aiStatus.streaming_enabled ? "Streaming aktiv" : "Streaming aus", "muted"),
         systemStatusRow("Suchzeit P95", formatMilliseconds(sloValues.retrieval_p95_ms), "Antwortkontext", Number(sloValues.retrieval_p95_ms || 0) > 2500 ? "warning" : "good"),
-        systemStatusRow("Ausweichantworten", formatRatePercent(sloValues.fallback_rate), "AI-Anbieter oder Suche", Number(sloValues.fallback_rate || 0) >= 0.1 ? "warning" : "good"),
+        systemStatusRow("Ausweichantworten", formatRatePercent(sloValues.fallback_rate), "KI-Anbieter oder Suche", Number(sloValues.fallback_rate || 0) >= 0.1 ? "warning" : "good"),
         systemStatusRow("Index-Sync-Fehler", Number(sloValues.vector_sync_failure_count || 0), "Index-Synchronisation", Number(sloValues.vector_sync_failure_count || 0) ? "critical" : "good")
       );
       setDashboardText("[data-dashboard-ai-status]", ready ? "bereit" : "prüfen");
-      setDashboardText("[data-dashboard-ai-status-meta]", aiStatus.provider || "AI-Anbieter unbekannt");
+      setDashboardText("[data-dashboard-ai-status-meta]", aiStatus.provider || "KI-Anbieter unbekannt");
     }
 
     function renderKnowledgeHealth() {
@@ -3799,29 +5364,29 @@
       const documents = Number(status.documents || 0);
       const chunks = Number(status.chunks || 0);
       const stale = Number(status.stale || 0);
-      const missingChunks = Number(vectorStatus.missing_chunk_count || 0);
+      const missingTextabschnitte = Number(vectorStatus.missing_chunk_count || 0);
       const reindexNeeded = Boolean(vectorStatus.reindex_recommended);
       aiKnowledgeHealth.innerHTML = "";
       if (!currentUserIsMasterAdmin()) {
         aiKnowledgeHealth.appendChild(systemStatusRow(
-          "Knowledge Health",
+          "Wissensstatus",
           "eingeschränkt",
-          "Indexdetails sind im AI Admin sichtbar.",
+          "Indexdetails sind im KI-Administration sichtbar.",
           "muted"
         ));
         return;
       }
       aiKnowledgeHealth.append(
-        systemStatusRow("Dokumente indexiert", indexed + "/" + documents, chunks + " Chunks", documents && indexed < documents ? "warning" : "good"),
+        systemStatusRow("Dokumente indexiert", indexed + "/" + documents, chunks + " Textabschnitte", documents && indexed < documents ? "warning" : "good"),
         systemStatusRow("Veraltete Dokumente", stale, "Aging und Reindex", stale ? "warning" : "good"),
-        systemStatusRow("Fehlende Chunks", missingChunks, "DB zu Vector Store", missingChunks ? "critical" : "good"),
+        systemStatusRow("Fehlende Textabschnitte", missingTextabschnitte, "DB zu Vektor Store", missingTextabschnitte ? "critical" : "good"),
         systemStatusRow("Reindex", reindexNeeded ? "empfohlen" : "nicht nötig", (vectorStatus.reindex_reasons || []).join(", "), reindexNeeded ? "warning" : "good"),
-        systemStatusRow("Knowledge-Gaps", Number(gaps.open_count || 0), "offene Lücken", Number(gaps.open_count || 0) ? "warning" : "good")
+        systemStatusRow("Wissenslücken", Number(gaps.open_count || 0), "offene Lücken", Number(gaps.open_count || 0) ? "warning" : "good")
       );
       setDashboardText("[data-dashboard-index-status]", reindexNeeded ? "Reindex" : "OK");
       setDashboardText(
         "[data-dashboard-index-status-meta]",
-        indexed + "/" + documents + " Dokumente, " + chunks + " Chunks"
+        indexed + "/" + documents + " Dokumente, " + chunks + " Textabschnitte"
       );
       setDashboardText("[data-dashboard-knowledge-gap-count]", Number(gaps.open_count || 0));
       setDashboardText("[data-dashboard-knowledge-gap-meta]", "offene Lücken");
@@ -3889,8 +5454,8 @@
       executiveAiTrust.append(
         systemStatusRow("Niedrige Sicherheit", formatRatePercent(sloValues.low_confidence_rate), "Antworten unter Schwelle", Number(sloValues.low_confidence_rate || 0) >= 0.15 ? "warning" : "good"),
         systemStatusRow("Suchzeit P95", formatMilliseconds(sloValues.retrieval_p95_ms), formatRatePercent(sloValues.no_source_rate) + " ohne Quellen", Number(sloValues.retrieval_p95_ms || 0) > 2500 || Number(sloValues.no_source_rate || 0) >= 0.1 ? "warning" : "good"),
-        systemStatusRow("Safety", Number(sloValues.safety_risk_count || 0), "Safety Events im Fenster", Number(sloValues.safety_risk_count || 0) ? "critical" : "good"),
-        systemStatusRow("Knowledge-Gaps", gapCount, "offene Wissensluecken", gapCount ? "warning" : "good")
+        systemStatusRow("Sicherheit", Number(sloValues.safety_risk_count || 0), "Sicherheitsereignisse im Fenster", Number(sloValues.safety_risk_count || 0) ? "critical" : "good"),
+        systemStatusRow("Wissenslücken", gapCount, "offene Wissenslücken", gapCount ? "warning" : "good")
       );
     }
 
@@ -3901,10 +5466,10 @@
       const sloValues = retrievalSloValues();
       const gapCount = dashboardState.knowledgeGaps ? Number(dashboardState.knowledgeGaps.open_count || 0) : 0;
       const items = [];
-      if (criticalTasks.length) items.push(activityItem("KR", criticalTasks.length + " kritische Tasks", "Sofort priorisieren", "critical", "/tasks"));
+      if (criticalTasks.length) items.push(activityItem("KR", criticalTasks.length + " kritische Aufgaben", "Sofort priorisieren", "critical", "/tasks"));
       if (dashboardState.errors.length) items.push(activityItem("ST", dashboardState.errors.length + " offene Störungen", "Maschinenlage prüfen", dashboardState.errors.length > 2 ? "critical" : "warning", "/errors"));
-      if (Number(sloValues.safety_risk_count || 0)) items.push(activityItem("SF", Number(sloValues.safety_risk_count || 0) + " Safety-Risiken", "AI Antworten prüfen", "critical", "/admin/ai"));
-      if (gapCount) items.push(activityItem("KG", gapCount + " Knowledge-Gaps", "Wissensbasis ergaenzen", "warning", "/admin/ai"));
+      if (Number(sloValues.safety_risk_count || 0)) items.push(activityItem("SF", Number(sloValues.safety_risk_count || 0) + " Sicherheitsrisiken", "AI Antworten prüfen", "critical", "/admin/ai"));
+      if (gapCount) items.push(activityItem("KG", gapCount + " Wissenslücken", "Wissensbasis ergänzen", "warning", "/admin/ai"));
       if (Number(sloValues.stale_index_count || 0)) items.push(activityItem("IX", Number(sloValues.stale_index_count || 0) + " veraltete Indexeinträge", "Reindex empfohlen", "warning", "/admin/ai"));
       executiveWarningFeed.innerHTML = "";
       if (!items.length) {
@@ -3918,7 +5483,7 @@
       if (!executiveActivityFeed) return;
       const items = [];
       dashboardState.tasks.slice(0, 3).forEach((task) => {
-        items.push(activityItem("TA", task.title || "Task", (task.priority || "normal") + " - " + (task.status || "offen"), task.priority === "urgent" || isOverdue(task) ? "warning" : "muted", "/tasks"));
+        items.push(activityItem("TA", task.title || "Aufgabe", (task.priority || "normal") + " - " + (task.status || "offen"), task.priority === "urgent" || isOverdue(task) ? "warning" : "muted", "/tasks"));
       });
       dashboardState.errors.slice(0, 3).forEach((entry) => {
         items.push(activityItem("FE", entry.title || entry.error_code || "Störung", ((entry.machine_obj && entry.machine_obj.name) || entry.machine || "Maschine") + " - " + formatDashboardTime(entry.created_at), "warning", "/errors"));
@@ -3949,7 +5514,7 @@
       const hasRisk = Boolean(criticalTasks.length || dashboardState.errors.length || Number(sloValues.safety_risk_count || 0) || Number(sloValues.vector_sync_failure_count || 0) || Number(sloValues.stale_index_count || 0));
       setDashboardText("[data-dashboard-unresolved-errors]", dashboardState.errors.length);
       setDashboardText("[data-dashboard-today-activity-count]", activityCount);
-      setDashboardText("[data-dashboard-active-integrations]", currentUserIsMasterAdmin() ? "AI/RAG" : "Basis");
+      setDashboardText("[data-dashboard-active-integrations]", currentUserIsMasterAdmin() ? "Assistenz" : "Basis");
       setDashboardText("[data-dashboard-system-status]", hasRisk ? "Prüfen" : "Stabil");
       setDashboardText("[data-dashboard-system-meta]", hasRisk ? "Warnungen aktiv" : "Keine kritischen Signale");
       setProgress("[data-dashboard-open-progress]", activeTasks.length ? Math.min(100, activeTasks.length * 8) : 4);
@@ -3964,6 +5529,9 @@
 
     function renderExecutiveDashboard() {
       renderExecutiveKpis();
+      renderCriticalToday();
+      renderMachineCards();
+      renderPeopleHints();
       renderMachineStrip();
       renderAiTrustPanel();
       renderExecutiveWarnings();
@@ -3996,22 +5564,22 @@
       renderExecutiveDashboard();
     }
 
-    function updateDashboardTaskMetrics(tasks) {
+    function updateDashboardAufgabeMetrics(tasks) {
       dashboardState.tasks = tasks;
       const activeTasks = tasks.filter((task) => task.status !== "done" && task.status !== "cancelled");
-      const openTasks = activeTasks.filter((task) => task.status === "open");
-      const progressTasks = activeTasks.filter((task) => task.status === "in_progress");
+      const openAufgaben = activeTasks.filter((task) => task.status === "open");
+      const progressAufgaben = activeTasks.filter((task) => task.status === "in_progress");
       const doneTasks = tasks.filter((task) => task.status === "done");
       const criticalTasks = activeTasks.filter((task) => task.priority === "urgent" || isOverdue(task));
       taskCountElements.forEach((taskCount) => {
         taskCount.textContent = String(tasks.length);
       });
-      setText("[data-dashboard-open-count]", openTasks.length);
-      setText("[data-dashboard-progress-count]", progressTasks.length);
+      setText("[data-dashboard-open-count]", openAufgaben.length);
+      setText("[data-dashboard-progress-count]", progressAufgaben.length);
       setText("[data-dashboard-done-count]", doneTasks.length);
       setText("[data-dashboard-critical-count]", criticalTasks.length);
       renderExecutiveDashboard();
-      setDashboardText("[data-dashboard-open-meta]", progressTasks.length + " in Arbeit");
+      setDashboardText("[data-dashboard-open-meta]", progressAufgaben.length + " in Arbeit");
       setDashboardText("[data-dashboard-critical-meta]", criticalTasks.length ? "sofort prüfen" : "keine kritische Arbeit");
     }
 
@@ -4111,12 +5679,12 @@
             method: "PUT",
             body: JSON.stringify(taskFormPayload(editForm))
           });
-          const updatedTask = await api("/api/v1/tasks/" + task.id);
-          renderTaskDetail(updatedTask);
-          await loadDashboardTasks();
-          showTaskMessage("Task aktualisiert.");
+          const updatedAufgabe = await api("/api/v1/tasks/" + task.id);
+          renderAufgabeDetail(updatedAufgabe);
+          await loadDashboardAufgaben();
+          showAufgabeMessage("Aufgabe aktualisiert.");
         } catch (error) {
-          showTaskMessage(error.message, true);
+          showAufgabeMessage(error.message, true);
         } finally {
           submit.disabled = false;
         }
@@ -4124,7 +5692,7 @@
       return editForm;
     }
 
-    function showTaskMessage(message, isError) {
+    function showAufgabeMessage(message, isError) {
       if (!taskDetailMessage) return;
       taskDetailMessage.textContent = message;
       taskDetailMessage.classList.toggle("is-error", Boolean(isError));
@@ -4144,7 +5712,7 @@
       return payload;
     }
 
-    function updateTaskActionButtons(task, isBusy) {
+    function updateAufgabeActionButtons(task, isBusy) {
       if (taskStartButton) {
         taskStartButton.hidden = !canWrite("tasks");
         taskStartButton.disabled = Boolean(isBusy) || task.status !== "open";
@@ -4155,7 +5723,7 @@
       }
     }
 
-    function renderTaskDetail(task) {
+    function renderAufgabeDetail(task) {
       if (!taskDetailModal || !taskDetailBody) return;
       activeTask = task;
       activeTaskId = task.id;
@@ -4178,13 +5746,13 @@
       if (canWrite("tasks")) {
         taskDetailBody.appendChild(taskEditForm(task));
       }
-      updateTaskActionButtons(task);
-      showTaskMessage("");
+      updateAufgabeActionButtons(task);
+      showAufgabeMessage("");
     }
 
-    async function openTaskDetail(taskId) {
+    async function openAufgabeDetail(taskId) {
       const task = await api("/api/v1/tasks/" + taskId);
-      renderTaskDetail(task);
+      renderAufgabeDetail(task);
       if (taskDetailModal) {
         taskDetailModal.hidden = false;
         const closeButton = taskDetailModal.querySelector("[data-task-detail-close]");
@@ -4194,7 +5762,7 @@
 
     async function runTaskAction(taskId, action, body) {
       const path = "/api/v1/tasks/" + taskId + "/" + action;
-      const success = action === "start" ? "Task gestartet." : "Task abgeschlossen.";
+      const success = action === "start" ? "Aufgabe gestartet." : "Aufgabe abgeschlossen.";
       const options = { method: "POST" };
       if (body && Object.keys(body).length) {
         options.body = JSON.stringify(body);
@@ -4206,13 +5774,13 @@
           : "";
         announce(success + suffix);
         if (activeTaskId === taskId) {
-          renderTaskDetail(await api("/api/v1/tasks/" + taskId));
-          showTaskMessage(success + suffix);
+          renderAufgabeDetail(await api("/api/v1/tasks/" + taskId));
+          showAufgabeMessage(success + suffix);
         }
-        await loadDashboardTasks();
+        await loadDashboardAufgaben();
       } catch (error) {
         announce(error.message, true);
-        showTaskMessage(error.message, true);
+        showAufgabeMessage(error.message, true);
       }
     }
 
@@ -4221,10 +5789,10 @@
       card.className = "cockpit-task-card is-empty";
       const text = document.createElement("p");
       text.textContent = groupName === "urgent"
-        ? "Keine kritischen Tasks. Beobachte neue Störungen und überfällige Arbeit."
+        ? "Keine kritischen Aufgaben. Beobachte neue Störungen und überfällige Arbeit."
         : groupName === "today"
-          ? "Keine Tasks für heute. Neue Arbeit kannst du direkt aus dem Cockpit anlegen."
-          : "Keine Tasks in Arbeit. Starte offene Tasks, sobald Verantwortung und Material klar sind.";
+          ? "Keine Aufgaben für heute. Neue Arbeit kannst du direkt aus dem Cockpit anlegen."
+          : "Keine Aufgaben in Arbeit. Starte offene Aufgaben, sobald Verantwortung und Material klar sind.";
       card.appendChild(text);
       if (cockpitSuggestForm && canWrite("tasks")) {
         const captureButton = actionButton("Aufgaben öffnen", () => {
@@ -4242,7 +5810,7 @@
       return card;
     }
 
-    function cockpitTaskCard(task) {
+    function cockpitAufgabeCard(task) {
       const card = document.createElement("article");
       card.className = "cockpit-task-card";
       const title = document.createElement("h4");
@@ -4266,7 +5834,7 @@
       });
       const actions = document.createElement("div");
       actions.className = "cockpit-task-actions";
-      actions.appendChild(actionButton("Details", () => openTaskDetail(task.id)));
+      actions.appendChild(actionButton("Details", () => openAufgabeDetail(task.id)));
       if (canWrite("tasks") && task.status === "open") {
         const start = actionButton("Starten", () => runTaskAction(task.id, "start"));
         start.className = "btn btn-primary btn-sm";
@@ -4281,7 +5849,7 @@
       return card;
     }
 
-    async function loadDashboardTasks() {
+    async function loadDashboardAufgaben() {
       const tasks = listData(await api("/api/v1/tasks?limit=100"));
       const lists = {
         urgent: document.querySelector("[data-cockpit-list='urgent']"),
@@ -4291,7 +5859,7 @@
       Object.values(lists).forEach((list) => {
         if (list) list.innerHTML = "";
       });
-      updateDashboardTaskMetrics(tasks);
+      updateDashboardAufgabeMetrics(tasks);
       const groups = { urgent: [], today: [], progress: [] };
       const activeTasks = tasks.filter((task) => task.status !== "done" && task.status !== "cancelled");
       activeTasks.forEach((task) => {
@@ -4307,7 +5875,7 @@
           list.appendChild(emptyCockpitCard(name));
           return;
         }
-        group.forEach((task) => list.appendChild(cockpitTaskCard(task)));
+        group.forEach((task) => list.appendChild(cockpitAufgabeCard(task)));
       });
     }
 
@@ -4367,8 +5935,8 @@
           cockpitSuggestForm.reset();
           cockpitDraft.reset();
           cockpitDraft.hidden = true;
-          announce("Task gespeichert.");
-          await loadDashboardTasks();
+          announce("Aufgabe gespeichert.");
+          await loadDashboardAufgaben();
         } catch (error) {
           announce(error.message, true);
         } finally {
@@ -4505,15 +6073,18 @@
 
     function renderEmployeeOverview(employees) {
       if (!employeeOverview) return;
+      dashboardState.employees = employees;
       employeeOverview.innerHTML = "";
       employeeOverview.appendChild(employeeRow(null, true));
       if (!employees.length) {
         employeeOverview.appendChild(emptyDashboardMessage("Keine Mitarbeiterdaten verfügbar."));
+        renderPeopleHints();
         return;
       }
       employees.slice(0, 5).forEach((employee) => {
         employeeOverview.appendChild(employeeRow(employee));
       });
+      renderPeopleHints();
     }
 
     function incidentBadge(index) {
@@ -4602,7 +6173,7 @@
       return item;
     }
 
-    function inventoryCountsFromSummary(summary, materials) {
+    function inventoryCountsFromZusammenfassung(summary, materials) {
       const counts = summary && summary.status_counts;
       if (counts) {
         return {
@@ -4614,7 +6185,7 @@
       return inventoryStatusCounts(materials);
     }
 
-    function inventoryShortagesFromSummary(summary, materials) {
+    function inventoryShortagesFromZusammenfassung(summary, materials) {
       if (summary && Array.isArray(summary.top_shortages)) {
         return summary.top_shortages;
       }
@@ -4624,12 +6195,12 @@
         .slice(0, 3);
     }
 
-    function renderInventorySummary(summary) {
+    function renderInventoryZusammenfassung(summary) {
       if (!inventoryStats) return;
       dashboardState.inventory = summary || {};
       const materials = Array.isArray(summary.materials) ? summary.materials : [];
-      const counts = inventoryCountsFromSummary(summary, materials);
-      const shortages = inventoryShortagesFromSummary(summary, materials);
+      const counts = inventoryCountsFromZusammenfassung(summary, materials);
+      const shortages = inventoryShortagesFromZusammenfassung(summary, materials);
       inventoryStats.innerHTML = "";
       inventoryStats.append(
         inventoryMetric("Kritisch", String(counts.critical), "Artikel"),
@@ -4727,12 +6298,21 @@
       shiftTimeline.appendChild(axis);
       if (calendar.message) {
         shiftTimeline.appendChild(emptyDashboardMessage(calendar.message));
+        setDashboardText("[data-dashboard-shift-status]", "--");
+        setDashboardText("[data-dashboard-shift-meta]", calendar.message);
+        setProgress("[data-dashboard-shift-progress]", 8);
         return;
       }
       const now = new Date();
       const entries = Array.isArray(calendar.entries) ? calendar.entries : [];
       const today = todayIso();
       const todayEntries = entries.filter((entry) => entry.work_date === today && entry.shift !== "Frei");
+      setDashboardText("[data-dashboard-shift-status]", todayEntries.length ? todayEntries.length + "/3" : "--");
+      setDashboardText(
+        "[data-dashboard-shift-meta]",
+        todayEntries.length ? todayEntries.length + " Schichtbelegungen heute" : "Keine Schichtdaten heute"
+      );
+      setProgress("[data-dashboard-shift-progress]", todayEntries.length ? Math.min(100, (todayEntries.length / 3) * 100) : 12);
       const byShift = new Map(todayEntries.map((entry) => [entry.shift, entry]));
       const activeShiftKey = currentShiftKey(now);
       shiftTimeline.append(
@@ -4772,7 +6352,7 @@
         return;
       }
       if (!priorities.length) {
-        priorityList.appendChild(priorityInsightCard("KI-Priorisierung", "Keine offenen Tasks", "is-muted"));
+        priorityList.appendChild(priorityInsightCard("KI-Priorisierung", "Keine offenen Aufgaben", "is-muted"));
         return;
       }
       priorities.forEach((item) => {
@@ -4854,13 +6434,13 @@
       );
       operationsKpiGrid.innerHTML = "";
       operationsKpiGrid.append(
-        operationsCard("Offene Tasks", String(tasks.open || 0), (tasks.overdue || 0) + " überfällig", tasks.overdue ? "is-risk" : ""),
+        operationsCard("Offene Aufgaben", String(tasks.open || 0), (tasks.overdue || 0) + " überfällig", tasks.overdue ? "is-risk" : ""),
         operationsCard("MTTR", formatMinutes(machines.mttr_minutes), (machines.downtime_minutes || 0) + " min Ausfall", machines.mttr_minutes ? "is-warning" : ""),
         operationsCard("Wiederholstörungen", String(machines.repeat_faults || 0), (machines.faults || 0) + " Störungen", machines.repeat_faults ? "is-risk" : ""),
         operationsCard("Materialengpässe", String(inventory.critical_shortage_count || 0), (inventory.low_stock_count || 0) + " unter Mindestbestand", inventory.critical_shortage_count ? "is-risk" : ""),
         operationsCard("Schichtdeckung", formatPercent(workforce.avg_coverage_percent), (workforce.critical_conflicts || 0) + " kritische Konflikte", workforce.critical_conflicts ? "is-warning" : ""),
         operationsCard("Dokumentqualität", formatCompactNumber(documents.avg_quality_score), (documents.quality_checked || 0) + " geprüft", documents.avg_quality_score < 70 && documents.quality_checked ? "is-warning" : ""),
-        operationsCard("AI Feedback", String(aiQuality.feedback_count || 0), formatUsd(aiQuality.estimated_cost_usd || 0) + " geschätzt", ""),
+        operationsCard("KI-Feedback", String(aiQuality.feedback_count || 0), formatUsd(aiQuality.estimated_cost_usd || 0) + " geschätzt", ""),
         operationsCard("Events", String((summary.events || {}).total || 0), "pseudonymisiert erfasst", "")
       );
     }
@@ -4962,7 +6542,7 @@
     function renderDailyBriefing(briefing) {
       dashboardState.briefing = briefing || {};
       briefing.sections = Array.isArray(briefing.sections) ? briefing.sections : [];
-      if (briefingSummary) briefingSummary.textContent = briefing.summary;
+      if (briefingZusammenfassung) briefingZusammenfassung.textContent = briefing.summary;
       briefingList.innerHTML = "";
       const briefingCount = briefing.sections.reduce((sum, section) => sum + (section.count || 0), 0);
       setText("[data-dashboard-briefing-count]", briefingCount);
@@ -4982,7 +6562,7 @@
     async function loadDailyBriefing() {
       if (!briefingList) return;
       const pendingTimer = window.setTimeout(() => {
-        if (briefingSummary) briefingSummary.textContent = "Briefing wird aktualisiert.";
+        if (briefingZusammenfassung) briefingZusammenfassung.textContent = "Briefing wird aktualisiert.";
         briefingList.innerHTML = "";
         briefingList.appendChild(rowLikeStat("Status", "Aktualisierung läuft"));
       }, 5000);
@@ -4992,10 +6572,48 @@
         renderDailyBriefing(briefing);
       } catch (error) {
         window.clearTimeout(pendingTimer);
-        if (briefingSummary) briefingSummary.textContent = "Briefing konnte nicht geladen werden.";
+        if (briefingZusammenfassung) briefingZusammenfassung.textContent = "Briefing konnte nicht geladen werden.";
         briefingList.innerHTML = "";
         briefingList.appendChild(rowLikeStat("Status", "Nicht verfügbar"));
       }
+    }
+
+    async function loadDashboardMachines() {
+      if (!machineCards || !canView("machines")) return;
+      try {
+        dashboardState.machines = listData(await api("/api/v1/machines?limit=100"));
+      } catch (error) {
+        dashboardState.machines = [];
+        machineCards.innerHTML = "";
+        machineCards.appendChild(emptyRailMessage("Maschinenstatus konnte nicht geladen werden."));
+      }
+      renderMachineCards();
+      renderCriticalToday();
+    }
+
+    async function loadDashboardHandovers() {
+      if (!handoverList || !canView("shiftplans")) return;
+      try {
+        renderHandoverList(listData(await api("/api/v1/handover?date=" + todayIso())));
+      } catch (error) {
+        dashboardState.handovers = [];
+        handoverList.innerHTML = "";
+        handoverList.appendChild(emptyRailMessage("Schichtübergaben konnten nicht geladen werden."));
+        setDashboardText("[data-dashboard-shift-status]", "--");
+        setDashboardText("[data-dashboard-shift-meta]", "Übergaben nicht verfügbar");
+        setProgress("[data-dashboard-shift-progress]", 8);
+      }
+    }
+
+    async function loadDashboardVacations() {
+      if (!peopleHints || !canView("employees")) return;
+      try {
+        dashboardState.vacations = listData(await api("/api/v1/vacations?status=pending"));
+      } catch (error) {
+        dashboardState.vacations = [];
+      }
+      renderPeopleHints();
+      renderCriticalToday();
     }
 
     async function setupDashboardCalendarFilter() {
@@ -5052,7 +6670,7 @@
     const dashboardJobs = [];
 
     if (taskBoard && canView("tasks")) {
-      dashboardJobs.push(loadDashboardTasks());
+      dashboardJobs.push(loadDashboardAufgaben());
       dashboardJobs.push(loadDashboardPriorities());
     }
 
@@ -5080,6 +6698,24 @@
 
     dashboardJobs.push(loadDailyBriefing());
 
+    if (machineCards && canView("machines")) {
+      dashboardJobs.push(loadDashboardMachines());
+    } else if (machineCards) {
+      machineCards.innerHTML = "";
+      machineCards.appendChild(emptyRailMessage("Keine Berechtigung für Maschinenstatus."));
+    }
+
+    if (handoverList && canView("shiftplans")) {
+      dashboardJobs.push(loadDashboardHandovers());
+    } else if (handoverList) {
+      handoverList.innerHTML = "";
+      handoverList.appendChild(emptyRailMessage("Keine Berechtigung für Schichtübergaben."));
+    }
+
+    if (peopleHints && canView("employees")) {
+      dashboardJobs.push(loadDashboardVacations());
+    }
+
     if (errorStats && canView("errors")) {
       dashboardJobs.push((async () => {
         const errorPayload = await api("/api/v1/errors?limit=100");
@@ -5096,10 +6732,12 @@
     if (employeeOverview && canView("employees")) {
       dashboardJobs.push((async () => {
         try {
-          renderEmployeeOverview(listData(await api("/api/v1/employees?limit=5")));
+          renderEmployeeOverview(listData(await api("/api/v1/employees?limit=200")));
         } catch (error) {
           employeeOverview.innerHTML = "";
           employeeOverview.appendChild(emptyDashboardMessage("Mitarbeiterdaten konnten nicht geladen werden."));
+          dashboardState.employees = [];
+          renderPeopleHints();
         }
       })());
     }
@@ -5107,7 +6745,7 @@
     if (inventoryStats && canView("inventory")) {
       dashboardJobs.push((async () => {
         const summary = await api("/api/v1/inventory/summary?include_materials=0");
-        renderInventorySummary(summary);
+        renderInventoryZusammenfassung(summary);
       })());
     }
 
@@ -5129,11 +6767,11 @@
     const form = document.querySelector("[data-document-filter-form]");
     const reset = document.querySelector("[data-document-filter-reset]");
     const reviewPanel = document.querySelector("[data-document-review-panel]");
-    const reviewSummary = document.querySelector("[data-document-review-summary]");
+    const reviewZusammenfassung = document.querySelector("[data-document-review-summary]");
     const reviewScore = document.querySelector("[data-document-review-score]");
     const reviewStatus = document.querySelector("[data-document-review-status]");
     const reviewStatusBadge = document.querySelector("[data-document-review-status-badge]");
-    const reviewSource = document.querySelector("[data-document-review-source]");
+    const reviewQuelle = document.querySelector("[data-document-review-source]");
     const reviewFindings = document.querySelector("[data-document-review-findings]");
     const reviewRecommendations = document.querySelector("[data-document-review-recommendations]");
     const summaryPanel = document.querySelector("[data-document-summary-panel]");
@@ -5146,7 +6784,6 @@
     const documentMessage = document.querySelector("[data-document-message]");
     const manualForm = document.querySelector("[data-manual-upload-form]");
     const manualList = document.querySelector("[data-manual-list]");
-    const manualCount = document.querySelector("[data-manual-count]");
     const manualMessage = document.querySelector("[data-manual-message]");
     const manualMachineSelect = document.querySelector("[data-manual-machine-select]");
     if (!list || !form) return;
@@ -5173,6 +6810,24 @@
 
     function renderTableMessage(tableBody, colspan, message, isError) {
       if (!tableBody) return;
+      if (tableBody.tagName !== "TBODY") {
+        tableBody.innerHTML = "";
+        const empty = document.createElement("article");
+        empty.className = isError ? "guided-empty-state empty-state is-error" : "guided-empty-state empty-state";
+        const title = document.createElement("strong");
+        title.textContent = message;
+        const hint = document.createElement("p");
+        if (isError || message.includes("werden geladen")) {
+          hint.textContent = isError ? "Bitte erneut versuchen oder die Berechtigung prüfen." : "Die Wissensbasis wird aktualisiert.";
+        } else {
+          hint.textContent = message.includes("Handb")
+            ? "Lade ein Maschinenhandbuch hoch und ordne es Maschine und Bereich zu, damit es als Quelle nutzbar wird."
+            : "Nutze Filter, lade ein Dokument hoch oder prüfe abgeschlossene Aufgaben, wenn du einen Bericht erwartest.";
+        }
+        empty.append(title, hint);
+        tableBody.appendChild(empty);
+        return;
+      }
       const cell = document.createElement("td");
       cell.colSpan = colspan;
       cell.className = isError ? "table-message is-error" : "table-message";
@@ -5186,7 +6841,7 @@
         const hint = document.createElement("p");
         hint.textContent = message.includes("Handbücher")
           ? "Lade ein Maschinenhandbuch hoch und ordne es Maschine und Bereich zu, damit die AI eine belastbare Quelle findet."
-          : "Nutze Filter, lade ein Dokument hoch oder prüfe abgeschlossene Tasks, wenn du einen Bericht erwartest.";
+          : "Nutze Filter, lade ein Dokument hoch oder prüfe abgeschlossene Aufgaben, wenn du einen Bericht erwartest.";
         empty.append(title, hint);
         cell.appendChild(empty);
       }
@@ -5265,8 +6920,8 @@
       const findings = Array.isArray(review && review.findings) ? review.findings : [];
       const recommendations = Array.isArray(review && review.recommendations) ? review.recommendations : [];
       reviewPanel.hidden = false;
-      if (reviewSummary) {
-        reviewSummary.textContent = "Prüfung für " + (documentMeta.title || documentMeta.filename || "Dokument");
+      if (reviewZusammenfassung) {
+        reviewZusammenfassung.textContent = "Prüfung für " + (documentMeta.title || documentMeta.filename || "Dokument");
       }
       if (reviewScore) reviewScore.textContent = String((review && review.quality_score) || 0);
       if (reviewStatus) reviewStatus.textContent = reviewStatusLabel(review && review.status);
@@ -5274,8 +6929,8 @@
         reviewStatusBadge.className = reviewStatusClass(review && review.status);
         reviewStatusBadge.textContent = reviewStatusLabel(review && review.status);
       }
-      if (reviewSource) {
-        reviewSource.textContent = documentMeta.source || documentMeta.document_type || "Dokument";
+      if (reviewQuelle) {
+        reviewQuelle.textContent = documentMeta.source || documentMeta.document_type || "Dokument";
       }
       reviewFindings.innerHTML = "";
       if (!findings.length) {
@@ -5315,7 +6970,7 @@
       );
     }
 
-    function renderSummary(title, status, text) {
+    function renderZusammenfassung(title, status, text) {
       if (!summaryPanel || !summaryText) return;
       summaryPanel.hidden = false;
       if (summaryTitle) summaryTitle.textContent = title;
@@ -5328,7 +6983,7 @@
       const result = await api("/api/v1/documents/" + documentItem.id + "/summarize", {
         method: "POST"
       });
-      renderSummary(result.title, result.summary_status, result.summary);
+      renderZusammenfassung(result.title, result.summary_status, result.summary);
     }
 
     async function showVersions(documentItem) {
@@ -5360,10 +7015,100 @@
     }
 
     function statusText(value) {
-      if (value === "in_review") return "In Review";
+      if (value === "in_review") return "In Prüfung";
       if (value === "approved") return "Freigegeben";
       if (value === "rejected") return "Abgelehnt";
       return "Entwurf";
+    }
+
+    function documentStatusBadge(value) {
+      if (value === "approved" || value === "ready") return badge(statusText(value), "badge badge-status is-done");
+      if (value === "in_review" || value === "needs_review") return badge(statusText(value), "badge badge-status is-progress");
+      if (value === "rejected" || value === "error") return badge(statusText(value), "badge badge-status is-open");
+      return badge(statusText(value), "badge badge-status is-open");
+    }
+
+    function recordMetaItem(label, value) {
+      const item = document.createElement("span");
+      const itemLabel = document.createElement("small");
+      const itemValue = document.createElement("strong");
+      itemLabel.textContent = label;
+      itemValue.textContent = value || "-";
+      item.append(itemLabel, itemValue);
+      return item;
+    }
+
+    function manualRecordCard(manual, actions) {
+      const card = document.createElement("article");
+      card.className = "record-card document-record-card";
+      card.dataset.searchText = [
+        manual.title,
+        manual.original_filename,
+        manual.department,
+        manual.machine && manual.machine.name,
+        manual.analysis_status,
+        manual.summary_status
+      ].filter(Boolean).join(" ");
+
+      const header = document.createElement("div");
+      header.className = "record-card-header";
+      const titleBlock = document.createElement("div");
+      const title = document.createElement("h3");
+      title.className = "record-card-title";
+      title.textContent = manual.title || manual.original_filename || "Handbuch";
+      const subtitle = document.createElement("p");
+      subtitle.className = "record-card-subtitle";
+      subtitle.textContent = manual.machine && manual.machine.name ? manual.machine.name : "Keine Maschine zugeordnet";
+      titleBlock.append(title, subtitle);
+      header.append(titleBlock, badge(manual.analysis_status || "nicht geprüft", "badge badge-status is-progress"));
+
+      const meta = document.createElement("div");
+      meta.className = "record-card-meta";
+      meta.append(
+        recordMetaItem("Bereich", manual.department || "-"),
+        recordMetaItem("Analyse", manual.analysis_status || "-"),
+        recordMetaItem("Zusammenfassung", manual.summary_status || "-")
+      );
+      actions.classList.remove("table-actions");
+      actions.classList.add("record-card-actions");
+      card.append(header, meta, actions);
+      return card;
+    }
+
+    function documentRecordCard(documentItem, actions) {
+      const card = document.createElement("article");
+      card.className = "record-card document-record-card";
+      card.dataset.searchText = [
+        documentItem.title,
+        documentItem.task_id,
+        documentItem.department,
+        documentItem.machine,
+        statusText(documentItem.status)
+      ].filter(Boolean).join(" ");
+
+      const header = document.createElement("div");
+      header.className = "record-card-header";
+      const titleBlock = document.createElement("div");
+      const title = document.createElement("h3");
+      title.className = "record-card-title";
+      title.textContent = documentItem.title || "Wartungsbericht";
+      const subtitle = document.createElement("p");
+      subtitle.className = "record-card-subtitle";
+      subtitle.textContent = "Aufgabe #" + documentItem.task_id + " · " + (documentItem.machine || "Keine Maschine");
+      titleBlock.append(title, subtitle);
+      header.append(titleBlock, documentStatusBadge(documentItem.status));
+
+      const meta = document.createElement("div");
+      meta.className = "record-card-meta";
+      meta.append(
+        recordMetaItem("Bereich", documentItem.department || "-"),
+        recordMetaItem("Version", documentItem.version ? "v" + documentItem.version : "-"),
+        recordMetaItem("Erstellt", documentItem.created_at ? new Date(documentItem.created_at).toLocaleString("de-DE") : "-")
+      );
+      actions.classList.remove("table-actions");
+      actions.classList.add("record-card-actions");
+      card.append(header, meta, actions);
+      return card;
     }
 
     async function loadManualMachines() {
@@ -5393,9 +7138,9 @@
       }
       const manuals = listData(manualPayload);
       manualList.innerHTML = "";
-      if (manualCount) {
-        manualCount.textContent = paginationTotal(manualPayload, manuals) + " Handbücher";
-      }
+      document.querySelectorAll("[data-manual-count]").forEach((element) => {
+        element.textContent = paginationTotal(manualPayload, manuals) + " Handbücher";
+      });
       if (!manuals.length) {
         renderTableMessage(manualList, 6, "Keine Handbücher vorhanden.");
         return manuals;
@@ -5405,15 +7150,15 @@
         actions.className = "table-actions";
         actions.appendChild(actionButton("Download", async () => {
           await downloadFile(manual.download_url, manual.original_filename);
-        }, { successMessage: "Download wurde gestartet." }));
+        }, { successMessage: "Herunterladen wurde gestartet." }));
         actions.appendChild(actionButton("Analysieren", async () => {
           const result = await api("/api/v1/documents/manuals/" + manual.id + "/analyze", { method: "POST" });
-          renderSummary(result.title, result.analysis_status, result.analysis);
+          renderZusammenfassung(result.title, result.analysis_status, result.analysis);
           await loadManuals();
         }, { busyText: "Analysiert...", successMessage: "Handbuchanalyse aktualisiert." }));
         actions.appendChild(actionButton("Zusammenfassen", async () => {
           const result = await api("/api/v1/documents/manuals/" + manual.id + "/summarize", { method: "POST" });
-          renderSummary(result.title, result.summary_status, result.summary);
+          renderZusammenfassung(result.title, result.summary_status, result.summary);
           await loadManuals();
         }, { busyText: "Fasst zusammen...", successMessage: "Handbuch-Zusammenfassung aktualisiert." }));
         if (canWrite("documents")) {
@@ -5423,14 +7168,7 @@
             await loadManuals();
           }, { danger: true, busyText: "Löscht...", successMessage: "Handbuch gelöscht." }));
         }
-        manualList.appendChild(row([
-          manual.title,
-          manual.machine ? manual.machine.name : "-",
-          manual.department || "-",
-          manual.analysis_status,
-          manual.summary_status,
-          actions
-        ]));
+        manualList.appendChild(manualRecordCard(manual, actions));
       });
       return manuals;
     }
@@ -5456,11 +7194,10 @@
         throw error;
       }
       const documents = listData(documentPayload);
-      const documentCount = document.querySelector("[data-document-count]");
       list.innerHTML = "";
-      if (documentCount) {
-        documentCount.textContent = paginationTotal(documentPayload, documents) + " Dokumente";
-      }
+      document.querySelectorAll("[data-document-count]").forEach((element) => {
+        element.textContent = paginationTotal(documentPayload, documents) + " Dokumente";
+      });
       if (!documents.length) {
         renderTableMessage(list, 8, "Keine Dokumente gefunden.");
         return documents;
@@ -5473,20 +7210,20 @@
         }, { busyText: "Prüft...", successMessage: "Dokumentprüfung aktualisiert." }));
         actions.appendChild(actionButton("HTML", async () => {
           await downloadDocument(documentItem);
-        }, { successMessage: "HTML-Download wurde gestartet." }));
+        }, { successMessage: "HTML-Herunterladen wurde gestartet." }));
         actions.appendChild(actionButton("PDF", async () => {
           await downloadDocumentPdf(documentItem);
-        }, { successMessage: "PDF-Download wurde gestartet." }));
-        actions.appendChild(actionButton("Summary", async () => {
+        }, { successMessage: "PDF-Herunterladen wurde gestartet." }));
+        actions.appendChild(actionButton("Zusammenfassung", async () => {
           await summarizeDocument(documentItem);
         }, { busyText: "Fasst zusammen...", successMessage: "Zusammenfassung aktualisiert." }));
         actions.appendChild(actionButton("Versionen", async () => {
           await showVersions(documentItem);
         }, { successMessage: "Versionen geladen." }));
         if (canWrite("documents")) {
-          actions.appendChild(actionButton("Review", async () => {
+          actions.appendChild(actionButton("Prüfung", async () => {
             await changeDocumentStatus(documentItem, "submit-review");
-          }, { busyText: "Sendet...", successMessage: "Dokument wurde in Review gesetzt." }));
+          }, { busyText: "Sendet...", successMessage: "Dokument wurde zur Prüfung eingereicht." }));
           actions.appendChild(actionButton("Freigeben", async () => {
             await changeDocumentStatus(documentItem, "approve");
           }, { busyText: "Gibt frei...", successMessage: "Dokument freigegeben." }));
@@ -5494,16 +7231,7 @@
             await changeDocumentStatus(documentItem, "reject");
           }, { danger: true, busyText: "Lehnt ab...", successMessage: "Dokument abgelehnt." }));
         }
-        list.appendChild(row([
-          documentItem.title,
-          String(documentItem.task_id),
-          documentItem.department,
-          documentItem.machine,
-          statusText(documentItem.status),
-          documentItem.version ? "v" + documentItem.version : "-",
-          new Date(documentItem.created_at).toLocaleString("de-DE"),
-          actions
-        ]));
+        list.appendChild(documentRecordCard(documentItem, actions));
       });
       return documents;
     }
@@ -5592,7 +7320,7 @@
             await loadManuals();
           },
           busyText: "Lädt...",
-          errorMessage: "Upload fehlgeschlagen.",
+          errorMessage: "Hochladen fehlgeschlagen.",
           form: manualForm,
           pendingMessage: "Handbuch wird hochgeladen...",
           statusElement: manualMessage,
@@ -5626,10 +7354,12 @@
       initDashboardShiftRealtime,
       initDailyCockpit,
       initDepartments,
-      initTasks,
+      initTasks: initAufgaben,
+      initAufgaben,
       initErrors,
       initEmployees,
       initMachines,
+      initMachineProfile,
       initInventory,
       initShiftPlans,
       initVacations,

@@ -91,6 +91,7 @@ def test_new_ai_frontend_routes_exist(app, client):
         ("/api/v1/inventory/forecast", "POST"),
         ("/api/v1/shiftplans/calendar", "GET"),
         ("/api/v1/machines/<int:machine_id>/history", "GET"),
+        ("/api/v1/machines/<int:machine_id>/profile", "GET"),
         ("/api/v1/machines/<int:machine_id>/assistant", "POST"),
         ("/api/v1/machines/maintenance-recommendations", "GET"),
         ("/api/v1/ai/status", "GET"),
@@ -139,6 +140,7 @@ def test_new_ai_frontend_routes_exist(app, client):
     assert "/api/v1/admin/ai/retrieval-debug" in script
     assert "/api/v1/admin/ai/observability" in script
     assert "/api/v1/machines/maintenance-recommendations" in script
+    assert '"/api/v1/machines/" + machineId + "/profile"' in script
 
 
 def test_scalability_migration_contains_composite_indexes():
@@ -204,6 +206,7 @@ def test_feature_registry_covers_permissions_and_frontend_assets(client):
     assert 'module: "page"' in registry
     assert 'moduleUrl: "/static/pages/admin-ai.js"' in registry
     assert "routeAliases" in registry
+    assert "routePrefixes" in registry
     assert '"/admin/ai/models"' in registry
     assert "featureRoutes(feature)" in auth_js
     assert "feature.routeAliases" in auth_js

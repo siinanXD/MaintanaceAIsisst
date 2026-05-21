@@ -1,5 +1,5 @@
 (function () {
-  const STATIC_VERSION = "20260519-self-explain1";
+  const STATIC_VERSION = "20260521-plan9-ux1";
   const WORKFLOW_MODULE_URL = "/static/pages/workflows.js?v=" + STATIC_VERSION;
   const PAGE_MODULE_URLS = {
     "/login": "/static/pages/login.js?v=" + STATIC_VERSION
@@ -20,6 +20,11 @@
       .toLowerCase()
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "");
+  }
+
+  function urlSearchValue() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("search") || "";
   }
 
   function toastVariantName(variant) {
@@ -411,6 +416,8 @@
   function initLocalListSearch() {
     const searchInputs = Array.from(document.querySelectorAll("[data-list-search]"));
     searchInputs.forEach((input) => {
+      const deepLinkSearch = urlSearchValue();
+      if (deepLinkSearch && !input.value) input.value = deepLinkSearch;
       const targetSelector = input.dataset.listSearchTarget;
       if (!targetSelector) return;
       const target = document.querySelector(targetSelector);
@@ -418,7 +425,7 @@
 
       const applyFilter = () => {
         const query = normalizeSearchText(input.value);
-        const itemSelector = target.tagName === "TBODY" ? "tr" : ":scope > *";
+        const itemSelector = target.dataset.listSearchItems || (target.tagName === "TBODY" ? "tr" : ":scope > *");
         Array.from(target.querySelectorAll(itemSelector)).forEach((item) => {
           const isEmptyState = item.classList.contains("empty-state");
           const matches = !query || normalizeSearchText(item.textContent).includes(query);
@@ -427,8 +434,160 @@
       };
 
       input.addEventListener("input", applyFilter);
-      new MutationObserver(applyFilter).observe(target, { childList: true });
+      new MutationObserver(applyFilter).observe(target, { childList: true, subtree: true });
       applyFilter();
+    });
+  }
+
+  function initDeepLinkedSearchInputs() {
+    const deepLinkSearch = urlSearchValue();
+    if (!deepLinkSearch) return;
+    document.querySelectorAll("[data-error-search]").forEach((input) => {
+      if (!input.value) input.value = deepLinkSearch;
+    });
+  }
+
+  function globalSearchTypeLabel(type) {
+    const labels = {
+      task: "Aufgabe",
+      error: "Störung",
+      document: "Dokument"
+    };
+    return labels[type] || "Treffer";
+  }
+
+  function globalSearchFallbackUrl(query) {
+    return "/tasks?search=" + encodeURIComponent(query);
+  }
+
+  function renderGlobalSearchMessage(resultsElement, message, variant) {
+    resultsElement.innerHTML = "";
+    const item = document.createElement("div");
+    item.className = "global-search-empty";
+    if (variant) item.classList.add("is-" + variant);
+    item.textContent = message;
+    resultsElement.appendChild(item);
+  }
+
+  function renderGlobalSearchResults(resultsElement, results, query) {
+    resultsElement.innerHTML = "";
+    if (!results.length) {
+      renderGlobalSearchMessage(resultsElement, "Keine Treffer. Enter öffnet die Aufgabensuche.", "info");
+      return;
+    }
+
+    const groups = results.reduce((accumulator, result) => {
+      const type = result.type || "result";
+      if (!accumulator.has(type)) accumulator.set(type, []);
+      accumulator.get(type).push(result);
+      return accumulator;
+    }, new Map());
+
+    groups.forEach((groupResults, type) => {
+      const group = document.createElement("section");
+      group.className = "global-search-group";
+      const title = document.createElement("h2");
+      title.textContent = globalSearchTypeLabel(type);
+      group.appendChild(title);
+
+      groupResults.forEach((result) => {
+        const link = document.createElement("a");
+        link.className = "global-search-result";
+        link.href = result.ui_url || result.url || globalSearchFallbackUrl(query);
+
+        const content = document.createElement("span");
+        content.className = "global-search-result-content";
+        const resultTitle = document.createElement("strong");
+        resultTitle.textContent = result.title || "Ohne Titel";
+        content.appendChild(resultTitle);
+        if (result.summary) {
+          const summary = document.createElement("small");
+          summary.textContent = result.summary;
+          content.appendChild(summary);
+        }
+        link.appendChild(content);
+
+        if (result.badge || result.status) {
+          const badge = document.createElement("span");
+          badge.className = "global-search-result-badge";
+          badge.textContent = result.badge || result.status;
+          link.appendChild(badge);
+        }
+
+        group.appendChild(link);
+      });
+      resultsElement.appendChild(group);
+    });
+  }
+
+  function initGlobalSearch() {
+    const forms = Array.from(document.querySelectorAll("[data-global-search-form]"));
+    if (!forms.length) return;
+    forms.forEach((form) => {
+      const input = form.querySelector("[data-global-search-input]");
+      const panel = form.querySelector("[data-global-search-panel]");
+      const resultsElement = form.querySelector("[data-global-search-results]");
+      if (!input || !panel || !resultsElement) return;
+
+      let debounceId = null;
+      let activeQuery = "";
+      let lastResults = [];
+
+      const closePanel = () => {
+        panel.hidden = true;
+      };
+      const openPanel = () => {
+        panel.hidden = false;
+      };
+      const runSearch = async () => {
+        const query = input.value.trim();
+        activeQuery = query;
+        if (query.length < 2) {
+          closePanel();
+          lastResults = [];
+          return;
+        }
+        if (!window.maintenanceApi || !window.maintenanceAuth || !window.maintenanceAuth.token()) {
+          openPanel();
+          renderGlobalSearchMessage(resultsElement, "Bitte zuerst anmelden.", "error");
+          return;
+        }
+        openPanel();
+        renderGlobalSearchMessage(resultsElement, "Suche läuft...", "info");
+        try {
+          const payload = await window.maintenanceApi.request(
+            "/api/v1/search?q=" + encodeURIComponent(query)
+          );
+          if (activeQuery !== query) return;
+          lastResults = Array.isArray(payload.results) ? payload.results : [];
+          renderGlobalSearchResults(resultsElement, lastResults, query);
+        } catch (error) {
+          console.warn(error);
+          lastResults = [];
+          renderGlobalSearchMessage(resultsElement, "Suche konnte nicht geladen werden.", "error");
+        }
+      };
+
+      input.addEventListener("input", () => {
+        window.clearTimeout(debounceId);
+        debounceId = window.setTimeout(runSearch, 220);
+      });
+      input.addEventListener("focus", () => {
+        if (input.value.trim().length >= 2) runSearch();
+      });
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") closePanel();
+      });
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const query = input.value.trim();
+        if (!query) return;
+        const firstResult = lastResults[0];
+        window.location.href = firstResult ? (firstResult.ui_url || firstResult.url) : globalSearchFallbackUrl(query);
+      });
+      document.addEventListener("click", (event) => {
+        if (!form.contains(event.target)) closePanel();
+      });
     });
   }
 
@@ -688,7 +847,9 @@
   async function boot() {
     initAppShellPreferences();
     initMobileCollapsibleSections();
+    initDeepLinkedSearchInputs();
     initLocalListSearch();
+    initGlobalSearch();
     initHelpDisclosures();
     initAccessibleForms();
     initAccessibleTables();

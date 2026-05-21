@@ -20,6 +20,19 @@ from app.services.operations_tracking_service import record_event
 
 logger = logging.getLogger(__name__)
 
+ERROR_STATUSES = {"open", "in_progress", "closed"}
+ERROR_CATEGORIES = {
+    "Elektrik",
+    "Mechanik",
+    "Pneumatik",
+    "Hydraulik",
+    "SPS/Software",
+    "Sensorik",
+    "Netzwerk",
+    "Bedienfehler",
+    "Sonstiges",
+}
+
 
 # ---------------------------------------------------------------------------
 # Private helpers
@@ -69,6 +82,51 @@ def _non_negative_int(value, field_name):
     if parsed < 0:
         raise ValueError(f"{field_name} must not be negative")
     return parsed
+
+
+def _normalize_error_status(value):
+    """Return a supported error lifecycle status."""
+    status = str(value or "open").strip().lower()
+    if status not in ERROR_STATUSES:
+        raise ValueError("status must be one of: open, in_progress, closed")
+    return status
+
+
+def _normalize_cause_category(value):
+    """Return a known disturbance category or a safe fallback."""
+    category = normalize_text_field(value)
+    if not category:
+        return ""
+    if category in ERROR_CATEGORIES:
+        return category
+    return "Sonstiges"
+
+
+def _closed_at_for_status(status, existing_closed_at=None):
+    """Return a close timestamp only when the status is closed."""
+    if status == "closed":
+        return existing_closed_at or datetime.now(UTC)
+    return None
+
+
+def error_event_state(entry):
+    """Return compact disturbance state for audit old/new values."""
+    return {
+        "id": entry.id,
+        "error_code": entry.error_code,
+        "title": entry.title,
+        "machine": entry.machine,
+        "machine_id": entry.machine_id,
+        "department_id": entry.department_id,
+        "status": entry.status,
+        "severity": entry.severity,
+        "cause_category": entry.cause_category,
+        "impact": entry.impact,
+        "downtime_minutes": entry.downtime_minutes,
+        "production_loss_minutes": entry.production_loss_minutes,
+        "repeat_count": entry.repeat_count,
+        "closed_at": entry.closed_at.isoformat() if entry.closed_at else None,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -163,11 +221,15 @@ def create_error_entry(data, user):
             error_code=error_code,
             title=normalize_text_field(data["title"]),
             description=normalize_text_field(data.get("description", "")),
+            symptoms=normalize_text_field(
+                data.get("symptoms") or data.get("description", ""),
+            ),
             possible_causes=normalize_text_field(data.get("possible_causes", "")),
             solution=normalize_text_field(data.get("solution", "")),
             department=department,
+            status=_normalize_error_status(data.get("status")),
             severity=str(data.get("severity") or "medium").strip(),
-            cause_category=str(data.get("cause_category") or "").strip(),
+            cause_category=_normalize_cause_category(data.get("cause_category")),
             impact=str(data.get("impact") or "").strip(),
             downtime_minutes=_non_negative_int(
                 data.get("downtime_minutes"),
@@ -180,6 +242,7 @@ def create_error_entry(data, user):
             repeat_count=_non_negative_int(data.get("repeat_count"), "repeat_count"),
             last_seen_at=datetime.now(UTC),
         )
+        entry.closed_at = _closed_at_for_status(entry.status)
     except ValueError as exc:
         return None, {"error": str(exc)}, 400
     db.session.add(entry)
@@ -194,10 +257,13 @@ def create_error_entry(data, user):
         machine_id=entry.machine_id,
         metadata={
             "error_code": entry.error_code,
+            "status": entry.status,
             "severity": entry.severity,
             "downtime_minutes": entry.downtime_minutes,
             "cause_category": entry.cause_category,
         },
+        new_value=error_event_state(entry),
+        description=f"Stoerung erstellt: {entry.error_code} {entry.title}",
     )
     mark_error_entry_knowledge_stale(entry)
     db.session.commit()
@@ -214,6 +280,8 @@ def update_error_entry(entry, data, user):
         (None, {"error": "..."}, 400/403/500)  on failure
 
     """
+    old_state = error_event_state(entry)
+    old_status = entry.status
     try:
         if "department_id" in data or "department" in data:
             entry.department = department_from_payload(data, user)
@@ -222,7 +290,7 @@ def update_error_entry(entry, data, user):
     except ValueError as exc:
         return None, {"error": str(exc)}, 400
 
-    for field in ["title", "description", "possible_causes", "solution"]:
+    for field in ["title", "description", "symptoms", "possible_causes", "solution"]:
         if field in data:
             setattr(entry, field, normalize_text_field(data[field]))
     try:
@@ -240,9 +308,14 @@ def update_error_entry(entry, data, user):
             machine = _resolve_machine(machine_name)
             entry.machine_id = machine.id if machine else None
             entry.machine = machine.name if machine else machine_name
-        for field in ["severity", "cause_category", "impact"]:
+        if "status" in data:
+            entry.status = _normalize_error_status(data.get("status"))
+            entry.closed_at = _closed_at_for_status(entry.status, entry.closed_at)
+        for field in ["severity", "impact"]:
             if field in data:
                 setattr(entry, field, str(data.get(field) or "").strip())
+        if "cause_category" in data:
+            entry.cause_category = _normalize_cause_category(data.get("cause_category"))
         for field in ["downtime_minutes", "production_loss_minutes", "repeat_count"]:
             if field in data:
                 setattr(entry, field, _non_negative_int(data[field], field))
@@ -255,8 +328,47 @@ def update_error_entry(entry, data, user):
         entry.error_code = error_code
     entry.last_seen_at = datetime.now(UTC)
 
+    event_type = (
+        "error.closed"
+        if old_status != "closed" and entry.status == "closed"
+        else "error.updated"
+    )
     record_event(
-        "error.updated",
+        event_type,
+        "errors",
+        entity_type="error_entry",
+        entity_id=entry.id,
+        user=user,
+        department=entry.department,
+        machine_id=entry.machine_id,
+        metadata={
+            "error_code": entry.error_code,
+            "status": entry.status,
+            "severity": entry.severity,
+            "downtime_minutes": entry.downtime_minutes,
+            "cause_category": entry.cause_category,
+        },
+        old_value=old_state,
+        new_value=error_event_state(entry),
+        description=(
+            f"Stoerung geschlossen: {entry.error_code}"
+            if event_type == "error.closed"
+            else f"Stoerung aktualisiert: {entry.error_code}"
+        ),
+    )
+    mark_error_entry_knowledge_stale(entry)
+    db.session.commit()
+    return entry, None, 200
+
+
+def close_error_entry(entry, user):
+    """Close a visible error entry and persist an operational event."""
+    old_state = error_event_state(entry)
+    entry.status = "closed"
+    entry.closed_at = entry.closed_at or datetime.now(UTC)
+    entry.last_seen_at = datetime.now(UTC)
+    record_event(
+        "error.closed",
         "errors",
         entity_type="error_entry",
         entity_id=entry.id,
@@ -269,6 +381,9 @@ def update_error_entry(entry, data, user):
             "downtime_minutes": entry.downtime_minutes,
             "cause_category": entry.cause_category,
         },
+        old_value=old_state,
+        new_value=error_event_state(entry),
+        description=f"Stoerung geschlossen: {entry.error_code}",
     )
     mark_error_entry_knowledge_stale(entry)
     db.session.commit()
@@ -283,8 +398,9 @@ def update_error_entry(entry, data, user):
 def search_errors(query_text, user):
     """Return up to 10 visible error entries matching *query_text*.
 
-    Searches across error_code, machine, title, and description fields.
-    Returns an empty list when *query_text* is blank.
+    Searches across structured fault, machine, symptom, cause, category,
+    impact, and solution fields. Returns an empty list when *query_text* is
+    blank.
     """
     if not query_text:
         return []
@@ -297,6 +413,11 @@ def search_errors(query_text, user):
                 ErrorEntry.machine.ilike(needle),
                 ErrorEntry.title.ilike(needle),
                 ErrorEntry.description.ilike(needle),
+                ErrorEntry.symptoms.ilike(needle),
+                ErrorEntry.possible_causes.ilike(needle),
+                ErrorEntry.solution.ilike(needle),
+                ErrorEntry.cause_category.ilike(needle),
+                ErrorEntry.impact.ilike(needle),
             )
         )
         .order_by(ErrorEntry.error_code.asc())
@@ -450,8 +571,11 @@ def similarity_score(query_text, machine, entry):
                 entry.error_code,
                 entry.title,
                 entry.description,
+                entry.symptoms,
                 entry.possible_causes,
                 entry.solution,
+                entry.cause_category,
+                entry.impact,
             ]
         )
     )

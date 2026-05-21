@@ -3,10 +3,11 @@
 import hashlib
 import hmac
 import json
+import logging
 from collections import Counter, defaultdict
 from datetime import UTC, date, datetime, time, timedelta
 
-from flask import current_app
+from flask import current_app, has_app_context
 
 from app.domain_models.common import utc_now
 from app.extensions import db
@@ -26,6 +27,8 @@ from app.models import (
     TaskStatus,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def actor_hash_for_user(user):
     """Return a stable pseudonymous HMAC hash for a user."""
@@ -44,6 +47,13 @@ def metadata_text(metadata):
     """Return compact JSON text for event metadata."""
     safe_metadata = metadata if isinstance(metadata, dict) else {}
     return json.dumps(safe_metadata, ensure_ascii=True, sort_keys=True, default=str)
+
+
+def event_value_text(value):
+    """Return compact JSON text for optional old/new event values."""
+    if value is None:
+        return None
+    return json.dumps(value, ensure_ascii=True, sort_keys=True, default=str)
 
 
 def event_site_id(department=None, machine=None, site_id=None):
@@ -72,40 +82,68 @@ def record_event(
     site_id=None,
     source="app",
     metadata=None,
+    old_value=None,
+    new_value=None,
+    description="",
     occurred_at=None,
     commit=False,
 ):
     """Add one operations event to the current database session."""
-    department_id = department_id or getattr(department, "id", None)
-    machine_id = machine_id or getattr(machine, "id", None)
-    task_id = task_id or getattr(task, "id", None)
-    site_id = event_site_id(department=department, machine=machine, site_id=site_id)
-    if not site_id and department_id:
-        department_obj = department or db.session.get(Department, department_id)
-        site_id = event_site_id(department=department_obj)
-    if not site_id and machine_id:
-        machine_obj = machine or db.session.get(Machine, machine_id)
-        site_id = event_site_id(machine=machine_obj)
+    try:
+        department_id = department_id or getattr(department, "id", None)
+        machine_id = machine_id or getattr(machine, "id", None)
+        task_id = task_id or getattr(task, "id", None)
+        site_id = event_site_id(department=department, machine=machine, site_id=site_id)
+        if not site_id and department_id:
+            department_obj = department or db.session.get(Department, department_id)
+            site_id = event_site_id(department=department_obj)
+        if not site_id and machine_id:
+            machine_obj = machine or db.session.get(Machine, machine_id)
+            site_id = event_site_id(machine=machine_obj)
 
-    event = OperationalEvent(
-        event_type=str(event_type)[:80],
-        feature=str(feature)[:80],
-        entity_type=str(entity_type or "")[:80],
-        entity_id=entity_id,
-        site_id=site_id,
-        department_id=department_id,
-        machine_id=machine_id,
-        task_id=task_id,
-        occurred_at=occurred_at or utc_now(),
-        actor_hash=actor_hash_for_user(user),
-        actor_role=getattr(getattr(user, "role", None), "value", "") if user else "",
-        source=str(source or "app")[:80],
-        metadata_json=metadata_text(metadata),
+        event = OperationalEvent(
+            event_type=str(event_type)[:80],
+            feature=str(feature)[:80],
+            entity_type=str(entity_type or "")[:80],
+            entity_id=entity_id,
+            site_id=site_id,
+            department_id=department_id,
+            machine_id=machine_id,
+            task_id=task_id,
+            occurred_at=occurred_at or utc_now(),
+            actor_hash=actor_hash_for_user(user),
+            actor_role=getattr(getattr(user, "role", None), "value", "") if user else "",
+            source=str(source or "app")[:80],
+            old_value=event_value_text(old_value),
+            new_value=event_value_text(new_value),
+            description=str(description or "")[:1000],
+            metadata_json=metadata_text(metadata),
+        )
+        db.session.add(event)
+        if commit:
+            db.session.commit()
+        return event
+    except Exception:
+        if commit:
+            db.session.rollback()
+        _log_event_failure(event_type, entity_type, entity_id)
+        return None
+
+
+def log_event(*args, **kwargs):
+    """Record one operations event using the public audit helper name."""
+    return record_event(*args, **kwargs)
+
+
+def _log_event_failure(event_type, entity_type, entity_id):
+    """Log event failures without interrupting the primary workflow."""
+    message = (
+        "operations_event_record_failed event_type=%s entity_type=%s entity_id=%s"
     )
-    db.session.add(event)
-    if commit:
-        db.session.commit()
-    return event
+    if has_app_context():
+        current_app.logger.exception(message, event_type, entity_type, entity_id)
+        return
+    logger.exception(message, event_type, entity_type, entity_id)
 
 
 def parse_date_range(args, default_days=30):

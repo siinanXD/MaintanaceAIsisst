@@ -3,7 +3,19 @@
 from datetime import date, timedelta
 
 from app.extensions import db
-from app.models import KnowledgeDocument, MaintenancePlan, Priority, Role, Task
+from app.models import (
+    Department,
+    ErrorEntry,
+    GeneratedDocument,
+    KnowledgeDocument,
+    Machine,
+    MachineManual,
+    MaintenancePlan,
+    Priority,
+    Role,
+    ShiftHandover,
+    Task,
+)
 from app.services.ai_service import AIServiceError
 
 
@@ -866,6 +878,126 @@ def test_machine_history_uses_local_summary_without_openai_key(
     assert "Anlage Zusammenfassung" in payload["summary"]["text"]
 
 
+def test_machine_profile_combines_operational_sources(
+    app,
+    client,
+    make_user,
+    make_machine,
+    make_task,
+    auth_headers,
+):
+    """Verify the machine profile combines related operational records."""
+    admin = make_user(
+        username="machine_profile_admin",
+        role=Role.MASTER_ADMIN,
+        department_name="Produktion",
+    )
+    machine_id = make_machine(name="Profil Anlage", produced_item="Pumpenrad")
+    task_id = make_task(
+        "Profil Anlage Filter pruefen",
+        creator_username=admin["username"],
+        department_name="Produktion",
+        priority=Priority.SOON,
+        description="Profil Anlage braucht einen Filtercheck.",
+    )
+    with app.app_context():
+        department = Department.query.filter_by(name="Produktion").one()
+        machine = db.session.get(Machine, machine_id)
+        db.session.add_all(
+            [
+                ErrorEntry(
+                    machine=machine.name,
+                    machine_id=machine.id,
+                    error_code="PF-100",
+                    title="Sensorfehler",
+                    description="Sensor meldet unplausible Werte.",
+                    possible_causes="Sensorik verschmutzt",
+                    solution="Sensor reinigen und neu kalibrieren.",
+                    department=department,
+                    status="open",
+                    severity="critical",
+                    cause_category="Sensorik",
+                    impact="Produktion verlangsamt",
+                    downtime_minutes=45,
+                ),
+                GeneratedDocument(
+                    task_id=task_id,
+                    document_type="maintenance_report",
+                    title="Filtercheck Bericht",
+                    relative_path="2026/05/profile/filtercheck.html",
+                    department="Produktion",
+                    machine=machine.name,
+                    machine_id=machine.id,
+                    created_by=admin["id"],
+                    status="approved",
+                ),
+                MachineManual(
+                    machine_id=machine.id,
+                    department="Produktion",
+                    title="Profil Anlage Handbuch",
+                    original_filename="profil-anlage.pdf",
+                    relative_path="profile/profil-anlage.pdf",
+                    content_type="application/pdf",
+                    created_by=admin["id"],
+                ),
+                MaintenancePlan(
+                    title="Monatliche Sichtpruefung",
+                    description="Dichtungen, Sensorik und Filter pruefen.",
+                    interval_days=30,
+                    next_due_date=date.today(),
+                    priority=Priority.SOON,
+                    machine=machine,
+                    department=department,
+                    created_by=admin["id"],
+                    last_generated_task_id=task_id,
+                ),
+                ShiftHandover(
+                    department="Produktion",
+                    area="Linie 1",
+                    machine_id=machine.id,
+                    shift_date=date.today(),
+                    shift_type="Frueh",
+                    previous_shift="Nacht",
+                    next_shift="Spaet",
+                    status="open",
+                    machine_status="Sensorik beobachten",
+                    production_status="eingeschraenkt",
+                    responsible_employee="Max Mustermann",
+                ),
+            ]
+        )
+        db.session.commit()
+
+    response = client.get(
+        f"/api/v1/machines/{machine_id}/profile",
+        headers=auth_headers(admin["username"]),
+    )
+
+    payload = response.get_json()["data"]
+    assert response.status_code == 200
+    assert payload["machine"]["id"] == machine_id
+    assert payload["kpis"]["open_tasks"] == 1
+    assert payload["kpis"]["active_errors"] == 1
+    assert payload["kpis"]["maintenance_due"] == 1
+    assert payload["kpis"]["documents"] == 2
+    assert payload["kpis"]["shift_handovers"] == 1
+    assert payload["kpis"]["downtime_minutes"] == 45
+    assert payload["open_tasks"][0]["id"] == task_id
+    assert payload["active_errors"][0]["error_code"] == "PF-100"
+    assert payload["documents"]["reports"][0]["machine_id"] == machine_id
+    assert payload["documents"]["manuals"][0]["machine_id"] == machine_id
+    assert payload["maintenance_plans"][0]["machine_id"] == machine_id
+    assert payload["shift_handovers"][0]["machine_id"] == machine_id
+    assert {item["type"] for item in payload["timeline"]} >= {
+        "task",
+        "error",
+        "document",
+        "manual",
+        "maintenance",
+        "handover",
+    }
+
+
 def test_machine_page_contains_history_ui(client):
     """Verify the machine page exposes the history target container."""
     response = client.get("/machines")
@@ -878,6 +1010,21 @@ def test_machine_page_contains_history_ui(client):
     assert "data-machine-assistant-sources" in html
     assert "data-maintenance-recommendations-list" in html
     assert "Anlagenakte" in html
+
+
+def test_machine_detail_page_contains_profile_targets(client):
+    """Verify the machine detail page exposes the profile UI hooks."""
+    response = client.get("/machines/123")
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert 'data-machine-profile-page' in html
+    assert 'data-machine-id="123"' in html
+    assert "data-machine-profile-kpis" in html
+    assert "data-machine-profile-tasks" in html
+    assert "data-machine-profile-errors" in html
+    assert "data-machine-profile-documents" in html
+    assert "data-machine-profile-handovers" in html
 
 
 def test_machine_assistant_uses_local_context_and_requires_question(

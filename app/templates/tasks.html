@@ -1,80 +1,122 @@
 {% extends "base.html" %}
 
-{% block title %}Tasks - Maintenance Assistant{% endblock %}
+{% block title %}Aufgaben - Maintenance Assistant{% endblock %}
+{% block header_title %}Aufgaben{% endblock %}
 
 {% block content %}
-<section class="page-hero">
+<section class="page-hero task-workboard-hero">
   <div>
-    <h1 class="page-title">Tasks</h1>
-    <p class="page-description">Tasks nach Bereich planen, priorisieren und abarbeiten.</p>
+    <h1 class="page-title">Maintenance Workboard</h1>
+    <p class="page-description">Wartungs-, Reparatur- und Pr&uuml;faufgaben nach Priorit&auml;t, Status, Bereich und F&auml;lligkeit steuern.</p>
+  </div>
+  <div class="task-hero-actions">
+    <a class="btn btn-primary btn-sm" href="#task-create" data-permission-write="tasks">Aufgabe anlegen</a>
+    <button class="btn btn-outline btn-sm" type="button" data-task-priority-refresh>Priorit&auml;t aktualisieren</button>
+    <a class="btn btn-ghost btn-sm" href="/">Cockpit</a>
   </div>
 </section>
 
-<nav class="page-command-bar" aria-label="Aufgaben Schnellzugriff">
-  <a class="quick-action-row" href="#task-list">
-    <span>Taskliste &ouml;ffnen</span>
+<section class="task-control-strip" aria-label="Aufgaben Kennzahlen">
+  <article class="task-control-stat is-total">
+    <span>Aktiver Backlog</span>
     <strong data-dashboard-task-count>0</strong>
-  </a>
-  <button class="quick-action-row is-button" type="button" data-task-priority-refresh>
-    <span>Priorit&auml;t neu berechnen</span>
-    <strong>AI</strong>
-  </button>
-  <a class="quick-action-row" href="/">
-    <span>Zur&uuml;ck ins Cockpit</span>
-    <strong>Live</strong>
-  </a>
-</nav>
-
-<aside class="context-help" aria-label="Aufgaben Orientierung">
-  <strong>Wof&uuml;r ist diese Seite?</strong>
-  <p>Hier planst du Arbeit, siehst Priorit&auml;ten und wandelst unklare Meldungen in konkrete Tasks um. Die AI sortiert nur Vorschl&auml;ge vor; Status und Verantwortung bleiben bei dir.</p>
-  <details class="help-disclosure">
-    <summary>Was bedeutet AI-Priorisierung?</summary>
-    <p>Die Priorisierung bewertet Risiko, F&auml;lligkeit, Bereich und vorhandenen Kontext. Ein hoher Wert hei&szlig;t: zuerst pr&uuml;fen, nicht automatisch ausf&uuml;hren.</p>
-  </details>
-</aside>
-
-<section class="ai-action-grid" aria-label="Task Aktionen">
-  <button class="ai-action-card is-button" type="button" data-task-priority-refresh>
-    <strong>AI-Priorisierung</strong>
-    <span>Offene Tasks nach Risiko sortieren</span>
-  </button>
-  <a class="ai-action-card" href="/">
-    <strong>Daily Briefing</strong>
-    <span>Heute wichtige Punkte im Cockpit sehen</span>
-  </a>
+    <small>sichtbare Aufgaben</small>
+  </article>
+  <article class="task-control-stat is-open">
+    <span>Offen</span>
+    <strong data-task-open-count>0</strong>
+    <small>bereit zur Einplanung</small>
+  </article>
+  <article class="task-control-stat is-progress">
+    <span>In Bearbeitung</span>
+    <strong data-task-progress-count>0</strong>
+    <small>laufende Arbeit</small>
+  </article>
+  <article class="task-control-stat is-risk">
+    <span>&Uuml;berf&auml;llig</span>
+    <strong data-task-overdue-count>0</strong>
+    <small>sofort pr&uuml;fen</small>
+  </article>
+  <article class="task-control-stat is-done">
+    <span>Erledigt</span>
+    <strong data-task-done-count>0</strong>
+    <small>abgeschlossen</small>
+  </article>
 </section>
 
-<section class="dashboard-grid">
-  <details class="card app-card mobile-action-section lg:order-3 lg:col-span-6" data-mobile-collapsible data-default-collapsed="true" data-permission-write="tasks">
-    <summary class="mobile-action-summary">
+<section class="task-workflow-grid" aria-label="Aufgaben Workflows">
+  <details class="task-action-panel app-card" id="task-create" data-mobile-collapsible data-default-collapsed="true" data-permission-write="tasks">
+    <summary>
       <span>
-        <span class="mobile-action-title">KI-Task vorschlagen</span>
-        <span class="mobile-action-meta">Freitext analysieren lassen</span>
+        <strong>Aufgabe anlegen</strong>
+        <small>Bereich, Priorit&auml;t, Status und F&auml;lligkeit setzen</small>
       </span>
     </summary>
-    <div class="card-body">
-      <div class="panel-header">
-        <div>
-          <h2 class="panel-title">KI-Task vorschlagen</h2>
-          <p class="panel-meta">Freitext analysieren und als bearbeitbaren Task übernehmen</p>
+    <form data-task-form>
+      <div class="task-form-body">
+        <div class="form-grid">
+          <div class="field">
+            <label for="task-department">Bereich</label>
+            <select class="select select-bordered" id="task-department" name="department"></select>
+          </div>
+          <div class="field">
+            <label for="task-title">&Uuml;berschrift</label>
+            <input class="input input-bordered" id="task-title" name="title" required>
+          </div>
+          <div class="field">
+            <label for="task-priority">Priorit&auml;t</label>
+            <select class="select select-bordered" id="task-priority" name="priority">
+              <option value="urgent">Kritisch</option>
+              <option value="soon">Bald</option>
+              <option value="normal" selected>Normal</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="task-status">Status</label>
+            <select class="select select-bordered" id="task-status" name="status">
+              <option value="open" selected>Offen</option>
+              <option value="in_progress">In Arbeit</option>
+              <option value="done">Erledigt</option>
+              <option value="cancelled">Abgebrochen</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="task-due-date">F&auml;llig am</label>
+            <input class="input input-bordered" id="task-due-date" name="due_date" type="date">
+          </div>
+          <div class="field is-full">
+            <label for="task-description">Beschreibung</label>
+            <textarea class="textarea textarea-bordered" id="task-description" name="description" placeholder="Maschine, Beobachtung, Zielzustand und erste Pr&uuml;fschritte"></textarea>
+          </div>
         </div>
-        <span class="badge badge-ai">AI</span>
+        <div class="toolbar form-actions">
+          <button class="btn btn-primary" type="submit" data-task-submit-button>Aufgabe speichern</button>
+          <button class="btn btn-ghost" type="button" data-task-edit-cancel hidden>Bearbeiten abbrechen</button>
+          <span class="panel-meta" data-task-message role="status" aria-live="polite"></span>
+        </div>
       </div>
+    </form>
+  </details>
+
+  <details class="task-action-panel app-card" data-mobile-collapsible data-default-collapsed="true" data-permission-write="tasks">
+    <summary>
+      <span>
+        <strong>Aus Meldung erstellen</strong>
+        <small>Freitext in eine bearbeitbare Aufgabe umwandeln</small>
+      </span>
+    </summary>
+    <div class="task-form-body">
       <form data-task-suggest-form>
-        <div class="status-explainer">
-          <p><strong>Gef&uuml;hrter Vorschlag:</strong> Beschreibe die Beobachtung in Alltagssprache. Die AI f&uuml;llt Titel, Bereich, Priorit&auml;t und n&auml;chste Aktion vor.</p>
-        </div>
         <div class="field">
           <label for="task-suggest-text">Beschreibung</label>
-          <textarea class="textarea textarea-bordered" id="task-suggest-text" name="text" placeholder="z. B. Maschine 3 macht laute Geräusche am Lager."></textarea>
+          <textarea class="textarea textarea-bordered" id="task-suggest-text" name="text" placeholder="z. B. Presse 3 macht laute Ger&auml;usche am Lager."></textarea>
         </div>
         <div class="toolbar form-actions">
           <button class="btn btn-primary" type="submit">Vorschlag erstellen</button>
-          <span class="panel-meta" data-task-suggest-message></span>
+          <span class="panel-meta" data-task-suggest-message role="status" aria-live="polite"></span>
         </div>
       </form>
-      <div class="suggestion-box" data-task-suggestion hidden>
+      <div class="suggestion-box task-suggestion-box" data-task-suggestion hidden>
         <div class="form-grid">
           <div class="field">
             <label for="suggest-title">Titel</label>
@@ -85,7 +127,7 @@
             <input class="input input-bordered" id="suggest-department" data-suggest-field="department">
           </div>
           <div class="field">
-            <label for="suggest-priority">Priorität</label>
+            <label for="suggest-priority">Priorit&auml;t</label>
             <select class="select select-bordered" id="suggest-priority" data-suggest-field="priority">
               <option value="urgent">Kritisch</option>
               <option value="soon">Bald</option>
@@ -106,121 +148,128 @@
             <textarea class="textarea textarea-bordered" id="suggest-description" data-suggest-field="description"></textarea>
           </div>
           <div class="field">
-            <label for="suggest-cause">Mögliche Ursache</label>
+            <label for="suggest-cause">M&ouml;gliche Ursache</label>
             <textarea class="textarea textarea-bordered" id="suggest-cause" data-suggest-field="possible_cause"></textarea>
           </div>
           <div class="field">
-            <label for="suggest-action">Nächste Aktion</label>
+            <label for="suggest-action">N&auml;chste Aktion</label>
             <textarea class="textarea textarea-bordered" id="suggest-action" data-suggest-field="recommended_action"></textarea>
           </div>
         </div>
         <div class="toolbar form-actions">
-          <button class="btn btn-primary" type="button" data-apply-task-suggestion>In Taskformular übernehmen</button>
+          <button class="btn btn-primary" type="button" data-apply-task-suggestion>In Aufgabenformular &uuml;bernehmen</button>
         </div>
       </div>
     </div>
   </details>
 
-  <details class="card app-card mobile-action-section lg:order-3 lg:col-span-6" data-mobile-collapsible data-default-collapsed="true" data-permission-write="tasks">
-    <summary class="mobile-action-summary">
-      <span>
-        <span class="mobile-action-title">Task anlegen</span>
-        <span class="mobile-action-meta">Bereich, Priorität und Fälligkeit setzen</span>
-      </span>
-    </summary>
-    <form data-task-form>
-      <div class="card-body">
-      <div class="panel-header">
-        <div>
-          <h2 class="panel-title">Task anlegen</h2>
-          <p class="panel-meta">Bereich, Überschrift, Beschreibung und Fälligkeit</p>
-        </div>
+  <article class="task-priority-panel app-card">
+    <header class="panel-header">
+      <div>
+        <h2 class="panel-title">Priorit&auml;tslage</h2>
+        <p class="panel-meta">Offene Aufgaben nach Risiko, F&auml;lligkeit und Kontext sortiert.</p>
       </div>
-      <div class="form-grid">
-        <div class="field">
-          <label for="task-department">Bereich</label>
-          <select class="select select-bordered" id="task-department" name="department"></select>
-        </div>
-        <div class="field">
-          <label for="task-title">Überschrift</label>
-          <input class="input input-bordered" id="task-title" name="title" required>
-        </div>
-        <div class="field">
-          <label for="task-priority">Priorität</label>
-          <select class="select select-bordered" id="task-priority" name="priority">
-            <option value="urgent">Kritisch</option>
-            <option value="soon">Bald</option>
-            <option value="normal" selected>Normal</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="task-status">Status</label>
-          <select class="select select-bordered" id="task-status" name="status">
-            <option value="open" selected>Offen</option>
-            <option value="in_progress">In Arbeit</option>
-            <option value="done">Erledigt</option>
-            <option value="cancelled">Abgebrochen</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="task-due-date">Fällig am</label>
-          <input class="input input-bordered" id="task-due-date" name="due_date" type="date">
-        </div>
-        <div class="field is-full">
-          <label for="task-description">Beschreibung</label>
-          <textarea class="textarea textarea-bordered" id="task-description" name="description"></textarea>
-        </div>
-      </div>
-      <details class="help-disclosure">
-        <summary>Weitere Angaben richtig setzen</summary>
-        <p>Nutze <span class="term-chip">Kritisch</span> f&uuml;r Arbeit mit Safety- oder Stillstandsrisiko, <span class="term-chip">Bald</span> f&uuml;r zeitnahe Planung und <span class="term-chip">Normal</span> f&uuml;r regul&auml;re Arbeit.</p>
-      </details>
-      <div class="toolbar form-actions">
-        <button class="btn btn-primary" type="submit" data-task-submit-button>Task speichern</button>
-        <button class="btn btn-ghost" type="button" data-task-edit-cancel hidden>Bearbeiten abbrechen</button>
-        <span class="panel-meta" data-task-message></span>
-      </div>
-      </div>
-    </form>
-  </details>
-
-  <article class="card app-card lg:order-2 lg:col-span-12">
-    <div class="card-body">
-      <div class="panel-header">
-        <div>
-          <h2 class="panel-title">KI-Priorisierung</h2>
-          <p class="panel-meta">Offene Tasks nach Risiko, Fälligkeit und Kontext sortiert.</p>
-        </div>
-        <button class="btn btn-outline btn-sm" type="button" data-task-priority-refresh>Aktualisieren</button>
-      </div>
-      <div class="priority-score-list" data-task-priority-list></div>
-    </div>
-  </article>
-
-  <article class="card app-card mobile-primary-card lg:order-1 lg:col-span-12" id="task-list">
-    <div class="card-body">
-      <div class="panel-header">
-        <div>
-          <h2 class="panel-title">Taskliste</h2>
-          <p class="panel-meta">Admin sieht alles, Bereiche sehen ihre eigenen Tasks</p>
-        </div>
-        <div class="list-toolbar">
-          <label class="compact-search-field" for="task-list-search">
-            <span>Tasks suchen</span>
-            <input class="input input-bordered input-sm" id="task-list-search" data-list-search data-list-search-target="[data-task-list]" placeholder="Titel, Bereich, Status">
-          </label>
-          <div class="task-legend" aria-label="Task Legende">
-            <span class="badge badge-priority is-urgent">Kritisch</span>
-            <span class="badge badge-priority is-soon">Bald</span>
-            <span class="badge badge-priority is-normal">Normal</span>
-            <span class="badge badge-status is-open">Offen</span>
-            <span class="badge badge-status is-progress">In Arbeit</span>
-            <span class="badge badge-status is-done">Erledigt</span>
-          </div>
-        </div>
-      </div>
-      <div class="task-card-grid bounded-list-scroll" data-task-list></div>
-    </div>
+      <button class="btn btn-outline btn-sm" type="button" data-task-priority-refresh>Aktualisieren</button>
+    </header>
+    <div class="priority-score-list" data-task-priority-list></div>
   </article>
 </section>
+
+<article class="task-board-shell app-card" id="task-list">
+  <header class="task-board-header">
+    <div>
+      <p class="section-kicker">Arbeitssteuerung</p>
+      <h2>Kanban-Board</h2>
+      <p class="panel-meta">Aufgaben starten, abschlie&szlig;en, bearbeiten und nach operativen Kriterien filtern.</p>
+    </div>
+    <div class="task-legend" aria-label="Aufgabenlegende">
+      <span class="badge priority-badge is-urgent">Kritisch</span>
+      <span class="badge priority-badge is-soon">Bald</span>
+      <span class="badge priority-badge is-normal">Normal</span>
+      <span class="badge status-badge is-open">Offen</span>
+      <span class="badge status-badge is-progress">In Arbeit</span>
+      <span class="badge status-badge is-done">Erledigt</span>
+    </div>
+  </header>
+
+  <section class="task-filter-bar" aria-label="Aufgaben filtern">
+    <label class="task-filter-field" for="task-list-search">
+      <span>Suche</span>
+      <input class="input input-bordered input-sm" id="task-list-search" data-task-filter-search data-list-search data-list-search-target="[data-task-kanban-board]" placeholder="Titel, Maschine, Bereich, Status">
+    </label>
+    <label class="task-filter-field" for="task-status-filter">
+      <span>Status</span>
+      <select class="select select-bordered select-sm" id="task-status-filter" data-task-filter-status>
+        <option value="">Alle</option>
+        <option value="open">Offen</option>
+        <option value="in_progress">In Arbeit</option>
+        <option value="done">Erledigt</option>
+        <option value="cancelled">Abgebrochen</option>
+      </select>
+    </label>
+    <label class="task-filter-field" for="task-priority-filter">
+      <span>Priorit&auml;t</span>
+      <select class="select select-bordered select-sm" id="task-priority-filter" data-task-filter-priority>
+        <option value="">Alle</option>
+        <option value="urgent">Kritisch</option>
+        <option value="soon">Bald</option>
+        <option value="normal">Normal</option>
+      </select>
+    </label>
+    <label class="task-filter-field" for="task-department-filter">
+      <span>Bereich</span>
+      <select class="select select-bordered select-sm" id="task-department-filter" data-task-filter-department>
+        <option value="">Alle Bereiche</option>
+      </select>
+    </label>
+    <label class="task-filter-field" for="task-due-filter">
+      <span>F&auml;lligkeit</span>
+      <select class="select select-bordered select-sm" id="task-due-filter" data-task-filter-due>
+        <option value="">Alle</option>
+        <option value="overdue">&Uuml;berf&auml;llig</option>
+        <option value="today">Heute</option>
+        <option value="planned">Geplant</option>
+      </select>
+    </label>
+    <button class="btn btn-ghost btn-sm" type="button" data-task-filter-reset>Zur&uuml;cksetzen</button>
+    <span class="task-filter-summary" data-task-filter-summary>Aufgaben werden geladen.</span>
+  </section>
+
+  <div class="kanban-board task-maintenance-board bounded-list-scroll" data-task-kanban-board data-list-search-items=".task-card">
+    <section class="kanban-column is-open" aria-labelledby="task-kanban-open">
+      <header class="kanban-column-header">
+        <div>
+          <span class="section-kicker">Planen</span>
+          <h3 id="task-kanban-open">Offen</h3>
+          <small>Neue und noch nicht gestartete Arbeit</small>
+        </div>
+        <span class="kanban-count" data-kanban-count="open">0</span>
+      </header>
+      <div class="kanban-list" data-kanban-list="open"></div>
+    </section>
+    <section class="kanban-column is-progress" aria-labelledby="task-kanban-progress">
+      <header class="kanban-column-header">
+        <div>
+          <span class="section-kicker">Ausf&uuml;hren</span>
+          <h3 id="task-kanban-progress">In Bearbeitung</h3>
+          <small>Gestartete Aufgaben mit Verantwortlichen</small>
+        </div>
+        <span class="kanban-count" data-kanban-count="in_progress">0</span>
+      </header>
+      <div class="kanban-list" data-kanban-list="in_progress"></div>
+    </section>
+    <section class="kanban-column is-done" aria-labelledby="task-kanban-done">
+      <header class="kanban-column-header">
+        <div>
+          <span class="section-kicker">Abschlie&szlig;en</span>
+          <h3 id="task-kanban-done">Erledigt</h3>
+          <small>Abgeschlossene und abgebrochene Aufgaben</small>
+        </div>
+        <span class="kanban-count" data-kanban-count="done">0</span>
+      </header>
+      <div class="kanban-list" data-kanban-list="done"></div>
+    </section>
+  </div>
+  <div data-task-list hidden></div>
+</article>
 {% endblock %}

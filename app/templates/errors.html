@@ -1,80 +1,164 @@
 {% extends "base.html" %}
 
-{% block title %}Fehlerliste - Maintenance Assistant{% endblock %}
+{% block title %}St&ouml;rungen - Maintenance Assistant{% endblock %}
+{% block header_title %}St&ouml;rungen{% endblock %}
 
 {% block content %}
-<section class="page-hero">
+<section class="page-hero incident-hub-hero">
   <div>
-    <h1 class="page-title">Fehlerliste</h1>
-    <p class="page-description">Fehler nach Bereich, Maschine, Code und Lösung dokumentieren.</p>
+    <h1 class="page-title">St&ouml;rungszentrale &amp; Fehlerkatalog</h1>
+    <p class="page-description">St&ouml;rungen strukturiert erfassen, bekannte Fehler finden und L&ouml;sungen als belastbare Wissensbasis pflegen.</p>
+  </div>
+  <div class="incident-hero-actions">
+    <a class="btn btn-primary btn-sm" href="#incident-create" data-permission-write="errors">St&ouml;rung erfassen</a>
+    <button class="btn btn-outline btn-sm" type="button" data-error-search-focus>Katalog durchsuchen</button>
+    <button class="btn btn-ghost btn-sm" type="button" data-error-analysis-focus>Vorschlag erstellen</button>
   </div>
 </section>
 
-<nav class="page-command-bar" aria-label="St&ouml;rungen Schnellzugriff">
-  <button class="quick-action-row is-button" type="button" data-error-search-focus>
-    <span>Fehlerkatalog durchsuchen</span>
-    <strong>Katalog</strong>
-  </button>
-  <button class="quick-action-row is-button" type="button" data-error-analysis-focus>
-    <span>AI-Fehleranalyse starten</span>
-    <strong>AI</strong>
-  </button>
-  <a class="quick-action-row" href="/">
-    <span>Zur&uuml;ck ins Cockpit</span>
-    <strong>Live</strong>
-  </a>
-</nav>
-
-<aside class="context-help" aria-label="Fehler Orientierung">
-  <strong>Wof&uuml;r ist der Fehlerkatalog?</strong>
-  <p>Der Katalog ist die verl&auml;ssliche Wissensbasis f&uuml;r wiederkehrende St&ouml;rungen. Gute Eintr&auml;ge mit Code, Maschine, Ursache und L&ouml;sung verbessern sp&auml;tere AI-Antworten.</p>
-  <details class="help-disclosure">
-    <summary>Was bedeutet &auml;hnliche Fehler?</summary>
-    <p>Vor dem Speichern sucht die App nach vergleichbaren St&ouml;rungen. So vermeidest du doppelte Eintr&auml;ge und findest bekannte L&ouml;sungen schneller.</p>
-  </details>
-</aside>
-
-<section class="ai-action-grid" aria-label="Fehler Aktionen">
-  <button class="ai-action-card is-button" type="button" data-error-search-focus>
-    <strong>Katalog durchsuchen</strong>
-    <span>Code, Maschine oder Ursache filtern</span>
-  </button>
-  <button class="ai-action-card is-button" type="button" data-error-analysis-focus>
-    <strong>AI-Fehleranalyse</strong>
-    <span>Beschreibung in Ursachen und Lösung umwandeln</span>
-  </button>
+<section class="incident-control-strip" aria-label="St&ouml;rungskennzahlen">
+  <article class="incident-control-stat is-total">
+    <span>Katalog</span>
+    <strong data-error-count>0 Eintr&auml;ge</strong>
+    <small>gesamt erfasst</small>
+  </article>
+  <article class="incident-control-stat is-open">
+    <span>Offen</span>
+    <strong data-error-open-count>0</strong>
+    <small>aktive St&ouml;rungen</small>
+  </article>
+  <article class="incident-control-stat is-critical">
+    <span>Kritisch</span>
+    <strong data-error-critical-count>0</strong>
+    <small>hohe Schwere</small>
+  </article>
+  <article class="incident-control-stat is-downtime">
+    <span>Stillstand</span>
+    <strong data-error-downtime-count>0 min</strong>
+    <small>erfasste Dauer</small>
+  </article>
+  <article class="incident-control-stat is-category">
+    <span>Kategorien</span>
+    <strong data-error-category-count>0</strong>
+    <small>strukturierte Ursachen</small>
+  </article>
 </section>
 
-<section class="dashboard-grid">
-  <details class="card app-card mobile-action-section lg:order-3 lg:col-span-6" data-mobile-collapsible data-default-collapsed="true" data-permission-write="errors">
-    <summary class="mobile-action-summary">
+<section class="incident-workflow-grid" aria-label="St&ouml;rungsworkflows">
+  <details class="incident-action-panel app-card" id="incident-create" data-mobile-collapsible data-default-collapsed="true" data-permission-write="errors">
+    <summary>
       <span>
-        <span class="mobile-action-title">KI-Fehleranalyse</span>
-        <span class="mobile-action-meta">Beschreibung analysieren lassen</span>
+        <strong>St&ouml;rung erfassen</strong>
+        <small>Maschine, Kategorie, Symptome, Ursache, L&ouml;sung und Auswirkungen speichern</small>
       </span>
     </summary>
-    <div class="card-body">
-      <div class="panel-header">
-        <div>
-          <h2 class="panel-title">KI-Fehleranalyse</h2>
-          <p class="panel-meta">Beschreibung analysieren und Vorschlag übernehmen</p>
+    <form data-error-form>
+      <div class="incident-form-body">
+        <div class="form-grid">
+          <div class="field">
+            <label for="error-department">Bereich</label>
+            <select class="select select-bordered" id="error-department" name="department"></select>
+          </div>
+          <div class="field">
+            <label for="error-machine">Maschine</label>
+            <input class="input input-bordered" id="error-machine" name="machine" required>
+          </div>
+          <div class="field">
+            <label for="error-code">Fehlercode</label>
+            <input class="input input-bordered" id="error-code" name="error_code" placeholder="E104" required>
+          </div>
+          <div class="field">
+            <label for="error-status">Status</label>
+            <select class="select select-bordered" id="error-status" name="status">
+              <option value="open" selected>Offen</option>
+              <option value="in_progress">In Bearbeitung</option>
+              <option value="closed">Geschlossen</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="error-severity">Schweregrad</label>
+            <select class="select select-bordered" id="error-severity" name="severity">
+              <option value="critical">Kritisch</option>
+              <option value="high">Hoch</option>
+              <option value="medium" selected>Mittel</option>
+              <option value="low">Niedrig</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="error-category">Kategorie</label>
+            <select class="select select-bordered" id="error-category" name="cause_category">
+              <option value="">Noch offen</option>
+              <option>Elektrik</option>
+              <option>Mechanik</option>
+              <option>Pneumatik</option>
+              <option>Hydraulik</option>
+              <option>SPS/Software</option>
+              <option>Sensorik</option>
+              <option>Netzwerk</option>
+              <option>Bedienfehler</option>
+              <option>Sonstiges</option>
+            </select>
+          </div>
+          <div class="field is-full">
+            <label for="error-title">Kurzbeschreibung</label>
+            <input class="input input-bordered" id="error-title" name="title" required>
+          </div>
+          <div class="field is-full">
+            <label for="error-symptoms">Symptome</label>
+            <textarea class="textarea textarea-bordered" id="error-symptoms" name="symptoms" placeholder="Was war sichtbar, h&ouml;rbar oder messbar?"></textarea>
+          </div>
+          <div class="field">
+            <label for="error-causes">Ursache</label>
+            <textarea class="textarea textarea-bordered" id="error-causes" name="possible_causes"></textarea>
+          </div>
+          <div class="field">
+            <label for="error-solution">L&ouml;sung</label>
+            <textarea class="textarea textarea-bordered" id="error-solution" name="solution"></textarea>
+          </div>
+          <div class="field is-full">
+            <label for="error-impact">Auswirkung auf Produktion</label>
+            <input class="input input-bordered" id="error-impact" name="impact" placeholder="z. B. Linie 2 stand, Ausschuss erh&ouml;ht, Taktzeit reduziert">
+          </div>
+          <div class="field">
+            <label for="error-downtime">Stillstandszeit in Minuten</label>
+            <input class="input input-bordered" id="error-downtime" name="downtime_minutes" type="number" min="0" step="1">
+          </div>
+          <div class="field">
+            <label for="error-production-loss">Produktionsverlust in Minuten</label>
+            <input class="input input-bordered" id="error-production-loss" name="production_loss_minutes" type="number" min="0" step="1">
+          </div>
+          <div class="field">
+            <label for="error-repeat-count">Wiederholungen</label>
+            <input class="input input-bordered" id="error-repeat-count" name="repeat_count" type="number" min="0" step="1">
+          </div>
         </div>
-        <span class="badge badge-ai">AI</span>
+        <div class="toolbar form-actions">
+          <button class="btn btn-primary" type="submit">St&ouml;rung speichern</button>
+          <span class="panel-meta" data-error-message role="status" aria-live="polite"></span>
+        </div>
       </div>
+    </form>
+  </details>
+
+  <details class="incident-action-panel app-card" data-mobile-collapsible data-default-collapsed="true" data-permission-write="errors">
+    <summary>
+      <span>
+        <strong>Aus Beschreibung vorschlagen</strong>
+        <small>Freitext in pr&uuml;fbare Ursache, L&ouml;sung und Katalogdaten umwandeln</small>
+      </span>
+    </summary>
+    <div class="incident-form-body">
       <form data-error-analyze-form>
-        <div class="status-explainer">
-          <p><strong>Gef&uuml;hrte Analyse:</strong> Beschreibe Symptom, Maschine und Fehlercode. Die AI macht daraus einen Vorschlag, der vor dem Speichern gepr&uuml;ft werden muss.</p>
-        </div>
         <div class="field">
           <label for="error-analysis-description">Fehlerbeschreibung</label>
           <textarea class="textarea textarea-bordered" id="error-analysis-description" name="description" placeholder="z. B. Sensor meldet sporadisch kein Signal an Maschine 3."></textarea>
         </div>
         <div class="toolbar form-actions">
-          <button class="btn btn-primary" type="submit">Analyse erstellen</button>
-          <span class="panel-meta" data-error-analyze-message></span>
+          <button class="btn btn-primary" type="submit">Vorschlag erstellen</button>
+          <span class="panel-meta" data-error-analyze-message role="status" aria-live="polite"></span>
         </div>
       </form>
-      <div class="suggestion-box" data-error-analysis hidden>
+      <div class="suggestion-box incident-suggestion-box" data-error-analysis hidden>
         <div class="form-grid">
           <div class="field">
             <label for="analysis-machine">Maschine</label>
@@ -88,142 +172,119 @@
             <label for="analysis-title">Fehler</label>
             <input class="input input-bordered" id="analysis-title" data-error-analysis-field="title">
           </div>
+          <div class="field is-full">
+            <label for="analysis-symptoms">Symptome</label>
+            <textarea class="textarea textarea-bordered" id="analysis-symptoms" data-error-analysis-field="symptoms"></textarea>
+          </div>
           <div class="field">
-            <label for="analysis-causes">Mögliche Ursachen</label>
+            <label for="analysis-causes">M&ouml;gliche Ursachen</label>
             <textarea class="textarea textarea-bordered" id="analysis-causes" data-error-analysis-field="possible_causes"></textarea>
           </div>
           <div class="field">
-            <label for="analysis-solution">Lösung</label>
+            <label for="analysis-solution">L&ouml;sung</label>
             <textarea class="textarea textarea-bordered" id="analysis-solution" data-error-analysis-field="solution"></textarea>
           </div>
         </div>
         <div class="ai-action-preview" data-error-action-preview hidden></div>
         <div class="rag-source-panel" data-error-rag-sources hidden></div>
         <div class="toolbar form-actions">
-          <button class="btn btn-primary" type="button" data-apply-error-analysis>In Fehlerformular übernehmen</button>
+          <button class="btn btn-primary" type="button" data-apply-error-analysis>In St&ouml;rungsformular &uuml;bernehmen</button>
         </div>
       </div>
     </div>
   </details>
 
-  <details class="card app-card mobile-action-section lg:order-3 lg:col-span-6" data-mobile-collapsible data-default-collapsed="true" data-permission-write="errors">
-    <summary class="mobile-action-summary">
-      <span>
-        <span class="mobile-action-title">Fehler anlegen</span>
-        <span class="mobile-action-meta">Code, Maschine und Lösung speichern</span>
-      </span>
-    </summary>
-    <form data-error-form>
-      <div class="card-body">
-      <div class="panel-header">
-        <div>
-          <h2 class="panel-title">Fehler anlegen</h2>
-          <p class="panel-meta">Bereich, Maschine, Fehler und Lösung</p>
-        </div>
+  <article class="incident-similar-panel app-card" data-similar-errors-panel hidden>
+    <header class="panel-header">
+      <div>
+        <h2 class="panel-title">&Auml;hnliche Fehler</h2>
+        <p class="panel-meta">Bestehende Katalogeintr&auml;ge vor dem Speichern pr&uuml;fen.</p>
       </div>
-      <div class="form-grid">
-        <div class="field">
-          <label for="error-department">Bereich</label>
-          <select class="select select-bordered" id="error-department" name="department"></select>
-        </div>
-        <div class="field">
-          <label for="error-machine">Maschine</label>
-          <input class="input input-bordered" id="error-machine" name="machine" required>
-        </div>
-        <div class="field">
-          <label for="error-code">Fehlercode</label>
-          <input class="input input-bordered" id="error-code" name="error_code" placeholder="E104" required>
-        </div>
-        <div class="field">
-          <label for="error-title">Fehler</label>
-          <input class="input input-bordered" id="error-title" name="title" required>
-        </div>
-        <div class="field is-full">
-          <label for="error-causes">Mögliche Ursachen</label>
-          <textarea class="textarea textarea-bordered" id="error-causes" name="possible_causes"></textarea>
-        </div>
-        <div class="field is-full">
-          <label for="error-solution">Lösung</label>
-          <textarea class="textarea textarea-bordered" id="error-solution" name="solution"></textarea>
-        </div>
-      </div>
-      <div class="toolbar form-actions">
-        <button class="btn btn-primary" type="submit">Fehler speichern</button>
-        <span class="panel-meta" data-error-message></span>
-      </div>
-      </div>
-    </form>
-  </details>
-
-  <article class="card app-card lg:order-2 lg:col-span-12" data-similar-errors-panel hidden>
-    <div class="card-body">
-      <div class="panel-header">
-        <div>
-          <h2 class="panel-title">Ähnliche Fehler</h2>
-          <p class="panel-meta">Bestehende Katalogeinträge vor dem Speichern prüfen.</p>
-        </div>
-      </div>
-      <div class="table-wrap bounded-table-wrap">
-        <table class="table data-table">
-          <caption>Ähnliche vorhandene Fehler vor dem Speichern</caption>
-          <thead>
-            <tr>
-              <th scope="col">Score</th>
-              <th scope="col">Code</th>
-              <th scope="col">Maschine</th>
-              <th scope="col">Fehler</th>
-              <th scope="col">Grund</th>
-            </tr>
-          </thead>
-          <tbody data-similar-errors-list></tbody>
-        </table>
-      </div>
-    </div>
-  </article>
-
-  <article class="card app-card mobile-primary-card lg:order-1 lg:col-span-12" id="error-list">
-    <div class="card-body">
-      <div class="panel-header">
-        <div>
-          <h2 class="panel-title">Fehlerkatalog</h2>
-          <p class="panel-meta">Suchbarer Wissensspeicher für den KI-Assistenten</p>
-        </div>
-      </div>
-      <div class="status-explainer">
-        <p><strong>Wichtig f&uuml;r die AI:</strong> Exakte Fehlercodes und Maschinenbezeichnungen helfen der Suche, die passende Quelle statt einer allgemeinen Antwort zu verwenden.</p>
-      </div>
-      <div class="toolbar filter-toolbar">
-        <label class="field filter-field" for="error-search">
-          <span>Fehler suchen</span>
-          <input class="input input-bordered" id="error-search" data-error-search placeholder="Code, Maschine, Fehler, Ursache oder Lösung">
-        </label>
-        <span class="panel-meta" data-error-count>0 Einträge</span>
-      </div>
-      <div class="table-wrap">
-        <table class="table data-table">
-          <caption>Fehlerkatalog mit Code, Maschine, Ursache, Lösung und Aktionen</caption>
-          <thead>
-            <tr>
-              <th scope="col">Code</th>
-              <th scope="col">Maschine</th>
-              <th scope="col">Fehler</th>
-              <th scope="col">Bereich</th>
-              <th scope="col">Mögliche Ursache</th>
-              <th scope="col">Lösung</th>
-              <th scope="col" data-errors-action-th hidden>Aktionen</th>
-            </tr>
-          </thead>
-          <tbody data-error-list></tbody>
-        </table>
-      </div>
+    </header>
+    <div class="table-wrap bounded-table-wrap">
+      <table class="table data-table">
+        <caption>&Auml;hnliche vorhandene Fehler vor dem Speichern</caption>
+        <thead>
+          <tr>
+            <th scope="col">Score</th>
+            <th scope="col">Code</th>
+            <th scope="col">Maschine</th>
+            <th scope="col">Fehler</th>
+            <th scope="col">Grund</th>
+          </tr>
+        </thead>
+        <tbody data-similar-errors-list></tbody>
+      </table>
     </div>
   </article>
 </section>
 
-<!-- Fehler bearbeiten Dialog -->
-<dialog id="error-edit-dialog" aria-modal="true" aria-labelledby="eed-title">
-  <div class="card app-card" style="min-width:320px;max-width:500px;padding:1.5rem;">
-    <h3 class="panel-title mb-4" id="eed-title">Fehler bearbeiten</h3>
+<article class="incident-catalog-shell app-card" id="error-list">
+  <header class="incident-catalog-header">
+    <div>
+      <p class="section-kicker">Katalog</p>
+      <h2>Fehlerkatalog durchsuchen</h2>
+      <p class="panel-meta">Code, Maschine, Symptom, Ursache, L&ouml;sung oder Auswirkung finden.</p>
+    </div>
+    <button class="btn btn-outline btn-sm" type="button" data-error-similar-focus>&Auml;hnliche Fehler finden</button>
+  </header>
+
+  <section class="incident-filter-bar" aria-label="Fehlerkatalog filtern">
+    <label class="incident-filter-field" for="error-search">
+      <span>Suche</span>
+      <input class="input input-bordered input-sm" id="error-search" data-error-search placeholder="E104, Presse 3, Hydraulik, Sensor">
+    </label>
+    <label class="incident-filter-field" for="error-status-filter">
+      <span>Status</span>
+      <select class="select select-bordered select-sm" id="error-status-filter" data-error-status-filter>
+        <option value="">Alle</option>
+        <option value="open">Offen</option>
+        <option value="in_progress">In Bearbeitung</option>
+        <option value="closed">Geschlossen</option>
+      </select>
+    </label>
+    <label class="incident-filter-field" for="error-severity-filter">
+      <span>Schwere</span>
+      <select class="select select-bordered select-sm" id="error-severity-filter" data-error-severity-filter>
+        <option value="">Alle</option>
+        <option value="critical">Kritisch</option>
+        <option value="high">Hoch</option>
+        <option value="medium">Mittel</option>
+        <option value="low">Niedrig</option>
+      </select>
+    </label>
+    <label class="incident-filter-field" for="error-category-filter">
+      <span>Kategorie</span>
+      <select class="select select-bordered select-sm" id="error-category-filter" data-error-category-filter>
+        <option value="">Alle Kategorien</option>
+      </select>
+    </label>
+    <button class="btn btn-ghost btn-sm" type="button" data-error-filter-reset>Zur&uuml;cksetzen</button>
+    <span class="incident-filter-summary" data-error-filter-summary>Eintr&auml;ge werden geladen.</span>
+  </section>
+
+  <div class="filter-chip-row incident-category-chips" aria-label="Schnellfilter Fehlerkatalog">
+    <button class="filter-chip is-active" type="button" data-error-filter="all">Alle</button>
+    <button class="filter-chip" type="button" data-error-filter="Elektrik">Elektrik</button>
+    <button class="filter-chip" type="button" data-error-filter="Mechanik">Mechanik</button>
+    <button class="filter-chip" type="button" data-error-filter="Hydraulik">Hydraulik</button>
+    <button class="filter-chip" type="button" data-error-filter="SPS/Software">SPS/Software</button>
+    <button class="filter-chip" type="button" data-error-filter="Sensorik">Sensorik</button>
+    <button class="filter-chip" type="button" data-error-filter="Netzwerk">Netzwerk</button>
+  </div>
+
+  <div class="error-card-grid incident-card-grid" data-error-list></div>
+</article>
+
+<dialog class="incident-edit-dialog" id="error-edit-dialog" aria-modal="true" aria-labelledby="eed-title">
+  <form class="incident-edit-card app-card" method="dialog">
+    <header class="panel-header">
+      <div>
+        <h3 class="panel-title" id="eed-title">St&ouml;rung bearbeiten</h3>
+        <p class="panel-meta">Katalogdaten, Status und Auswirkungen aktualisieren.</p>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="eed-cancel" type="button">Schlie&szlig;en</button>
+    </header>
     <input type="hidden" id="eed-id">
     <div class="form-grid">
       <div class="field">
@@ -238,24 +299,75 @@
         <label for="eed-code">Fehlercode</label>
         <input class="input input-bordered" id="eed-code" required>
       </div>
+      <div class="field">
+        <label for="eed-status">Status</label>
+        <select class="select select-bordered" id="eed-status">
+          <option value="open">Offen</option>
+          <option value="in_progress">In Bearbeitung</option>
+          <option value="closed">Geschlossen</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="eed-severity">Schweregrad</label>
+        <select class="select select-bordered" id="eed-severity">
+          <option value="critical">Kritisch</option>
+          <option value="high">Hoch</option>
+          <option value="medium">Mittel</option>
+          <option value="low">Niedrig</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="eed-category">Kategorie</label>
+        <select class="select select-bordered" id="eed-category">
+          <option value="">Noch offen</option>
+          <option>Elektrik</option>
+          <option>Mechanik</option>
+          <option>Pneumatik</option>
+          <option>Hydraulik</option>
+          <option>SPS/Software</option>
+          <option>Sensorik</option>
+          <option>Netzwerk</option>
+          <option>Bedienfehler</option>
+          <option>Sonstiges</option>
+        </select>
+      </div>
       <div class="field is-full">
         <label for="eed-title-input">Fehler</label>
         <input class="input input-bordered" id="eed-title-input" required>
       </div>
       <div class="field is-full">
-        <label for="eed-causes">Mögliche Ursachen</label>
+        <label for="eed-symptoms">Symptome</label>
+        <textarea class="textarea textarea-bordered" id="eed-symptoms"></textarea>
+      </div>
+      <div class="field">
+        <label for="eed-causes">Ursache</label>
         <textarea class="textarea textarea-bordered" id="eed-causes"></textarea>
       </div>
-      <div class="field is-full">
-        <label for="eed-solution">Lösung</label>
+      <div class="field">
+        <label for="eed-solution">L&ouml;sung</label>
         <textarea class="textarea textarea-bordered" id="eed-solution"></textarea>
       </div>
+      <div class="field is-full">
+        <label for="eed-impact">Auswirkung</label>
+        <input class="input input-bordered" id="eed-impact">
+      </div>
+      <div class="field">
+        <label for="eed-downtime">Stillstandszeit</label>
+        <input class="input input-bordered" id="eed-downtime" type="number" min="0" step="1">
+      </div>
+      <div class="field">
+        <label for="eed-production-loss">Produktionsverlust</label>
+        <input class="input input-bordered" id="eed-production-loss" type="number" min="0" step="1">
+      </div>
+      <div class="field">
+        <label for="eed-repeat-count">Wiederholungen</label>
+        <input class="input input-bordered" id="eed-repeat-count" type="number" min="0" step="1">
+      </div>
     </div>
-    <div class="toolbar mt-4">
-      <button class="btn btn-primary btn-sm" id="eed-save">Speichern</button>
-      <button class="btn btn-ghost btn-sm" id="eed-cancel">Abbrechen</button>
+    <div class="toolbar form-actions">
+      <button class="btn btn-primary btn-sm" id="eed-save" type="button">Speichern</button>
+      <span class="panel-meta" id="eed-msg" role="status" aria-live="polite"></span>
     </div>
-    <p class="panel-meta mt-2" id="eed-msg" role="status" aria-live="polite"></p>
-  </div>
+  </form>
 </dialog>
 {% endblock %}

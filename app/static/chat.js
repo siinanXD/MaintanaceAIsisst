@@ -239,10 +239,10 @@
    */
   function confidencePayload(diagnostics) {
     const source = diagnostics || {};
-    const rawConfidence = source.confidence;
-    const confidence = rawConfidence && typeof rawConfidence === "object" ? rawConfidence : {};
-    const score = rawConfidence !== undefined && typeof rawConfidence !== "object"
-      ? rawConfidence
+    const rawSicherheit = source.confidence;
+    const confidence = rawSicherheit && typeof rawSicherheit === "object" ? rawSicherheit : {};
+    const score = rawSicherheit !== undefined && typeof rawSicherheit !== "object"
+      ? rawSicherheit
       : confidence.score !== undefined ? confidence.score : source.confidence_score;
     const level = confidence.level || source.confidence_level || "";
     if ((score === undefined || score === null || score === "") && !level) return null;
@@ -254,14 +254,14 @@
       factors: confidence.factors || {},
       method: confidence.method || ""
     };
-    payload.level = normalizedConfidenceLevel(payload);
+    payload.level = normalizedSicherheitLevel(payload);
     return payload;
   }
 
   /**
    * Return a normalized high, medium, or low confidence level.
    */
-  function normalizedConfidenceLevel(confidence) {
+  function normalizedSicherheitLevel(confidence) {
     const level = String((confidence && confidence.level) || "").toLowerCase();
     if (level === "high" || level === "medium" || level === "low") return level;
     const score = confidence && confidence.score !== undefined && confidence.score !== null
@@ -278,20 +278,20 @@
    * Return a user-facing confidence label.
    */
   function confidenceLevelLabel(level) {
-    const normalized = normalizedConfidenceLevel({ level });
+    const normalized = normalizedSicherheitLevel({ level });
     const labels = {
-      high: "Hohe Confidence",
-      medium: "Mittlere Confidence",
-      low: "Niedrige Confidence"
+      high: "Hohe Sicherheit",
+      medium: "Mittlere Sicherheit",
+      low: "Niedrige Sicherheit"
     };
-    return labels[normalized] || "Confidence";
+    return labels[normalized] || "Sicherheit";
   }
 
   /**
    * Return a short trust-oriented confidence explanation.
    */
   function confidenceTrustCopy(level) {
-    const normalized = normalizedConfidenceLevel({ level });
+    const normalized = normalizedSicherheitLevel({ level });
     const labels = {
       high: "Gut belegt",
       medium: "Plausibel, prüfen",
@@ -316,7 +316,7 @@
    * Return CSS tone class for confidence and risk indicators.
    */
   function confidenceTone(level) {
-    const normalized = normalizedConfidenceLevel({ level });
+    const normalized = normalizedSicherheitLevel({ level });
     if (normalized === "high") return "is-positive";
     if (normalized === "low") return "is-risk";
     return "is-warning";
@@ -326,7 +326,7 @@
    * Return a compact visual high, medium, low confidence meter.
    */
   function confidenceMeter(confidence) {
-    const level = normalizedConfidenceLevel(confidence);
+    const level = normalizedSicherheitLevel(confidence);
     const percent = confidenceScorePercent(confidence);
     const meter = document.createElement("div");
     const scale = document.createElement("div");
@@ -384,8 +384,8 @@
       machine: "Maschine",
       machine_manual: "Maschinenhandbuch",
       manual_training: "Training",
-      task: "Task",
-      upload: "Upload"
+      task: "Aufgabe",
+      upload: "Hochladen"
     };
     return labels[type] || boundedText(type, "Quelle", 40);
   }
@@ -566,38 +566,38 @@
    * Return concise answer-basis cards from diagnostics and sources.
    */
   function answerBasisItems(diagnostics, sources) {
-    const safeSources = Array.isArray(sources) ? sources : [];
-    const topSource = safeSources[0];
-    const machineSource = safeSources.find((source) => (
-      sourceMachineReasons(source).length || isMachineOrErrorSource(source)
+    const safeQuelles = Array.isArray(sources) ? sources : [];
+    const topQuelle = safeQuelles[0];
+    const machineQuelle = safeQuelles.find((source) => (
+      sourceMachineReasons(source).length || isMachineOrErrorQuelle(source)
     ));
     const confidence = confidencePayload(diagnostics);
     const items = [];
-    if (topSource) {
+    if (topQuelle) {
       items.push({
         tone: "is-source",
         title: "Warum diese Quelle?",
-        value: sourceTrustTitle(topSource),
-        detail: sourceReasonLabels(topSource).join(" - ") || "höchster sichtbarer Retrieval-Treffer"
+        value: sourceTrustTitle(topQuelle),
+        detail: sourceReasonLabels(topQuelle).join(" - ") || "höchster sichtbarer Quellenabruf-Treffer"
       });
     }
-    if (machineSource) {
-      const reasons = sourceMachineReasons(machineSource);
+    if (machineQuelle) {
+      const reasons = sourceMachineReasons(machineQuelle);
       items.push({
         tone: "is-machine",
         title: "Warum diese Maschine?",
-        value: sourceTrustTitle(machineSource),
+        value: sourceTrustTitle(machineQuelle),
         detail: reasons.join(" - ") || "Quelle enthält passenden Maschinen- oder Fehlerkontext"
       });
     }
-    if (topSource || confidence) {
+    if (topQuelle || confidence) {
       const confidenceReason = confidence && confidence.reasons.length
         ? boundedText(confidence.reasons[0], "", 120)
         : "";
       items.push({
         tone: "is-solution",
         title: "Warum diese Lösung?",
-        value: topSource ? "Aus sichtbarem Wartungskontext" : confidenceLevelLabel(confidence.level),
+        value: topQuelle ? "Aus sichtbarem Wartungskontext" : confidenceLevelLabel(confidence.level),
         detail: confidenceReason || "Antwort basiert auf den bestbewerteten erlaubten Quellen."
       });
     }
@@ -609,7 +609,7 @@
   /**
    * Return whether a source is a likely machine or fault hint.
    */
-  function isMachineOrErrorSource(source) {
+  function isMachineOrErrorQuelle(source) {
     const type = String(
       (source && (source.module || source.source_type || source.type || source.document_type)) || ""
     );
@@ -655,7 +655,7 @@
         warnings.push(boundedText(warning, "", 160));
       });
       if (payload.modified) {
-        warnings.push("Antwort wurde durch die finale Safety-Prüfung entschärft.");
+        warnings.push("Antwort wurde durch die finale Sicherheit-Prüfung entschärft.");
       }
     });
     return Array.from(new Set(warnings.filter(Boolean))).slice(0, 5);
@@ -706,7 +706,7 @@
       maintenance_assistant: "Maintenance Antwort",
       similar_errors: "Aehnliche Fehler",
       summary: "Zusammenfassung",
-      task_help: "Task-Hilfe",
+      task_help: "Aufgabenhilfe",
       task_prioritization: "Priorisierung"
     };
     return labels[mode] || "AI Antwort";
@@ -779,7 +779,7 @@
       appendAnswerBadge(badges, sources.length + " Quellen", "is-info");
     }
     if (safetyWarnings(diagnostics).length) {
-      appendAnswerBadge(badges, "Safety", "is-risk");
+      appendAnswerBadge(badges, "Sicherheit", "is-risk");
     }
     if (conflictWarnings(diagnostics).length) {
       appendAnswerBadge(badges, "Konflikt", "is-warning");
@@ -827,7 +827,7 @@
       meta: (explainability.explained_source_count || 0) + " erklärt",
       tone: (sources || []).length ? "is-info" : "is-warning"
     });
-    if (explainability.machine_match_count || (sources || []).some(isMachineOrErrorSource)) {
+    if (explainability.machine_match_count || (sources || []).some(isMachineOrErrorQuelle)) {
       items.push({
         label: "Maschinenkontext",
         value: String(explainability.machine_match_count || 1),
@@ -888,7 +888,7 @@
     const alerts = [];
     if (safetyMessages.length) {
       alerts.push({
-        title: "Safety-Hinweis",
+        title: "Sicherheit-Hinweis",
         message: boundedText(safetyMessages.join(" "), "", 280),
         tone: "is-risk"
       });
@@ -1111,7 +1111,7 @@
     if (machine) parts.push("Maschine " + machine);
     if (department) parts.push("Department " + department);
     if (semantic) parts.push("Similarity " + scoreLabel(semantic));
-    if (chunk !== undefined && chunk !== null && chunk !== "") parts.push("Chunk " + chunk);
+    if (chunk !== undefined && chunk !== null && chunk !== "") parts.push("Textabschnitt " + chunk);
     if (quality) parts.push(quality);
     if (section) parts.push(boundedText(section, "", 48));
     return parts.join(" - ");
@@ -1140,7 +1140,7 @@
     type.textContent = sourceTypeLabel(source) + ((source && source.id) ? " #" + source.id : "");
     facts.className = "chat-source-facts";
     [
-      ["Source-Type", sourceTypeLabel(source)],
+      ["Quelle-Type", sourceTypeLabel(source)],
       ["Maschine", sourceMachineLabel(source) || "-"],
       ["Relevanz", sourceRelevanceLabel(source) || "-"],
       ["Department", sourceDepartmentLabel(source) || "-"]
@@ -1166,7 +1166,7 @@
   /**
    * Render source chips below an assistant answer.
    */
-  function renderSources(bubble, sources) {
+  function renderQuelles(bubble, sources) {
     const existing = bubble.querySelector(".chat-sources");
     if (existing) existing.remove();
     if (!sources || !sources.length) return;
@@ -1198,7 +1198,7 @@
       const reasons = sourceMachineReasons(source);
       if (reasons.length) {
         hints.push(sourceTypeLabel(source) + ": " + reasons.join(", "));
-      } else if (isMachineOrErrorSource(source)) {
+      } else if (isMachineOrErrorQuelle(source)) {
         hints.push(sourceTypeLabel(source) + ": " + boundedText(source.title, "Kontextquelle", 80));
       }
     });
@@ -1260,13 +1260,13 @@
     appendExplainabilityRow(rows, "Query-Typ", queryTypeLabel(diagnostics));
     appendExplainabilityRow(rows, "Suchzeit", retrievalDuration(diagnostics));
     appendExplainabilityRow(rows, "Quellen erklärt", explainability.explained_source_count || 0);
-    appendExplainabilityRow(rows, "Machine Match", explainability.machine_match_count || 0);
+    appendExplainabilityRow(rows, "Maschinenabgleich", explainability.machine_match_count || 0);
     appendExplainabilityRow(rows, "Feedback-Signale", explainability.feedback_influenced_count || 0);
     appendExplainabilityRow(rows, "Recency-Signale", explainability.recency_influenced_count || 0);
     if (confidence) {
-      appendExplainabilityRow(rows, "Confidence-Methode", confidence.method);
+      appendExplainabilityRow(rows, "Sicherheit-Methode", confidence.method);
       confidence.reasons.slice(0, 3).forEach((reason, index) => {
-        appendExplainabilityRow(rows, "Confidence " + (index + 1), reason);
+        appendExplainabilityRow(rows, "Sicherheit " + (index + 1), reason);
       });
     }
     (sources || []).slice(0, 3).forEach((source, index) => {
@@ -1291,15 +1291,15 @@
    */
   function renderAssistantEvidence(bubble, diagnostics, sources) {
     const safeDiagnostics = diagnostics || {};
-    const safeSources = Array.isArray(sources) ? sources : [];
-    renderAnswerHeader(bubble, safeDiagnostics, safeSources);
+    const safeQuelles = Array.isArray(sources) ? sources : [];
+    renderAnswerHeader(bubble, safeDiagnostics, safeQuelles);
     clearAnswerEvidence(bubble);
     renderAnswerAlerts(bubble, safeDiagnostics);
-    renderAnswerInsights(bubble, safeDiagnostics, safeSources);
-    renderAnswerBasis(bubble, safeDiagnostics, safeSources);
-    renderSources(bubble, safeSources);
-    renderContextHints(bubble, safeDiagnostics, safeSources);
-    renderExplainability(bubble, safeDiagnostics, safeSources);
+    renderAnswerInsights(bubble, safeDiagnostics, safeQuelles);
+    renderAnswerBasis(bubble, safeDiagnostics, safeQuelles);
+    renderQuelles(bubble, safeQuelles);
+    renderContextHints(bubble, safeDiagnostics, safeQuelles);
+    renderExplainability(bubble, safeDiagnostics, safeQuelles);
   }
 
   function renderChatHistory(items) {
@@ -1390,11 +1390,11 @@
     if (meta) {
       meta.remove();
     }
-    const diagnosticsWithConfidence = Object.assign({}, diagnostics || {});
-    if (result && result.confidence && !diagnosticsWithConfidence.confidence) {
-      diagnosticsWithConfidence.confidence = result.confidence;
+    const diagnosticsWithSicherheit = Object.assign({}, diagnostics || {});
+    if (result && result.confidence && !diagnosticsWithSicherheit.confidence) {
+      diagnosticsWithSicherheit.confidence = result.confidence;
     }
-    renderAssistantEvidence(bubble, diagnosticsWithConfidence, sources);
+    renderAssistantEvidence(bubble, diagnosticsWithSicherheit, sources);
     renderActionPreview(bubble, actionPreview);
   }
 
@@ -1558,7 +1558,7 @@
     resetChatSession();
     const initial = document.createElement("div");
     initial.className = "chat-message is-assistant";
-    initial.textContent = "Frag mich nach Tasks, Fehlern, Maschinen, Lager, Dokumenten oder Schichtplanung.";
+    initial.textContent = "Frag mich nach Aufgaben, Fehlern, Maschinen, Lager, Dokumenten oder Schichtplanung.";
     messages.appendChild(initial);
     renderSuggestions();
   }
@@ -1567,8 +1567,8 @@
     const auth = window.maintenanceAuth;
     if (!auth || !auth.user || !auth.user()) return [];
     const items = [];
-    if (auth.canView("tasks")) items.push({ category: "tasks", message: "Welche Tasks sind heute wichtig?" });
-    if (auth.canWrite("tasks")) items.push({ category: "tasks", message: "Task erstellen: Maschine 3 macht Geräusche" });
+    if (auth.canView("tasks")) items.push({ category: "tasks", message: "Welche Aufgaben sind heute wichtig?" });
+    if (auth.canWrite("tasks")) items.push({ category: "tasks", message: "Aufgabe erstellen: Maschine 3 macht Geräusche" });
     if (auth.canView("errors")) items.push({ category: "errors", message: "Was bedeutet Fehler E104?" });
     if (auth.canWrite("errors")) items.push({ category: "errors", message: "Fehleranalyse: Sensor meldet kein Signal" });
     if (auth.canView("machines")) items.push({ category: "machines", message: "Welche Maschinen brauchen Aufmerksamkeit?" });

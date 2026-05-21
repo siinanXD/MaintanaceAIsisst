@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}Mitarbeiter - Maintenance Assistant{% endblock %}
+{% block header_title %}Mitarbeiter{% endblock %}
 
 {% block content %}
 <section class="page-hero">
@@ -9,6 +10,29 @@
     <h1 class="page-title">Mitarbeiter</h1>
     <p class="page-description">Mitarbeiterdaten erfassen und Dokumente direkt an der Person ablegen.</p>
   </div>
+</section>
+
+<section class="surface-stat-grid ux-ops-summary-grid" aria-label="Personalstatus">
+  <article class="surface-stat-card is-primary">
+    <span>Mitarbeitende</span>
+    <strong data-employee-count>0 Mitarbeitende</strong>
+    <small>Personen, Teams, Schichtmodell und Zust&auml;ndigkeiten.</small>
+  </article>
+  <article class="surface-stat-card is-ai">
+    <span>Qualifikationen</span>
+    <strong>sichtbar</strong>
+    <small>F&auml;higkeiten und Maschinenbezug direkt an der Person.</small>
+  </article>
+  <article class="surface-stat-card is-warning">
+    <span>Schichtbezug</span>
+    <strong>Teams</strong>
+    <small>Team, Rhythmus und aktuelle Schicht f&uuml;r Planung.</small>
+  </article>
+  <article class="surface-stat-card is-neutral">
+    <span>Dokumente</span>
+    <strong>Personenakte</strong>
+    <small>Freigegebene Dokumente bleiben pro Mitarbeiter abrufbar.</small>
+  </article>
 </section>
 
 <section class="dashboard-grid">
@@ -114,7 +138,7 @@
           <input class="input input-bordered input-sm" id="employee-list-search" data-list-search data-list-search-target="[data-employee-list]" placeholder="Name, Team, Schicht, Qualifikation">
         </label>
       </div>
-      <div class="resource-card-grid bounded-list-scroll" data-employee-list></div>
+      <div class="resource-card-grid employee-card-grid bounded-list-scroll" data-employee-list></div>
     </div>
   </article>
 </section>

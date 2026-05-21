@@ -1,137 +1,405 @@
 {% extends "base.html" %}
-{% block title %}Schichtübergabe - Maintenance Assistant{% endblock %}
+
+{% block title %}Schicht&uuml;bergabe - Maintenance Assistant{% endblock %}
+{% block header_title %}Schicht&uuml;bergabe{% endblock %}
+
 {% block content %}
-<section class="page-hero">
+<section class="page-hero handover-hero">
   <div>
-    <p class="page-kicker">Schichtbetrieb</p>
-    <h1 class="page-title">Schichtübergabe-Protokoll</h1>
-    <p class="page-description">Digitales Schichtbuch — Was wurde erledigt, was ist offen, Maschinenzustand und Hinweise für die nächste Schicht.</p>
+    <h1 class="page-title">Schicht&uuml;bergabe</h1>
+    <p class="page-description">Strukturierte &Uuml;bergabe f&uuml;r Produktion, Instandhaltung, Sicherheit, Material und offene Folgearbeiten.</p>
+  </div>
+  <div class="handover-hero-actions">
+    <a class="btn btn-primary btn-sm" href="#handover-workflow" data-permission-write="shiftplans">Neue &Uuml;bergabe</a>
+    <button class="btn btn-outline btn-sm" type="button" data-handover-focus-list>Verlauf pr&uuml;fen</button>
   </div>
 </section>
 
-<section class="dashboard-grid">
-
-  <!-- Neues Protokoll -->
-  <details class="card app-card lg:col-span-12" data-permission-write="shiftplans" id="ho-new-wrap">
-    <summary class="mobile-action-summary">
-      <span>
-        <span class="mobile-action-title">Neue Übergabe erfassen</span>
-        <span class="mobile-action-meta">Formular ausfüllen und speichern</span>
-      </span>
-    </summary>
-    <div class="card-body">
-      <div class="panel-header">
-        <h2 class="panel-title">Neue Schichtübergabe</h2>
-      </div>
-      <div class="form-grid">
-        <div class="field">
-          <label for="ho-department">Abteilung *</label>
-          <select class="select select-bordered" id="ho-department" required>
-            <option value="" disabled selected>Bitte wählen…</option>
-            <option value="Produktion">Produktion</option>
-            <option value="Instandhaltung">Instandhaltung</option>
-            <option value="Verwaltung">Verwaltung</option>
-            <option value="IT">IT</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="ho-date">Datum *</label>
-          <input class="input input-bordered" id="ho-date" type="date" required>
-        </div>
-        <div class="field">
-          <label for="ho-shift-type">Schicht *</label>
-          <select class="select select-bordered" id="ho-shift-type" required>
-            <option value="" disabled selected>Bitte wählen…</option>
-            <option value="Frueh">Frühschicht</option>
-            <option value="Spaet">Spätschicht</option>
-            <option value="Nacht">Nachtschicht</option>
-          </select>
-        </div>
-        <div class="field is-full">
-          <label for="ho-content">Was wurde erledigt?</label>
-          <textarea class="textarea textarea-bordered" id="ho-content" rows="3" placeholder="Aufgaben, Produktionsmengen, Wartungsarbeiten…"></textarea>
-        </div>
-        <div class="field is-full">
-          <label for="ho-open-tasks">Was ist noch offen?</label>
-          <textarea class="textarea textarea-bordered" id="ho-open-tasks" rows="2" placeholder="Offene Aufgaben, Folgearbeiten…"></textarea>
-        </div>
-        <div class="field is-full">
-          <label for="ho-machine-notes">Maschinenzustand</label>
-          <textarea class="textarea textarea-bordered" id="ho-machine-notes" rows="2" placeholder="Auffälligkeiten, Störungen, Wartungsbedarf…"></textarea>
-        </div>
-        <div class="field is-full">
-          <label for="ho-next-notes">Hinweise für nächste Schicht</label>
-          <textarea class="textarea textarea-bordered" id="ho-next-notes" rows="2" placeholder="Besonderheiten, Prioritäten, Sicherheitshinweise…"></textarea>
-        </div>
-      </div>
-      <div class="toolbar form-actions">
-        <button class="btn btn-primary" id="ho-submit-btn" type="button">Übergabe speichern</button>
-        <span class="panel-meta" id="ho-msg" role="status" aria-live="polite"></span>
-      </div>
-    </div>
-  </details>
-
-  <!-- Filter -->
-  <div class="card app-card lg:col-span-12">
-    <div class="card-body">
-      <div class="toolbar" id="ho-filter-bar">
-        <label class="stat-label">Filter:</label>
-        <select class="select select-bordered select-sm" id="filter-dept">
-          <option value="">Alle Abteilungen</option>
-          <option value="Produktion">Produktion</option>
-          <option value="Instandhaltung">Instandhaltung</option>
-          <option value="Verwaltung">Verwaltung</option>
-          <option value="IT">IT</option>
-        </select>
-        <input class="input input-bordered input-sm" type="date" id="filter-date" placeholder="Datum">
-        <select class="select select-bordered select-sm" id="filter-shift">
-          <option value="">Alle Schichten</option>
-          <option value="Frueh">Frühschicht</option>
-          <option value="Spaet">Spätschicht</option>
-          <option value="Nacht">Nachtschicht</option>
-        </select>
-        <button class="btn btn-ghost btn-sm" id="ho-filter-btn">Filtern</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Liste -->
-  <div class="lg:col-span-12" id="ho-list-wrap">
-    <p class="panel-meta" id="ho-empty">Keine Übergaben gefunden.</p>
-  </div>
-
+<section class="handover-control-strip" aria-label="Schicht&uuml;bergabe Kennzahlen">
+  <article class="handover-control-stat is-open">
+    <span>Offen</span>
+    <strong data-ho-open-count>0</strong>
+    <small>nicht best&auml;tigte &Uuml;bergaben</small>
+  </article>
+  <article class="handover-control-stat is-done">
+    <span>Best&auml;tigt</span>
+    <strong data-ho-completed-count>0</strong>
+    <small>abgeschlossene Protokolle</small>
+  </article>
+  <article class="handover-control-stat is-risk">
+    <span>Sicherheit</span>
+    <strong data-ho-safety-count>0</strong>
+    <small>Hinweise mit Sicherheitsbezug</small>
+  </article>
+  <article class="handover-control-stat is-followup">
+    <span>Folgepunkte</span>
+    <strong data-ho-followup-count>0</strong>
+    <small>offene Aufgaben f&uuml;r n&auml;chste Schicht</small>
+  </article>
 </section>
 
-<!-- Edit-Dialog -->
-<dialog id="ho-dialog" aria-modal="true" aria-labelledby="ho-dlg-title">
-  <div class="card app-card" style="min-width:340px;max-width:560px;padding:1.5rem;">
-    <h3 class="panel-title mb-3" id="ho-dlg-title">Übergabe bearbeiten</h3>
-    <div class="field mb-2">
-      <label for="dlg-ho-content">Was wurde erledigt?</label>
-      <textarea class="textarea textarea-bordered w-full" id="dlg-ho-content" rows="3"></textarea>
+<section class="handover-workflow-grid" id="handover-workflow" aria-label="Schicht&uuml;bergabe Workflow">
+  <article class="handover-workflow-panel app-card" data-permission-write="shiftplans">
+    <header class="handover-panel-header">
+      <div>
+        <h2>Neue &Uuml;bergabe erfassen</h2>
+        <p>Schicht, Maschine, Status, Probleme und offene Punkte in einem Ablauf dokumentieren.</p>
+      </div>
+    </header>
+
+    <form class="handover-form" id="ho-form" data-handover-form>
+      <section class="handover-step">
+        <header>
+          <span>1</span>
+          <div>
+            <strong>Schicht ausw&auml;hlen</strong>
+            <small>Aktuelle, vorherige und n&auml;chste Schicht festlegen.</small>
+          </div>
+        </header>
+        <div class="form-grid">
+          <div class="field">
+            <label for="ho-department">Bereich *</label>
+            <select class="select select-bordered" id="ho-department" name="department" required>
+              <option value="" disabled selected>Bitte w&auml;hlen</option>
+              <option value="Produktion">Produktion</option>
+              <option value="Instandhaltung">Instandhaltung</option>
+              <option value="Verwaltung">Verwaltung</option>
+              <option value="IT">IT</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="ho-date">Datum *</label>
+            <input class="input input-bordered" id="ho-date" name="shift_date" type="date" required>
+          </div>
+          <div class="field">
+            <label for="ho-shift-type">Aktuelle Schicht *</label>
+            <select class="select select-bordered" id="ho-shift-type" name="shift_type" required>
+              <option value="" disabled selected>Bitte w&auml;hlen</option>
+              <option value="Frueh">Fr&uuml;hschicht</option>
+              <option value="Spaet">Sp&auml;tschicht</option>
+              <option value="Nacht">Nachtschicht</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="ho-previous-shift">Vorherige Schicht</label>
+            <select class="select select-bordered" id="ho-previous-shift" name="previous_shift">
+              <option value="">Automatisch</option>
+              <option value="Frueh">Fr&uuml;hschicht</option>
+              <option value="Spaet">Sp&auml;tschicht</option>
+              <option value="Nacht">Nachtschicht</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="ho-next-shift">N&auml;chste Schicht</label>
+            <select class="select select-bordered" id="ho-next-shift" name="next_shift">
+              <option value="">Automatisch</option>
+              <option value="Frueh">Fr&uuml;hschicht</option>
+              <option value="Spaet">Sp&auml;tschicht</option>
+              <option value="Nacht">Nachtschicht</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <section class="handover-step">
+        <header>
+          <span>2</span>
+          <div>
+            <strong>Maschine und Verantwortliche</strong>
+            <small>Bereich, Anlage und beteiligte Personen eindeutig zuordnen.</small>
+          </div>
+        </header>
+        <div class="form-grid">
+          <div class="field">
+            <label for="ho-area">Linie / Teilbereich</label>
+            <input class="input input-bordered" id="ho-area" name="area" placeholder="z. B. Linie 2, Verpackung, EOL">
+          </div>
+          <div class="field">
+            <label for="ho-machine-id">Maschine</label>
+            <select class="select select-bordered" id="ho-machine-id" name="machine_id" data-ho-machine-select>
+              <option value="">Keine Maschine zugeordnet</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="ho-responsible">Verantwortlicher Mitarbeiter</label>
+            <input class="input input-bordered" id="ho-responsible" name="responsible_employee">
+          </div>
+          <div class="field">
+            <label for="ho-involved">Beteiligte Mitarbeiter</label>
+            <input class="input input-bordered" id="ho-involved" name="involved_employees" placeholder="Namen oder Team">
+          </div>
+        </div>
+      </section>
+
+      <section class="handover-step">
+        <header>
+          <span>3</span>
+          <div>
+            <strong>Status erfassen</strong>
+            <small>Produktions-, Maschinen- und Problemstatus strukturiert festhalten.</small>
+          </div>
+        </header>
+        <div class="form-grid">
+          <div class="field">
+            <label for="ho-production-status">Produktionsstatus</label>
+            <select class="select select-bordered" id="ho-production-status" name="production_status">
+              <option value="">Nicht bewertet</option>
+              <option value="running">L&auml;uft stabil</option>
+              <option value="reduced">Reduzierte Leistung</option>
+              <option value="stopped">Stillstand</option>
+              <option value="quality_hold">Qualit&auml;tssperre</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="ho-machine-status">Maschinenstatus</label>
+            <select class="select select-bordered" id="ho-machine-status" name="machine_status">
+              <option value="">Nicht bewertet</option>
+              <option value="ok">In Ordnung</option>
+              <option value="watch">Beobachten</option>
+              <option value="maintenance">Wartung erforderlich</option>
+              <option value="fault">St&ouml;rung aktiv</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="ho-category">Kategorie</label>
+            <select class="select select-bordered" id="ho-category" name="problem_category">
+              <option value="">Keine Kategorie</option>
+              <option>Elektrik</option>
+              <option>Mechanik</option>
+              <option>Pneumatik</option>
+              <option>Hydraulik</option>
+              <option>SPS/Software</option>
+              <option>Sensorik</option>
+              <option>Netzwerk</option>
+              <option>Material</option>
+              <option>Qualit&auml;t</option>
+              <option>Sicherheit</option>
+              <option>Organisation</option>
+              <option>Sonstiges</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="ho-duration">Dauer in Minuten</label>
+            <input class="input input-bordered" id="ho-duration" name="duration_minutes" type="number" min="0" step="1">
+          </div>
+        </div>
+      </section>
+
+      <section class="handover-step">
+        <header>
+          <span>4</span>
+          <div>
+            <strong>Probleme und Ma&szlig;nahmen</strong>
+            <small>Ursache, Ma&szlig;nahme, Sicherheits- und Materialhinweise getrennt erfassen.</small>
+          </div>
+        </header>
+        <div class="form-grid">
+          <div class="field is-full">
+            <label for="ho-content">Status der aktuellen Schicht</label>
+            <textarea class="textarea textarea-bordered" id="ho-content" name="content" rows="3" placeholder="Was wurde erledigt? Was war die Lage in der Schicht?"></textarea>
+          </div>
+          <div class="field">
+            <label for="ho-machine-notes">Maschinenstatus / Auff&auml;lligkeiten</label>
+            <textarea class="textarea textarea-bordered" id="ho-machine-notes" name="machine_notes" rows="3"></textarea>
+          </div>
+          <div class="field">
+            <label for="ho-cause">Ursache</label>
+            <textarea class="textarea textarea-bordered" id="ho-cause" name="cause" rows="3"></textarea>
+          </div>
+          <div class="field">
+            <label for="ho-action">Ma&szlig;nahme</label>
+            <textarea class="textarea textarea-bordered" id="ho-action" name="action_taken" rows="3"></textarea>
+          </div>
+          <div class="field">
+            <label for="ho-safety">Sicherheitsrelevante Hinweise</label>
+            <textarea class="textarea textarea-bordered" id="ho-safety" name="safety_notes" rows="3"></textarea>
+          </div>
+          <div class="field is-full">
+            <label for="ho-material">Material- / Ersatzteilhinweise</label>
+            <textarea class="textarea textarea-bordered" id="ho-material" name="material_notes" rows="2"></textarea>
+          </div>
+        </div>
+      </section>
+
+      <section class="handover-step">
+        <header>
+          <span>5</span>
+          <div>
+            <strong>Offene Punkte &uuml;bergeben</strong>
+            <small>Folgeaufgaben und klare Hinweise f&uuml;r die n&auml;chste Schicht speichern.</small>
+          </div>
+        </header>
+        <div class="form-grid">
+          <div class="field">
+            <label for="ho-open-tasks">Offene Tasks</label>
+            <textarea class="textarea textarea-bordered" id="ho-open-tasks" name="open_tasks" rows="3"></textarea>
+          </div>
+          <div class="field">
+            <label for="ho-follow-up">Offene Folgeaufgabe</label>
+            <textarea class="textarea textarea-bordered" id="ho-follow-up" name="follow_up_task" rows="3"></textarea>
+          </div>
+          <div class="field is-full">
+            <label for="ho-next-notes">Hinweise f&uuml;r n&auml;chste Schicht</label>
+            <textarea class="textarea textarea-bordered" id="ho-next-notes" name="next_notes" rows="3"></textarea>
+          </div>
+        </div>
+      </section>
+
+      <section class="handover-confirmation">
+        <label class="handover-checkbox" for="ho-confirmed">
+          <input id="ho-confirmed" name="confirmed" type="checkbox">
+          <span>
+            <strong>&Uuml;bergabe direkt best&auml;tigen</strong>
+            <small>Wenn aktiviert, wird das Protokoll sofort abgeschlossen und kann danach nicht mehr bearbeitet werden.</small>
+          </span>
+        </label>
+        <div class="toolbar form-actions">
+          <button class="btn btn-primary" id="ho-submit-btn" type="submit">&Uuml;bergabe speichern</button>
+          <span class="panel-meta" id="ho-msg" role="status" aria-live="polite"></span>
+        </div>
+      </section>
+    </form>
+  </article>
+
+  <aside class="handover-guidance-panel app-card">
+    <h2>Checkliste</h2>
+    <ol class="handover-checklist">
+      <li><span>1</span><strong>Schicht und Bereich ausw&auml;hlen</strong></li>
+      <li><span>2</span><strong>Maschine und Status festhalten</strong></li>
+      <li><span>3</span><strong>Probleme, Ursache und Ma&szlig;nahme trennen</strong></li>
+      <li><span>4</span><strong>Sicherheit und Material markieren</strong></li>
+      <li><span>5</span><strong>Folgepunkte an n&auml;chste Schicht &uuml;bergeben</strong></li>
+    </ol>
+  </aside>
+</section>
+
+<article class="handover-list-shell app-card" id="handover-list">
+  <header class="handover-list-header">
+    <div>
+      <h2>&Uuml;bergabe-Verlauf</h2>
+      <p class="panel-meta">Nach Bereich, Datum, Schicht, Maschine oder Status filtern.</p>
     </div>
-    <div class="field mb-2">
-      <label for="dlg-ho-open">Was ist offen?</label>
-      <textarea class="textarea textarea-bordered w-full" id="dlg-ho-open" rows="2"></textarea>
-    </div>
-    <div class="field mb-2">
-      <label for="dlg-ho-machine">Maschinenzustand</label>
-      <textarea class="textarea textarea-bordered w-full" id="dlg-ho-machine" rows="2"></textarea>
-    </div>
-    <div class="field mb-3">
-      <label for="dlg-ho-next">Hinweise für nächste Schicht</label>
-      <textarea class="textarea textarea-bordered w-full" id="dlg-ho-next" rows="2"></textarea>
-    </div>
-    <div class="toolbar">
-      <button class="btn btn-primary btn-sm" id="dlg-ho-save">Speichern</button>
-      <button class="btn btn-ghost btn-sm" id="dlg-ho-cancel">Abbrechen</button>
-    </div>
-    <p class="panel-meta mt-2" id="dlg-ho-msg" role="status" aria-live="polite"></p>
+  </header>
+
+  <section class="handover-filter-bar" aria-label="Schicht&uuml;bergaben filtern">
+    <label class="handover-filter-field" for="filter-search">
+      <span>Suche</span>
+      <input class="input input-bordered input-sm" id="filter-search" data-handover-search placeholder="Maschine, Ursache, Folgeaufgabe">
+    </label>
+    <label class="handover-filter-field" for="filter-dept">
+      <span>Bereich</span>
+      <select class="select select-bordered select-sm" id="filter-dept">
+        <option value="">Alle Bereiche</option>
+        <option value="Produktion">Produktion</option>
+        <option value="Instandhaltung">Instandhaltung</option>
+        <option value="Verwaltung">Verwaltung</option>
+        <option value="IT">IT</option>
+      </select>
+    </label>
+    <label class="handover-filter-field" for="filter-date">
+      <span>Datum</span>
+      <input class="input input-bordered input-sm" type="date" id="filter-date">
+    </label>
+    <label class="handover-filter-field" for="filter-shift">
+      <span>Schicht</span>
+      <select class="select select-bordered select-sm" id="filter-shift">
+        <option value="">Alle Schichten</option>
+        <option value="Frueh">Fr&uuml;hschicht</option>
+        <option value="Spaet">Sp&auml;tschicht</option>
+        <option value="Nacht">Nachtschicht</option>
+      </select>
+    </label>
+    <label class="handover-filter-field" for="filter-status">
+      <span>Status</span>
+      <select class="select select-bordered select-sm" id="filter-status">
+        <option value="">Alle</option>
+        <option value="open">Offen</option>
+        <option value="completed">Best&auml;tigt</option>
+      </select>
+    </label>
+    <label class="handover-filter-field" for="filter-machine">
+      <span>Maschine</span>
+      <select class="select select-bordered select-sm" id="filter-machine" data-ho-filter-machine>
+        <option value="">Alle Maschinen</option>
+      </select>
+    </label>
+    <button class="btn btn-outline btn-sm" id="ho-filter-btn" type="button">Filtern</button>
+    <button class="btn btn-ghost btn-sm" id="ho-filter-reset" type="button">Zur&uuml;cksetzen</button>
+    <span class="handover-filter-summary" id="ho-filter-summary">Eintr&auml;ge werden geladen.</span>
+  </section>
+
+  <div class="handover-card-grid" id="ho-list-wrap">
+    <p class="guided-empty-state" id="ho-empty">Keine &Uuml;bergaben gefunden.</p>
   </div>
+</article>
+
+<dialog class="handover-dialog" id="ho-dialog" aria-modal="true" aria-labelledby="ho-dlg-title">
+  <form class="handover-dialog-card app-card" method="dialog">
+    <header class="panel-header">
+      <div>
+        <h3 class="panel-title" id="ho-dlg-title">&Uuml;bergabe bearbeiten</h3>
+        <p class="panel-meta">Nur offene &Uuml;bergaben k&ouml;nnen aktualisiert werden.</p>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="dlg-ho-cancel" type="button">Schlie&szlig;en</button>
+    </header>
+    <div class="form-grid">
+      <div class="field">
+        <label for="dlg-ho-production">Produktionsstatus</label>
+        <select class="select select-bordered" id="dlg-ho-production">
+          <option value="">Nicht bewertet</option>
+          <option value="running">L&auml;uft stabil</option>
+          <option value="reduced">Reduzierte Leistung</option>
+          <option value="stopped">Stillstand</option>
+          <option value="quality_hold">Qualit&auml;tssperre</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="dlg-ho-machine-status">Maschinenstatus</label>
+        <select class="select select-bordered" id="dlg-ho-machine-status">
+          <option value="">Nicht bewertet</option>
+          <option value="ok">In Ordnung</option>
+          <option value="watch">Beobachten</option>
+          <option value="maintenance">Wartung erforderlich</option>
+          <option value="fault">St&ouml;rung aktiv</option>
+        </select>
+      </div>
+      <div class="field is-full">
+        <label for="dlg-ho-content">Status der aktuellen Schicht</label>
+        <textarea class="textarea textarea-bordered" id="dlg-ho-content" rows="3"></textarea>
+      </div>
+      <div class="field">
+        <label for="dlg-ho-open">Offene Tasks</label>
+        <textarea class="textarea textarea-bordered" id="dlg-ho-open" rows="2"></textarea>
+      </div>
+      <div class="field">
+        <label for="dlg-ho-machine">Maschinenstatus / Auff&auml;lligkeiten</label>
+        <textarea class="textarea textarea-bordered" id="dlg-ho-machine" rows="2"></textarea>
+      </div>
+      <div class="field">
+        <label for="dlg-ho-cause">Ursache</label>
+        <textarea class="textarea textarea-bordered" id="dlg-ho-cause" rows="2"></textarea>
+      </div>
+      <div class="field">
+        <label for="dlg-ho-action">Ma&szlig;nahme</label>
+        <textarea class="textarea textarea-bordered" id="dlg-ho-action" rows="2"></textarea>
+      </div>
+      <div class="field">
+        <label for="dlg-ho-safety">Sicherheit</label>
+        <textarea class="textarea textarea-bordered" id="dlg-ho-safety" rows="2"></textarea>
+      </div>
+      <div class="field">
+        <label for="dlg-ho-material">Material / Ersatzteile</label>
+        <textarea class="textarea textarea-bordered" id="dlg-ho-material" rows="2"></textarea>
+      </div>
+      <div class="field is-full">
+        <label for="dlg-ho-next">Hinweise f&uuml;r n&auml;chste Schicht</label>
+        <textarea class="textarea textarea-bordered" id="dlg-ho-next" rows="2"></textarea>
+      </div>
+    </div>
+    <div class="toolbar form-actions">
+      <button class="btn btn-primary btn-sm" id="dlg-ho-save" type="button">Speichern</button>
+      <span class="panel-meta" id="dlg-ho-msg" role="status" aria-live="polite"></span>
+    </div>
+  </form>
 </dialog>
-
-<style>
-#ho-dialog { border: none; border-radius: 0.75rem; padding: 0; box-shadow: 0 8px 32px rgba(0,0,0,0.28); max-width: 90vw; }
-#ho-dialog::backdrop { background: rgba(0,0,0,0.45); backdrop-filter: blur(2px); }
-</style>
 {% endblock %}

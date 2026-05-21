@@ -37,7 +37,7 @@
     setFieldValidity("login", !loginValue);
     setFieldValidity("password", !passwordValue);
     if (!loginValue || !passwordValue) {
-      throw new Error("Bitte Login und Passwort eingeben.");
+      throw new Error("Bitte Benutzername/E-Mail und Passwort eingeben.");
     }
 
     const response = await fetch("/api/v1/auth/login", {
@@ -51,7 +51,7 @@
 
     const responseData = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(responseData.message || responseData.error || "Login fehlgeschlagen. Bitte Zugangsdaten prüfen.");
+      throw new Error(responseData.message || responseData.error || "Anmeldung fehlgeschlagen. Bitte Zugangsdaten prüfen.");
     }
 
     const data = responseData && responseData.success === true && Object.prototype.hasOwnProperty.call(responseData, "data")
@@ -74,8 +74,8 @@
       statusElement: loginMessage,
       busyText: "Anmelden...",
       pendingMessage: "Anmeldung wird geprüft...",
-      successMessage: "Login erfolgreich. Du wirst weitergeleitet...",
-      errorMessage: "Login fehlgeschlagen.",
+      successMessage: "Anmeldung erfolgreich. Du wirst weitergeleitet...",
+      errorMessage: "Anmeldung fehlgeschlagen.",
       action: () => submitLogin(payload)
     });
   });

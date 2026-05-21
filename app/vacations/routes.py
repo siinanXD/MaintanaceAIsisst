@@ -5,6 +5,8 @@ from flask import Blueprint, request
 from app.responses import service_error_response, success_response
 from app.security import current_user, dashboard_permission_required
 from app.vacations.services import (
+    build_vacation_impact_response,
+    cancel_vacation_request,
     create_vacation_request,
     decide_vacation_request,
     delete_vacation_request,
@@ -20,6 +22,16 @@ vacations_bp = Blueprint("vacations", __name__)
 def list_vacations():
     """List vacation requests with optional status, employee and year filters."""
     data, error, status = list_vacation_requests(request.args, current_user())
+    if error:
+        return service_error_response(error, status)
+    return success_response(data)
+
+
+@vacations_bp.get("/impact")
+@dashboard_permission_required("employees", "view")
+def vacation_impact():
+    """Preview vacation balance, shift and staffing impact for a date range."""
+    data, error, status = build_vacation_impact_response(request.args, current_user())
     if error:
         return service_error_response(error, status)
     return success_response(data)
@@ -46,6 +58,16 @@ def delete_vacation(request_id):
     if error:
         return service_error_response(error, status)
     return "", status
+
+
+@vacations_bp.post("/<int:request_id>/cancel")
+@dashboard_permission_required("employees", "view")
+def cancel_vacation(request_id):
+    """Cancel a pending or approved vacation request without deleting history."""
+    data, error, status = cancel_vacation_request(request_id, current_user())
+    if error:
+        return service_error_response(error, status)
+    return success_response(data, message="Urlaubsantrag storniert")
 
 
 @vacations_bp.post("/<int:request_id>/approve")

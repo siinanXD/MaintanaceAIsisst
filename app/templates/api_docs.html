@@ -8,7 +8,7 @@
     <p class="page-kicker">HTTPS Protokoll</p>
     <h1 class="page-title">API-Endpunkte</h1>
     <p class="page-description">
-      Schnellübersicht für Auth, Tasks, Fehlerkatalog, KI-Assistenten und
+      Schnellübersicht für Auth, Aufgaben, Fehlerkatalog, KI-Assistenten und
       Lager-Prognosen. Die interaktive Swagger UI liegt unter
       <code>/swagger/</code>.
     </p>
@@ -52,11 +52,11 @@ Content-Type: application/json</pre>
             <tr><td>POST</td><td><code>/api/auth/register</code></td><td>Benutzer erstellen</td></tr>
             <tr><td>POST</td><td><code>/api/auth/login</code></td><td>JWT-Token erhalten</td></tr>
             <tr><td>GET</td><td><code>/api/auth/me</code></td><td>Aktuellen Benutzer lesen</td></tr>
-            <tr><td>GET</td><td><code>/api/tasks</code></td><td>Tasks auflisten</td></tr>
-            <tr><td>POST</td><td><code>/api/tasks</code></td><td>Task erstellen</td></tr>
-            <tr><td>GET</td><td><code>/api/tasks/today</code></td><td>Heutige Tasks</td></tr>
-            <tr><td>POST</td><td><code>/api/tasks/&lt;id&gt;/start</code></td><td>Task starten</td></tr>
-            <tr><td>POST</td><td><code>/api/tasks/&lt;id&gt;/complete</code></td><td>Task abschließen</td></tr>
+            <tr><td>GET</td><td><code>/api/tasks</code></td><td>Aufgaben auflisten</td></tr>
+            <tr><td>POST</td><td><code>/api/tasks</code></td><td>Aufgabe erstellen</td></tr>
+            <tr><td>GET</td><td><code>/api/tasks/today</code></td><td>Heutige Aufgaben</td></tr>
+            <tr><td>POST</td><td><code>/api/tasks/&lt;id&gt;/start</code></td><td>Aufgabe starten</td></tr>
+            <tr><td>POST</td><td><code>/api/tasks/&lt;id&gt;/complete</code></td><td>Aufgabe abschließen</td></tr>
             <tr><td>GET</td><td><code>/api/errors/search?query=E104</code></td><td>Fehler suchen</td></tr>
             <tr><td>POST</td><td><code>/api/errors/similar</code></td><td>Ähnliche Fehler finden</td></tr>
             <tr><td>GET</td><td><code>/api/ai/daily-briefing</code></td><td>Taegliches Briefing laden</td></tr>

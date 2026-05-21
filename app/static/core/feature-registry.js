@@ -3,16 +3,16 @@
     {
       key: "dashboard",
       permissionKey: "dashboard",
-      label: "Dashboard",
+      label: "Cockpit",
       route: "/",
       group: "Cockpit",
       module: "workflows",
-      initializers: ["initDashboardShiftRealtime", "initDailyCockpit"],
+      initializers: ["initCockpitShiftRealtime", "initDailyCockpit"],
     },
     {
       key: "tasks",
       permissionKey: "tasks",
-      label: "Tasks",
+      label: "Aufgaben",
       route: "/tasks",
       group: "Arbeit",
       module: "workflows",
@@ -41,9 +41,10 @@
       permissionKey: "machines",
       label: "Maschinen",
       route: "/machines",
+      routePrefixes: ["/machines/"],
       group: "Wissen & Anlagen",
       module: "workflows",
-      initializers: ["initMachines"],
+      initializers: ["initMachines", "initMachineProfile"],
     },
     {
       key: "inventory",
@@ -93,16 +94,16 @@
     {
       key: "admin_users",
       permissionKey: "admin_users",
-      label: "Users",
+      label: "Benutzer",
       route: "/admin/users",
       group: "Administration",
       module: "workflows",
-      initializers: ["initUsers"],
+      initializers: ["initBenutzer"],
     },
     {
       key: "admin_ai",
       permissionKey: "admin_users",
-      label: "AI Admin",
+      label: "KI-Administration",
       route: "/admin/ai",
       routeAliases: [
         "/admin/ai/models",
@@ -129,9 +130,14 @@
   function featureForPath(pathname) {
     const directFeature = byRoute[pathname];
     if (directFeature) return directFeature;
-    return FEATURES.find((feature) => (
-      Array.isArray(feature.routeAliases) && feature.routeAliases.includes(pathname)
-    )) || null;
+    return FEATURES.find((feature) => {
+      if (Array.isArray(feature.routeAliases) && feature.routeAliases.includes(pathname)) {
+        return true;
+      }
+      return Array.isArray(feature.routePrefixes) && feature.routePrefixes.some((prefix) => (
+        pathname.startsWith(prefix)
+      ));
+    }) || null;
   }
 
   function permissionKeyFor(featureKey) {

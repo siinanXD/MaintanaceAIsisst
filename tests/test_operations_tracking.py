@@ -1,6 +1,8 @@
 """Tests for multi-site operations tracking and KPI APIs."""
 
+from app.extensions import db
 from app.models import OperationalEvent, OperationalKpiAggregate, Role, Site
+from app.services.operations_tracking_service import record_event
 
 
 def test_default_site_is_available_and_sites_api_lists_active_sites(
@@ -103,6 +105,57 @@ def test_task_lifecycle_records_pseudonymized_operations_events(
     assert all(event["actor_hash"] != str(user["id"]) for event in event_payload)
     assert all(len(event["actor_hash"]) == 64 for event in event_payload)
     assert all("prompt" not in event.get("metadata", {}) for event in event_payload)
+    started_event = next(event for event in event_payload if event["event_type"] == "task.started")
+    completed_event = next(
+        event for event in event_payload if event["event_type"] == "task.completed"
+    )
+    assert started_event["old_value"]["status"] == "open"
+    assert started_event["new_value"]["status"] == "in_progress"
+    assert completed_event["old_value"]["status"] == "in_progress"
+    assert completed_event["new_value"]["status"] == "done"
+    assert completed_event["description"].startswith("Task abgeschlossen:")
+
+
+def test_task_priority_change_records_old_and_new_values(
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify task priority changes emit structured audit values."""
+    user = make_user(
+        username="ops_task_priority_user",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    headers = auth_headers(user["username"])
+
+    create_response = client.post(
+        "/api/v1/tasks",
+        headers=headers,
+        json={
+            "title": "Filter tauschen",
+            "department": "Instandhaltung",
+            "priority": "normal",
+        },
+    )
+    task_id = create_response.get_json()["id"]
+    update_response = client.put(
+        f"/api/v1/tasks/{task_id}",
+        headers=headers,
+        json={"priority": "urgent"},
+    )
+    events_response = client.get(
+        f"/api/v1/operations/events?task_id={task_id}&event_type=task.priority_changed",
+        headers=headers,
+    )
+
+    assert create_response.status_code == 201
+    assert update_response.status_code == 200
+    assert events_response.status_code == 200
+    priority_event = events_response.get_json()["data"]["items"][0]
+    assert priority_event["old_value"]["priority"] == "normal"
+    assert priority_event["new_value"]["priority"] == "urgent"
+    assert priority_event["description"].startswith("Task-Prioritaet geaendert:")
 
 
 def test_operations_summary_and_aggregate_endpoint(client, make_user, auth_headers):
@@ -163,3 +216,23 @@ def test_ai_feedback_event_does_not_store_prompt_or_answer(client, make_user, au
         metadata = event.metadata_dict()
         assert metadata == {"rating": "helpful"}
         assert "Sensitive" not in event.metadata_json
+
+
+def test_event_logging_failure_does_not_raise(client, monkeypatch):
+    """Verify event logging failures do not break the caller."""
+
+    def fail_add(_event):
+        """Simulate a database add failure for event logging."""
+        raise RuntimeError("event add failed")
+
+    with client.application.app_context():
+        monkeypatch.setattr(db.session, "add", fail_add)
+        event = record_event(
+            "task.created",
+            "tasks",
+            entity_type="task",
+            entity_id=999,
+            metadata={"status": "open"},
+        )
+
+    assert event is None

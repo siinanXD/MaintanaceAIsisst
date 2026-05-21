@@ -1,19 +1,34 @@
 """Machine service helpers."""
 
 import logging
+from datetime import date
+from urllib.parse import quote_plus
 
-from sqlalchemy import or_
+from sqlalchemy import or_, select
 
+from app.handover.services import visible_handovers_query
 from app.inventory.services import forecast_inventory_risks
-from app.models import ErrorEntry, GeneratedDocument, Task, TaskStatus
+from app.machines.maintenance_services import visible_maintenance_plans_query
+from app.models import (
+    ErrorEntry,
+    GeneratedDocument,
+    InventoryMaterial,
+    MachineManual,
+    MaintenancePlan,
+    ShiftHandover,
+    Task,
+    TaskStatus,
+)
 from app.security import has_dashboard_permission
 from app.services.ai_service import AIServiceError, get_ai_provider
-from app.services.document_service import visible_documents_query
+from app.services.document_service import visible_documents_query, visible_manuals_query
 from app.services.error_service import visible_errors_query
 from app.services.retrieval_service import knowledge_context_for_chat
 from app.services.task_service import visible_tasks_query
 
 logger = logging.getLogger(__name__)
+ACTIVE_ERROR_STATUSES = {"open", "in_progress"}
+COMPLETED_TASK_STATUSES = {TaskStatus.DONE.value, TaskStatus.CANCELLED.value}
 
 
 def build_machine_history(machine, user):
@@ -37,6 +52,58 @@ def build_machine_history(machine, user):
         "summary": _machine_summary(machine, timeline, source_counts),
         "source_counts": source_counts,
         "timeline": timeline,
+    }
+
+
+def build_machine_profile(machine, user):
+    """Build a machine-centered operational profile from visible source data."""
+    tasks = _machine_profile_tasks(machine, user)
+    errors = _machine_profile_errors(machine, user)
+    documents = _machine_profile_documents(machine, user)
+    manuals = _machine_profile_manuals(machine, user)
+    maintenance_plans = _machine_profile_maintenance_plans(machine, user)
+    handovers = _machine_profile_handovers(machine, user)
+    materials = _machine_profile_materials(machine, user)
+    timeline = _machine_profile_timeline(
+        tasks,
+        errors,
+        documents,
+        manuals,
+        maintenance_plans,
+        handovers,
+    )
+    active_errors = [
+        error for error in errors if error["status"] in ACTIVE_ERROR_STATUSES
+    ]
+    open_tasks = [
+        task for task in tasks if task["status"] not in COMPLETED_TASK_STATUSES
+    ]
+    return {
+        "machine": machine.to_dict(),
+        "permissions": _machine_profile_permissions(user),
+        "kpis": _machine_profile_kpis(
+            machine,
+            open_tasks,
+            active_errors,
+            errors,
+            documents,
+            manuals,
+            maintenance_plans,
+            handovers,
+            materials,
+        ),
+        "open_tasks": open_tasks[:8],
+        "active_errors": active_errors[:8],
+        "error_history": errors[:12],
+        "documents": {
+            "reports": documents[:8],
+            "manuals": manuals[:8],
+            "total": len(documents) + len(manuals),
+        },
+        "maintenance_plans": maintenance_plans[:8],
+        "shift_handovers": handovers[:8],
+        "materials": materials[:8],
+        "timeline": timeline[:18],
     }
 
 
@@ -126,7 +193,7 @@ def _task_timeline(machine, user):
             "title": task.title,
             "status": task.status.value,
             "summary": task.description,
-            "url": f"/api/tasks/{task.id}",
+            "url": _ui_search_url("tasks", task.title),
         }
         for task in tasks
     ]
@@ -148,9 +215,9 @@ def _error_timeline(machine, user):
             "type": "error",
             "date": entry.created_at.isoformat(),
             "title": f"{entry.error_code} - {entry.title}",
-            "status": entry.error_code,
+            "status": entry.status,
             "summary": entry.solution or entry.description,
-            "url": f"/api/errors/{entry.id}",
+            "url": _ui_search_url("errors", entry.error_code or entry.title),
         }
         for entry in errors
     ]
@@ -174,10 +241,309 @@ def _document_timeline(machine, user):
             "title": document.title,
             "status": document.document_type,
             "summary": f"{document.department} {document.machine}".strip(),
-            "url": document.to_dict()["download_url"],
+            "url": _ui_search_url("documents", document.title),
         }
         for document in documents
     ]
+
+
+def _machine_profile_permissions(user):
+    """Return section-level visibility used by the machine profile UI."""
+    dashboards = ("tasks", "errors", "documents", "shiftplans", "inventory")
+    return {
+        dashboard: has_dashboard_permission(user, dashboard, "view")
+        for dashboard in dashboards
+    }
+
+
+def _machine_profile_tasks(machine, user):
+    """Return visible task rows that can be related to the machine."""
+    if not has_dashboard_permission(user, "tasks", "view"):
+        return []
+    tasks = (
+        visible_tasks_query(user)
+        .filter(_task_machine_filter(machine))
+        .order_by(Task.status.asc(), Task.due_date.asc(), Task.updated_at.desc())
+        .limit(40)
+        .all()
+    )
+    return [_profile_task_payload(task, machine) for task in tasks]
+
+
+def _task_machine_filter(machine):
+    """Return a tolerant SQLAlchemy filter for machine-related tasks."""
+    needle = f"%{machine.name}%"
+    generated_task_ids = select(MaintenancePlan.last_generated_task_id).where(
+        MaintenancePlan.machine_id == machine.id,
+        MaintenancePlan.last_generated_task_id.isnot(None),
+    )
+    return or_(
+        Task.title.ilike(needle),
+        Task.description.ilike(needle),
+        Task.id.in_(generated_task_ids),
+    )
+
+
+def _profile_task_payload(task, machine):
+    """Return a compact task payload for the machine profile."""
+    payload = task.to_dict()
+    payload["machine_match"] = _task_match_reason(task, machine)
+    payload["ui_url"] = _ui_search_url("tasks", task.title)
+    return payload
+
+
+def _task_match_reason(task, machine):
+    """Return how a task was associated with the machine."""
+    haystack = f"{task.title} {task.description}".lower()
+    if machine.name.lower() in haystack:
+        return "Maschinenname im Task"
+    return "Wartungsplan oder historischer Bezug"
+
+
+def _machine_profile_errors(machine, user):
+    """Return visible error entries linked to the machine."""
+    if not has_dashboard_permission(user, "errors", "view"):
+        return []
+    errors = (
+        visible_errors_query(user)
+        .filter(
+            or_(
+                ErrorEntry.machine_id == machine.id,
+                ErrorEntry.machine.ilike(f"%{machine.name}%"),
+            )
+        )
+        .order_by(ErrorEntry.created_at.desc(), ErrorEntry.id.desc())
+        .limit(50)
+        .all()
+    )
+    return [_profile_error_payload(error) for error in errors]
+
+
+def _profile_error_payload(error):
+    """Return a compact error payload for the machine profile."""
+    payload = error.to_dict()
+    payload["ui_url"] = _ui_search_url("errors", error.error_code or error.title)
+    return payload
+
+
+def _machine_profile_documents(machine, user):
+    """Return visible generated reports linked to the machine."""
+    if not has_dashboard_permission(user, "documents", "view"):
+        return []
+    documents = (
+        visible_documents_query(user)
+        .filter(
+            or_(
+                GeneratedDocument.machine_id == machine.id,
+                GeneratedDocument.machine.ilike(f"%{machine.name}%"),
+            )
+        )
+        .order_by(GeneratedDocument.created_at.desc(), GeneratedDocument.id.desc())
+        .limit(30)
+        .all()
+    )
+    return [_profile_document_payload(document) for document in documents]
+
+
+def _profile_document_payload(document):
+    """Return a compact generated document payload for the machine profile."""
+    payload = document.to_dict()
+    payload["ui_url"] = _ui_search_url("documents", document.title)
+    return payload
+
+
+def _machine_profile_manuals(machine, user):
+    """Return visible uploaded machine manuals linked to the machine."""
+    if not has_dashboard_permission(user, "documents", "view"):
+        return []
+    manuals = (
+        visible_manuals_query(user)
+        .filter(MachineManual.machine_id == machine.id)
+        .order_by(MachineManual.updated_at.desc(), MachineManual.id.desc())
+        .limit(30)
+        .all()
+    )
+    return [_profile_manual_payload(manual) for manual in manuals]
+
+
+def _profile_manual_payload(manual):
+    """Return a compact machine manual payload for the machine profile."""
+    payload = manual.to_dict()
+    payload["ui_url"] = _ui_search_url("documents", manual.title)
+    return payload
+
+
+def _machine_profile_maintenance_plans(machine, user):
+    """Return visible maintenance plans for the machine."""
+    if not has_dashboard_permission(user, "machines", "view"):
+        return []
+    plans = (
+        visible_maintenance_plans_query(user)
+        .filter(MaintenancePlan.machine_id == machine.id)
+        .order_by(
+            MaintenancePlan.is_active.desc(),
+            MaintenancePlan.next_due_date.asc(),
+            MaintenancePlan.id.desc(),
+        )
+        .limit(30)
+        .all()
+    )
+    return [_profile_maintenance_payload(plan) for plan in plans]
+
+
+def _profile_maintenance_payload(plan):
+    """Return a compact maintenance plan payload for the machine profile."""
+    payload = plan.to_dict()
+    payload["is_due"] = plan.is_active and plan.next_due_date <= date.today()
+    payload["ui_url"] = "/machines"
+    return payload
+
+
+def _machine_profile_handovers(machine, user):
+    """Return visible shift handovers linked to the machine."""
+    if not has_dashboard_permission(user, "shiftplans", "view"):
+        return []
+    handovers = (
+        visible_handovers_query(user)
+        .filter(ShiftHandover.machine_id == machine.id)
+        .order_by(ShiftHandover.shift_date.desc(), ShiftHandover.id.desc())
+        .limit(30)
+        .all()
+    )
+    return [_profile_handover_payload(handover) for handover in handovers]
+
+
+def _profile_handover_payload(handover):
+    """Return a compact handover payload for the machine profile."""
+    payload = handover.to_dict()
+    payload["ui_url"] = "/handover"
+    return payload
+
+
+def _machine_profile_materials(machine, user):
+    """Return visible inventory materials linked to the machine."""
+    if not has_dashboard_permission(user, "inventory", "view"):
+        return []
+    materials = (
+        InventoryMaterial.query.filter(InventoryMaterial.machine_id == machine.id)
+        .order_by(InventoryMaterial.quantity.asc(), InventoryMaterial.name.asc())
+        .limit(30)
+        .all()
+    )
+    return [material.to_dict() for material in materials]
+
+
+def _machine_profile_kpis(
+    machine,
+    open_tasks,
+    active_errors,
+    errors,
+    documents,
+    manuals,
+    maintenance_plans,
+    handovers,
+    materials,
+):
+    """Return headline KPIs for the machine profile."""
+    critical_errors = [
+        error
+        for error in active_errors
+        if error.get("severity") in {"critical", "high"}
+    ]
+    due_maintenance = [plan for plan in maintenance_plans if plan.get("is_due")]
+    low_stock = [
+        material
+        for material in materials
+        if material.get("min_quantity")
+        and int(material.get("quantity") or 0) <= int(material.get("min_quantity") or 0)
+    ]
+    downtime_minutes = sum(int(error.get("downtime_minutes") or 0) for error in errors)
+    return {
+        "open_tasks": len(open_tasks),
+        "active_errors": len(active_errors),
+        "critical_errors": len(critical_errors),
+        "documents": len(documents) + len(manuals),
+        "maintenance_due": len(due_maintenance),
+        "shift_handovers": len(handovers),
+        "low_stock_materials": len(low_stock),
+        "downtime_minutes": downtime_minutes,
+        "status": machine.status,
+        "criticality": machine.criticality,
+        "last_downtime_at": (
+            machine.last_downtime_at.isoformat() if machine.last_downtime_at else None
+        ),
+    }
+
+
+def _machine_profile_timeline(
+    tasks,
+    errors,
+    documents,
+    manuals,
+    maintenance_plans,
+    handovers,
+):
+    """Return one chronological profile timeline across visible source types."""
+    items = []
+    items.extend(_timeline_items(tasks, "task", "Aufgabe", "updated_at", "title"))
+    items.extend(_timeline_items(errors, "error", "Stoerung", "created_at", "title"))
+    items.extend(_timeline_items(documents, "document", "Dokument", "created_at", "title"))
+    items.extend(_timeline_items(manuals, "manual", "Handbuch", "updated_at", "title"))
+    items.extend(
+        _timeline_items(
+            maintenance_plans,
+            "maintenance",
+            "Wartung",
+            "next_due_date",
+            "title",
+        )
+    )
+    items.extend(
+        _timeline_items(
+            handovers,
+            "handover",
+            "Uebergabe",
+            "shift_date",
+            "shift_type",
+        )
+    )
+    return sorted(items, key=lambda item: item["date"] or "", reverse=True)
+
+
+def _timeline_items(items, item_type, label, date_key, title_key):
+    """Map serialized profile rows to timeline entries."""
+    return [
+        {
+            "type": item_type,
+            "label": label,
+            "date": item.get(date_key),
+            "title": item.get(title_key) or label,
+            "status": item.get("status") or item.get("priority") or "",
+            "summary": _timeline_summary(item),
+            "ui_url": item.get("ui_url") or "",
+        }
+        for item in items
+    ]
+
+
+def _timeline_summary(item):
+    """Return the first useful short summary field from a serialized row."""
+    for key in (
+        "description",
+        "solution",
+        "summary",
+        "machine_status",
+        "action_taken",
+        "produced_item",
+    ):
+        if item.get(key):
+            return str(item[key])
+    return ""
+
+
+def _ui_search_url(route, query):
+    """Return a UI search URL for a source record."""
+    return f"/{route}?search={quote_plus(str(query or '').strip())}"
 
 
 def _machine_summary(machine, timeline, source_counts):

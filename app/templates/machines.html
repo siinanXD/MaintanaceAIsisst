@@ -1,12 +1,13 @@
 {% extends "base.html" %}
 
 {% block title %}Maschinen - Maintenance Assistant{% endblock %}
+{% block header_title %}Maschinen{% endblock %}
 
 {% block content %}
 <section class="page-hero">
   <div>
     <h1 class="page-title">Maschinen</h1>
-    <p class="page-description">Maschinen anlegen, Produktionsinhalt und benötigte Mitarbeiterzahl pflegen.</p>
+    <p class="page-description">Anlagenstatus, offene Arbeit und Wartungshinweise an einem Ort prüfen.</p>
   </div>
 </section>
 
@@ -16,8 +17,8 @@
     <strong>Anlagen</strong>
   </a>
   <button class="quick-action-row is-button" type="button" data-machine-assistant-focus>
-    <span>Maschinen-Assistent fragen</span>
-    <strong>AI</strong>
+    <span>Maschine prüfen</span>
+    <strong>Assist</strong>
   </button>
   <a class="quick-action-row" href="/errors" data-dashboard-nav="errors" hidden>
     <span>St&ouml;rungen pr&uuml;fen</span>
@@ -25,10 +26,33 @@
   </a>
 </nav>
 
+<section class="surface-stat-grid ux-ops-summary-grid" aria-label="Maschinenstatus">
+  <article class="surface-stat-card is-primary">
+    <span>Anlagen</span>
+    <strong data-machine-count>0 Maschinen</strong>
+    <small>Alle Produktionsanlagen mit Profil, Historie und Status.</small>
+  </article>
+  <article class="surface-stat-card is-warning">
+    <span>St&ouml;rungen</span>
+    <strong data-dashboard-machine-issue-count>0</strong>
+    <small>Aktive oder bekannte Fehler mit Maschinenbezug.</small>
+  </article>
+  <article class="surface-stat-card is-ai">
+    <span>Wartung</span>
+    <strong>Pr&auml;ventiv</strong>
+    <small>Hinweise aus Aufgaben, Fehlerhistorie und Anlagenakte.</small>
+  </article>
+  <article class="surface-stat-card is-neutral">
+    <span>Profile</span>
+    <strong>Detailansicht</strong>
+    <small>Offene Tasks, Dokumente und &Uuml;bergaben je Maschine.</small>
+  </article>
+</section>
+
 <section class="ai-action-grid" aria-label="Maschinen Aktionen">
   <button class="ai-action-card is-button" type="button" data-machine-assistant-focus>
-    <strong>Maschinen-Assistent</strong>
-    <span>Anlagenakte, Forecast und Historie befragen</span>
+    <strong>Maschine prüfen</strong>
+    <span>Anlagenakte, Forecast und Historie in einem Schritt ansehen</span>
   </button>
 </section>
 
@@ -45,7 +69,7 @@
       <div class="panel-header">
         <div>
           <h2 class="panel-title">Maschine anlegen</h2>
-          <p class="panel-meta">Diese Daten werden auch für den KI-Schichtplan genutzt.</p>
+          <p class="panel-meta">Diese Daten werden auch für Schichtplanung und Anlagenzuordnung genutzt.</p>
         </div>
       </div>
       <div class="form-grid">
@@ -75,9 +99,9 @@
       <div class="panel-header">
         <div>
           <h2 class="panel-title">Präventive Wartung</h2>
-          <p class="panel-meta" data-maintenance-recommendations-summary>RAG-basierte Hinweise aus sichtbarer Historie werden geladen.</p>
+          <p class="panel-meta" data-maintenance-recommendations-summary>Hinweise aus sichtbarer Historie werden geladen.</p>
         </div>
-        <span class="badge badge-ai">AI</span>
+        <span class="badge badge-ai">Assist</span>
       </div>
       <div class="resource-card-grid maintenance-recommendation-grid" data-maintenance-recommendations-list></div>
     </div>
@@ -88,13 +112,13 @@
       <div class="panel-header">
         <div>
           <h2 class="panel-title" data-machine-history-title>Anlagenakte</h2>
-          <p class="panel-meta" data-machine-history-summary>Historie einer Maschine aus Tasks, Fehlern und Dokumenten.</p>
+          <p class="panel-meta" data-machine-history-summary>Historie einer Maschine aus Aufgaben, Fehlern und Dokumenten.</p>
         </div>
       </div>
       <div class="stats-list" data-machine-history-counts></div>
       <form class="toolbar form-actions" data-machine-assistant-form>
         <div class="field">
-          <label for="machine-assistant-question">Maschinen-KI-Assistent</label>
+          <label for="machine-assistant-question">Maschinenfrage</label>
           <input class="input input-bordered" id="machine-assistant-question" name="question" placeholder="Was sollte ich als nächstes prüfen?">
         </div>
         <button class="btn btn-primary" type="submit">Fragen</button>
@@ -120,20 +144,7 @@
           <input class="input input-bordered input-sm" id="machine-list-search" data-list-search data-list-search-target="[data-machine-list]" placeholder="Name, Produkt, Personalbedarf">
         </label>
       </div>
-      <div class="table-wrap bounded-table-wrap">
-        <table class="table data-table">
-          <caption>Maschinenübersicht mit Produkt, Personalbedarf und Aktionen</caption>
-          <thead>
-            <tr>
-              <th scope="col">Name</th>
-              <th scope="col">Produkt</th>
-              <th scope="col">Mitarbeiter</th>
-              <th scope="col">Aktionen</th>
-            </tr>
-          </thead>
-          <tbody data-machine-list></tbody>
-        </table>
-      </div>
+      <div class="record-card-grid machine-card-grid" data-machine-list data-list-search-items=".record-card"></div>
     </div>
   </article>
 </section>

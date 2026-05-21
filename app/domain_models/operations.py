@@ -27,6 +27,9 @@ class OperationalEvent(db.Model):
     actor_hash = db.Column(db.String(128), nullable=False, default="", index=True)
     actor_role = db.Column(db.String(80), nullable=False, default="")
     source = db.Column(db.String(80), nullable=False, default="app")
+    old_value = db.Column(db.Text, nullable=True)
+    new_value = db.Column(db.Text, nullable=True)
+    description = db.Column(db.Text, nullable=False, default="")
     metadata_json = db.Column(db.Text, nullable=False, default="{}")
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
 
@@ -55,6 +58,14 @@ class OperationalEvent(db.Model):
             return {}
         return data if isinstance(data, dict) else {}
 
+    def old_value_payload(self):
+        """Return the previous event value as a JSON-compatible object."""
+        return _event_value_payload(self.old_value)
+
+    def new_value_payload(self):
+        """Return the new event value as a JSON-compatible object."""
+        return _event_value_payload(self.new_value)
+
     def to_dict(self, include_metadata=True):
         """Return a JSON-serializable event payload."""
         payload = {
@@ -73,6 +84,9 @@ class OperationalEvent(db.Model):
             "actor_hash": self.actor_hash,
             "actor_role": self.actor_role,
             "source": self.source,
+            "old_value": self.old_value_payload(),
+            "new_value": self.new_value_payload(),
+            "description": self.description,
             "created_at": self.created_at.isoformat(),
         }
         if include_metadata:
@@ -149,3 +163,13 @@ class OperationalKpiAggregate(db.Model):
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
+
+
+def _event_value_payload(value_text):
+    """Return a serialized event value as JSON data or None."""
+    if value_text in (None, ""):
+        return None
+    try:
+        return json.loads(value_text)
+    except (TypeError, json.JSONDecodeError):
+        return value_text

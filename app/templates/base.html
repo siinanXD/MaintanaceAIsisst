@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Maintenance Assistant{% endblock %}</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b7cff'/%3E%3Ctext x='32' y='39' text-anchor='middle' font-family='Arial,sans-serif' font-size='22' font-weight='800' fill='white'%3EMA%3C/text%3E%3C/svg%3E">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}?v=20260519-self-explain1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}?v=20260521-plan9-ux1">
   </head>
   <body class="app-body min-h-screen text-slate-900 antialiased">
     <a class="skip-link" href="#main-content">Zum Hauptinhalt springen</a>
@@ -42,7 +42,7 @@
             <h2>Cockpit</h2>
             <a data-dashboard-nav="dashboard" hidden class="nav-link {% if request.path == '/' %}is-active{% endif %}" href="/" {% if request.path == '/' %}aria-current="page"{% endif %}>
               <svg class="nav-icon" aria-hidden="true"><use href="#icon-dashboard"></use></svg>
-              <span>Dashboard</span>
+              <span>Cockpit</span>
             </a>
           </section>
 
@@ -66,7 +66,7 @@
 
           <section class="sidebar-nav-group" data-nav-group>
             <h2>Wissen &amp; Anlagen</h2>
-            <a data-dashboard-nav="machines" hidden class="nav-link {% if request.path == '/machines' %}is-active{% endif %}" href="/machines" {% if request.path == '/machines' %}aria-current="page"{% endif %}>
+            <a data-dashboard-nav="machines" hidden class="nav-link {% if request.path.startswith('/machines') %}is-active{% endif %}" href="/machines" {% if request.path.startswith('/machines') %}aria-current="page"{% endif %}>
               <svg class="nav-icon" aria-hidden="true"><use href="#icon-machine"></use></svg>
               <span>Maschinen</span>
             </a>
@@ -104,7 +104,7 @@
             </a>
             <a data-feature-key="admin_ai" data-dashboard-nav="admin_users" hidden class="nav-link is-admin-link {% if request.path.startswith('/admin/ai') %}is-active{% endif %}" href="/admin/ai" {% if request.path.startswith('/admin/ai') %}aria-current="page"{% endif %}>
               <svg class="nav-icon" aria-hidden="true"><use href="#icon-ai"></use></svg>
-              <span>AI Admin</span>
+              <span>KI-Administration</span>
             </a>
           </section>
         </nav>
@@ -125,9 +125,16 @@
             <details class="mobile-nav" data-nav-root>
               <summary>Menü</summary>
               <div class="mobile-nav-panel">
+                <form class="global-search is-mobile" data-global-search-form role="search" autocomplete="off">
+                  <label class="sr-only" for="global-search-mobile">Globale Suche</label>
+                  <input id="global-search-mobile" data-global-search-input type="search" placeholder="Aufgaben, Fehler, Dokumente suchen" aria-label="Globale Suche">
+                  <div class="global-search-panel" data-global-search-panel hidden>
+                    <div class="global-search-results" data-global-search-results></div>
+                  </div>
+                </form>
                 <section class="mobile-nav-group" data-nav-group>
                   <h2>Cockpit</h2>
-                  <a data-dashboard-nav="dashboard" hidden class="top-nav-link {% if request.path == '/' %}is-active{% endif %}" href="/" {% if request.path == '/' %}aria-current="page"{% endif %}>Dashboard</a>
+                  <a data-dashboard-nav="dashboard" hidden class="top-nav-link {% if request.path == '/' %}is-active{% endif %}" href="/" {% if request.path == '/' %}aria-current="page"{% endif %}>Cockpit</a>
                 </section>
                 <section class="mobile-nav-group" data-nav-group>
                   <h2>Arbeit</h2>
@@ -137,7 +144,7 @@
                 </section>
                 <section class="mobile-nav-group" data-nav-group>
                   <h2>Wissen &amp; Anlagen</h2>
-                  <a data-dashboard-nav="machines" hidden class="top-nav-link {% if request.path == '/machines' %}is-active{% endif %}" href="/machines" {% if request.path == '/machines' %}aria-current="page"{% endif %}>Maschinen</a>
+                  <a data-dashboard-nav="machines" hidden class="top-nav-link {% if request.path.startswith('/machines') %}is-active{% endif %}" href="/machines" {% if request.path.startswith('/machines') %}aria-current="page"{% endif %}>Maschinen</a>
                   <a data-dashboard-nav="inventory" hidden class="top-nav-link {% if request.path == '/inventory' %}is-active{% endif %}" href="/inventory" {% if request.path == '/inventory' %}aria-current="page"{% endif %}>Lager</a>
                   <a data-dashboard-nav="documents" hidden class="top-nav-link {% if request.path == '/documents' %}is-active{% endif %}" href="/documents" {% if request.path == '/documents' %}aria-current="page"{% endif %}>Dokumente</a>
                 </section>
@@ -150,7 +157,7 @@
                 <section class="mobile-nav-group" data-nav-group>
                   <h2>Administration</h2>
                   <a data-dashboard-nav="admin_users" hidden class="top-nav-link is-admin-link {% if request.path == '/admin/users' %}is-active{% endif %}" href="/admin/users" {% if request.path == '/admin/users' %}aria-current="page"{% endif %}>Benutzer</a>
-                  <a data-feature-key="admin_ai" data-dashboard-nav="admin_users" hidden class="top-nav-link is-admin-link {% if request.path.startswith('/admin/ai') %}is-active{% endif %}" href="/admin/ai" {% if request.path.startswith('/admin/ai') %}aria-current="page"{% endif %}>AI Admin</a>
+                  <a data-feature-key="admin_ai" data-dashboard-nav="admin_users" hidden class="top-nav-link is-admin-link {% if request.path.startswith('/admin/ai') %}is-active{% endif %}" href="/admin/ai" {% if request.path.startswith('/admin/ai') %}aria-current="page"{% endif %}>KI-Administration</a>
                 </section>
               </div>
             </details>
@@ -159,6 +166,13 @@
           <div class="desktop-topbar">
             <h1>{% block header_title %}Maintenance Assistant{% endblock %}</h1>
             <div class="topbar-actions">
+              <form class="global-search" data-global-search-form role="search" autocomplete="off">
+                <label class="sr-only" for="global-search-desktop">Globale Suche</label>
+                <input id="global-search-desktop" data-global-search-input type="search" placeholder="Aufgaben, Fehler, Dokumente suchen" aria-label="Globale Suche">
+                <div class="global-search-panel" data-global-search-panel hidden>
+                  <div class="global-search-results" data-global-search-results></div>
+                </div>
+              </form>
               <button class="topbar-select" type="button" aria-label="Werk ausw&auml;hlen" title="Aktives Werk anzeigen" data-topbar-work>
                 <span class="topbar-control-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><path d="M4 20V8.5l5-3v4l5-3v4l6-3.5V20H4Zm3-2h10v-7.4l-5 2.9v-4l-5 3V18Z"/></svg>
@@ -189,9 +203,9 @@
                   <small>Instandhaltungsleiter</small>
                 </span>
                 <button class="btn btn-ghost btn-sm" type="button" data-contrast-toggle aria-pressed="false">Kontrast</button>
-                <button class="btn btn-ghost btn-sm" type="button" data-logout-button>Logout</button>
+                <button class="btn btn-ghost btn-sm" type="button" data-logout-button>Abmelden</button>
               </div>
-              <a data-auth-login-link class="btn btn-primary btn-sm {% if request.path == '/login' %}btn-active{% endif %}" href="/login">Login</a>
+              <a data-auth-login-link class="btn btn-primary btn-sm {% if request.path == '/login' %}btn-active{% endif %}" href="/login">Anmelden</a>
             </div>
           </div>
         </header>
@@ -223,7 +237,7 @@
         </div>
         <details class="help-disclosure chat-guidance">
           <summary>Worauf basiert die Antwort?</summary>
-          <p>Der Assistant nutzt freigegebene App-Daten und, wenn aktiv, passende Dokumentquellen. Quellen, Confidence und Unsicherheit werden in der Antwortkarte angezeigt.</p>
+          <p>Der Assistant nutzt freigegebene App-Daten und, wenn aktiv, passende Dokumentquellen. Quellen, Konfidenz und Unsicherheit werden in der Antwortkarte angezeigt.</p>
         </details>
         <details class="chat-history-panel" data-chat-history-panel hidden>
           <summary class="chat-history-summary" data-chat-history-summary>
@@ -244,10 +258,10 @@
       </div>
     </section>
 
-    <script src="{{ url_for('static', filename='core/feature-registry.js') }}?v=20260517-dashboard-refresh1"></script>
-    <script src="{{ url_for('static', filename='auth.js') }}?v=20260510-feature-registry1"></script>
+    <script src="{{ url_for('static', filename='core/feature-registry.js') }}?v=20260521-plan9-ux1"></script>
+    <script src="{{ url_for('static', filename='auth.js') }}?v=20260521-plan9-ux1"></script>
     <script src="{{ url_for('static', filename='core/api-client.js') }}?v=20260511-api-client1"></script>
-    <script src="{{ url_for('static', filename='app.js') }}?v=20260519-self-explain1"></script>
+    <script src="{{ url_for('static', filename='app.js') }}?v=20260521-plan9-ux1"></script>
     <script src="{{ url_for('static', filename='chat-loader.js') }}?v=20260519-self-explain1"></script>
   </body>
 </html>
