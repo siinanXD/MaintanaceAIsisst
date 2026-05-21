@@ -7,7 +7,7 @@
       route: "/",
       group: "Cockpit",
       module: "workflows",
-      initializers: ["initCockpitShiftRealtime", "initDailyCockpit"],
+      initializers: ["initDashboardShiftRealtime", "initDailyCockpit"],
     },
     {
       key: "tasks",
@@ -98,7 +98,7 @@
       route: "/admin/users",
       group: "Administration",
       module: "workflows",
-      initializers: ["initBenutzer"],
+      initializers: ["initUsers"],
     },
     {
       key: "admin_ai",

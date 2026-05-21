@@ -231,6 +231,10 @@ class OpenAIProvider(BaseAIProvider):
         self.model = model
         self.last_call_metadata = {}
 
+    def _client_for_profile(self, profile):
+        """Return an OpenAI client configured for one workflow profile."""
+        return self.client.with_options(**openai_client_options(profile))
+
     def suggest_task(self, text, user_context=None):
         """Return a structured task suggestion for free text."""
         prompt = build_json_prompt(
@@ -393,7 +397,7 @@ class OpenAIProvider(BaseAIProvider):
         )
         try:
             started_at = call_timer()
-            completion = self.client.chat.completions.create(
+            completion = self._client_for_profile(profile).chat.completions.create(
                 model=profile.model,
                 messages=[
                     {
@@ -444,7 +448,7 @@ class OpenAIProvider(BaseAIProvider):
         )
         try:
             started_at = call_timer()
-            completion = self.client.chat.completions.create(
+            completion = self._client_for_profile(profile).chat.completions.create(
                 model=profile.model,
                 messages=messages,
                 temperature=profile.temperature,

@@ -1220,6 +1220,39 @@ MAINTENANCE_PLAN_DEFINITIONS = [
     ),
 ]
 
+ACTIVE_ERROR_STATES = {
+    ("Instandhaltung", "E-101"): {
+        "status": "open",
+        "severity": "critical",
+        "cause_category": "Sensorik",
+        "impact": "Linie muss überwacht laufen, Ausschussrisiko erhöht.",
+        "downtime_minutes": 35,
+        "production_loss_minutes": 50,
+        "repeat_count": 2,
+        "seen_hours": 2,
+    },
+    ("Instandhaltung", "E-103"): {
+        "status": "in_progress",
+        "severity": "high",
+        "cause_category": "Hydraulik",
+        "impact": "Taktzeit reduziert, Wartungsfenster erforderlich.",
+        "downtime_minutes": 20,
+        "production_loss_minutes": 30,
+        "repeat_count": 1,
+        "seen_hours": 5,
+    },
+    ("Produktion", "E-104"): {
+        "status": "open",
+        "severity": "high",
+        "cause_category": "Mechanik",
+        "impact": "Qualitätsfreigabe ausstehend.",
+        "downtime_minutes": 0,
+        "production_loss_minutes": 15,
+        "repeat_count": 1,
+        "seen_hours": 1,
+    },
+}
+
 MANUAL_DEFINITIONS = [
     (
         "hydraulikpresse-03",
@@ -1580,6 +1613,7 @@ def _seed_inventory(machines):
 
 def _seed_errors(departments, machines):
     """Create demo error catalog entries for each default department."""
+    now = datetime.now(UTC)
     for dept_name in ("Instandhaltung", "Produktion", "IT", "Verwaltung"):
         department = departments.get(dept_name)
         if not department:
@@ -1590,23 +1624,48 @@ def _seed_errors(departments, machines):
             existing = ErrorEntry.query.filter_by(
                 error_code=error_code, department=department
             ).first()
-            if existing:
-                continue
             machine = machines.get(machine_name)
-            entry = ErrorEntry(
-                machine=machine_name,
-                machine_id=machine.id if machine else None,
-                error_code=error_code,
-                title=title,
-                description=(
-                    f"{title} – aufgetreten im Bereich {dept_name}. "
-                    "Störung absichern, Anlage prüfen, Maßnahme dokumentieren."
-                ),
-                possible_causes=cause,
-                solution=solution,
-                department=department,
+            if not existing:
+                existing = ErrorEntry(
+                    error_code=error_code,
+                    department=department,
+                )
+                db.session.add(existing)
+            existing.machine = machine_name
+            existing.machine_id = machine.id if machine else None
+            existing.title = title
+            existing.description = (
+                f"{title} – aufgetreten im Bereich {dept_name}. "
+                "Störung absichern, Anlage prüfen, Maßnahme dokumentieren."
             )
-            db.session.add(entry)
+            existing.possible_causes = cause
+            existing.solution = solution
+            _apply_demo_error_state(existing, dept_name, error_code_base, now)
+
+
+def _apply_demo_error_state(entry, department_name, error_code_base, now):
+    """Apply repeatable active/catalog state to a seeded error entry."""
+    state = ACTIVE_ERROR_STATES.get((department_name, error_code_base))
+    if state:
+        entry.status = state["status"]
+        entry.severity = state["severity"]
+        entry.cause_category = state["cause_category"]
+        entry.impact = state["impact"]
+        entry.downtime_minutes = state["downtime_minutes"]
+        entry.production_loss_minutes = state["production_loss_minutes"]
+        entry.repeat_count = state["repeat_count"]
+        entry.last_seen_at = now - timedelta(hours=state["seen_hours"])
+        entry.closed_at = None
+        return
+    entry.status = "closed"
+    entry.severity = "medium"
+    entry.cause_category = ""
+    entry.impact = ""
+    entry.downtime_minutes = 0
+    entry.production_loss_minutes = 0
+    entry.repeat_count = 0
+    entry.last_seen_at = None
+    entry.closed_at = entry.closed_at or now - timedelta(days=14)
 
 
 def _seed_maintenance_plans(departments, users, machines):
@@ -1676,22 +1735,22 @@ def _seed_tasks(departments, users, machines):
     ) in TASK_DEFINITIONS:
         department = departments.get(dept_name)
         existing = Task.query.filter_by(title=title, department=department).first()
-        if existing:
-            _apply_task_operational_details(existing, prio_str, status_str, due_days)
-            continue
-
         status = status_map[status_str]
         worker = users.get(worker_username) if worker_username else None
 
-        task = Task(
-            title=title,
-            description=description,
-            priority=priority_map[prio_str],
-            status=status,
-            due_date=today + timedelta(days=due_days),
-            department=department,
-            created_by=creator.id if creator else None,
-        )
+        task = existing or Task(title=title, department=department)
+        task.description = description
+        task.priority = priority_map[prio_str]
+        task.status = status
+        task.due_date = today + timedelta(days=due_days)
+        task.department = department
+        if not existing:
+            task.created_by = creator.id if creator else None
+
+        task.current_worker_id = None
+        task.completed_by_id = None
+        task.started_at = None
+        task.completed_at = None
 
         if status == TaskStatus.IN_PROGRESS and worker:
             task.current_worker_id = worker.id
@@ -1704,7 +1763,8 @@ def _seed_tasks(departments, users, machines):
             task.completed_at = now - timedelta(days=abs(due_days))
 
         _apply_task_operational_details(task, prio_str, status_str, due_days)
-        db.session.add(task)
+        if not existing:
+            db.session.add(task)
 
 
 def _apply_task_operational_details(task, priority_name, status_name, due_days):

@@ -8772,10 +8772,12 @@
 
   .nav-link.is-active,
   .nav-link[aria-current="page"] {
-    border-color: rgba(255, 255, 255, 0.18);
-    background: #ffffff;
-    color: #102436;
-    box-shadow: 0 16px 30px rgba(0, 0, 0, 0.18);
+    border-color: rgba(56, 189, 248, 0.42);
+    background:
+      linear-gradient(135deg, rgba(14, 116, 224, 0.86), rgba(15, 118, 110, 0.72)),
+      rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+    box-shadow: 0 14px 28px rgba(8, 30, 54, 0.24);
   }
 
   .nav-icon {
@@ -8785,8 +8787,21 @@
 
   .nav-link.is-active .nav-icon,
   .nav-link[aria-current="page"] .nav-icon {
-    background: #e7f3ff;
-    color: var(--ui-primary);
+    background: rgba(255, 255, 255, 0.18);
+    color: #ffffff;
+  }
+
+  .app-sidebar .nav-link.is-admin-link:not(.is-active):not([aria-current="page"]) {
+    border-color: transparent;
+    background: transparent;
+    color: #d7e3ef;
+    box-shadow: none;
+  }
+
+  .app-sidebar .nav-link.is-admin-link:not(.is-active):not([aria-current="page"]):hover {
+    border-color: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
   }
 
   .app-header {

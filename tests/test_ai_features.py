@@ -2844,12 +2844,16 @@ def test_ai_workflow_routing_uses_balanced_defaults(app):
         app.config["OPENAI_MODEL_QUALITY"] = "quality-test-model"
 
         task_profile = workflow_profile("task_suggestion")
+        priority_profile = workflow_profile("task_prioritization")
         chat_profile = workflow_profile("chat")
         quality_profile = workflow_profile("quality_analysis")
 
     assert task_profile.model == "fast-test-model"
     assert task_profile.tier == "fast"
     assert task_profile.temperature == 0.1
+    assert priority_profile.model == "fast-test-model"
+    assert priority_profile.timeout_seconds == 2.0
+    assert priority_profile.max_retries == 0
     assert chat_profile.model == "balanced-test-model"
     assert chat_profile.tier == "balanced"
     assert chat_profile.max_tokens == 750

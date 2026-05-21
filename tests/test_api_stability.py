@@ -60,6 +60,20 @@ def frontend_runtime_text(client):
     return "\n".join(client.get(path).get_data(as_text=True) for path in asset_paths)
 
 
+def task_workflow_source():
+    """Return the task workflow initializer source."""
+    workflows = (REPO_ROOT / "app" / "static" / "pages" / "workflows.js").read_text(
+        encoding="utf-8",
+    )
+    match = re.search(
+        r"async function initAufgaben\(\) \{(?P<body>.*?)\n  async function initErrors",
+        workflows,
+        re.DOTALL,
+    )
+    assert match is not None
+    return match.group("body")
+
+
 def frontend_ui_source_files():
     """Return frontend source files that contain user-visible UI copy."""
     source_paths = list((REPO_ROOT / "app" / "templates").rglob("*.html"))
@@ -78,6 +92,18 @@ def test_frontend_task_workflow_routes_exist(app, client):
     assert '"/api/v1/tasks/" + taskId + "/" + action' in script
     assert '"start"' in script
     assert '"complete"' in script
+
+
+def test_task_prioritization_is_manual_refresh_only():
+    """Verify the task page does not trigger AI prioritization on initial load."""
+    source = task_workflow_source()
+
+    assert "/api/v1/tasks/prioritize" in source
+    assert "priorityRefreshButtons.forEach" in source
+    assert "Bei Bedarf aktualisieren" in source
+    assert "Prioritätslage nicht neu berechnet" in source
+    assert "await load();\n    await loadPriorities();" not in source
+    assert source.count("await loadPriorities();") == 1
 
 
 def test_new_ai_frontend_routes_exist(app, client):
@@ -197,6 +223,31 @@ def test_feature_registry_covers_permissions_and_frontend_assets(client):
     assert "initAccessibleTables" in app_js
     assert "PAGE_MODULE_URLS" in app_js
     assert "feature.initializers" in workflows
+    registry_initializer_blocks = re.findall(
+        r"initializers:\s*\[([^\]]+)\]",
+        registry,
+        re.DOTALL,
+    )
+    registered_initializers = {
+        initializer
+        for block in registry_initializer_blocks
+        for initializer in re.findall(r'"([^"]+)"', block)
+    }
+    missing_initializers = sorted(
+        initializer
+        for initializer in registered_initializers
+        if re.search(rf"\b{re.escape(initializer)}\b", workflows) is None
+    )
+    admin_users_feature = re.search(
+        r'key: "admin_users".*?initializers:\s*\[([^\]]+)\]',
+        registry,
+        re.DOTALL,
+    )
+
+    assert missing_initializers == []
+    assert admin_users_feature is not None
+    assert '"initUsers"' in admin_users_feature.group(1)
+    assert '"initBenutzer"' not in admin_users_feature.group(1)
 
     for dashboard_key in DASHBOARD_KEYS:
         assert f'permissionKey: "{dashboard_key}"' in registry

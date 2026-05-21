@@ -1,5 +1,5 @@
 (function () {
-  const STATIC_VERSION = "20260521-plan9-ux1";
+  const STATIC_VERSION = "20260521-task-priority1";
   const WORKFLOW_MODULE_URL = "/static/pages/workflows.js?v=" + STATIC_VERSION;
   const PAGE_MODULE_URLS = {
     "/login": "/static/pages/login.js?v=" + STATIC_VERSION
@@ -762,7 +762,7 @@
     }
     if (window.maintenanceAuth.canView && window.maintenanceAuth.canView("errors")) {
       jobs.push(
-        window.maintenanceApi.request("/api/v1/errors?limit=1")
+        window.maintenanceApi.request("/api/v1/errors?limit=1&active=1")
           .then((result) => {
             document.querySelectorAll("[data-dashboard-machine-issue-count]").forEach((element) => {
               element.textContent = String(totalFromPayload(result));

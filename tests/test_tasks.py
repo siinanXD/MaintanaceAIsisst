@@ -3,6 +3,7 @@
 from datetime import date, timedelta
 
 from app.models import Priority, Role, TaskStatus
+from app.services.ai_service import AIServiceError
 
 
 def test_task_create_list_filter_and_update(client, make_user, auth_headers):
@@ -379,6 +380,51 @@ def test_prioritize_tasks_uses_local_fallback_without_openai_key(
         "reason",
         "recommended_action",
     }
+
+
+def test_prioritize_tasks_uses_local_fallback_on_provider_error(
+    client,
+    make_user,
+    make_task,
+    auth_headers,
+    monkeypatch,
+):
+    """Verify provider timeouts fall back to local priorities."""
+
+    class FailingProvider:
+        """Provide a deterministic provider failure for prioritization."""
+
+        def prioritize_tasks(self, tasks, context=None):
+            """Raise a timeout-like AI service error."""
+            raise AIServiceError("timeout", error_code="timeout")
+
+    def failing_provider():
+        """Return a provider that always fails prioritization."""
+        return FailingProvider()
+
+    user = make_user(username="priority_provider_timeout")
+    make_task(
+        "Kritische Presse prüfen",
+        creator_username=user["username"],
+        priority=Priority.URGENT,
+        description="Presse steht wegen Hydraulikfehler",
+    )
+    monkeypatch.setattr(
+        "app.services.task_service.get_ai_provider",
+        failing_provider,
+    )
+
+    response = client.post(
+        "/api/v1/tasks/prioritize",
+        headers=auth_headers(user["username"]),
+        json={"limit": 1},
+    )
+
+    payload = response.get_json()["data"]
+    assert response.status_code == 200
+    assert len(payload) == 1
+    assert payload[0]["task"]["title"] == "Kritische Presse prüfen"
+    assert payload[0]["score"] > 0
 
 
 def test_task_suggestion_includes_rag_sources_after_reindex(

@@ -52,6 +52,8 @@ def workflow_profile(workflow, legacy_model=None):
     settings = WORKFLOW_PROFILES.get(workflow_key, WORKFLOW_PROFILES["chat"])
     tier = str(settings["tier"])
     model = _workflow_model(workflow_key) or _tier_model(tier, legacy_model)
+    default_timeout = _workflow_default_timeout(workflow_key)
+    default_retries = _workflow_default_retries(workflow_key)
     return AIModelProfile(
         workflow=workflow_key,
         tier=tier,
@@ -66,13 +68,26 @@ def workflow_profile(workflow, legacy_model=None):
             "MAX_TOKENS",
             int(settings["max_tokens"]),
         ),
-        timeout_seconds=float(current_app.config.get("AI_TIMEOUT_SECONDS", 10)),
-        max_retries=int(current_app.config.get("AI_MAX_RETRIES", 1)),
+        timeout_seconds=_workflow_float(
+            workflow_key,
+            "TIMEOUT_SECONDS",
+            default_timeout,
+        ),
+        max_retries=_workflow_int(
+            workflow_key,
+            "MAX_RETRIES",
+            default_retries,
+        ),
     )
 
 
-def openai_client_options():
+def openai_client_options(profile=None):
     """Return OpenAI client options for timeout and retry control."""
+    if profile is not None:
+        return {
+            "timeout": profile.timeout_seconds,
+            "max_retries": profile.max_retries,
+        }
     return {
         "timeout": float(current_app.config.get("AI_TIMEOUT_SECONDS", 10)),
         "max_retries": int(current_app.config.get("AI_MAX_RETRIES", 1)),
@@ -165,6 +180,20 @@ def _tier_model(tier, legacy_model=None):
         or current_app.config.get("OPENAI_MODEL")
         or DEFAULT_MODELS[tier]
     )
+
+
+def _workflow_default_timeout(workflow):
+    """Return the default timeout for one workflow."""
+    if workflow == "task_prioritization":
+        return float(current_app.config.get("AI_TASK_PRIORITIZATION_TIMEOUT_SECONDS", 2.0))
+    return float(current_app.config.get("AI_TIMEOUT_SECONDS", 10))
+
+
+def _workflow_default_retries(workflow):
+    """Return the default retry count for one workflow."""
+    if workflow == "task_prioritization":
+        return int(current_app.config.get("AI_TASK_PRIORITIZATION_MAX_RETRIES", 0))
+    return int(current_app.config.get("AI_MAX_RETRIES", 1))
 
 
 def _workflow_float(workflow, suffix, default):

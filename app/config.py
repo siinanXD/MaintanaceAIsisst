@@ -94,6 +94,14 @@ class Config:
     OPENAI_MODEL_QUALITY = os.getenv("OPENAI_MODEL_QUALITY", "gpt-5-mini")
     AI_TIMEOUT_SECONDS = env_float("AI_TIMEOUT_SECONDS", 10.0)
     AI_MAX_RETRIES = env_int("AI_MAX_RETRIES", 1)
+    AI_TASK_PRIORITIZATION_TIMEOUT_SECONDS = env_float(
+        "AI_TASK_PRIORITIZATION_TIMEOUT_SECONDS",
+        2.0,
+    )
+    AI_TASK_PRIORITIZATION_MAX_RETRIES = env_int(
+        "AI_TASK_PRIORITIZATION_MAX_RETRIES",
+        0,
+    )
     AI_ENABLE_STREAMING = env_bool("AI_ENABLE_STREAMING", default=True)
     RAG_ENABLED = env_bool("RAG_ENABLED", default=True)
     RAG_VECTOR_STORE = os.getenv("RAG_VECTOR_STORE", "local")

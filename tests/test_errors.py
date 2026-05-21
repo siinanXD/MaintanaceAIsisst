@@ -45,6 +45,45 @@ def test_error_entry_create_search_update_and_delete(client, make_user, auth_hea
     assert delete_response.status_code == 204
 
 
+def test_error_list_active_filter_excludes_catalog_rows(
+    client,
+    make_user,
+    make_error_entry,
+    auth_headers,
+):
+    """Verify dashboard active filtering ignores static catalog-only errors."""
+    user = make_user(
+        username="active_error_filter",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    headers = auth_headers(user["username"])
+    make_error_entry(
+        "Hydraulikpresse 03",
+        "E-CAT",
+        "Katalogeintrag ohne aktuelles Auftreten",
+        department_name="Instandhaltung",
+    )
+
+    create_response = client.post(
+        "/api/v1/errors",
+        headers=headers,
+        json={
+            "machine": "Hydraulikpresse 03",
+            "error_code": "E-ACT",
+            "title": "Aktuelle Hydraulikstoerung",
+            "department": "Instandhaltung",
+        },
+    )
+    response = client.get("/api/v1/errors?active=1&limit=100", headers=headers)
+    codes = [entry["error_code"] for entry in response.get_json()["data"]]
+
+    assert create_response.status_code == 201
+    assert response.status_code == 200
+    assert "E-ACT" in codes
+    assert "E-CAT" not in codes
+
+
 def test_error_entry_rejects_duplicate_code_in_same_department(
     client,
     make_user,

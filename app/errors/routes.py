@@ -11,6 +11,7 @@ from app.security import (
     same_department_or_admin,
 )
 from app.services.error_service import (
+    ERROR_STATUSES,
     analyze_error_description,
     close_error_entry,
     create_error_entry,
@@ -28,6 +29,11 @@ from app.services.operations_tracking_service import record_event
 errors_bp = Blueprint("errors", __name__)
 
 
+def _truthy_query_arg(name):
+    """Return whether a query parameter is a truthy flag."""
+    return str(request.args.get(name, "")).strip().lower() in {"1", "true", "yes", "on"}
+
+
 @errors_bp.get("")
 @dashboard_permission_required("errors", "view")
 def list_errors():
@@ -38,7 +44,23 @@ def list_errors():
         limit — items per page, 1-100 (default 20)
     """
     user = current_user()
-    query = visible_errors_query(user).order_by(ErrorEntry.error_code.asc())
+    query = visible_errors_query(user)
+    status = str(request.args.get("status", "")).strip().lower()
+    if status:
+        if status not in ERROR_STATUSES:
+            return error_response("Invalid status filter", 400)
+        query = query.filter(ErrorEntry.status == status)
+    if _truthy_query_arg("active"):
+        query = query.filter(
+            ErrorEntry.status.in_(("open", "in_progress")),
+            ErrorEntry.last_seen_at.isnot(None),
+        ).order_by(
+            ErrorEntry.last_seen_at.desc(),
+            ErrorEntry.created_at.desc(),
+            ErrorEntry.id.desc(),
+        )
+    else:
+        query = query.order_by(ErrorEntry.error_code.asc())
     return paginate_query(query, lambda e: e.to_dict())
 
 

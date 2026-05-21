@@ -82,7 +82,7 @@
     machines: "Maschinen",
     inventory: "Lager",
     documents: "Dokumente",
-    admin_users: "Users"
+    admin_users: "Benutzer"
   };
 
   const DASHBOARD_KEYS = Object.keys(DASHBOARD_LABELS);
@@ -410,7 +410,53 @@
   }
 
   function dashboardTodayIso() {
-    return new Date().toISOString().slice(0, 10);
+    return localIsoDate(new Date());
+  }
+
+  function localIsoDate(value) {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return year + "-" + month + "-" + day;
+  }
+
+  function isoDateOnly(value) {
+    const text = String(value || "").slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : "";
+  }
+
+  function dateDiffDays(fromIso, toIso) {
+    const from = isoDateOnly(fromIso).split("-").map(Number);
+    const to = isoDateOnly(toIso).split("-").map(Number);
+    if (from.length !== 3 || to.length !== 3 || from.some(Number.isNaN) || to.some(Number.isNaN)) {
+      return 0;
+    }
+    const fromTime = Date.UTC(from[0], from[1] - 1, from[2]);
+    const toTime = Date.UTC(to[0], to[1] - 1, to[2]);
+    return Math.round((toTime - fromTime) / 86400000);
+  }
+
+  function relativeDateLabel(dateValue) {
+    const target = isoDateOnly(dateValue);
+    if (!target) return "";
+    const diff = dateDiffDays(dashboardTodayIso(), target);
+    if (diff === 0) return "heute fällig";
+    if (diff === 1) return "morgen fällig";
+    if (diff === -1) return "seit gestern überfällig";
+    if (diff < 0) return "seit " + Math.abs(diff) + " Tagen überfällig";
+    return "in " + diff + " Tagen fällig";
+  }
+
+  function relativeSeenLabel(dateValue) {
+    const target = isoDateOnly(dateValue);
+    if (!target) return "";
+    const diff = dateDiffDays(target, dashboardTodayIso());
+    if (diff < 0) return "gerade gemeldet";
+    if (diff === 0) return "heute gemeldet";
+    if (diff === 1) return "gestern gemeldet";
+    return "vor " + diff + " Tagen gemeldet";
   }
 
   function dashboardShiftTime(entry, fallbackStart, fallbackEnd) {
@@ -998,9 +1044,28 @@
       }
     }
 
+    function renderPriorityHint(title, text) {
+      if (!priorityList) return;
+      priorityList.innerHTML = '<div class="guided-empty-state"><strong>'
+        + title
+        + '</strong><p>'
+        + text
+        + '</p></div>';
+    }
+
+    function markPrioritiesStale() {
+      renderPriorityHint(
+        "Prioritätslage nicht neu berechnet",
+        "Die Aufgaben wurden geändert. Aktualisiere die Prioritätslage bei Bedarf manuell."
+      );
+    }
+
     async function loadPriorities() {
       if (!priorityList) return;
-      priorityList.innerHTML = "";
+      renderPriorityHint(
+        "Priorisierung läuft",
+        "Die wichtigsten offenen Aufgaben werden neu bewertet."
+      );
       let priorities = [];
       try {
         priorities = await api("/api/v1/tasks/prioritize", {
@@ -1105,7 +1170,7 @@
         setStatusMessage(message, action === "start" ? "Aufgabe wird gestartet..." : "Aufgabe wird abgeschlossen...");
         await api(endpoint, { method: "POST" });
         await load();
-        await loadPriorities();
+        markPrioritiesStale();
         setStatusMessage(message, action === "start" ? "Aufgabe gestartet." : "Aufgabe abgeschlossen.");
       } catch (error) {
         setStatusMessage(message, error.message, true);
@@ -1211,7 +1276,7 @@
           try {
             await api("/api/v1/tasks/" + task.id, { method: "DELETE" });
             await load();
-            await loadPriorities();
+            markPrioritiesStale();
             setStatusMessage(statusMsg, "Aufgabe gelöscht.");
           } catch (error) {
             setStatusMessage(statusMsg, error.message, true);
@@ -1295,7 +1360,7 @@
         resetAufgabeForm();
         await initDepartments();
         await load();
-        await loadPriorities();
+        markPrioritiesStale();
         setStatusMessage(message, wasEditing ? "Aufgabe aktualisiert." : "Aufgabe gespeichert.");
       } catch (error) {
         setStatusMessage(message, error.message, true);
@@ -1393,8 +1458,11 @@
       taskFilterSearch.value = query.get("search") || query.get("q") || "";
     }
 
+    renderPriorityHint(
+      "Bei Bedarf aktualisieren",
+      "Die Task-Seite lädt ohne automatische AI-Priorisierung. Nutze Aktualisieren, wenn du eine neue Risikoreihenfolge brauchst."
+    );
     await load();
-    await loadPriorities();
     applyTaskPreview(consumeAiActionPreview("tasks"));
   }
 
@@ -2027,7 +2095,7 @@
       select.dataset.userEmployeeSelect = String(item.id);
       const empty = document.createElement("option");
       empty.value = "";
-      empty.textContent = "Nicht verknuepft";
+      empty.textContent = "Nicht verknüpft";
       select.appendChild(empty);
       employees.forEach((employee) => {
         const option = document.createElement("option");
@@ -2430,28 +2498,54 @@
       const q = filterQ ? filterQ.value.trim() : "";
       const role = filterRole ? filterRole.value : "";
       const status = filterStatus ? filterStatus.value : "";
-      const hasFilter = q || role || status;
 
-      if (!hasFilter) {
-        if (emptyHint) emptyHint.hidden = false;
-        if (tableWrap) tableWrap.hidden = true;
-        list.innerHTML = "";
-        return [];
+      if (emptyHint) {
+        emptyHint.hidden = false;
+        emptyHint.textContent = "Nutzer werden geladen...";
+        emptyHint.classList.remove("is-error");
       }
-      if (emptyHint) emptyHint.hidden = true;
-      if (tableWrap) tableWrap.hidden = false;
+      if (tableWrap) tableWrap.hidden = true;
+      list.innerHTML = "";
 
       const params = new URLSearchParams();
       if (q) params.set("q", q);
       if (role) params.set("role", role);
       if (status) params.set("status", status);
-      const users = await api("/api/v1/admin/users?" + params.toString());
+      const queryString = params.toString();
+      let users = [];
+      try {
+        users = listData(await api("/api/v1/admin/users" + (queryString ? "?" + queryString : "")));
+      } catch (error) {
+        if (emptyHint) {
+          emptyHint.hidden = false;
+          emptyHint.textContent = error.message || "Nutzer konnten nicht geladen werden.";
+          emptyHint.classList.add("is-error");
+        }
+        if (tableWrap) tableWrap.hidden = true;
+        return [];
+      }
       try {
         employees = listData(await api("/api/v1/employees?limit=200"));
       } catch (error) {
         employees = [];
       }
       list.innerHTML = "";
+      if (!users.length) {
+        if (emptyHint) {
+          emptyHint.hidden = false;
+          emptyHint.textContent = q || role || status
+            ? "Keine Nutzer für diese Filter gefunden."
+            : "Noch keine Nutzer vorhanden.";
+          emptyHint.classList.remove("is-error");
+        }
+        if (tableWrap) tableWrap.hidden = true;
+        return users;
+      }
+      if (emptyHint) {
+        emptyHint.hidden = true;
+        emptyHint.classList.remove("is-error");
+      }
+      if (tableWrap) tableWrap.hidden = false;
       users.forEach((item) => {
         const actions = document.createElement("div");
         actions.className = "table-actions";
@@ -2585,6 +2679,7 @@
       });
     }
     await loadPermissionSchema();
+    await load();
     await loadAiAnalytics();
     await loadAuditLog();
     await loadBackups();
@@ -4890,7 +4985,7 @@
     }
 
     function todayIso() {
-      return new Date().toISOString().slice(0, 10);
+      return dashboardTodayIso();
     }
 
     function isOverdue(task) {
@@ -4984,25 +5079,49 @@
       const parts = [
         priorityLabel(task.priority),
         statusLabel(task.status),
-        task.due_date ? "fällig " + task.due_date : "",
+        relativeDateLabel(task.due_date),
         taskMachineHint(task)
       ].filter(Boolean);
       return parts.join(" · ");
+    }
+
+    function activeDashboardErrors(errors) {
+      const recentWindowDays = 30;
+      return listData(errors)
+        .filter((entry) => {
+          const status = String(entry.status || "").toLowerCase();
+          if (status === "closed") return false;
+          if (!entry.last_seen_at) return false;
+          const seenDate = isoDateOnly(entry.last_seen_at);
+          return !seenDate || dateDiffDays(seenDate, todayIso()) <= recentWindowDays;
+        })
+        .sort((first, second) => {
+          const severityRank = { critical: 0, high: 1, medium: 2, low: 3 };
+          const firstRank = severityRank[String(first.severity || "").toLowerCase()] ?? 4;
+          const secondRank = severityRank[String(second.severity || "").toLowerCase()] ?? 4;
+          if (firstRank !== secondRank) return firstRank - secondRank;
+          return String(second.last_seen_at || second.created_at || "").localeCompare(
+            String(first.last_seen_at || first.created_at || "")
+          );
+        });
     }
 
     function renderCriticalToday() {
       if (!criticalTodayPanel) return;
       const activeTasks = dashboardState.tasks.filter((task) => task.status !== "done" && task.status !== "cancelled");
       const criticalTasks = activeTasks.filter((task) => task.priority === "urgent" || isOverdue(task));
+      const activeErrors = activeDashboardErrors(dashboardState.errors);
       const inventory = dashboardState.inventory || (dashboardState.operations && dashboardState.operations.inventory) || {};
       const machines = (dashboardState.operations && dashboardState.operations.machines) || {};
       const items = [];
       criticalTasks.slice(0, 4).forEach((task) => {
         items.push(controlCenterLinkCard("TA", task.title, taskMetaLine(task), "critical", "/tasks", task.status === "open" ? "Starten" : "Prüfen"));
       });
-      dashboardState.errors.slice(0, 4).forEach((entry) => {
+      activeErrors.slice(0, 4).forEach((entry) => {
         const machine = (entry.machine_obj && entry.machine_obj.name) || entry.machine || "Maschine offen";
-        items.push(controlCenterLinkCard("ST", entry.title || entry.error_code || "Störung", machine + " · " + (entry.error_code || "ohne Code"), "warning", "/errors", "Fehler öffnen"));
+        const meta = [machine, entry.error_code || "ohne Code", relativeSeenLabel(entry.last_seen_at) || "aktiv"].filter(Boolean).join(" · ");
+        const severity = entry.severity === "critical" || entry.severity === "high" ? "critical" : "warning";
+        items.push(controlCenterLinkCard("ST", entry.title || entry.error_code || "Störung", meta, severity, "/errors?status=open", "Störung prüfen"));
       });
       if (Number(machines.machines_down || 0)) {
         items.push(controlCenterLinkCard("MA", machines.machines_down + " Maschinen down", (machines.faults || 0) + " Störungen im Zeitraum", "critical", "/machines", "Maschinen"));
@@ -5825,7 +5944,7 @@
       meta.className = "cockpit-task-meta";
       [
         task.department && task.department.name,
-        task.due_date,
+        relativeDateLabel(task.due_date),
         task.current_worker ? formatUser(task.current_worker) : null
       ].filter(Boolean).forEach((value) => {
         const item = document.createElement("span");
@@ -6087,9 +6206,12 @@
       renderPeopleHints();
     }
 
-    function incidentBadge(index) {
-      if (index < 2) return badge("Katalog", "badge badge-priority is-soon");
-      return badge("Erfasst", "badge badge-priority is-normal");
+    function incidentBadge(entry) {
+      const severity = String(entry && entry.severity || "").toLowerCase();
+      if (severity === "critical" || severity === "high") {
+        return badge("Aktiv", "badge badge-priority is-urgent");
+      }
+      return badge("Aktiv", "badge badge-priority is-soon");
     }
 
     function renderFrequentCodes(errors) {
@@ -6119,17 +6241,18 @@
 
     function renderIncidentRows(errors) {
       if (!errorStats) return;
-      dashboardState.errors = errors;
-      renderFrequentCodes(errors);
+      const activeErrors = activeDashboardErrors(errors);
+      dashboardState.errors = activeErrors;
+      renderFrequentCodes(activeErrors);
       errorStats.innerHTML = "";
-      if (!errors.length) {
-        errorStats.appendChild(emptyDashboardMessage("Keine Störungen erfasst."));
+      if (!activeErrors.length) {
+        errorStats.appendChild(emptyDashboardMessage("Keine aktiven Störungen im aktuellen Fenster."));
         setDashboardText("[data-dashboard-machine-status]", "0");
         renderExecutiveDashboard();
-        setDashboardText("[data-dashboard-machine-status-meta]", "keine offenen Störungen");
+        setDashboardText("[data-dashboard-machine-status-meta]", "keine aktiven Störungen");
         return;
       }
-      errors.slice(0, 5).forEach((entry, index) => {
+      activeErrors.slice(0, 5).forEach((entry) => {
         const rowElement = document.createElement("div");
         rowElement.className = "incident-row";
 
@@ -6140,15 +6263,15 @@
         machine.textContent = (entry.machine_obj && entry.machine_obj.name) || entry.machine || "-";
 
         const time = document.createElement("span");
-        time.textContent = formatDashboardTime(entry.created_at);
+        time.textContent = relativeSeenLabel(entry.last_seen_at) || formatDashboardTime(entry.created_at);
 
-        const status = badge("Erfasst", "badge badge-status is-progress");
-        rowElement.append(incidentBadge(index), title, machine, time, status);
+        const status = badge(statusLabel(entry.status), "badge badge-status is-progress");
+        rowElement.append(incidentBadge(entry), title, machine, time, status);
         errorStats.appendChild(rowElement);
       });
-      setDashboardText("[data-dashboard-machine-status]", String(errors.length));
+      setDashboardText("[data-dashboard-machine-status]", String(activeErrors.length));
       renderExecutiveDashboard();
-      setDashboardText("[data-dashboard-machine-status-meta]", "offene Störungen");
+      setDashboardText("[data-dashboard-machine-status-meta]", "aktive Störungen");
     }
 
     function inventoryStatusCounts(materials) {
@@ -6718,7 +6841,7 @@
 
     if (errorStats && canView("errors")) {
       dashboardJobs.push((async () => {
-        const errorPayload = await api("/api/v1/errors?limit=100");
+        const errorPayload = await api("/api/v1/errors?limit=100&active=1");
         const errors = listData(errorPayload);
         setText("[data-dashboard-machine-issue-count]", paginationTotal(errorPayload, errors));
         renderIncidentRows(errors);
@@ -7352,6 +7475,7 @@
       : null;
     const availableInitializers = {
       initDashboardShiftRealtime,
+      initCockpitShiftRealtime: initDashboardShiftRealtime,
       initDailyCockpit,
       initDepartments,
       initTasks: initAufgaben,
@@ -7364,7 +7488,8 @@
       initShiftPlans,
       initVacations,
       initDocuments,
-      initUsers
+      initUsers,
+      initBenutzer: initUsers
     };
     const initializerNames = Array.isArray(feature && feature.initializers)
       ? feature.initializers
