@@ -16,6 +16,7 @@ from app.services.knowledge_service import (
     reindex_knowledge_document,
     reindex_stale_knowledge,
 )
+from app.services.payload_parsing_service import parse_bool
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +106,14 @@ def validate_reindex_mode(mode, document_id=None):
 
 def validate_knowledge_aging_payload(dry_run=False, limit=None):
     """Return a normalized knowledge aging job payload or raise ValueError."""
-    payload = {"dry_run": _parse_bool(dry_run, "dry_run")}
+    payload = {
+        "dry_run": parse_bool(
+            dry_run,
+            default=False,
+            field_name="dry_run",
+            empty_is_default=True,
+        )
+    }
     if limit not in (None, ""):
         try:
             parsed_limit = int(limit)
@@ -308,21 +316,6 @@ def mark_job_failed(job, exc):
     except SQLAlchemyError:
         db.session.rollback()
         logger.exception("background_job_failure_persist_failed id=%s", job.id)
-
-
-def _parse_bool(value, field_name):
-    """Return a normalized boolean payload value or raise ValueError."""
-    if isinstance(value, bool):
-        return value
-    if value in (None, ""):
-        return False
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"true", "1", "yes", "on"}:
-            return True
-        if normalized in {"false", "0", "no", "off"}:
-            return False
-    raise ValueError(f"{field_name} must be a boolean")
 
 
 def _log_deduplicated_job(job, payload):

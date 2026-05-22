@@ -2,6 +2,7 @@
 
 from app.extensions import db
 from app.models import Site
+from app.services.payload_parsing_service import parse_bool
 
 DEFAULT_SITE_CODE = "werk-1"
 DEFAULT_SITE_NAME = "Werk 1"
@@ -80,18 +81,3 @@ def update_site(site, data):
         return None, {"error": str(exc)}, 400
     db.session.commit()
     return site, None, 200
-
-
-def parse_bool(value, default=True):
-    """Parse a site boolean payload value."""
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"true", "1", "yes", "on"}:
-            return True
-        if normalized in {"false", "0", "no", "off"}:
-            return False
-    raise ValueError("is_active must be a boolean")

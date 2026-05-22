@@ -65,6 +65,7 @@ from app.services.knowledge_service import (
 from app.services.mail_service import mail_config_status
 from app.services.notification_service import delivery_query, send_test_email
 from app.services.operations_tracking_service import aggregate_operations, record_event
+from app.services.payload_parsing_service import parse_bool as parse_optional_bool
 from app.services.retrieval_evaluation_service import (
     retrieval_evaluation_history,
     run_admin_golden_retrieval_evaluation,
@@ -73,21 +74,6 @@ from app.services.retrieval_telemetry_service import retrieval_quality_analytics
 from app.services.site_service import create_site, list_sites, update_site
 
 admin_bp = Blueprint("admin", __name__)
-
-
-def parse_optional_bool(value, default=True):
-    """Parse optional JSON booleans and common string values."""
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"true", "1", "yes", "on"}:
-            return True
-        if normalized in {"false", "0", "no", "off"}:
-            return False
-    raise ValueError("is_active must be a boolean")
 
 
 def find_user_conflict(username=None, email=None, exclude_user_id=None):

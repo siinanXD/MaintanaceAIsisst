@@ -8,6 +8,7 @@ from app.extensions import db
 from app.models import ErrorEntry, Machine, MaintenancePlan, Priority, Role, Task, TaskStatus
 from app.security import has_dashboard_permission
 from app.services.error_service import visible_errors_query
+from app.services.payload_parsing_service import parse_bool as parse_optional_bool
 from app.services.recurring_issue_service import analyze_recurring_issues
 from app.services.retrieval_service import knowledge_context_for_chat
 from app.services.task_service import (
@@ -35,21 +36,6 @@ def parse_interval_days(value):
     if interval_days < 1:
         raise ValueError("interval_days must be at least 1")
     return interval_days
-
-
-def parse_optional_bool(value, default=True):
-    """Parse optional boolean payload values."""
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"true", "1", "yes", "on"}:
-            return True
-        if normalized in {"false", "0", "no", "off"}:
-            return False
-    raise ValueError("is_active must be a boolean")
 
 
 def resolve_machine(machine_id):

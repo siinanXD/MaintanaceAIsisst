@@ -13,6 +13,7 @@ from app.services.knowledge_service import (
 )
 from app.services.maintenance_tag_service import suggest_tags_for_knowledge_payload
 from app.services.missing_information_service import missing_information_for_knowledge_entry
+from app.services.payload_parsing_service import parse_bool
 
 MAX_TITLE_LENGTH = 220
 MAX_QUESTION_LENGTH = 1000
@@ -196,21 +197,6 @@ def normalize_keywords(value):
     if len(text) > MAX_KEYWORDS_LENGTH:
         raise ValueError(f"keywords must be at most {MAX_KEYWORDS_LENGTH} characters")
     return text
-
-
-def parse_bool(value, default=True):
-    """Parse a boolean payload value."""
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"true", "1", "yes", "on"}:
-            return True
-        if normalized in {"false", "0", "no", "off"}:
-            return False
-    raise ValueError("is_active must be a boolean")
 
 
 def parse_priority(value):

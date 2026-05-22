@@ -20,6 +20,12 @@ REQUIRED_TABLE_COLUMNS = {
     "department": {
         "site_id",
     },
+    "employee": {
+        "last_shift",
+        "current_shift",
+        "next_shift",
+        "rotation_state_updated_at",
+    },
     "task": {
         "planned_minutes",
         "actual_minutes",
@@ -204,6 +210,12 @@ REQUIRED_TABLE_COLUMNS = {
 
 LOCAL_DEV_SCHEMA_COLUMNS = {
     "department": (sa.Column("site_id", sa.Integer(), nullable=True),),
+    "employee": (
+        sa.Column("last_shift", sa.String(length=120), nullable=False, server_default=""),
+        sa.Column("current_shift", sa.String(length=120), nullable=False, server_default=""),
+        sa.Column("next_shift", sa.String(length=120), nullable=False, server_default=""),
+        sa.Column("rotation_state_updated_at", sa.DateTime(), nullable=True),
+    ),
     "task": (
         sa.Column("planned_minutes", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("actual_minutes", sa.Integer(), nullable=False, server_default="0"),

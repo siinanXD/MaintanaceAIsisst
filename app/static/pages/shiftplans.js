@@ -22,6 +22,8 @@
   let shiftModelsLoadPromise = null;
   let currentPlan = null;
   let editEntryId = null;
+  let initializedToken = null;
+  let initializationPromise = null;
 
   // ── DOM ───────────────────────────────────────────────────────────────────
   const form        = document.getElementById("sp-form");
@@ -902,20 +904,49 @@
   });
 
   // ── Init ──────────────────────────────────────────────────────────────────
-  window.addEventListener("maintenance-auth-ready", () => {
-    loadShiftModels();
-    loadMachines();
-    loadPlans();
-  });
-  document.addEventListener("DOMContentLoaded", () => {
-    // Set today as default start date
+  function setDefaultStartDate() {
     const startInput = document.getElementById("sp-start");
     if (startInput && !startInput.value) startInput.value = new Date().toISOString().slice(0,10);
+  }
+
+  async function initializeShiftplansPage() {
+    setDefaultStartDate();
     if (!shiftModels.length) shiftModels = readShiftModelsFromSelect();
-    if (token()) {
-      loadShiftModels();
-      loadMachines();
-      loadPlans();
+
+    const currentToken = token();
+    if (!currentToken) {
+      initializedToken = null;
+      return null;
     }
+    if (initializationPromise) return initializationPromise;
+    if (initializedToken === currentToken) return null;
+
+    initializationPromise = Promise.all([
+      loadShiftModels(),
+      loadMachines(),
+      loadPlans(),
+    ]).finally(() => {
+      initializedToken = currentToken;
+      initializationPromise = null;
+    });
+    return initializationPromise;
+  }
+
+  function scheduleShiftplansInitialization() {
+    initializeShiftplansPage().catch((err) => {
+      if (spMsg) spMsg.textContent = "Schichtplanung konnte nicht geladen werden: " + err.message;
+      console.warn(err);
+    });
+  }
+
+  window.addEventListener("maintenance-auth-ready", scheduleShiftplansInitialization);
+  window.addEventListener("maintenance-auth-changed", () => {
+    initializedToken = null;
+    scheduleShiftplansInitialization();
   });
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", scheduleShiftplansInitialization, { once: true });
+  } else {
+    scheduleShiftplansInitialization();
+  }
 })();

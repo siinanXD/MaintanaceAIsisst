@@ -198,8 +198,7 @@
     gap: 1rem;
   }
 
-  .control-center-side-column,
-  .critical-today-card {
+  .control-center-side-column {
     position: sticky;
     top: 5.5rem;
   }
@@ -8802,6 +8801,37 @@
     border-color: rgba(255, 255, 255, 0.1);
     background: rgba(255, 255, 255, 0.08);
     color: #ffffff;
+  }
+
+  @media (min-width: 1024px) {
+    .app-shell-layout.is-sidebar-collapsed {
+      grid-template-columns: 4rem minmax(0, 1fr) !important;
+    }
+
+    .app-shell-layout.is-sidebar-collapsed .app-sidebar {
+      padding: 1rem 0.45rem;
+      overflow-x: hidden;
+    }
+
+    .app-shell-layout.is-sidebar-collapsed .sidebar-brand,
+    .app-shell-layout.is-sidebar-collapsed .nav-link,
+    .app-shell-layout.is-sidebar-collapsed .sidebar-minimize {
+      justify-content: center;
+      padding-left: 0;
+      padding-right: 0;
+    }
+
+    .app-shell-layout.is-sidebar-collapsed .sidebar-nav {
+      gap: 1rem;
+    }
+
+    .app-shell-layout.is-sidebar-collapsed .sidebar-brand > span:not(.sidebar-brand-mark),
+    .app-shell-layout.is-sidebar-collapsed .sidebar-nav-group h2,
+    .app-shell-layout.is-sidebar-collapsed .nav-link > span:not(.nav-icon),
+    .app-shell-layout.is-sidebar-collapsed .nav-count,
+    .app-shell-layout.is-sidebar-collapsed [data-sidebar-toggle-label] {
+      display: none;
+    }
   }
 
   .app-header {
