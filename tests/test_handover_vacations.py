@@ -1,15 +1,40 @@
 """Tests for handover and vacation workflows."""
 
 from app.extensions import db
-from app.models import Employee, Role
+from app.models import Employee, EmployeeMachineQualification, Role
 
 
-def test_drag_drop_move_to_empty_cell(client, make_user, make_employee, make_machine, auth_headers):
+def _add_machine_qualifications(app, employee_ids, machine_ids, level="trained"):
+    """Create structured qualifications for drag-and-drop shift plan tests."""
+    with app.app_context():
+        for employee_id in employee_ids:
+            for machine_id in machine_ids:
+                db.session.add(
+                    EmployeeMachineQualification(
+                        employee_id=employee_id,
+                        machine_id=machine_id,
+                        level=level,
+                    )
+                )
+        db.session.commit()
+
+
+def test_drag_drop_move_to_empty_cell(
+    client,
+    app,
+    make_user,
+    make_employee,
+    make_machine,
+    auth_headers,
+):
     """Moving an entry to an empty cell updates work_date and shift."""
     admin = make_user(username="dd_move_admin", role=Role.MASTER_ADMIN, department_name=None)
-    make_employee(personnel_number="P-701", name="DD Move Emp A", department="Produktion")
-    make_employee(personnel_number="P-702", name="DD Move Emp B", department="Produktion")
-    make_machine(name="DD Move Anlage", required_employees=1)
+    employee_ids = [
+        make_employee(personnel_number="P-701", name="DD Move Emp A", department="Produktion"),
+        make_employee(personnel_number="P-702", name="DD Move Emp B", department="Produktion"),
+    ]
+    machine_id = make_machine(name="DD Move Anlage", required_employees=1)
+    _add_machine_qualifications(app, employee_ids, [machine_id])
     headers = auth_headers(admin["username"])
 
     # Use a 1-day plan so there are no date conflicts on the target
@@ -46,12 +71,22 @@ def test_drag_drop_move_to_empty_cell(client, make_user, make_employee, make_mac
     assert moved["shift"] == "Nacht"
 
 
-def test_drag_drop_swap_occupied_cell(client, make_user, make_employee, make_machine, auth_headers):
-    """Moving an entry onto an occupied cell swaps the two employee_ids."""
+def test_drag_drop_move_to_full_occupied_cell_is_blocked(
+    client,
+    app,
+    make_user,
+    make_employee,
+    make_machine,
+    auth_headers,
+):
+    """Moving onto a full occupied cell is blocked instead of swapping entries."""
     admin = make_user(username="dd_swap_admin", role=Role.MASTER_ADMIN, department_name=None)
-    make_employee(personnel_number="P-711", name="Swap Emp A", department="Produktion")
-    make_employee(personnel_number="P-712", name="Swap Emp B", department="Produktion")
-    make_machine(name="DD Swap Anlage", required_employees=1)
+    employee_ids = [
+        make_employee(personnel_number="P-711", name="Swap Emp A", department="Produktion"),
+        make_employee(personnel_number="P-712", name="Swap Emp B", department="Produktion"),
+    ]
+    machine_id = make_machine(name="DD Swap Anlage", required_employees=1)
+    _add_machine_qualifications(app, employee_ids, [machine_id])
     headers = auth_headers(admin["username"])
 
     plan_resp = client.post(
@@ -73,25 +108,14 @@ def test_drag_drop_swap_occupied_cell(client, make_user, make_employee, make_mac
         return  # Skip if plan didn't produce both shifts
     entry_a = frueh[0]
     entry_b = spaet[0]
-    emp_a = entry_a["employee"]["id"]
-    emp_b = entry_b["employee"]["id"]
 
     move_resp = client.patch(
         f"/api/v1/shiftplans/entries/{entry_a['id']}/move",
         headers=headers,
         json={"target_date": entry_b["work_date"], "target_shift": entry_b["shift"]},
     )
-    assert move_resp.status_code == 200
-    updated = move_resp.get_json()["data"]["entries"]
-    # After slot-swap, entries exchange their Frueh and Spaet slots.
-    new_a = next(e for e in updated if e["id"] == entry_a["id"])
-    new_b = next(e for e in updated if e["id"] == entry_b["id"])
-    # entry_a now occupies Spaet slot, entry_b now occupies Frueh slot
-    assert new_a["shift"] == entry_b["shift"]
-    assert new_b["shift"] == entry_a["shift"]
-    # The visual result: Frueh cell now shows emp_a (via entry_b), Spaet shows emp_b (via entry_a)
-    assert new_a["employee"]["id"] == emp_a
-    assert new_b["employee"]["id"] == emp_b
+    assert move_resp.status_code == 409
+    assert "voll besetzt" in move_resp.get_json()["message"]
 
 
 def test_handover_create_and_complete(client, make_user, auth_headers):
@@ -590,6 +614,7 @@ def test_vacation_auto_imported_in_shiftplan(
     """Approved vacation requests are automatically included when generating a shift plan."""
     admin = make_user(username="vac_auto_admin", role=Role.MASTER_ADMIN, department_name=None)
     emp_id = make_employee(personnel_number="P-810", name="Vac Auto Emp", department="Produktion")
+    make_employee(personnel_number="P-811", name="Vac Cover Emp", department="Produktion")
     make_machine(name="Auto Vac Anlage", required_employees=1)
     headers = auth_headers(admin["username"])
 

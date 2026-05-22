@@ -16,7 +16,10 @@ class Employee(db.Model):
     postal_code = db.Column(db.String(20), nullable=False, default="")
     department = db.Column(db.String(120), nullable=False, default="")
     shift_model = db.Column(db.String(80), nullable=False, default="")
+    last_shift = db.Column(db.String(120), nullable=False, default="")
     current_shift = db.Column(db.String(120), nullable=False, default="")
+    next_shift = db.Column(db.String(120), nullable=False, default="")
+    rotation_state_updated_at = db.Column(db.DateTime, nullable=True)
     team = db.Column(db.Integer)
     salary_group = db.Column(db.String(80), nullable=False, default="")
     qualifications = db.Column(db.Text, nullable=False, default="")
@@ -64,7 +67,14 @@ class Employee(db.Model):
         base_data.update(
             {
                 "shift_model": self.shift_model,
+                "last_shift": self.last_shift,
                 "current_shift": self.current_shift,
+                "next_shift": self.next_shift,
+                "rotation_state_updated_at": (
+                    self.rotation_state_updated_at.isoformat()
+                    if self.rotation_state_updated_at
+                    else None
+                ),
                 "qualifications": self.qualifications,
                 "favorite_machine": self.favorite_machine,
                 "favorite_machine_id": self.favorite_machine_id,
@@ -168,6 +178,16 @@ class ShiftPlan(db.Model):
         back_populates="plan",
         cascade="all, delete-orphan",
     )
+    coverage_slots = db.relationship(
+        "ShiftPlanCoverageSlot",
+        back_populates="plan",
+        cascade="all, delete-orphan",
+        order_by=(
+            "ShiftPlanCoverageSlot.work_date.asc(), "
+            "ShiftPlanCoverageSlot.shift.asc(), "
+            "ShiftPlanCoverageSlot.machine_id.asc()"
+        ),
+    )
     creator = db.relationship("User", foreign_keys=[created_by])
 
     __table_args__ = (
@@ -199,6 +219,7 @@ class ShiftPlan(db.Model):
             "change_count": self.change_count,
             "created_by": self.creator.username if self.creator else None,
             "entries": [entry.to_dict(employee_access_level) for entry in self.entries],
+            "unassigned_slots": [slot.to_dict() for slot in self.coverage_slots],
             "created_at": self.created_at.isoformat(),
         }
 
@@ -248,6 +269,48 @@ class ShiftPlanEntry(db.Model):
             "start_time": self.start_time,
             "end_time": self.end_time,
             "notes": self.notes,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class ShiftPlanCoverageSlot(db.Model):
+    """Persisted undercoverage slot for a shift plan."""
+
+    __table_args__ = (
+        db.Index("ix_shift_plan_coverage_plan_date", "plan_id", "work_date"),
+        db.Index("ix_shift_plan_coverage_machine_date", "machine_id", "work_date"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    plan_id = db.Column(db.Integer, db.ForeignKey("shift_plan.id"), nullable=False)
+    machine_id = db.Column(db.Integer, db.ForeignKey("machine.id"), nullable=True)
+    work_date = db.Column(db.Date, nullable=False)
+    shift = db.Column(db.String(80), nullable=False)
+    required = db.Column(db.Integer, nullable=False, default=0)
+    assigned = db.Column(db.Integer, nullable=False, default=0)
+    missing = db.Column(db.Integer, nullable=False, default=0)
+    reason = db.Column(db.String(240), nullable=False, default="")
+    suggestion = db.Column(db.String(240), nullable=False, default="")
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+
+    plan = db.relationship("ShiftPlan", back_populates="coverage_slots")
+    machine = db.relationship("Machine")
+
+    def to_dict(self):
+        """Return a JSON-serializable undercoverage slot."""
+        return {
+            "id": self.id,
+            "plan_id": self.plan_id,
+            "machine_id": self.machine_id,
+            "machine_name": self.machine.name if self.machine else None,
+            "machine": self.machine.to_dict() if self.machine else None,
+            "work_date": self.work_date.isoformat(),
+            "shift": self.shift,
+            "required": self.required,
+            "assigned": self.assigned,
+            "missing": self.missing,
+            "reason": self.reason,
+            "suggestion": self.suggestion,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 

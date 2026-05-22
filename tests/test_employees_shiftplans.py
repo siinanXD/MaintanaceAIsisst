@@ -16,6 +16,21 @@ from app.models import (
 )
 
 
+def _add_machine_qualifications(app, employee_ids, machine_ids, level="trained"):
+    """Create structured qualifications for the given employees and machines."""
+    with app.app_context():
+        for employee_id in employee_ids:
+            for machine_id in machine_ids:
+                db.session.add(
+                    EmployeeMachineQualification(
+                        employee_id=employee_id,
+                        machine_id=machine_id,
+                        level=level,
+                    )
+                )
+        db.session.commit()
+
+
 def test_employee_create_rejects_missing_duplicate_and_invalid_values(
     client,
     make_user,
@@ -154,6 +169,7 @@ def test_employee_update_rejects_invalid_birth_date_or_team(
 
 def test_shiftplan_generate_uses_local_fallback(
     client,
+    app,
     make_user,
     make_employee,
     make_machine,
@@ -165,9 +181,12 @@ def test_shiftplan_generate_uses_local_fallback(
         role=Role.MASTER_ADMIN,
         department_name=None,
     )
-    make_employee(personnel_number="P-401", name="Prod One", department="Produktion")
-    make_employee(personnel_number="P-402", name="Prod Two", department="Produktion")
-    make_machine(name="Schicht Anlage", required_employees=1)
+    employee_ids = [
+        make_employee(personnel_number="P-401", name="Prod One", department="Produktion"),
+        make_employee(personnel_number="P-402", name="Prod Two", department="Produktion"),
+    ]
+    machine_id = make_machine(name="Schicht Anlage", required_employees=1)
+    _add_machine_qualifications(app, employee_ids, [machine_id])
 
     response = client.post(
         "/api/v1/shiftplans/generate",
@@ -184,7 +203,7 @@ def test_shiftplan_generate_uses_local_fallback(
     payload = response.get_json()
     assert response.status_code == 201
     assert payload["title"] == "KW Test"
-    assert "Lokaler Fallback" in payload["notes"]
+    assert "Regelbasierter Generator" in payload["notes"]
     assert len(payload["entries"]) == 4
 
 
@@ -243,14 +262,14 @@ def test_shiftplan_generate_rejects_invalid_date_and_days(
     assert invalid_days_response.status_code == 400
 
 
-def test_shiftplan_generate_returns_warnings_and_coverage(
+def test_shiftplan_generate_uses_legacy_qualification_fallback(
     client,
     make_user,
     make_employee,
     make_machine,
     auth_headers,
 ):
-    """Verify shift planning reports conflict warnings and coverage details."""
+    """Verify missing qualification matrix no longer creates empty plans."""
     admin = make_user(
         username="shiftplan_warning_admin",
         role=Role.MASTER_ADMIN,
@@ -281,10 +300,59 @@ def test_shiftplan_generate_returns_warnings_and_coverage(
     payload = response.get_json()
     warning_types = {warning["type"] for warning in payload["warnings"]}
     assert response.status_code == 201
-    # With fair distribution, duplicate_assignment no longer occurs (by design).
-    # Missing structured machine qualifications are expected for unqualified workers.
-    assert "missing_qualification" in warning_types
-    assert payload["coverage_summary"]["assigned_slots"] >= 1
+    assert warning_types == {"coverage"}
+    assert payload["entries"]
+
+
+def test_shiftplan_generate_rejects_empty_work_plan_without_persisting(
+    app,
+    client,
+    make_user,
+    make_employee,
+    make_machine,
+    auth_headers,
+):
+    """Verify true undercoverage returns an error instead of saving an empty plan."""
+    admin = make_user(
+        username="shiftplan_empty_guard_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    employee_id = make_employee(
+        personnel_number="P-471",
+        name="Unavailable Worker",
+        department="Produktion",
+    )
+    make_machine(name="Unavailable Anlage", required_employees=1)
+    with app.app_context():
+        plan_count_before = ShiftPlan.query.count()
+
+    response = client.post(
+        "/api/v1/shiftplans/generate",
+        headers=auth_headers(admin["username"]),
+        json={
+            "title": "Leerer Plan",
+            "start_date": "2026-05-04",
+            "days": 1,
+            "shift_model_key": "one_shift",
+            "department": "Produktion",
+            "vacations": [
+                {
+                    "employee_id": employee_id,
+                    "date": "2026-05-04",
+                    "notes": "Abwesend",
+                }
+            ],
+        },
+    )
+
+    payload = response.get_json()
+    with app.app_context():
+        plan_count_after = ShiftPlan.query.count()
+    assert response.status_code == 422
+    assert "Kein Plan erzeugt" in payload["message"]
+    assert {warning["type"] for warning in payload["warnings"]} == {"coverage"}
+    assert plan_count_after == plan_count_before
 
 
 def test_employee_machine_qualification_matrix_and_update(
@@ -473,8 +541,93 @@ def test_shiftplan_conflicts_ignore_pending_vacation_and_valid_qualification(
     assert "missing_qualification" not in conflict_types
 
 
+def test_shiftplan_move_to_occupied_slot_does_not_swap(
+    client,
+    app,
+    make_user,
+    make_employee,
+    make_machine,
+    auth_headers,
+):
+    """Verify drag-to-occupied-slot moves the source without swapping target entry."""
+    admin = make_user(
+        username="shiftplan_move_no_swap_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    employee_one_id = make_employee(
+        personnel_number="P-495-A",
+        name="Move Person One",
+        department="Produktion",
+    )
+    employee_two_id = make_employee(
+        personnel_number="P-495-B",
+        name="Move Person Two",
+        department="Produktion",
+    )
+    machine_id = make_machine(name="Move Anlage", required_employees=2)
+    _add_machine_qualifications(app, [employee_one_id, employee_two_id], [machine_id])
+    with app.app_context():
+        user = User.query.filter_by(username=admin["username"]).one()
+        plan = ShiftPlan(
+            title="Move Plan",
+            start_date=date(2026, 6, 1),
+            days=2,
+            rhythm="one_shift",
+            department="Produktion",
+            created_by=user.id,
+        )
+        db.session.add(plan)
+        db.session.flush()
+        source = ShiftPlanEntry(
+            plan_id=plan.id,
+            employee_id=employee_one_id,
+            machine_id=machine_id,
+            work_date=date(2026, 6, 1),
+            shift="Frueh",
+            start_time="06:00",
+            end_time="14:00",
+        )
+        target = ShiftPlanEntry(
+            plan_id=plan.id,
+            employee_id=employee_two_id,
+            machine_id=machine_id,
+            work_date=date(2026, 6, 2),
+            shift="Frueh",
+            start_time="06:00",
+            end_time="14:00",
+        )
+        db.session.add_all([source, target])
+        db.session.commit()
+        source_id = source.id
+        target_id = target.id
+
+    response = client.patch(
+        f"/api/v1/shiftplans/entries/{source_id}/move",
+        headers=auth_headers(admin["username"]),
+        json={"target_entry_id": target_id},
+    )
+
+    with app.app_context():
+        source = db.session.get(ShiftPlanEntry, source_id)
+        target = db.session.get(ShiftPlanEntry, target_id)
+        target_day_count = ShiftPlanEntry.query.filter_by(
+            plan_id=source.plan_id,
+            machine_id=machine_id,
+            work_date=date(2026, 6, 2),
+            shift="Frueh",
+        ).count()
+    assert response.status_code == 200, response.get_json()
+    assert source.employee_id == employee_one_id
+    assert source.work_date == date(2026, 6, 2)
+    assert target.employee_id == employee_two_id
+    assert target.work_date == date(2026, 6, 2)
+    assert target_day_count == 2
+
+
 def test_shiftplan_validate_endpoint_and_xlsx_export(
     client,
+    app,
     make_user,
     make_employee,
     make_machine,
@@ -491,7 +644,8 @@ def test_shiftplan_validate_endpoint_and_xlsx_export(
         name="Export Person",
         department="Produktion",
     )
-    make_machine(name="Export Anlage", required_employees=1)
+    machine_id = make_machine(name="Export Anlage", required_employees=1)
+    _add_machine_qualifications(app, [employee_id], [machine_id])
     headers = auth_headers(admin["username"])
 
     create_response = client.post(
@@ -569,7 +723,8 @@ def test_shiftplan_publish_creates_in_app_notification(
         name="Notify Person",
         department="Produktion",
     )
-    make_machine(name="Notify Anlage", required_employees=1)
+    machine_id = make_machine(name="Notify Anlage", required_employees=1)
+    _add_machine_qualifications(app, [employee_id], [machine_id])
     with app.app_context():
         stored_worker = db.session.get(User, worker["id"])
         stored_worker.employee_id = employee_id
@@ -716,6 +871,11 @@ def test_shiftplan_calendar_returns_own_calendar_and_free_days(
     employee_id = make_employee(
         personnel_number="P-530",
         name="Calendar Person",
+        department="Produktion",
+    )
+    make_employee(
+        personnel_number="P-531",
+        name="Calendar Cover",
         department="Produktion",
     )
     make_machine(name="Calendar Anlage", required_employees=1)

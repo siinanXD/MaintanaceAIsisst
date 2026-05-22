@@ -7,26 +7,30 @@ from io import BytesIO
 from xml.sax.saxutils import escape
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from flask import current_app
-from openai import OpenAI, OpenAIError
-
+from app.domain_models.common import utc_now
 from app.extensions import db
 from app.models import (
     Employee,
     EmployeeMachineQualification,
     Machine,
     ShiftPlan,
+    ShiftPlanCoverageSlot,
     ShiftPlanEntry,
     VacationRequest,
 )
 from app.permissions import has_employee_access
-from app.services.ai_prompting import build_json_prompt, json_system_prompt
-from app.services.ai_routing import openai_client_options, workflow_profile
+from app.shiftplans.generator import build_local_shift_entries, build_local_shift_plan
+from app.shiftplans.templates import (
+    SHIFT_TEMPLATE_ALIASES,
+    SHIFT_TEMPLATES,
+    get_shift_model_template,
+    normalize_template_value,
+    resolve_shift_template,
+)
 
 SHIFT_WINDOWS = {
-    "Frueh": ("06:00", "14:00"),
-    "Spaet": ("14:00", "22:00"),
-    "Nacht": ("22:00", "06:00"),
+    shift.key: (shift.start_time, shift.end_time)
+    for shift in get_shift_model_template("three_shift").shifts
 }
 
 SHIFT_LABELS = {
@@ -69,6 +73,30 @@ def department_employees(department):
         .order_by(Employee.team.asc(), Employee.name.asc())
         .all()
     )
+
+
+def selected_machines_for_request(data):
+    """Return requested machines or all machines for legacy payloads."""
+    all_machines = Machine.query.order_by(Machine.name.asc()).all()
+    if "machine_ids" not in data:
+        return all_machines, None
+    raw_machine_ids = data.get("machine_ids")
+    if not isinstance(raw_machine_ids, list) or not raw_machine_ids:
+        return None, {"error": "Bitte mindestens eine Maschine auswaehlen."}
+    try:
+        requested_ids = {int(machine_id) for machine_id in raw_machine_ids}
+    except (TypeError, ValueError):
+        return None, {"error": "machine_ids muessen gueltige Maschinen-IDs enthalten."}
+    machine_by_id = {machine.id: machine for machine in all_machines}
+    missing_ids = sorted(requested_ids - set(machine_by_id))
+    if missing_ids:
+        return None, {
+            "error": (
+                "Unbekannte Maschine(n): "
+                + ", ".join(str(machine_id) for machine_id in missing_ids)
+            )
+        }
+    return [machine_by_id[machine_id] for machine_id in sorted(requested_ids)], None
 
 
 def production_employees():
@@ -117,74 +145,54 @@ def shift_datetimes(work_date, start, end):
     return start_dt, end_dt
 
 
-def local_shift_entries(start_date, days, rhythm, employees, machines, unavailable=None):
+def local_shift_entries(
+    start_date,
+    days,
+    rhythm,
+    employees,
+    machines,
+    unavailable=None,
+    shift_model_value=None,
+    preferences="",
+):
     """Build a fair deterministic fallback plan without calling OpenAI.
 
     Uses a minimum-shift-count selection instead of round-robin so that
     no employee accumulates significantly more shifts than others.
     """
-    entries = []
-    warnings = []
-    unavailable = unavailable or {}
-    if not employees:
-        return entries, warnings
-
-    shift_names = (
-        ["Frueh", "Spaet", "Nacht"]
-        if "nacht" in rhythm.lower() or "3" in rhythm
-        else ["Frueh", "Spaet"]
+    return build_local_shift_entries(
+        start_date,
+        days,
+        shift_model_value or rhythm,
+        employees,
+        machines,
+        unavailable=unavailable,
+        respect_active_weekdays=bool(shift_model_value),
+        preferences=preferences,
     )
-    shift_count = {emp.id: 0 for emp in employees}
-    machines_to_plan = machines or [None]
 
-    for day_offset in range(days):
-        work_date = start_date + timedelta(days=day_offset)
-        assigned_today = set()
-        for machine in machines_to_plan:
-            required = (
-                machine.required_employees
-                if machine
-                else max(1, len(employees) // len(shift_names))
-            )
-            for shift in shift_names:
-                start_time, end_time = SHIFT_WINDOWS[shift]
-                for _ in range(required):
-                    employee = _pick_fairest_employee(
-                        employees,
-                        shift_count,
-                        work_date,
-                        unavailable,
-                        assigned_today,
-                    )
-                    if not employee:
-                        warnings.append(
-                            {
-                                "type": "coverage",
-                                "severity": "critical",
-                                "message": (
-                                    f"Keine verfuegbaren Mitarbeitenden am "
-                                    f"{work_date.isoformat()} fuer {shift}."
-                                ),
-                            }
-                        )
-                        continue
-                    shift_count[employee.id] += 1
-                    assigned_today.add(employee.id)
-                    entries.append(
-                        {
-                            "employee_id": employee.id,
-                            "machine_id": machine.id if machine else None,
-                            "work_date": work_date.isoformat(),
-                            "shift": shift,
-                            "start_time": start_time,
-                            "end_time": end_time,
-                            "notes": (
-                                "Automatisch geplant: max. 8h Schicht, "
-                                "11h Ruhezeit als Planungsregel."
-                            ),
-                        }
-                    )
-    return entries, warnings
+
+def local_shift_plan(
+    start_date,
+    days,
+    rhythm,
+    employees,
+    machines,
+    unavailable=None,
+    shift_model_value=None,
+    preferences="",
+):
+    """Build local entries with warnings and visible undercoverage slots."""
+    return build_local_shift_plan(
+        start_date,
+        days,
+        shift_model_value or rhythm,
+        employees,
+        machines,
+        unavailable=unavailable,
+        respect_active_weekdays=bool(shift_model_value),
+        preferences=preferences,
+    )
 
 
 def _pick_fairest_employee(employees, shift_count, work_date, unavailable, assigned_today):
@@ -420,12 +428,7 @@ def validate_entries(entries, employees, machines, start_date, days):
 
 def analyze_shift_plan(entries, employees, machines):
     """Return conflicts and coverage information for generated shift entries."""
-    coverage_summary = {
-        "required_slots": 0,
-        "assigned_slots": 0,
-        "undercovered": 0,
-        "machines": {},
-    }
+    coverage_summary = empty_coverage_summary()
     conflicts = detect_shift_plan_conflicts(
         entries,
         employees,
@@ -435,7 +438,13 @@ def analyze_shift_plan(entries, employees, machines):
     return conflicts[:50], coverage_summary
 
 
-def detect_shift_plan_conflicts(entries, employees, machines, coverage_summary=None):
+def detect_shift_plan_conflicts(
+    entries,
+    employees,
+    machines,
+    coverage_summary=None,
+    include_coverage=True,
+):
     """Return structured conflicts for shift plan entries."""
     normalized_entries = normalize_conflict_entries(entries)
     employee_by_id = {employee.id: employee for employee in employees}
@@ -453,20 +462,25 @@ def detect_shift_plan_conflicts(entries, employees, machines, coverage_summary=N
     conflicts.extend(detect_rest_time_conflicts(normalized_entries, employee_by_id))
     conflicts.extend(detect_weekly_hours_conflicts(normalized_entries, employee_by_id))
     conflicts.extend(detect_consecutive_day_conflicts(normalized_entries, employee_by_id))
-    conflicts.extend(
-        update_coverage_summary(
-            normalized_entries,
-            machines,
-            coverage_summary
-            or {
-                "required_slots": 0,
-                "assigned_slots": 0,
-                "undercovered": 0,
-                "machines": {},
-            },
+    if include_coverage:
+        conflicts.extend(
+            update_coverage_summary(
+                normalized_entries,
+                machines,
+                coverage_summary or empty_coverage_summary(),
+            )
         )
-    )
     return conflicts
+
+
+def empty_coverage_summary():
+    """Return an empty coverage summary payload."""
+    return {
+        "required_slots": 0,
+        "assigned_slots": 0,
+        "undercovered": 0,
+        "machines": {},
+    }
 
 
 def normalize_conflict_entries(entries):
@@ -633,6 +647,8 @@ def detect_missing_machine_qualifications(entries, employee_by_id, machine_by_id
         (qualification.employee_id, qualification.machine_id): qualification
         for qualification in qualifications
     }
+    if not qualifications and entries_use_legacy_qualification_mode(entries):
+        return []
     for entry in entries:
         machine_id = entry.get("machine_id")
         if not machine_id or not is_work_entry(entry):
@@ -658,6 +674,14 @@ def detect_missing_machine_qualifications(entries, employee_by_id, machine_by_id
             }
         )
     return conflicts[:50]
+
+
+def entries_use_legacy_qualification_mode(entries):
+    """Return whether generated entries intentionally used legacy qualification data."""
+    work_entries = [entry for entry in entries if is_work_entry(entry)]
+    if not work_entries:
+        return False
+    return all("Legacy-" in str(entry.get("notes") or "") for entry in work_entries)
 
 
 def detect_weekly_hours_conflicts(entries, employee_by_id):
@@ -801,6 +825,104 @@ def update_coverage_summary(entries, machines, coverage_summary):
     return warnings
 
 
+def build_template_coverage_summary(
+    entries,
+    machines,
+    start_date,
+    days,
+    shift_model_value,
+    respect_active_weekdays=True,
+):
+    """Return coverage summary and undercoverage slots for a template plan."""
+    template = resolve_shift_template(shift_model_value)
+    normalized_entries = normalize_conflict_entries(entries)
+    assigned = {}
+    for entry in normalized_entries:
+        if not entry.get("machine_id") or not is_work_entry(entry):
+            continue
+        key = (entry["machine_id"], entry["work_date"], entry["shift"])
+        assigned[key] = assigned.get(key, 0) + 1
+
+    coverage_summary = empty_coverage_summary()
+    unassigned_slots = []
+    for machine in machines:
+        machine_required = 0
+        machine_assigned = 0
+        for day_offset in range(days):
+            work_date = start_date + timedelta(days=day_offset)
+            if respect_active_weekdays and not template.is_active_on(work_date):
+                continue
+            for shift_window in template.shifts:
+                key = (machine.id, work_date, shift_window.key)
+                required = int(machine.required_employees)
+                count = assigned.get(key, 0)
+                missing = max(0, required - count)
+                machine_required += required
+                machine_assigned += count
+                if missing:
+                    coverage_summary["undercovered"] += 1
+                    unassigned_slots.append(
+                        undercoverage_slot_payload(
+                            machine,
+                            work_date,
+                            shift_window.key,
+                            required,
+                            count,
+                            missing,
+                        )
+                    )
+        coverage_summary["machines"][machine.name] = {
+            "required_slots": machine_required,
+            "assigned_slots": machine_assigned,
+        }
+        coverage_summary["required_slots"] += machine_required
+        coverage_summary["assigned_slots"] += machine_assigned
+    return coverage_summary, unassigned_slots
+
+
+def undercoverage_slot_payload(machine, work_date, shift, required, assigned, missing):
+    """Return a visible undercoverage payload for one machine shift."""
+    return {
+        "work_date": work_date.isoformat(),
+        "shift": shift,
+        "machine_id": machine.id if machine else None,
+        "machine_name": machine.name if machine else None,
+        "required": required,
+        "assigned": assigned,
+        "missing": missing,
+        "reason": "Keine regelkonforme Besetzung moeglich",
+        "suggestion": (
+            "Maschinenqualifikationen pflegen oder zusaetzliche "
+            "Mitarbeitende freigeben"
+        ),
+    }
+
+
+def coverage_warnings_from_slots(unassigned_slots):
+    """Return critical coverage warnings for visible undercoverage slots."""
+    warnings = []
+    for slot in unassigned_slots:
+        machine_text = f" an {slot['machine_name']}" if slot.get("machine_name") else ""
+        warnings.append(
+            {
+                "type": "coverage",
+                "severity": "critical",
+                "machine_id": slot.get("machine_id"),
+                "machine_name": slot.get("machine_name"),
+                "work_date": slot.get("work_date"),
+                "shift": slot.get("shift"),
+                "required": slot.get("required"),
+                "assigned": slot.get("assigned"),
+                "missing": slot.get("missing"),
+                "message": (
+                    f"Keine regelkonforme Besetzung am {slot.get('work_date')} "
+                    f"fuer {slot.get('shift')}{machine_text}."
+                ),
+            }
+        )
+    return warnings
+
+
 def is_work_entry(entry):
     """Return whether an entry represents planned work."""
     shift = normalize_shift_name(entry.get("shift"))
@@ -809,84 +931,423 @@ def is_work_entry(entry):
     )
 
 
+def generated_work_entries(entries):
+    """Return persisted entry payloads that represent generated work."""
+    return [entry for entry in entries if is_work_entry(entry)]
+
+
 def normalize_shift_name(value):
     """Return a supported display shift name for common German spellings."""
     normalized = str(value or "").strip().lower()
     return SHIFT_LABELS.get(normalized, str(value or "").strip())
 
 
-def openai_shift_entries(start_date, days, rhythm, preferences, employees, machines):
-    """Ask OpenAI for a JSON shift plan when a key is configured."""
-    api_key = current_app.config.get("OPENAI_API_KEY")
-    if not api_key:
-        return None
+def normalize_preferences(value):
+    """Return preferences as bounded text for storage and scoring."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict | list):
+        return json.dumps(value, ensure_ascii=True, sort_keys=True)
+    return str(value).strip()
 
-    prompt = build_json_prompt(
-        "Erstelle einen deutschen Produktions-Schichtplan als JSON.",
-        {
-            "notes": "string",
-            "entries": [
-                {
-                    "employee_id": "integer",
-                    "machine_id": "integer|null",
-                    "work_date": "YYYY-MM-DD",
-                    "shift": "Frueh|Spaet|Nacht|Frei|Urlaub",
-                    "start_time": "HH:MM",
-                    "end_time": "HH:MM",
-                    "notes": "string",
-                }
-            ],
-        },
-        payload={
-            "start_date": start_date.isoformat(),
-            "days": days,
-            "rhythm": rhythm,
-            "preferences": preferences,
-            "employees": employee_payload(employees),
-            "machines": [machine.to_dict() for machine in machines],
-        },
-        rules=[
-            "Plane nur Mitarbeitende aus der Produktion.",
-            ("Beruecksichtige Rhythmus, Praeferenzen, " "Qualifikationen und Lieblingsmaschine."),
-            "Nutze pro Maschine die benoetigte Mitarbeiterzahl.",
-            (
-                "Arbeitszeitgesetz: maximal 8 Stunden pro Schicht und "
-                "mindestens 11 Stunden Ruhezeit zwischen Schichten."
-            ),
-            (
-                'Antwortformat: {"notes":"...", "entries":['
-                '{"employee_id":1,"machine_id":1,'
-                '"work_date":"YYYY-MM-DD","shift":"Frueh",'
-                '"start_time":"06:00","end_time":"14:00",'
-                '"notes":"..."}]}'
-            ),
-        ],
-    )
+
+def is_known_shift_model_value(value):
+    """Return whether a value is a supported model key or explicit alias."""
+    raw_value = str(value or "").strip()
+    if raw_value in SHIFT_TEMPLATES:
+        return True
+    normalized = normalize_template_value(value)
+    normalized_aliases = {
+        normalize_template_value(alias): key
+        for alias, key in SHIFT_TEMPLATE_ALIASES.items()
+    }
+    return normalized in SHIFT_TEMPLATES or normalized in normalized_aliases
+
+
+def resolve_explicit_shift_model_key(data):
+    """Return the canonical explicit shift model key or a validation error."""
+    if "shift_model_key" in data:
+        explicit_value = data.get("shift_model_key")
+    elif "shift_model" in data:
+        explicit_value = data.get("shift_model")
+    else:
+        return None, None
+    if not str(explicit_value or "").strip():
+        return None, {
+            "error": (
+                "shift_model_key darf nicht leer sein. Bitte ein Modell aus "
+                "/api/v1/shiftplans/models verwenden."
+            )
+        }
+    if not is_known_shift_model_value(explicit_value):
+        return None, {
+            "error": (
+                "Unbekanntes Schichtmodell. Bitte ein Modell aus "
+                "/api/v1/shiftplans/models verwenden."
+            )
+        }
+    raw_value = str(explicit_value or "").strip()
+    if raw_value in SHIFT_TEMPLATES:
+        return raw_value, None
+    normalized = normalize_template_value(explicit_value)
+    normalized_aliases = {
+        normalize_template_value(alias): key
+        for alias, key in SHIFT_TEMPLATE_ALIASES.items()
+    }
+    canonical_key = normalized_aliases.get(normalized, normalized)
+    return canonical_key, None
+
+
+def build_shift_plan_draft(data):
+    """Build a validated shift plan draft without persisting database rows."""
+    department = (data.get("department") or "").strip()
+    if not department:
+        return None, {"error": "Abteilung ist erforderlich"}, 400
 
     try:
-        profile = workflow_profile("shift_planning")
-        client = OpenAI(api_key=api_key, **openai_client_options())
-        completion = client.chat.completions.create(
-            model=profile.model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": json_system_prompt(),
-                },
-                {"role": "user", "content": json.dumps(prompt, ensure_ascii=True)},
-            ],
-            response_format={"type": "json_object"},
-            temperature=profile.temperature,
-            max_tokens=profile.max_tokens,
+        start_date = parse_date(data.get("start_date"))
+        days = parse_days(data.get("days"))
+    except ValueError as exc:
+        return None, {"error": str(exc)}, 400
+    shift_model_value, shift_model_error = resolve_explicit_shift_model_key(data)
+    if shift_model_error:
+        return None, shift_model_error, 400
+    rhythm = shift_model_value or data.get("rhythm", "2-Schicht Rhythmus")
+    preferences = normalize_preferences(data.get("preferences", ""))
+    title = data.get("title") or f"Schichtplan {department} ab {start_date.isoformat()}"
+
+    employees = department_employees(department)
+    machines, machine_error = selected_machines_for_request(data)
+    if machine_error:
+        return None, machine_error, 400
+    if not employees:
+        return None, {"error": f"Keine Mitarbeitenden in Abteilung '{department}' gefunden"}, 400
+
+    try:
+        vacation_entries, unavailable = parse_vacation_entries(
+            data,
+            employees,
+            start_date,
+            days,
         )
-    except OpenAIError:
-        logger.exception("ai_call_failed workflow=shift_planning")
-        return None
+    except ValueError as exc:
+        return None, {"error": str(exc)}, 400
+    import_approved_vacations(employees, vacation_entries, unavailable, start_date, days)
+
+    raw_entries, planning_warnings, generator_unassigned = local_shift_plan(
+        start_date,
+        days,
+        rhythm,
+        employees,
+        machines,
+        unavailable,
+        shift_model_value=shift_model_value,
+        preferences=preferences,
+    )
+    entries = validate_entries(
+        raw_entries + vacation_entries,
+        employees,
+        machines,
+        start_date,
+        days,
+    )
+    if not entries and not planning_warnings:
+        return None, {"error": "Es konnte kein gueltiger Schichtplan erzeugt werden"}, 400
+    if not generated_work_entries(entries):
+        return None, {
+            "error": (
+                "Kein Plan erzeugt. Bitte Maschinenqualifikationen pflegen "
+                "oder Mitarbeiterdaten pruefen."
+            ),
+            "warnings": planning_warnings,
+            "unassigned_slots": generator_unassigned,
+        }, 422
 
     try:
-        return json.loads(completion.choices[0].message.content)
-    except (TypeError, json.JSONDecodeError):
-        return None
+        arbzg_warnings = validate_arbzg(
+            [entry for entry in entries if entry.get("shift") not in ("Urlaub", "Frei", "")]
+        )
+    except ValueError as exc:
+        return None, {"error": str(exc)}, 422
+
+    coverage_summary, unassigned_slots = build_template_coverage_summary(
+        entries,
+        machines,
+        start_date,
+        days,
+        shift_model_value or rhythm,
+        respect_active_weekdays=bool(shift_model_value),
+    )
+    warnings = detect_shift_plan_conflicts(
+        entries,
+        employees,
+        machines,
+        coverage_summary=empty_coverage_summary(),
+        include_coverage=False,
+    )[:50]
+    employee_by_id = {employee.id: employee for employee in employees}
+    warnings.extend(coverage_warnings_from_slots(unassigned_slots))
+    warnings.extend(arbzg_warnings)
+    warnings.extend(
+        detect_vacation_assignment_warnings(entries, vacation_entries, employee_by_id)
+    )
+    return {
+        "title": title,
+        "department": department,
+        "start_date": start_date,
+        "days": days,
+        "rhythm": rhythm,
+        "shift_model_value": shift_model_value,
+        "preferences": preferences,
+        "employees": employees,
+        "machines": machines,
+        "entries": entries,
+        "warnings": warnings,
+        "coverage_summary": coverage_summary,
+        "unassigned_slots": unassigned_slots,
+        "fairness_summary": fairness_summary(entries, employees),
+    }, None, 200
+
+
+def import_approved_vacations(employees, vacation_entries, unavailable, start_date, days):
+    """Append approved vacation requests to generated planning inputs."""
+    try:
+        employee_ids = [employee.id for employee in employees]
+        period_end = start_date + timedelta(days=days - 1)
+        approved_vacations = VacationRequest.query.filter(
+            VacationRequest.employee_id.in_(employee_ids),
+            VacationRequest.status == "approved",
+            VacationRequest.start_date <= period_end,
+            VacationRequest.end_date >= start_date,
+        ).all()
+        for vacation in approved_vacations:
+            current_date = max(vacation.start_date, start_date)
+            while current_date <= min(vacation.end_date, period_end):
+                if current_date.weekday() < 5:
+                    key = (vacation.employee_id, current_date)
+                    existing_keys = {
+                        (entry["employee_id"], entry["work_date"])
+                        for entry in vacation_entries
+                        if isinstance(entry["work_date"], type(current_date))
+                    }
+                    if key not in existing_keys:
+                        vacation_entries.append(
+                            {
+                                "employee_id": vacation.employee_id,
+                                "machine_id": None,
+                                "work_date": current_date,
+                                "shift": "Urlaub",
+                                "start_time": "",
+                                "end_time": "",
+                                "notes": f"Genehmigter Urlaub (Antrag #{vacation.id})",
+                            }
+                        )
+                        unavailable.setdefault(current_date, set()).add(vacation.employee_id)
+                current_date += timedelta(days=1)
+    except Exception:
+        logger.exception("Vacation import failed; continuing plan generation")
+
+
+def preview_shift_plan(data):
+    """Return a generated shift plan preview without saving it."""
+    draft, error, status = build_shift_plan_draft(data)
+    if error:
+        return None, error, status
+    return preview_payload(draft), None, 200
+
+
+def preview_payload(draft):
+    """Return API payload for a generated shift plan draft."""
+    return {
+        "id": None,
+        "is_preview": True,
+        "title": draft["title"],
+        "start_date": draft["start_date"].isoformat(),
+        "days": draft["days"],
+        "rhythm": draft["rhythm"],
+        "preferences": draft["preferences"],
+        "notes": "Vorschau ohne Speicherung.",
+        "department": draft["department"],
+        "status": "preview",
+        "coverage_percent": coverage_percent(draft["coverage_summary"]),
+        "conflict_count": conflict_summary(draft["warnings"])["total"],
+        "critical_conflict_count": conflict_summary(draft["warnings"])["critical"],
+        "change_count": 0,
+        "created_by": None,
+        "entries": serialize_entry_payloads(
+            draft["entries"],
+            draft["employees"],
+            draft["machines"],
+        ),
+        "warnings": draft["warnings"],
+        "conflicts": draft["warnings"],
+        "coverage_summary": draft["coverage_summary"],
+        "unassigned_slots": draft["unassigned_slots"],
+        "fairness_summary": draft["fairness_summary"],
+        "required_employee_count": draft["coverage_summary"].get("required_slots", 0),
+    }
+
+
+def coverage_percent(coverage_summary):
+    """Return a percentage for assigned versus required slots."""
+    required_slots = coverage_summary.get("required_slots") or 0
+    assigned_slots = coverage_summary.get("assigned_slots") or 0
+    return round((assigned_slots / required_slots) * 100, 2) if required_slots else 0
+
+
+def serialize_entry_payloads(entries, employees, machines):
+    """Return plan-like JSON entries for preview payloads."""
+    employee_by_id = {employee.id: employee for employee in employees}
+    machine_by_id = {machine.id: machine for machine in machines}
+    payload = []
+    for index, entry in enumerate(entries, start=1):
+        employee = employee_by_id.get(entry["employee_id"])
+        machine = machine_by_id.get(entry.get("machine_id"))
+        payload.append(
+            {
+                "id": None,
+                "preview_id": index,
+                "employee": employee.to_dict("confidential") if employee else None,
+                "machine": machine.to_dict() if machine else None,
+                "work_date": (
+                    entry["work_date"].isoformat()
+                    if isinstance(entry["work_date"], date)
+                    else entry["work_date"]
+                ),
+                "shift": entry["shift"],
+                "start_time": entry["start_time"],
+                "end_time": entry["end_time"],
+                "notes": entry.get("notes", ""),
+                "created_at": None,
+            }
+        )
+    return payload
+
+
+def fairness_summary(entries, employees):
+    """Return compact fairness counters for a generated draft."""
+    by_employee = {
+        employee.id: {
+            "employee_id": employee.id,
+            "name": employee.name,
+            "shifts": 0,
+            "night_shifts": 0,
+            "weekend_shifts": 0,
+            "hours": 0.0,
+        }
+        for employee in employees
+    }
+    for entry in entries:
+        if not is_work_entry(entry):
+            continue
+        employee_id = int(entry["employee_id"])
+        item = by_employee.get(employee_id)
+        if not item:
+            continue
+        work_date = entry["work_date"]
+        if isinstance(work_date, str):
+            work_date = date.fromisoformat(work_date)
+        item["shifts"] += 1
+        item["hours"] += hours_between(entry["start_time"], entry["end_time"])
+        if entry["shift"] == "Nacht":
+            item["night_shifts"] += 1
+        if work_date.weekday() >= 5:
+            item["weekend_shifts"] += 1
+    return {"employees": list(by_employee.values())}
+
+
+def persist_shift_plan_from_draft(data, user=None):
+    """Persist a generated shift plan draft and return the saved plan."""
+    draft, error, status = build_shift_plan_draft(data)
+    if error:
+        return None, error, status
+
+    notes = (
+        "Regelbasierter Generator genutzt. Ungueltige Zuweisungen werden "
+        "vor dem Speichern blockiert."
+    )
+    plan = ShiftPlan(
+        title=draft["title"],
+        start_date=draft["start_date"],
+        days=draft["days"],
+        rhythm=draft["rhythm"],
+        preferences=draft["preferences"],
+        notes=notes,
+        department=draft["department"],
+        created_by=user.id if user else None,
+    )
+    summary = conflict_summary(draft["warnings"])
+    plan.coverage_percent = coverage_percent(draft["coverage_summary"])
+    plan.conflict_count = summary["total"]
+    plan.critical_conflict_count = summary["critical"]
+    db.session.add(plan)
+    db.session.flush()
+
+    for entry in draft["entries"]:
+        db.session.add(ShiftPlanEntry(plan=plan, **entry))
+    db.session.flush()
+    replace_plan_coverage_slots(plan, draft["unassigned_slots"])
+    update_employee_rotation_state(draft["employees"])
+    db.session.commit()
+
+    plan.warnings = draft["warnings"]
+    plan.coverage_summary = draft["coverage_summary"]
+    plan.fairness_summary = draft["fairness_summary"]
+    return plan, None, 201
+
+
+def replace_plan_coverage_slots(plan, unassigned_slots):
+    """Replace persisted undercoverage slots for a plan."""
+    ShiftPlanCoverageSlot.query.filter_by(plan_id=plan.id).delete()
+    for slot in unassigned_slots:
+        db.session.add(
+            ShiftPlanCoverageSlot(
+                plan_id=plan.id,
+                machine_id=slot.get("machine_id"),
+                work_date=parse_date(slot.get("work_date")),
+                shift=str(slot.get("shift") or "")[:80],
+                required=int(slot.get("required") or 0),
+                assigned=int(slot.get("assigned") or 0),
+                missing=int(slot.get("missing") or 0),
+                reason=str(slot.get("reason") or "")[:240],
+                suggestion=str(slot.get("suggestion") or "")[:240],
+            )
+        )
+
+
+def refresh_plan_coverage_slots(plan):
+    """Recalculate and persist visible undercoverage slots for a plan."""
+    machines = machines_for_plan(plan)
+    coverage_summary, unassigned_slots = build_template_coverage_summary(
+        list(plan.entries),
+        machines,
+        plan.start_date,
+        plan.days,
+        plan.rhythm,
+        respect_active_weekdays=is_known_shift_model_value(plan.rhythm),
+    )
+    replace_plan_coverage_slots(plan, unassigned_slots)
+    return coverage_summary, unassigned_slots
+
+
+def update_employee_rotation_state(employees):
+    """Update last, current, and next planned shift values for employees."""
+    today = date.today()
+    for employee in employees:
+        entries = (
+            ShiftPlanEntry.query.filter_by(employee_id=employee.id)
+            .filter(ShiftPlanEntry.shift.notin_(("Urlaub", "Frei", "")))
+            .order_by(ShiftPlanEntry.work_date.asc(), ShiftPlanEntry.start_time.asc())
+            .all()
+        )
+        past_entries = [entry for entry in entries if entry.work_date < today]
+        upcoming_entries = [entry for entry in entries if entry.work_date >= today]
+        employee.last_shift = past_entries[-1].shift if past_entries else ""
+        employee.current_shift = upcoming_entries[0].shift if upcoming_entries else ""
+        employee.next_shift = upcoming_entries[1].shift if len(upcoming_entries) > 1 else ""
+        employee.rotation_state_updated_at = utc_now()
 
 
 def generate_shift_plan(data, user=None):
@@ -897,6 +1358,8 @@ def generate_shift_plan(data, user=None):
         user: The User object of the requesting user (for audit trail).
 
     """
+    return persist_shift_plan_from_draft(data, user)
+
     department = (data.get("department") or "").strip()
     if not department:
         return None, {"error": "Abteilung ist erforderlich"}, 400
@@ -906,8 +1369,11 @@ def generate_shift_plan(data, user=None):
         days = parse_days(data.get("days"))
     except ValueError as exc:
         return None, {"error": str(exc)}, 400
-    rhythm = data.get("rhythm", "2-Schicht Rhythmus")
-    preferences = data.get("preferences", "")
+    shift_model_value, shift_model_error = resolve_explicit_shift_model_key(data)
+    if shift_model_error:
+        return None, shift_model_error, 400
+    rhythm = shift_model_value or data.get("rhythm", "2-Schicht Rhythmus")
+    preferences = normalize_preferences(data.get("preferences", ""))
     title = data.get("title") or f"Schichtplan {department} ab {start_date.isoformat()}"
 
     employees = department_employees(department)
@@ -962,32 +1428,20 @@ def generate_shift_plan(data, user=None):
     except Exception:
         logger.exception("Vacation import failed; continuing plan generation")
 
-    ai_result = openai_shift_entries(
+    raw_entries, planning_warnings = local_shift_entries(
         start_date,
         days,
         rhythm,
-        preferences,
         employees,
         machines,
+        unavailable,
+        shift_model_value=shift_model_value,
+        preferences=preferences,
     )
-    if ai_result and isinstance(ai_result.get("entries"), list):
-        raw_entries = remove_unavailable_work_entries(ai_result["entries"], unavailable)
-        notes = ai_result.get("notes", "")
-        planning_warnings = []
-    else:
-        logger.warning("ai_fallback workflow=shift_planning reason=no_valid_ai_result")
-        raw_entries, planning_warnings = local_shift_entries(
-            start_date,
-            days,
-            rhythm,
-            employees,
-            machines,
-            unavailable,
-        )
-        notes = (
-            "Lokaler Fallback genutzt. Regeln: max. 8h je Schicht, "
-            "11h Ruhezeit, Produktionsmitarbeiter und Maschinenbedarf."
-        )
+    notes = (
+        "Regelbasierter Generator genutzt. Ungueltige Zuweisungen werden "
+        "vor dem Speichern blockiert."
+    )
 
     entries = validate_entries(
         raw_entries + vacation_entries,
@@ -996,8 +1450,16 @@ def generate_shift_plan(data, user=None):
         start_date,
         days,
     )
-    if not entries:
+    if not entries and not planning_warnings:
         return None, {"error": "Es konnte kein gueltiger Schichtplan erzeugt werden"}, 400
+    if not generated_work_entries(entries):
+        return None, {
+            "error": (
+                "Kein Plan erzeugt. Bitte Maschinenqualifikationen pflegen "
+                "oder Mitarbeiterdaten pruefen."
+            ),
+            "warnings": planning_warnings,
+        }, 422
 
     # Check Arbeitszeitgesetz — hard violations reject plan, soft ones become warnings
     try:
@@ -1046,25 +1508,47 @@ def generate_shift_plan(data, user=None):
 def conflicts_for_plan(plan):
     """Return structured conflicts and coverage summary for a persisted plan."""
     employees = employees_for_entries(plan.entries)
-    machines = Machine.query.order_by(Machine.name.asc()).all()
-    coverage_summary = {
-        "required_slots": 0,
-        "assigned_slots": 0,
-        "undercovered": 0,
-        "machines": {},
-    }
+    machines = machines_for_plan(plan)
+    coverage_summary, unassigned_slots = build_template_coverage_summary(
+        list(plan.entries),
+        machines,
+        plan.start_date,
+        plan.days,
+        plan.rhythm,
+        respect_active_weekdays=is_known_shift_model_value(plan.rhythm),
+    )
     conflicts = detect_shift_plan_conflicts(
         list(plan.entries),
         employees,
         machines,
-        coverage_summary=coverage_summary,
+        coverage_summary=empty_coverage_summary(),
+        include_coverage=False,
     )
+    conflicts.extend(coverage_warnings_from_slots(unassigned_slots))
     return {
         "plan_id": plan.id,
         "conflicts": conflicts,
         "summary": conflict_summary(conflicts),
         "coverage_summary": coverage_summary,
+        "unassigned_slots": unassigned_slots,
     }
+
+
+def machines_for_plan(plan):
+    """Return machines that belong to a plan's entries or coverage slots."""
+    machine_ids = {
+        entry.machine_id for entry in plan.entries if entry.machine_id is not None
+    }
+    machine_ids.update(
+        slot.machine_id for slot in plan.coverage_slots if slot.machine_id is not None
+    )
+    if not machine_ids:
+        return Machine.query.order_by(Machine.name.asc()).all()
+    return (
+        Machine.query.filter(Machine.id.in_(machine_ids))
+        .order_by(Machine.name.asc())
+        .all()
+    )
 
 
 def validate_shiftplan_payload(data):

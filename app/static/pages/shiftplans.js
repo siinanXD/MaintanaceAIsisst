@@ -16,11 +16,16 @@
   }
 
   let allPlans = [];
+  let machines = [];
+  let machinesLoadPromise = null;
+  let shiftModels = [];
+  let shiftModelsLoadPromise = null;
   let currentPlan = null;
   let editEntryId = null;
 
   // ── DOM ───────────────────────────────────────────────────────────────────
   const form        = document.getElementById("sp-form");
+  const previewBtn  = document.getElementById("sp-preview-btn");
   const submitBtn   = document.getElementById("sp-submit-btn");
   const spMsg       = document.getElementById("sp-msg");
   const spSelector  = document.getElementById("sp-selector");
@@ -42,6 +47,16 @@
   const statusBadge = document.getElementById("sp-status-badge");
   const printBtn    = document.getElementById("sp-print-btn");
   const csvBtn      = document.getElementById("sp-csv-btn");
+  const shiftModelSelect = document.getElementById("sp-shift-model");
+  const shiftModelPreview = document.getElementById("sp-model-preview");
+  const shiftModelTitle = document.getElementById("sp-model-title");
+  const shiftModelDescription = document.getElementById("sp-model-description");
+  const shiftModelShifts = document.getElementById("sp-model-shifts");
+  const shiftModelTeamCount = document.getElementById("sp-model-team-count");
+  const shiftModelWeekend = document.getElementById("sp-model-weekend");
+  const shiftModelRotation = document.getElementById("sp-model-rotation");
+  const shiftModelRest = document.getElementById("sp-model-rest");
+  const machinePicker = document.getElementById("sp-machine-picker");
   const printTitle  = document.getElementById("print-title");
   const printMeta   = document.getElementById("print-meta");
   const dialog      = document.getElementById("sp-dialog");
@@ -73,7 +88,11 @@
     });
     if (res.status === 204) return null;
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.message || body.error || "Fehler " + res.status);
+    if (!res.ok) {
+      const error = new Error(body.message || body.error || "Fehler " + res.status);
+      error.payload = body;
+      throw error;
+    }
     return (body && body.success && "data" in body) ? body.data : body;
   }
   function isAdmin() {
@@ -85,8 +104,206 @@
       ? window.maintenanceAuth.canWrite("shiftplans") : false;
   }
 
+  function selectedMachineIds() {
+    if (!machinePicker) return [];
+    return Array.from(machinePicker.querySelectorAll("input[type='checkbox']:checked"))
+      .map((input) => parseInt(input.value, 10))
+      .filter((value) => Number.isInteger(value));
+  }
+
+  function renderMachines(items) {
+    if (!machinePicker) return;
+    machinePicker.innerHTML = "";
+    if (!items.length) {
+      machinePicker.innerHTML = "<p class='panel-meta'>Keine Maschinen vorhanden.</p>";
+      return;
+    }
+    items.forEach((machine) => {
+      const label = document.createElement("label");
+      label.className = "sp-machine-option";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.value = machine.id;
+      checkbox.checked = true;
+      const text = document.createElement("span");
+      text.textContent = machine.name + " (" + (machine.required_employees || 1) + " MA)";
+      label.appendChild(checkbox);
+      label.appendChild(text);
+      machinePicker.appendChild(label);
+    });
+  }
+
+  async function loadMachines() {
+    if (!machinePicker) return [];
+    if (!token()) return machines;
+    if (machinesLoadPromise) return machinesLoadPromise;
+    machinesLoadPromise = api("/api/v1/machines")
+      .then((items) => {
+        machines = Array.isArray(items) ? items : (items.items || []);
+        renderMachines(machines);
+        return machines;
+      })
+      .catch((err) => {
+        machinePicker.innerHTML = "<p class='panel-meta text-error'>Maschinen konnten nicht geladen werden.</p>";
+        if (spMsg) spMsg.textContent = "Maschinen konnten nicht geladen werden: " + err.message;
+        return machines;
+      })
+      .finally(() => {
+        machinesLoadPromise = null;
+      });
+    return machinesLoadPromise;
+  }
+
   // ── Load & select plans ───────────────────────────────────────────────────
-  async function loadPlans(selectId) {
+  function beginnerModelLabel(model) {
+    const labels = {
+      one_shift: "Tagschicht",
+      two_shift: "2-Schicht Fr\u00fch/Sp\u00e4t",
+      three_shift: "3-Schicht Fr\u00fch/Sp\u00e4t/Nacht",
+      teilkonti: "Teilkonti",
+      vollkonti_4: "Vollkonti 4-Schicht",
+      vollkonti_5: "Vollkonti 5-Schicht",
+    };
+    return labels[model.key] || model.display_name || model.name || model.key;
+  }
+
+  function formatShiftWindow(shift) {
+    const name = shift.label || shift.name || shift.key;
+    return name + " " + shift.start_time + "-" + shift.end_time;
+  }
+
+  function shiftSummary(model) {
+    if (model.shifts_summary) return model.shifts_summary;
+    return (model.shifts || []).map(formatShiftWindow).join(", ");
+  }
+
+  function rotationLabel(value) {
+    if (value === "forward") return "Vorw\u00e4rtsrotation Fr\u00fch \u2192 Sp\u00e4t \u2192 Nacht";
+    if (value === "fixed") return "Feste Tagschicht";
+    return value || "-";
+  }
+
+  function updateHiddenRhythm(model) {
+    const rhythmInput = document.getElementById("sp-rhythm");
+    if (!rhythmInput) return;
+    rhythmInput.value = model ? (model.display_name || model.name || model.key) : "";
+  }
+
+  function renderShiftModelPreview(model) {
+    updateHiddenRhythm(model);
+    if (!shiftModelPreview) return;
+    if (!model) {
+      shiftModelPreview.hidden = true;
+      return;
+    }
+    shiftModelTitle.textContent = beginnerModelLabel(model);
+    shiftModelDescription.textContent = model.description || "";
+    shiftModelShifts.textContent = shiftSummary(model);
+    shiftModelTeamCount.textContent = String(model.team_count || "-");
+    shiftModelWeekend.textContent = model.weekend_label || (
+      model.weekend_operation ? "Wochenendbetrieb aktiv" : "Montag bis Freitag"
+    );
+    shiftModelRotation.textContent = model.rotation_label || rotationLabel(model.rotation_direction);
+    shiftModelRest.textContent = (model.recommended_rest_hours || 11) + " Stunden empfohlen";
+    shiftModelPreview.hidden = false;
+  }
+
+  function selectedShiftModel() {
+    if (!shiftModelSelect || !shiftModelSelect.value) return null;
+    if (!shiftModels.length) shiftModels = readShiftModelsFromSelect();
+    const cachedModel = shiftModels.find((model) => model.key === shiftModelSelect.value);
+    if (cachedModel) return cachedModel;
+    const selectedOption = shiftModelSelect.options[shiftModelSelect.selectedIndex];
+    if (!selectedOption || !selectedOption.value) return null;
+    return {
+      key: selectedOption.value,
+      display_name: selectedOption.dataset.displayName || selectedOption.textContent,
+      name: selectedOption.dataset.displayName || selectedOption.textContent,
+      description: selectedOption.dataset.description || "",
+      shifts_summary: selectedOption.dataset.shiftsSummary || "",
+      team_count: Number(selectedOption.dataset.teamCount || 0),
+      weekend_operation: selectedOption.dataset.weekendOperation === "true",
+      weekend_label: selectedOption.dataset.weekendLabel || "",
+      rotation_direction: selectedOption.dataset.rotationDirection || "",
+      rotation_label: selectedOption.dataset.rotationLabel || "",
+      recommended_rest_hours: Number(selectedOption.dataset.restHours || 11),
+    };
+  }
+
+  function readShiftModelsFromSelect() {
+    if (!shiftModelSelect) return [];
+    return Array.from(shiftModelSelect.options)
+      .filter((option) => option.value)
+      .map((option) => ({
+        key: option.value,
+        display_name: option.dataset.displayName || option.textContent,
+        name: option.dataset.displayName || option.textContent,
+        description: option.dataset.description || "",
+        shifts_summary: option.dataset.shiftsSummary || "",
+        team_count: Number(option.dataset.teamCount || 0),
+        weekend_operation: option.dataset.weekendOperation === "true",
+        weekend_label: option.dataset.weekendLabel || "",
+        rotation_direction: option.dataset.rotationDirection || "",
+        rotation_label: option.dataset.rotationLabel || "",
+        recommended_rest_hours: Number(option.dataset.restHours || 11),
+      }));
+  }
+
+  function populateShiftModelSelect(models) {
+    if (!shiftModelSelect) return;
+    const previousValue = shiftModelSelect.value;
+    shiftModelSelect.innerHTML = "";
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.disabled = true;
+    placeholder.textContent = "Bitte Schichtmodell w\u00e4hlen";
+    shiftModelSelect.appendChild(placeholder);
+    models.forEach((model) => {
+      const option = document.createElement("option");
+      option.value = model.key;
+      option.textContent = beginnerModelLabel(model);
+      shiftModelSelect.appendChild(option);
+    });
+    if (previousValue && models.some((model) => model.key === previousValue)) {
+      shiftModelSelect.value = previousValue;
+    } else {
+      shiftModelSelect.value = "";
+    }
+    renderShiftModelPreview(selectedShiftModel());
+  }
+
+  async function loadShiftModels() {
+    if (!shiftModelSelect) return [];
+    if (!shiftModels.length) shiftModels = readShiftModelsFromSelect();
+    if (!token()) return shiftModels;
+    if (shiftModelsLoadPromise) return shiftModelsLoadPromise;
+    shiftModelsLoadPromise = api(BASE + "/models")
+      .then((models) => {
+        shiftModels = models;
+        populateShiftModelSelect(shiftModels);
+        return shiftModels;
+      })
+      .catch((err) => {
+        if (!shiftModels.length) {
+          shiftModelSelect.innerHTML = "<option value=''>Modelle konnten nicht geladen werden</option>";
+        }
+        if (spMsg) spMsg.textContent = "Schichtmodelle konnten nicht geladen werden: " + err.message;
+        return shiftModels;
+      })
+      .finally(() => {
+        shiftModelsLoadPromise = null;
+      });
+    return shiftModelsLoadPromise;
+  }
+
+  if (shiftModelSelect) {
+    shiftModelSelect.addEventListener("change", () => {
+      renderShiftModelPreview(selectedShiftModel());
+      if (spMsg) spMsg.textContent = "";
+    });
+  }
+
+  async function loadPlans(selectId, fallbackPlan) {
     if (!token()) return;
     try {
       const res = await fetch(BASE, { headers: authHdr() });
@@ -101,6 +318,13 @@
       allPlans = [];
       emptyMsg.textContent = "Netzwerkfehler: " + err.message;
       emptyMsg.hidden = false;
+    }
+    if (
+      fallbackPlan &&
+      selectId !== undefined &&
+      !allPlans.some((plan) => plan.id === selectId)
+    ) {
+      allPlans.unshift(fallbackPlan);
     }
 
     if (!allPlans.length) {
@@ -130,25 +354,38 @@
       planSelect.appendChild(opt);
     });
 
-    const idx = selectId !== undefined
-      ? allPlans.findIndex((p) => p.id === selectId)
-      : 0;
-    planSelect.value = Math.max(0, idx);
+    const idx = selectedPlanIndex(selectId);
+    planSelect.value = idx;
     renderPlan(allPlans[planSelect.value] || allPlans[0]);
+  }
+
+  function selectedPlanIndex(selectId) {
+    if (selectId !== undefined) {
+      const exactIndex = allPlans.findIndex((plan) => plan.id === selectId);
+      if (exactIndex >= 0) return exactIndex;
+    }
+    const firstFilledIndex = allPlans.findIndex(
+      (plan) => Array.isArray(plan.entries) && plan.entries.length > 0
+    );
+    return firstFilledIndex >= 0 ? firstFilledIndex : 0;
   }
 
   function renderPlan(plan) {
     currentPlan = plan;
     renderGrid(plan);
     renderStats(plan);
-    loadConflicts(plan.id);
+    if (plan.id) {
+      loadConflicts(plan.id);
+    } else {
+      showWarnings(plan.warnings || []);
+    }
     const admin = isAdmin();
-    deleteWrap.hidden = !admin;
-    if (changelogEl) changelogEl.hidden = !admin;
-    if (admin) loadChangelog(plan.id);
+    deleteWrap.hidden = !admin || !plan.id;
+    if (changelogEl) changelogEl.hidden = !admin || !plan.id;
+    if (admin && plan.id) loadChangelog(plan.id);
 
     // Publish button (admin only)
-    publishBtn.hidden = !admin;
+    publishBtn.hidden = !admin || !plan.id;
     if (admin) {
       const published = plan.status === "published";
       publishBtn.textContent = published ? "↩ Zurück zu Entwurf" : "✓ Veröffentlichen";
@@ -158,7 +395,10 @@
 
     // Status-Badge
     statusBadge.hidden = false;
-    if (plan.status === "published") {
+    if (plan.status === "preview") {
+      statusBadge.textContent = "Vorschau";
+      statusBadge.className   = "badge badge-info";
+    } else if (plan.status === "published") {
       statusBadge.textContent = "✓ Veröffentlicht";
       statusBadge.className   = "badge badge-success";
     } else {
@@ -199,9 +439,16 @@
       if (!idx[s][ds]) idx[s][ds] = [];
       idx[s][ds].push(e);
     });
+    (plan.unassigned_slots || []).forEach((slot) => {
+      const s = slot.shift;
+      usedShifts.add(s);
+      if (!idx[s]) idx[s] = {};
+      if (!idx[s][slot.work_date]) idx[s][slot.work_date] = [];
+      idx[s][slot.work_date].push({ ...slot, unassigned: true });
+    });
 
     const activeShifts = SHIFT_ORDER.filter((s) => usedShifts.has(s));
-    const canEdit = canWrite();
+    const canEdit = canWrite() && !plan.is_preview;
 
     // ── Header ──
     const hrow = document.createElement("tr");
@@ -271,10 +518,13 @@
         } else {
           dayEntries.forEach((entry) => {
             const machineName = entry.machine ? entry.machine.name : null;
-            const empName     = entry.employee ? entry.employee.name : "?";
-            const chip = document.createElement(canEdit ? "button" : "div");
-            chip.className = "sp-chip";
-            if (canEdit) {
+            const slotMachineName = machineName || entry.machine_name || null;
+            const empName     = entry.unassigned
+              ? "Unbesetzt (" + (entry.missing || 1) + ")"
+              : (entry.employee ? entry.employee.name : "?");
+            const chip = document.createElement(canEdit && !entry.unassigned ? "button" : "div");
+            chip.className = "sp-chip" + (entry.unassigned ? " sp-unassigned" : "");
+            if (canEdit && !entry.unassigned) {
               chip.type = "button";
               chip.setAttribute("aria-label", "Bearbeiten: " + empName);
               chip.setAttribute("draggable", "true");
@@ -308,9 +558,9 @@
                 } catch (err) { alert("Fehler beim Tauschen: " + err.message); }
               });
             }
-            if (machineName) {
+            if (slotMachineName) {
               chip.innerHTML =
-                "<span class='sp-machine'>" + machineName + "</span>" +
+                "<span class='sp-machine'>" + slotMachineName + "</span>" +
                 "<span class='sp-emp'>" + empName + "</span>";
             } else {
               chip.innerHTML = "<span class='sp-emp'>" + empName + "</span>";
@@ -509,11 +759,101 @@
   });
 
   // ── Form submit ───────────────────────────────────────────────────────────
-  submitBtn.addEventListener("click", async () => {
+  function buildGenerationPayload() {
     const dept  = document.getElementById("sp-department").value;
     const start = document.getElementById("sp-start").value;
+    const model = selectedShiftModel();
+    const machineIds = selectedMachineIds();
+    if (!dept) throw new Error("Bitte Abteilung w\u00e4hlen.");
+    if (!start) throw new Error("Bitte Startdatum angeben.");
+    if (!model) throw new Error("Bitte ein Schichtmodell w\u00e4hlen.");
+    if (!machineIds.length) throw new Error("Bitte mindestens eine Maschine ausw\u00e4hlen.");
+    const vacText = document.getElementById("sp-vacations").value || "";
+    const vacations = vacText.split("\n").flatMap((line) => {
+      const parts = line.split(",").map((s) => s.trim());
+      if (parts.length >= 2 && parts[0] && parts[1]) {
+        return [{ employee_id: parseInt(parts[0], 10), date: parts[1], notes: parts[2]||"" }];
+      }
+      return [];
+    });
+    return {
+      department:   dept,
+      title:        document.getElementById("sp-title").value,
+      start_date:   start,
+      days:         parseInt(document.getElementById("sp-days").value||"7", 10),
+      shift_model_key: model.key,
+      machine_ids:   machineIds,
+      rhythm:       document.getElementById("sp-rhythm").value || model.display_name || model.key,
+      preferences:  { text: document.getElementById("sp-preferences").value || "" },
+      vacations,
+    };
+  }
+
+  async function submitShiftPlanPreview() {
+    let payload;
+    try {
+      payload = buildGenerationPayload();
+    } catch (err) {
+      spMsg.textContent = err.message;
+      return;
+    }
+    previewBtn.disabled = true;
+    spMsg.textContent = "Vorschau wird erstellt...";
+    try {
+      const result = await api(BASE + "/preview", { method: "POST", body: JSON.stringify(payload) });
+      spMsg.textContent = "Vorschau erstellt. Noch nicht gespeichert.";
+      currentPlan = result;
+      renderPlan(result);
+      showWarnings(result && result.warnings);
+    } catch (err) {
+      spMsg.textContent = "Fehler: " + err.message;
+      if (err.payload && err.payload.warnings) showWarnings(err.payload.warnings);
+    } finally {
+      previewBtn.disabled = false;
+    }
+  }
+
+  if (previewBtn) {
+    previewBtn.addEventListener("click", submitShiftPlanPreview);
+  }
+
+  async function submitShiftPlanGeneration() {
+    let payload;
+    try {
+      payload = buildGenerationPayload();
+    } catch (err) {
+      spMsg.textContent = err.message;
+      return;
+    }
+    submitBtn.disabled = true;
+    spMsg.textContent  = "Plan wird generiert...";
+    try {
+      const result = await api(BASE + "/generate", { method: "POST", body: JSON.stringify(payload) });
+      spMsg.textContent = "Plan erfolgreich generiert.";
+      showWarnings(result && result.warnings);
+      if (result && result.entries) {
+        currentPlan = result;
+        renderPlan(result);
+      }
+      await loadPlans(result && result.id, result);
+    } catch (err) {
+      spMsg.textContent = "Fehler: " + err.message;
+      if (err.payload && err.payload.warnings) showWarnings(err.payload.warnings);
+    } finally {
+      submitBtn.disabled = false;
+    }
+  }
+
+  submitBtn.addEventListener("click", async () => {
+    return submitShiftPlanGeneration();
+
+    const dept  = document.getElementById("sp-department").value;
+    const start = document.getElementById("sp-start").value;
+    const model = selectedShiftModel();
     if (!dept)  { spMsg.textContent = "Bitte Abteilung wählen."; return; }
     if (!start) { spMsg.textContent = "Bitte Startdatum angeben."; return; }
+    if (!model) { spMsg.textContent = "Bitte ein Schichtmodell w\u00e4hlen."; return; }
+    if (!machineIds.length) { spMsg.textContent = "Bitte mindestens eine Maschine ausw\u00e4hlen."; return; }
 
     submitBtn.disabled = true;
     spMsg.textContent  = "Plan wird generiert…";
@@ -533,8 +873,9 @@
       title:        document.getElementById("sp-title").value,
       start_date:   start,
       days:         parseInt(document.getElementById("sp-days").value||"7", 10),
-      rhythm:       document.getElementById("sp-rhythm").value || "2-Schicht Rhythmus",
-      preferences:  document.getElementById("sp-preferences").value,
+      shift_model_key: model.key,
+      rhythm:       document.getElementById("sp-rhythm").value || model.display_name || model.key,
+      preferences:  { text: document.getElementById("sp-preferences").value || "" },
       vacations,
     };
 
@@ -546,21 +887,35 @@
       showWarnings(result && result.warnings);
 
       // Reload plan list and select the new plan by id
-      await loadPlans(result && result.id);
+      if (result && result.entries) {
+        currentPlan = result;
+        renderPlan(result);
+      }
+      await loadPlans(result && result.id, result);
 
     } catch (err) {
       spMsg.textContent = "Fehler: " + err.message;
+      if (err.payload && err.payload.warnings) showWarnings(err.payload.warnings);
     } finally {
       submitBtn.disabled = false;
     }
   });
 
   // ── Init ──────────────────────────────────────────────────────────────────
-  window.addEventListener("maintenance-auth-ready", () => loadPlans());
+  window.addEventListener("maintenance-auth-ready", () => {
+    loadShiftModels();
+    loadMachines();
+    loadPlans();
+  });
   document.addEventListener("DOMContentLoaded", () => {
     // Set today as default start date
     const startInput = document.getElementById("sp-start");
     if (startInput && !startInput.value) startInput.value = new Date().toISOString().slice(0,10);
-    if (token()) loadPlans();
+    if (!shiftModels.length) shiftModels = readShiftModelsFromSelect();
+    if (token()) {
+      loadShiftModels();
+      loadMachines();
+      loadPlans();
+    }
   });
 })();

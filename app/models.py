@@ -33,6 +33,7 @@ from app.domain_models.workforce import (
     ShiftHandover,
     ShiftPlan,
     ShiftPlanChangeLog,
+    ShiftPlanCoverageSlot,
     ShiftPlanEntry,
     VacationRequest,
 )
@@ -71,6 +72,7 @@ __all__ = [
     "ShiftHandover",
     "ShiftPlan",
     "ShiftPlanChangeLog",
+    "ShiftPlanCoverageSlot",
     "ShiftPlanEntry",
     "Site",
     "Task",

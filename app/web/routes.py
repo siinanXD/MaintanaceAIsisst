@@ -2,6 +2,8 @@
 
 from flask import Blueprint, render_template
 
+from app.shiftplans.templates import list_shift_templates
+
 web_bp = Blueprint("web", __name__)
 
 AI_ADMIN_VIEWS = {
@@ -14,6 +16,50 @@ AI_ADMIN_VIEWS = {
     "feedback": "/admin/ai/feedback",
     "indexing": "/admin/ai/indexing",
 }
+
+SHIFT_MODEL_LABELS = {
+    "one_shift": "Tagschicht",
+    "two_shift": "2-Schicht Früh/Spät",
+    "three_shift": "3-Schicht Früh/Spät/Nacht",
+    "teilkonti": "Teilkonti",
+    "vollkonti_4": "Vollkonti 4-Schicht",
+    "vollkonti_5": "Vollkonti 5-Schicht",
+}
+
+
+def shift_model_options():
+    """Return pre-rendered shift model metadata for the shiftplan page."""
+    options = []
+    for template in list_shift_templates():
+        shifts_summary = ", ".join(
+            f"{shift.display_name} {shift.start_time}-{shift.end_time}"
+            for shift in template.shifts
+        )
+        rotation_label = (
+            "Vorwärtsrotation Früh → Spät → Nacht"
+            if template.rotation_direction == "forward"
+            else "Feste Tagschicht"
+        )
+        options.append(
+            {
+                "key": template.key,
+                "label": SHIFT_MODEL_LABELS.get(template.key, template.display_name),
+                "display_name": template.display_name,
+                "description": template.description,
+                "shifts_summary": shifts_summary,
+                "team_count": template.team_count,
+                "weekend_operation": template.weekend_operation,
+                "weekend_label": (
+                    "Wochenendbetrieb aktiv"
+                    if template.weekend_operation
+                    else "Montag bis Freitag"
+                ),
+                "rotation_direction": template.rotation_direction,
+                "rotation_label": rotation_label,
+                "recommended_rest_hours": template.recommended_rest_hours,
+            }
+        )
+    return options
 
 
 def render_ai_admin_page(view_name):
@@ -118,7 +164,10 @@ def employees_page():
 @web_bp.get("/shiftplans")
 def shiftplans_page():
     """Render the shift planning page."""
-    return render_template("shiftplans.html")
+    return render_template(
+        "shiftplans.html",
+        shift_model_options=shift_model_options(),
+    )
 
 
 @web_bp.get("/machines")

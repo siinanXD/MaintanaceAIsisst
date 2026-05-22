@@ -116,6 +116,7 @@ def test_new_ai_frontend_routes_exist(app, client):
         ("/api/v1/errors/similar", "POST"),
         ("/api/v1/inventory/forecast", "POST"),
         ("/api/v1/shiftplans/calendar", "GET"),
+        ("/api/v1/shiftplans/models", "GET"),
         ("/api/v1/machines/<int:machine_id>/history", "GET"),
         ("/api/v1/machines/<int:machine_id>/profile", "GET"),
         ("/api/v1/machines/<int:machine_id>/assistant", "POST"),
@@ -156,6 +157,7 @@ def test_new_ai_frontend_routes_exist(app, client):
     assert "/api/v1/errors/similar" in script
     assert "/api/v1/inventory/forecast" in script
     assert "/api/v1/shiftplans/calendar" in script
+    assert 'BASE + "/models"' in script
     assert "/api/v1/ai/daily-briefing" in script
     assert "/api/v1/ai/error-assistant" in script
     assert "/api/v1/admin/ai/knowledge-network" in script
@@ -383,6 +385,36 @@ def test_web_routes_use_shared_design_shell(client):
         assert "app-main" in html
         assert "page-hero" in html
         assert "app-card" in html
+
+
+def test_shiftplans_page_prerenders_shift_model_options(client):
+    """Verify the shift model dropdown is usable before async API refresh."""
+    html = client.get("/shiftplans").get_data(as_text=True)
+
+    assert 'id="sp-shift-model"' in html
+    assert "Schichtmodelle werden geladen" not in html
+    assert 'value="one_shift"' in html
+    assert 'value="vollkonti_5"' in html
+    assert "data-shifts-summary" in html
+
+
+def test_shiftplans_script_uses_selected_option_as_model_fallback(client):
+    """Verify selected model lookup does not depend only on async cache state."""
+    script = client.get("/static/pages/shiftplans.js").get_data(as_text=True)
+
+    assert "if (!shiftModels.length) shiftModels = readShiftModelsFromSelect();" in script
+    assert "selectedOption.dataset.displayName" in script
+    assert "key: selectedOption.value" in script
+
+
+def test_shiftplans_script_renders_generated_plan_before_list_refresh(client):
+    """Verify a generated draft remains visible even if list reload is stale."""
+    script = client.get("/static/pages/shiftplans.js").get_data(as_text=True)
+
+    assert "async function loadPlans(selectId, fallbackPlan)" in script
+    assert "allPlans.unshift(fallbackPlan)" in script
+    assert "function selectedPlanIndex(selectId)" in script
+    assert "renderPlan(result)" in script
 
 
 def test_core_german_ui_labels_are_not_mojibake(client):

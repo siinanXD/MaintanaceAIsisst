@@ -2033,12 +2033,61 @@ OPENAPI_SPEC = {
                 },
             }
         },
+        "/api/v1/shiftplans/models": {
+            "get": {
+                "tags": ["ShiftPlans"],
+                "summary": "List supported shift model templates",
+                "security": [{"bearerAuth": []}],
+                "responses": {
+                    "200": {
+                        "description": "Available shift model templates",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "success": True,
+                                    "data": [
+                                        {
+                                            "key": "three_shift",
+                                            "name": "3-Schicht Frueh/Spaet/Nacht",
+                                            "display_name": "3-Schicht Frueh/Spaet/Nacht",
+                                            "description": "Frueh-, Spaet- und Nachtschicht.",
+                                            "shifts": [
+                                                {
+                                                    "key": "Frueh",
+                                                    "name": "Fruehschicht",
+                                                    "start_time": "06:00",
+                                                    "end_time": "14:00",
+                                                }
+                                            ],
+                                            "shift_times": {
+                                                "Frueh": {
+                                                    "start_time": "06:00",
+                                                    "end_time": "14:00",
+                                                }
+                                            },
+                                            "team_count": 3,
+                                            "weekend_operation": False,
+                                            "rotation_direction": "forward",
+                                            "weekly_hours_target": 40.0,
+                                            "max_consecutive_nights": 3,
+                                            "recommended_rest_hours": 11.0,
+                                        }
+                                    ],
+                                }
+                            }
+                        },
+                    },
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                },
+            }
+        },
         "/api/v1/shiftplans/generate": {
             "post": {
-                "tags": ["ShiftPlans", "AI"],
-                "summary": "Generate an AI shift plan",
+                "tags": ["ShiftPlans"],
+                "summary": "Generate a rule-based shift plan",
                 "description": (
-                    "Generates a shift plan using AI or a local fallback. "
+                    "Generates a deterministic rule-based shift plan. "
                     "Returns warnings and coverage info alongside the persisted plan."
                 ),
                 "security": [{"bearerAuth": []}],
@@ -2050,15 +2099,18 @@ OPENAPI_SPEC = {
                                 "title": "Schichtplan KW 19",
                                 "start_date": "2026-05-05",
                                 "days": 7,
+                                "shift_model_key": "three_shift",
                                 "rhythm": "3-Schicht",
-                                "preferences": "Urlaub: Hans Mueller 06.-08.05.",
+                                "preferences": {
+                                    "text": "Urlaub: Hans Mueller 06.-08.05.",
+                                },
                             }
                         }
                     },
                 },
                 "responses": {
                     "201": {
-                        "description": "AI-generated shift plan",
+                        "description": "Generated shift plan",
                         "content": {
                             "application/json": {
                                 "example": {
