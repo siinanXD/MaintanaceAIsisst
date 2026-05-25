@@ -8,13 +8,16 @@ A modular Flask application for industrial maintenance teams. Manages tasks, err
 
 ## Screenshots
 
+These screenshots are captured from the running app and reflect the current
+checked-in UI state.
+
 | Dashboard | Tasks |
 | --- | --- |
-| ![Dashboard](docs/screenshots/dashboard.svg) | ![Tasks](docs/screenshots/tasks.svg) |
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Tasks](docs/screenshots/tasks.png) |
 
 | Error Catalog | AI Features |
 | --- | --- |
-| ![Error Catalog](docs/screenshots/error-catalog.svg) | ![AI Features](docs/screenshots/ai-features.svg) |
+| ![Error Catalog](docs/screenshots/error-catalog.png) | ![AI Features](docs/screenshots/ai-features.png) |
 
 ## Features
 
