@@ -7529,12 +7529,7 @@
   }
 
   window.maintenanceWorkflows = {
-    initCurrentWorkflowPage
+    initCurrentWorkflowPage,
+    workflowInitializersForCurrentPage
   };
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initCurrentWorkflowPage, { once: true });
-  } else {
-    initCurrentWorkflowPage();
-  }
 })();

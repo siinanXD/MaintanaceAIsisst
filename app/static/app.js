@@ -1,9 +1,10 @@
 (function () {
   const STATIC_VERSION = "20260521-task-priority1";
-  const WORKFLOW_MODULE_URL = "/static/pages/workflows.js?v=" + STATIC_VERSION;
+  const WORKFLOW_MODULE_URL = "/static/pages/workflow-loader.js?v=" + STATIC_VERSION;
   const PAGE_MODULE_URLS = {
     "/login": "/static/pages/login.js?v=" + STATIC_VERSION
   };
+  window.maintenanceStaticVersion = STATIC_VERSION;
   let workflowImportPromise = null;
   const pageImportPromises = new Map();
 
