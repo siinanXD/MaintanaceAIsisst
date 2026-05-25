@@ -704,8 +704,7 @@ def chat_quality_warnings(result, message=""):
                 "type": "empty_retrieval",
                 "severity": "warning",
                 "message": (
-                    "Keine Quellen gefunden; Antwort nur als vorsichtige "
-                    "Orientierung nutzen."
+                    "Keine Quellen gefunden; Antwort nur als vorsichtige " "Orientierung nutzen."
                 ),
             }
         )
@@ -1550,11 +1549,7 @@ def answer_chat(message, user, session_id=""):
             answer = fallback_general_answer(retrieval["data"], blocked_scopes)
         diagnostics = diagnostics or ai_diagnostics("fallback_used", fallback_used=True)
     retrieval_message = conversation_context.retrieval_query(message)
-    response_type = (
-        "error_help"
-        if looks_like_error_question(retrieval_message)
-        else "assistant"
-    )
+    response_type = "error_help" if looks_like_error_question(retrieval_message) else "assistant"
     response_data = (
         retrieval["data"].get("errors", []) if response_type == "error_help" else retrieval["data"]
     )

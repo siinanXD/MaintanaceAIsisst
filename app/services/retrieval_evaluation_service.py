@@ -79,8 +79,7 @@ def run_admin_golden_retrieval_evaluation(user, limit=20, commit=True):
     """Run the bounded admin golden evaluation against the full retrieval pipeline."""
     runtime_set = runtime_golden_questions(user=user, limit=limit)
     queries = [
-        golden_retrieval_query_from_question(question)
-        for question in runtime_set["questions"]
+        golden_retrieval_query_from_question(question) for question in runtime_set["questions"]
     ]
     result = evaluate_and_persist_golden_queries(
         queries,
@@ -116,9 +115,7 @@ def persist_retrieval_evaluation_result(evaluation_result, commit=True):
         recall_at_k=_clamped_metric(evaluation_result.get("recall_at_k")),
         mrr=_clamped_metric(evaluation_result.get("mrr")),
         ndcg_at_k=_clamped_metric(evaluation_result.get("ndcg_at_k")),
-        permission_leak_count=_nonnegative_int(
-            evaluation_result.get("permission_leak_count")
-        ),
+        permission_leak_count=_nonnegative_int(evaluation_result.get("permission_leak_count")),
         forbidden_source_hit_count=_nonnegative_int(
             evaluation_result.get("forbidden_source_hit_count")
         ),
@@ -251,13 +248,11 @@ def _retrieved_sources(golden_query, user, top_k, retrieval_mode):
         retrieval = retrieve_context(golden_query.query, user)
         sources = (retrieval.get("sources") or [])[:top_k]
         return [
-            _retrieved_public_source(source, rank=index + 1)
-            for index, source in enumerate(sources)
+            _retrieved_public_source(source, rank=index + 1) for index, source in enumerate(sources)
         ]
     results = retrieve_vector_chunks(golden_query.query, user, limit=top_k)
     return [
-        _retrieved_vector_source(result, rank=index + 1)
-        for index, result in enumerate(results)
+        _retrieved_vector_source(result, rank=index + 1) for index, result in enumerate(results)
     ]
 
 
@@ -295,8 +290,7 @@ def _retrieved_vector_source(result, rank):
 def _expected_units(golden_query):
     """Return normalized expectation units for matching retrieved sources."""
     expected = {
-        ("source_id", source_id)
-        for source_id in _normalized_ints(golden_query.expected_source_ids)
+        ("source_id", source_id) for source_id in _normalized_ints(golden_query.expected_source_ids)
     }
     expected.update(
         ("source_type", source_type)
@@ -410,9 +404,7 @@ def _admin_evaluation_payload(result, question_set):
         "mrr": _clamped_metric(result.get("mrr")),
         "ndcg_at_k": _clamped_metric(result.get("ndcg_at_k")),
         "permission_leak_count": _nonnegative_int(result.get("permission_leak_count")),
-        "forbidden_source_hit_count": _nonnegative_int(
-            result.get("forbidden_source_hit_count")
-        ),
+        "forbidden_source_hit_count": _nonnegative_int(result.get("forbidden_source_hit_count")),
         "no_result_count": _nonnegative_int(result.get("no_result_count")),
         "evaluation_run": result.get("evaluation_run") or {},
         "question_set": question_set,
@@ -539,9 +531,7 @@ def _run_metrics(run):
         "mrr": _clamped_metric(payload.get("mrr")),
         "ndcg_at_k": _clamped_metric(payload.get("ndcg_at_k")),
         "permission_leak_count": _nonnegative_int(payload.get("permission_leak_count")),
-        "forbidden_source_hit_count": _nonnegative_int(
-            payload.get("forbidden_source_hit_count")
-        ),
+        "forbidden_source_hit_count": _nonnegative_int(payload.get("forbidden_source_hit_count")),
         "no_result_count": _nonnegative_int(payload.get("no_result_count")),
     }
 

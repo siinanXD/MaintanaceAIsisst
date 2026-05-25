@@ -32,8 +32,7 @@ def shift_model_options():
     options = []
     for template in list_shift_templates():
         shifts_summary = ", ".join(
-            f"{shift.display_name} {shift.start_time}-{shift.end_time}"
-            for shift in template.shifts
+            f"{shift.display_name} {shift.start_time}-{shift.end_time}" for shift in template.shifts
         )
         rotation_label = (
             "Vorwärtsrotation Früh → Spät → Nacht"
@@ -50,9 +49,7 @@ def shift_model_options():
                 "team_count": template.team_count,
                 "weekend_operation": template.weekend_operation,
                 "weekend_label": (
-                    "Wochenendbetrieb aktiv"
-                    if template.weekend_operation
-                    else "Montag bis Freitag"
+                    "Wochenendbetrieb aktiv" if template.weekend_operation else "Montag bis Freitag"
                 ),
                 "rotation_direction": template.rotation_direction,
                 "rotation_label": rotation_label,

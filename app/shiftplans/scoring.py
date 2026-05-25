@@ -112,10 +112,7 @@ def score_candidate(
 
 def workload_score(entries: list[dict[str, object]]) -> tuple[int, str]:
     """Return workload balancing score based on assigned hours."""
-    hours = sum(
-        shift_hours(str(entry["start_time"]), str(entry["end_time"]))
-        for entry in entries
-    )
+    hours = sum(shift_hours(str(entry["start_time"]), str(entry["end_time"])) for entry in entries)
     penalty = int(hours // 8) * 4
     return -penalty, f"-{penalty} Arbeitslast {hours:.0f}h"
 

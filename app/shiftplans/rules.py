@@ -60,9 +60,7 @@ def is_work_entry(entry: dict[str, object]) -> bool:
     """Return whether a normalized entry represents work."""
     shift = str(entry.get("shift") or "")
     return bool(
-        shift not in {"", "Frei", "Urlaub"}
-        and entry.get("start_time")
-        and entry.get("end_time")
+        shift not in {"", "Frei", "Urlaub"} and entry.get("start_time") and entry.get("end_time")
     )
 
 
@@ -379,9 +377,7 @@ def validate_candidate_assignment(
     violations.extend(validate_duplicate_assignment(normalized_candidate, normalized_entries))
     violations.extend(validate_vacation_conflict(normalized_candidate, vacation_days))
     violations.extend(validate_machine_qualification(normalized_candidate, qualification_map))
-    violations.extend(
-        validate_max_daily_hours(normalized_candidate, normalized_entries)
-    )
+    violations.extend(validate_max_daily_hours(normalized_candidate, normalized_entries))
     violations.extend(
         validate_rest_time(
             normalized_candidate,

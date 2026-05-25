@@ -376,9 +376,7 @@ def _vector_context(candidates):
         if machine_context:
             block_lines.append(machine_context)
         block_lines.append(candidate.content)
-        blocks.append(
-            "\n".join(block_lines)
-        )
+        blocks.append("\n".join(block_lines))
     return "\n\n".join(blocks)
 
 
@@ -636,9 +634,13 @@ def _prompt_context(context, conversation_context):
 def _machine_context_line(metadata):
     """Return an optional context line explaining machine-aware retrieval signals."""
     signals = metadata.get("score_signals") or {}
-    reasons = metadata.get("machine_match_reasons") or signals.get(
-        "machine_match_reasons",
-    ) or []
+    reasons = (
+        metadata.get("machine_match_reasons")
+        or signals.get(
+            "machine_match_reasons",
+        )
+        or []
+    )
     if not reasons:
         return ""
     labels = {

@@ -1018,7 +1018,7 @@ def test_machine_detail_page_contains_profile_targets(client):
     html = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert 'data-machine-profile-page' in html
+    assert "data-machine-profile-page" in html
     assert 'data-machine-id="123"' in html
     assert "data-machine-profile-kpis" in html
     assert "data-machine-profile-tasks" in html

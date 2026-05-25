@@ -111,8 +111,10 @@ def site_for_payload(data, machine=None):
 @dashboard_permission_required("inventory", "view")
 def list_materials():
     """Return inventory materials, optionally paginated for large stock catalogs."""
-    query = filtered_inventory_query().options(selectinload(InventoryMaterial.machine)).order_by(
-        InventoryMaterial.name.asc(), InventoryMaterial.id.asc()
+    query = (
+        filtered_inventory_query()
+        .options(selectinload(InventoryMaterial.machine))
+        .order_by(InventoryMaterial.name.asc(), InventoryMaterial.id.asc())
     )
     return optional_paginated_response(
         query,
@@ -153,10 +155,14 @@ def inventory_summary():
         "top_shortages": top_inventory_shortages(dashboard_materials),
     }
     if include_materials:
-        materials = base_query.options(selectinload(InventoryMaterial.machine)).order_by(
-            InventoryMaterial.name.asc(),
-            InventoryMaterial.id.asc(),
-        ).all()
+        materials = (
+            base_query.options(selectinload(InventoryMaterial.machine))
+            .order_by(
+                InventoryMaterial.name.asc(),
+                InventoryMaterial.id.asc(),
+            )
+            .all()
+        )
         payload["materials"] = [material.to_dict() for material in materials]
     return jsonify(payload)
 

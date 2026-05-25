@@ -848,8 +848,7 @@ def undercoverage_slot_payload(machine, work_date, shift, required, assigned, mi
         "missing": missing,
         "reason": "Keine regelkonforme Besetzung moeglich",
         "suggestion": (
-            "Maschinenqualifikationen pflegen oder zusaetzliche "
-            "Mitarbeitende freigeben"
+            "Maschinenqualifikationen pflegen oder zusaetzliche " "Mitarbeitende freigeben"
         ),
     }
 
@@ -916,8 +915,7 @@ def is_known_shift_model_value(value):
         return True
     normalized = normalize_template_value(value)
     normalized_aliases = {
-        normalize_template_value(alias): key
-        for alias, key in SHIFT_TEMPLATE_ALIASES.items()
+        normalize_template_value(alias): key for alias, key in SHIFT_TEMPLATE_ALIASES.items()
     }
     return normalized in SHIFT_TEMPLATES or normalized in normalized_aliases
 
@@ -949,8 +947,7 @@ def resolve_explicit_shift_model_key(data):
         return raw_value, None
     normalized = normalize_template_value(explicit_value)
     normalized_aliases = {
-        normalize_template_value(alias): key
-        for alias, key in SHIFT_TEMPLATE_ALIASES.items()
+        normalize_template_value(alias): key for alias, key in SHIFT_TEMPLATE_ALIASES.items()
     }
     canonical_key = normalized_aliases.get(normalized, normalized)
     return canonical_key, None
@@ -1012,14 +1009,18 @@ def build_shift_plan_draft(data):
     if not entries and not planning_warnings:
         return None, {"error": "Es konnte kein gueltiger Schichtplan erzeugt werden"}, 400
     if not generated_work_entries(entries):
-        return None, {
-            "error": (
-                "Kein Plan erzeugt. Bitte Maschinenqualifikationen pflegen "
-                "oder Mitarbeiterdaten pruefen."
-            ),
-            "warnings": planning_warnings,
-            "unassigned_slots": generator_unassigned,
-        }, 422
+        return (
+            None,
+            {
+                "error": (
+                    "Kein Plan erzeugt. Bitte Maschinenqualifikationen pflegen "
+                    "oder Mitarbeiterdaten pruefen."
+                ),
+                "warnings": planning_warnings,
+                "unassigned_slots": generator_unassigned,
+            },
+            422,
+        )
 
     try:
         arbzg_warnings = validate_arbzg(
@@ -1046,25 +1047,27 @@ def build_shift_plan_draft(data):
     employee_by_id = {employee.id: employee for employee in employees}
     warnings.extend(coverage_warnings_from_slots(unassigned_slots))
     warnings.extend(arbzg_warnings)
-    warnings.extend(
-        detect_vacation_assignment_warnings(entries, vacation_entries, employee_by_id)
+    warnings.extend(detect_vacation_assignment_warnings(entries, vacation_entries, employee_by_id))
+    return (
+        {
+            "title": title,
+            "department": department,
+            "start_date": start_date,
+            "days": days,
+            "rhythm": rhythm,
+            "shift_model_value": shift_model_value,
+            "preferences": preferences,
+            "employees": employees,
+            "machines": machines,
+            "entries": entries,
+            "warnings": warnings,
+            "coverage_summary": coverage_summary,
+            "unassigned_slots": unassigned_slots,
+            "fairness_summary": fairness_summary(entries, employees),
+        },
+        None,
+        200,
     )
-    return {
-        "title": title,
-        "department": department,
-        "start_date": start_date,
-        "days": days,
-        "rhythm": rhythm,
-        "shift_model_value": shift_model_value,
-        "preferences": preferences,
-        "employees": employees,
-        "machines": machines,
-        "entries": entries,
-        "warnings": warnings,
-        "coverage_summary": coverage_summary,
-        "unassigned_slots": unassigned_slots,
-        "fairness_summary": fairness_summary(entries, employees),
-    }, None, 200
 
 
 def import_approved_vacations(employees, vacation_entries, unavailable, start_date, days):
@@ -1348,19 +1351,13 @@ def conflicts_for_plan(plan):
 
 def machines_for_plan(plan):
     """Return machines that belong to a plan's entries or coverage slots."""
-    machine_ids = {
-        entry.machine_id for entry in plan.entries if entry.machine_id is not None
-    }
+    machine_ids = {entry.machine_id for entry in plan.entries if entry.machine_id is not None}
     machine_ids.update(
         slot.machine_id for slot in plan.coverage_slots if slot.machine_id is not None
     )
     if not machine_ids:
         return Machine.query.order_by(Machine.name.asc()).all()
-    return (
-        Machine.query.filter(Machine.id.in_(machine_ids))
-        .order_by(Machine.name.asc())
-        .all()
-    )
+    return Machine.query.filter(Machine.id.in_(machine_ids)).order_by(Machine.name.asc()).all()
 
 
 def validate_shiftplan_payload(data):

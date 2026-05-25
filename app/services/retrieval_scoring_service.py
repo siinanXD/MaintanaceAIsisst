@@ -420,9 +420,7 @@ class HybridRetrievalScorer:
         )
         if error_similarity > 0:
             score += error_similarity * 0.55
-            reasons.append(
-                "same_error_code" if error_similarity >= 1.0 else "similar_error_code"
-            )
+            reasons.append("same_error_code" if error_similarity >= 1.0 else "similar_error_code")
         maximum_score = 1.0 if "same_machine" in reasons else 0.85
         return _clamp(score, 0.0, maximum_score), reasons, candidate_context
 
@@ -467,8 +465,7 @@ class HybridRetrievalScorer:
         """Return machine context inferred from free text and known app data."""
         normalized_text = _normalize_phrase(text)
         labels = {
-            _normalize_phrase(match)
-            for match in MACHINE_LABEL_PATTERN.findall(normalized_text)
+            _normalize_phrase(match) for match in MACHINE_LABEL_PATTERN.findall(normalized_text)
         }
         machine_ids = set()
         if include_known_machine_ids and has_app_context():
@@ -505,17 +502,14 @@ class HybridRetrievalScorer:
         if not source:
             return MachineContext(
                 departments=frozenset(
-                    {_normalize_phrase(getattr(document, "department", ""))}
-                    - {""}
+                    {_normalize_phrase(getattr(document, "department", ""))} - {""}
                 )
             )
 
         machine_objects = [machine for machine in _source_machine_objects(source) if machine]
         labels = set(_source_machine_labels(source))
         labels.update(_normalize_phrase(machine.name) for machine in machine_objects)
-        machine_ids = {
-            machine.id for machine in machine_objects if getattr(machine, "id", None)
-        }
+        machine_ids = {machine.id for machine in machine_objects if getattr(machine, "id", None)}
         departments = set(_source_departments(source))
         departments.add(_normalize_phrase(getattr(document, "department", "")))
         manufacturers = set(_source_manufacturers(source))
@@ -883,8 +877,10 @@ def _contains_any_machine_name(query_names, candidate_names):
     """Return whether any query machine label is contained in a candidate label."""
     for query_name in query_names:
         for candidate_name in candidate_names:
-            if query_name and candidate_name and (
-                query_name in candidate_name or candidate_name in query_name
+            if (
+                query_name
+                and candidate_name
+                and (query_name in candidate_name or candidate_name in query_name)
             ):
                 return True
     return False

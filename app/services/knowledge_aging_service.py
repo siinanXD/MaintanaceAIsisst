@@ -123,11 +123,7 @@ def knowledge_aging_state(document, now=None, include_feedback=True):
     confirmation_anchor = last_confirmed_at or getattr(document, "created_at", None)
     unconfirmed_days = _days_since(confirmation_anchor, now_value)
     confirmation_count = max(0, int(getattr(document, "confirmation_count", 0) or 0))
-    helpful_count = (
-        helpful_feedback_count_for_document(document)
-        if include_feedback
-        else 0
-    )
+    helpful_count = helpful_feedback_count_for_document(document) if include_feedback else 0
     stable = (
         confirmation_count >= policy.stable_confirmations
         or helpful_count >= policy.stable_helpful_feedback
@@ -216,8 +212,7 @@ def mark_outdated_knowledge_by_age(dry_run=False, limit=None, now=None):
         "documents": len(candidates),
         "dry_run": bool(dry_run),
         "recommendations": [
-            _recommendation_payload(document, state)
-            for document, state in candidates[:10]
+            _recommendation_payload(document, state) for document, state in candidates[:10]
         ],
     }
 
@@ -225,8 +220,7 @@ def mark_outdated_knowledge_by_age(dry_run=False, limit=None, now=None):
 def knowledge_review_recommendations(documents=None, limit=10):
     """Return knowledge documents that should be reviewed because of aging."""
     states = [
-        (document, knowledge_aging_state(document))
-        for document in _document_items(documents)
+        (document, knowledge_aging_state(document)) for document in _document_items(documents)
     ]
     actionable = [
         (document, state)
@@ -243,29 +237,21 @@ def knowledge_review_recommendations(documents=None, limit=10):
         ),
         reverse=True,
     )
-    return [
-        _recommendation_payload(document, state)
-        for document, state in actionable[:limit]
-    ]
+    return [_recommendation_payload(document, state) for document, state in actionable[:limit]]
 
 
 def knowledge_aging_summary(documents=None):
     """Return aggregate aging counters for lifecycle diagnostics."""
     document_states = [
-        (document, knowledge_aging_state(document))
-        for document in _document_items(documents)
+        (document, knowledge_aging_state(document)) for document in _document_items(documents)
     ]
     states = [state for _document, state in document_states]
     return {
         "enabled": True,
         "stale_candidates": sum(1 for state in states if state.should_mark_outdated),
         "stable_documents": sum(1 for state in states if state.stable),
-        "weighted_documents": sum(
-            1 for state in states if 0 < state.retrieval_multiplier < 1
-        ),
-        "outdated_documents": sum(
-            1 for state in states if state.quality_status == "outdated"
-        ),
+        "weighted_documents": sum(1 for state in states if 0 < state.retrieval_multiplier < 1),
+        "outdated_documents": sum(1 for state in states if state.quality_status == "outdated"),
         "review_recommendations": [
             _recommendation_payload(document, state)
             for document, state in document_states
@@ -281,9 +267,7 @@ def helpful_feedback_count_for_document(document):
     if not document_id or not has_app_context():
         return 0
     limit = _positive_int_config("RAG_FEEDBACK_SCAN_LIMIT", DEFAULT_FEEDBACK_SCAN_LIMIT)
-    feedback_items = (
-        AIFeedback.query.order_by(AIFeedback.created_at.desc()).limit(limit).all()
-    )
+    feedback_items = AIFeedback.query.order_by(AIFeedback.created_at.desc()).limit(limit).all()
     count = 0
     for feedback in feedback_items:
         if feedback.rating not in {"helpful", "partially_helpful"}:
@@ -295,12 +279,9 @@ def helpful_feedback_count_for_document(document):
 
 def _aging_candidate_documents(limit=None):
     """Return documents eligible for automatic aging review."""
-    query = (
-        KnowledgeDocument.query.filter(
-            KnowledgeDocument.quality_status.in_(AGING_CANDIDATE_QUALITY_STATUSES),
-        )
-        .order_by(KnowledgeDocument.updated_at.asc(), KnowledgeDocument.id.asc())
-    )
+    query = KnowledgeDocument.query.filter(
+        KnowledgeDocument.quality_status.in_(AGING_CANDIDATE_QUALITY_STATUSES),
+    ).order_by(KnowledgeDocument.updated_at.asc(), KnowledgeDocument.id.asc())
     if limit:
         query = query.limit(int(limit))
     return query.all()

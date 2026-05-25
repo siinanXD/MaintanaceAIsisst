@@ -137,9 +137,7 @@ def log_event(*args, **kwargs):
 
 def _log_event_failure(event_type, entity_type, entity_id):
     """Log event failures without interrupting the primary workflow."""
-    message = (
-        "operations_event_record_failed event_type=%s entity_type=%s entity_id=%s"
-    )
+    message = "operations_event_record_failed event_type=%s entity_type=%s entity_id=%s"
     if has_app_context():
         current_app.logger.exception(message, event_type, entity_type, entity_id)
         return
@@ -378,9 +376,7 @@ def ai_quality_metrics(args, user, start_at=None, end_at=None):
         "negative_feedback": sum(
             1 for item in feedback if item.rating in {"negative", "not_helpful"}
         ),
-        "partial_feedback": sum(
-            1 for item in feedback if item.rating == "partially_helpful"
-        ),
+        "partial_feedback": sum(1 for item in feedback if item.rating == "partially_helpful"),
     }
 
 

@@ -283,10 +283,7 @@ def _append_block(blocks, lines, offset, section_index, section_title, kind):
 def _has_structural_signal(blocks):
     """Return whether blocks carry document structure worth preserving."""
     structural_kinds = {"table", "list", "error_code", "error_detail", "heading"}
-    return any(
-        block.section_title or block.kind in structural_kinds
-        for block in blocks
-    )
+    return any(block.section_title or block.kind in structural_kinds for block in blocks)
 
 
 def _is_heading_line(stripped_line):
@@ -545,7 +542,7 @@ def _split_table_block(block, max_chars):
         return _split_long_block_text(block, max_chars)
 
     header_lines = _table_header_lines(lines)
-    body_lines = lines[len(header_lines):]
+    body_lines = lines[len(header_lines) :]
     parts = []
     current_lines = []
     current_offset = block.offset + sum(len(line) + 1 for line in header_lines)

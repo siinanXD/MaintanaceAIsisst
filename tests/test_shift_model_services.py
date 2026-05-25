@@ -318,12 +318,8 @@ def test_shiftplan_generate_filters_selected_machines(
 
     payload = response.get_json()
     assert response.status_code == 201, payload
-    assert {entry["machine"]["id"] for entry in payload["entries"]} == {
-        selected_machine_id
-    }
-    assert other_machine_id not in {
-        slot["machine_id"] for slot in payload["unassigned_slots"]
-    }
+    assert {entry["machine"]["id"] for entry in payload["entries"]} == {selected_machine_id}
+    assert other_machine_id not in {slot["machine_id"] for slot in payload["unassigned_slots"]}
 
 
 def test_shiftplan_generate_rejects_invalid_machine_ids(
@@ -410,9 +406,7 @@ def test_shiftplan_undercoverage_is_persisted_as_visible_slots(
         "/api/v1/shiftplans",
         headers=auth_headers(admin["username"]),
     )
-    reloaded_plan = next(
-        plan for plan in reload_response.get_json() if plan["id"] == plan_id
-    )
+    reloaded_plan = next(plan for plan in reload_response.get_json() if plan["id"] == plan_id)
     assert response.status_code == 201, payload
     assert payload["unassigned_slots"]
     assert persisted_count == len(payload["unassigned_slots"])

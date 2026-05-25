@@ -428,9 +428,7 @@ def _prioritized_knowledge_context(vector_context, knowledge_sources):
 def _split_source_blocks(content):
     """Return source blocks split on blank-line boundaries."""
     return [
-        block.strip()
-        for block in re.split(r"\n\s*\n", str(content or "").strip())
-        if block.strip()
+        block.strip() for block in re.split(r"\n\s*\n", str(content or "").strip()) if block.strip()
     ]
 
 

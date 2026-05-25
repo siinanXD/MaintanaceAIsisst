@@ -190,9 +190,7 @@ def _record_quality_rejection(report, reasons):
         report.skipped_empty_chunks += 1
     if "bad_ocr" in reasons:
         report.skipped_bad_ocr_chunks += 1
-    if "bad_ocr" not in reasons and (
-        "too_short" in reasons or "too_few_tokens" in reasons
-    ):
+    if "bad_ocr" not in reasons and ("too_short" in reasons or "too_few_tokens" in reasons):
         report.skipped_short_chunks += 1
 
 

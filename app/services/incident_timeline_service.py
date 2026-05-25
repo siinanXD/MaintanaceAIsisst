@@ -139,9 +139,7 @@ def _task_events(user, since, machine_id):
     query = visible_tasks_query(user).filter(Task.created_at >= since)
     events = []
     for task in query.order_by(Task.created_at.desc()).limit(300).all():
-        if machine and _name_key(machine.name) not in _name_key(
-            f"{task.title} {task.description}"
-        ):
+        if machine and _name_key(machine.name) not in _name_key(f"{task.title} {task.description}"):
             continue
         events.append(
             {

@@ -39,9 +39,9 @@ def record_vector_sync_failure(document_id, store_name, error):
         "failed_at": utc_now().isoformat(),
     }
     _vector_sync_state["last_failed_sync"] = event
-    _vector_sync_state["failures"] = (
-        [event] + list(_vector_sync_state.get("failures") or [])
-    )[:MAX_SYNC_FAILURES]
+    _vector_sync_state["failures"] = ([event] + list(_vector_sync_state.get("failures") or []))[
+        :MAX_SYNC_FAILURES
+    ]
 
 
 def vector_sync_observability_snapshot():
@@ -71,21 +71,13 @@ def vector_store_drift_status(documents=None):
     external_sync_required = store_name == "chroma"
     fallback_active = configured_store == "chroma" and store_name != "chroma"
 
-    indexed_documents = [
-        document for document in document_list if document.status == "indexed"
-    ]
-    stale_documents = [
-        document for document in document_list if document.status == "stale"
-    ]
+    indexed_documents = [document for document in document_list if document.status == "indexed"]
+    stale_documents = [document for document in document_list if document.status == "stale"]
     status_pending_documents = [
-        document
-        for document in document_list
-        if document.status in PENDING_REINDEX_STATUSES
+        document for document in document_list if document.status in PENDING_REINDEX_STATUSES
     ]
     latest_indexed_at = _latest_indexed_at(indexed_documents)
-    expected_vector_count = sum(
-        chunk_counts.get(document.id, 0) for document in indexed_documents
-    )
+    expected_vector_count = sum(chunk_counts.get(document.id, 0) for document in indexed_documents)
     declared_chunk_count = sum(
         max(_safe_int(document.chunk_count), 0) for document in indexed_documents
     )

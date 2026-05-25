@@ -270,8 +270,7 @@ def coverage_warning(
         "missing": missing,
         "reason": "Keine regelkonforme Besetzung moeglich",
         "suggestion": (
-            "Maschinenqualifikationen pflegen oder zusaetzliche "
-            "Mitarbeitende freigeben"
+            "Maschinenqualifikationen pflegen oder zusaetzliche " "Mitarbeitende freigeben"
         ),
         "message": (
             f"Keine regelkonforme Besetzung am {work_date.isoformat()} "

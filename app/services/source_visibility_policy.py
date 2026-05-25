@@ -112,9 +112,7 @@ class SourceVisibilityPolicy:
         if not document.source_id:
             return False
         return (
-            visible_documents_query(user)
-            .filter(GeneratedDocument.id == document.source_id)
-            .first()
+            visible_documents_query(user).filter(GeneratedDocument.id == document.source_id).first()
             is not None
         )
 

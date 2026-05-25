@@ -145,8 +145,7 @@ def _build_result(entry_type, detected_fields):
         field_name for field_name in FIELD_PROMPTS if field_name not in detected_fields
     ]
     questions = [
-        _question_payload(field_name, index)
-        for index, field_name in enumerate(missing_fields)
+        _question_payload(field_name, index) for index, field_name in enumerate(missing_fields)
     ]
     return {
         "entry_type": entry_type,

@@ -43,9 +43,7 @@ def test_retrieval_candidates_rank_structured_and_rag_sources_together(
         )
 
     ranked_sources = [
-        source
-        for source in payload["sources"]
-        if source["type"] in {"task", "knowledge"}
+        source for source in payload["sources"] if source["type"] in {"task", "knowledge"}
     ]
     source_types = {source["type"] for source in ranked_sources}
     scores = [source["normalized_score"] for source in ranked_sources]

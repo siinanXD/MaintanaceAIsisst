@@ -42,8 +42,7 @@ def test_sql_keyword_fallback_finds_old_task_outside_structured_limit(
     payload = response.get_json()
     assert response.status_code == 200
     assert any(
-        source["type"] == "task" and source["id"] == old_task_id
-        for source in payload["sources"]
+        source["type"] == "task" and source["id"] == old_task_id for source in payload["sources"]
     )
     assert payload["diagnostics"]["empty_retrieval"] is False
 
@@ -117,8 +116,7 @@ def test_retrieve_context_uses_sql_fallback_when_vector_is_empty(
         payload = retrieve_context("Altanlage pruefen", db_user)
 
     assert any(
-        source["type"] == "task" and source["id"] == old_task_id
-        for source in payload["sources"]
+        source["type"] == "task" and source["id"] == old_task_id for source in payload["sources"]
     )
     assert payload["retrieval_debug"]["vector_candidates_found"] == 0
     assert payload["retrieval_debug"]["sql_keyword_fallback_used"] is True

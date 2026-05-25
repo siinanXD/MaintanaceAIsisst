@@ -432,9 +432,7 @@ class RetrievalEvaluationRun(db.Model):
     no_result_count = db.Column(db.Integer, nullable=False, default=0)
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
 
-    __table_args__ = (
-        db.Index("ix_retrieval_evaluation_run_created", "created_at"),
-    )
+    __table_args__ = (db.Index("ix_retrieval_evaluation_run_created", "created_at"),)
 
     def to_dict(self):
         """Return a prompt-safe evaluation run payload."""

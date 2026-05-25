@@ -73,11 +73,7 @@ def build_empty_retrieval_answer(message, retrieval=None, user=None):
 
 def _classification_payload(message, retrieval, rag):
     """Return the best available high-level query classification payload."""
-    payload = (
-        retrieval.get("query_classification")
-        or rag.get("query_classification")
-        or {}
-    )
+    payload = retrieval.get("query_classification") or rag.get("query_classification") or {}
     if payload:
         return dict(payload)
     return classify_ai_query(message).to_dict()

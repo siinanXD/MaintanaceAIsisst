@@ -100,8 +100,7 @@ def calculate_ai_confidence(message, sources, response_type="assistant"):
         "feedback": _feedback_signal(safe_sources, response_type),
     }
     contributions = {
-        key: round(factors[key] * weights[key] * 100, 2)
-        for key in DEFAULT_CONFIDENCE_WEIGHTS
+        key: round(factors[key] * weights[key] * 100, 2) for key in DEFAULT_CONFIDENCE_WEIGHTS
     }
     score = int(round(sum(contributions.values())))
     score = max(0, min(100, score))

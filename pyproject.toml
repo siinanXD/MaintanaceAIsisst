@@ -34,3 +34,20 @@ omit = [
     "app/errors/services.py",
     "app/tasks/services.py",
 ]
+
+[tool.pytest.ini_options]
+testpaths = [
+    "tests",
+]
+norecursedirs = [
+    ".codex_tmp",
+    ".git",
+    ".venv",
+    "backend",
+    "data",
+    "documents",
+    "logs",
+    "manuals",
+    "node_modules",
+    "tmp",
+]

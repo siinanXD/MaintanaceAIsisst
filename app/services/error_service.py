@@ -296,9 +296,7 @@ def update_error_entry(entry, data, user):
     try:
         if "machine_id" in data:
             machine = (
-                db.session.get(Machine, int(data["machine_id"]))
-                if data.get("machine_id")
-                else None
+                db.session.get(Machine, int(data["machine_id"])) if data.get("machine_id") else None
             )
             entry.machine_id = machine.id if machine else None
             if machine:
@@ -329,9 +327,7 @@ def update_error_entry(entry, data, user):
     entry.last_seen_at = datetime.now(UTC)
 
     event_type = (
-        "error.closed"
-        if old_status != "closed" and entry.status == "closed"
-        else "error.updated"
+        "error.closed" if old_status != "closed" and entry.status == "closed" else "error.updated"
     )
     record_event(
         event_type,

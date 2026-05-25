@@ -159,10 +159,7 @@ def _extract_entities(message):
     text = str(message or "")
     entities = {
         "error_codes": sorted(
-            {
-                match.group(0).upper().replace(" ", "")
-                for match in ERROR_CODE_PATTERN.finditer(text)
-            }
+            {match.group(0).upper().replace(" ", "") for match in ERROR_CODE_PATTERN.finditer(text)}
         ),
         "task_ids": [int(match.group(1)) for match in TASK_ID_PATTERN.finditer(text)],
         "machine_hints": _entity_hints(MACHINE_HINT_PATTERN, text),

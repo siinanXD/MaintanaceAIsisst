@@ -69,9 +69,7 @@ def process_document_for_knowledge(source, source_type, user=None):
 def detect_document_metadata(text, source, source_type, content_text=None):
     """Return machine, department, error-code, and document-type metadata."""
     normalized_text = str(text or "")
-    normalized_content = (
-        str(content_text or "") if content_text is not None else normalized_text
-    )
+    normalized_content = str(content_text or "") if content_text is not None else normalized_text
     return {
         "source_type": source_type,
         "source_id": getattr(source, "id", None),

@@ -33,8 +33,7 @@ GENERIC_ERROR_CODE_PATTERN = re.compile(
     r"\b[A-Z]{1,4}[-_]?\d{2,5}(?:[-_][A-Z0-9]{1,8})?\b",
 )
 MACHINE_REFERENCE_PATTERN = re.compile(
-    r"\b(?:maschine|anlage|presse|linie|station|roboter|ofen)\s+"
-    r"[A-Z0-9][A-Za-z0-9_-]{0,40}\b",
+    r"\b(?:maschine|anlage|presse|linie|station|roboter|ofen)\s+" r"[A-Z0-9][A-Za-z0-9_-]{0,40}\b",
     re.IGNORECASE,
 )
 SENSOR_REFERENCE_PATTERN = re.compile(
@@ -410,10 +409,7 @@ def _clean_phrase(value):
 
 def _sorted_entity_payload(entities):
     """Return sorted and capped entity lists for public storage."""
-    return {
-        key: _sorted_values(entities.get(key, ()))
-        for key in TECHNICAL_ENTITY_KEYS
-    }
+    return {key: _sorted_values(entities.get(key, ())) for key in TECHNICAL_ENTITY_KEYS}
 
 
 def _sorted_values(values):

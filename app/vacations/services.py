@@ -303,12 +303,16 @@ def build_vacation_impact_response(data, user):
     impact = vacation_impact(employee, start_date, end_date, representative, shift_type)
     impact["overlap"] = has_overlapping_active_request(employee_id, start_date, end_date)
     impact["balance_exceeded"] = bool(balance and impact["workdays"] > balance["available"])
-    return {
-        "employee": employee.to_dict("basic"),
-        "representative": representative.to_dict("basic") if representative else None,
-        "balance": balance,
-        "impact": impact,
-    }, None, 200
+    return (
+        {
+            "employee": employee.to_dict("basic"),
+            "representative": representative.to_dict("basic") if representative else None,
+            "balance": balance,
+            "impact": impact,
+        },
+        None,
+        200,
+    )
 
 
 def vacation_event_state(vacation):

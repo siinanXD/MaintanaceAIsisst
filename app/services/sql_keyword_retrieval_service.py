@@ -248,8 +248,12 @@ def _maintenance_plan_hits(message, user, tokens, existing_keys):
         return []
     from app.machines.maintenance_services import visible_maintenance_plans_query
 
-    query = visible_maintenance_plans_query(user).outerjoin(Machine).filter(
-        _ilike_any((MaintenancePlan.title, MaintenancePlan.description, Machine.name), tokens)
+    query = (
+        visible_maintenance_plans_query(user)
+        .outerjoin(Machine)
+        .filter(
+            _ilike_any((MaintenancePlan.title, MaintenancePlan.description, Machine.name), tokens)
+        )
     )
     return [
         _hit(
@@ -317,16 +321,20 @@ def _machine_manual_hits(message, user, tokens, existing_keys):
     """Return visible machine-manual fallback hits."""
     if not has_dashboard_permission(user, "documents", "view"):
         return []
-    query = visible_manuals_query(user).outerjoin(Machine).filter(
-        _ilike_any(
-            (
-                MachineManual.title,
-                MachineManual.original_filename,
-                MachineManual.summary,
-                MachineManual.analysis,
-                Machine.name,
-            ),
-            tokens,
+    query = (
+        visible_manuals_query(user)
+        .outerjoin(Machine)
+        .filter(
+            _ilike_any(
+                (
+                    MachineManual.title,
+                    MachineManual.original_filename,
+                    MachineManual.summary,
+                    MachineManual.analysis,
+                    Machine.name,
+                ),
+                tokens,
+            )
         )
     )
     return [
@@ -581,10 +589,7 @@ def _existing_source_keys(sources):
 
 def _hits_for_candidates(hits, candidates):
     """Return hits matching selected ranked candidates."""
-    hit_by_key = {
-        (hit.candidate.source_type, hit.candidate.source_id): hit
-        for hit in hits
-    }
+    hit_by_key = {(hit.candidate.source_type, hit.candidate.source_id): hit for hit in hits}
     selected = []
     seen = set()
     for candidate in candidates:

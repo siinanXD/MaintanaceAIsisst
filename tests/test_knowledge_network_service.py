@@ -242,8 +242,7 @@ def test_knowledge_network_limits_nodes_and_includes_gaps_and_recurring_issues(
 
     assert len(payload["nodes"]) <= 4
     assert all(
-        edge["source"] in node_ids and edge["target"] in node_ids
-        for edge in payload["edges"]
+        edge["source"] in node_ids and edge["target"] in node_ids for edge in payload["edges"]
     )
     assert "recurring_issue" in node_types
     assert "knowledge_gap" in node_types

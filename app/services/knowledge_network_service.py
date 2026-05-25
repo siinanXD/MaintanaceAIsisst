@@ -849,9 +849,7 @@ class KnowledgeNetworkBuilder:
         edges.sort(key=lambda edge: (-edge["weight"], edge["type"], edge["id"]))
         edges = edges[: self.filters["edge_limit"]]
         connected_node_ids = {
-            edge_node
-            for edge in edges
-            for edge_node in (edge["source"], edge["target"])
+            edge_node for edge in edges for edge_node in (edge["source"], edge["target"])
         }
         nodes = [node for node in nodes if node["id"] in connected_node_ids or not edges]
         return {

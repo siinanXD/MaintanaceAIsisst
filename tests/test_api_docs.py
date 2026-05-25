@@ -112,9 +112,7 @@ def test_openapi_examples_are_present(client):
     assert spec["components"]["schemas"]["ChatHistoryEntry"]["properties"]["response_type"][
         "example"
     ]
-    assert spec["components"]["schemas"]["ChatHistoryEntry"]["properties"]["session_id"][
-        "example"
-    ]
+    assert spec["components"]["schemas"]["ChatHistoryEntry"]["properties"]["session_id"]["example"]
     assert spec["components"]["schemas"]["AIAuditEvent"]["properties"]["error_category"]["example"]
     assert spec["components"]["schemas"]["KnowledgeDocument"]["properties"]["status"]["example"]
     assert spec["components"]["schemas"]["KnowledgeDocument"]["properties"]["quality_status"][

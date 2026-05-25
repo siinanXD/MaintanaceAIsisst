@@ -490,8 +490,7 @@ def test_chunk_quality_marks_duplicate_sources_without_overriding_reviewed(app):
         db.session.flush()
 
         duplicate_payloads = [
-            {"text": useful_chunk, "metadata": {"chunk_order": index}}
-            for index in range(3)
+            {"text": useful_chunk, "metadata": {"chunk_order": index}} for index in range(3)
         ]
         with patch(
             "app.services.knowledge_service.build_text_chunks",
@@ -739,12 +738,8 @@ def test_rag_retrieval_quality_gate_weights_lower_quality_statuses(
 
     score_by_title = {source["title"]: source["score"] for source in sources}
     assert "QG901 rejected" not in score_by_title
-    assert score_by_title["QG901 admin_approved"] == score_by_title[
-        "QG901 technician_confirmed"
-    ]
-    assert score_by_title["QG901 admin_approved"] > score_by_title[
-        "QG901 ai_suggested"
-    ]
+    assert score_by_title["QG901 admin_approved"] == score_by_title["QG901 technician_confirmed"]
+    assert score_by_title["QG901 admin_approved"] > score_by_title["QG901 ai_suggested"]
     assert score_by_title["QG901 ai_suggested"] > score_by_title["QG901 outdated"]
     assert score_by_title["QG901 outdated"] > score_by_title["QG901 draft"]
     assert score_by_title["QG901 draft"] > score_by_title["QG901 low_quality"]
@@ -761,9 +756,10 @@ def test_retrieval_quality_gate_exposes_problem_quality_statuses():
     assert duplicate_gate.allowed is True
     assert rejected_gate.allowed is False
     assert duplicate_gate.score_multiplier < low_quality_gate.score_multiplier
-    assert low_quality_gate.score_multiplier < retrieval_quality_gate_for_status(
-        "draft"
-    ).score_multiplier
+    assert (
+        low_quality_gate.score_multiplier
+        < retrieval_quality_gate_for_status("draft").score_multiplier
+    )
 
 
 def test_hybrid_rag_scoring_promotes_helpful_feedback(

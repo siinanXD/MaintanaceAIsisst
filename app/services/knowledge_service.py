@@ -915,9 +915,7 @@ def _rag_readiness(documents, indexed, errors, total_chunks):
 def _problem_knowledge_documents(documents, limit=10):
     """Return recent knowledge documents that need admin attention."""
     problem_statuses = {"error", "stale", "pending", "no_text"}
-    problem_documents = [
-        document for document in documents if document.status in problem_statuses
-    ]
+    problem_documents = [document for document in documents if document.status in problem_statuses]
     problem_documents.sort(key=lambda document: document.updated_at, reverse=True)
     return [
         {

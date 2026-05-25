@@ -129,8 +129,7 @@ def _score_conflicts(sources):
         {
             "type": "mixed_source_evidence",
             "reason": (
-                "Mehrere Quellentypen haben aehnliche Scores; "
-                "Antwort sollte Quellenlage nennen."
+                "Mehrere Quellentypen haben aehnliche Scores; " "Antwort sollte Quellenlage nennen."
             ),
             "key": {"source_types": sorted(source_types)},
             "signals": ["similar_scores", "mixed_source_types"],

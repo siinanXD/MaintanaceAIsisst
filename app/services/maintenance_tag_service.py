@@ -621,9 +621,7 @@ def _normalize_text(value):
 def _tokenize(text):
     """Return relevant tokens from normalized text."""
     return {
-        token
-        for token in str(text or "").split()
-        if len(token) >= 3 and token not in STOPWORDS
+        token for token in str(text or "").split() if len(token) >= 3 and token not in STOPWORDS
     }
 
 

@@ -59,11 +59,7 @@ class SourceTelemetry:
     @property
     def feedback_count(self):
         """Return total feedback count linked to this source."""
-        return (
-            self.helpful_feedback
-            + self.partially_helpful_feedback
-            + self.not_helpful_feedback
-        )
+        return self.helpful_feedback + self.partially_helpful_feedback + self.not_helpful_feedback
 
     @property
     def average_score(self):
@@ -577,10 +573,7 @@ def _negative_feedback_summary(feedback_entries, limit):
         "by_response_type": dict(
             Counter(str(item.response_type or "") for item in negative_feedback),
         ),
-        "latest": [
-            _feedback_reference(feedback)
-            for feedback in negative_feedback[:limit]
-        ],
+        "latest": [_feedback_reference(feedback) for feedback in negative_feedback[:limit]],
     }
 
 

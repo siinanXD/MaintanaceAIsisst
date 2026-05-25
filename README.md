@@ -76,7 +76,7 @@ checked-in UI state.
 | Database | SQLite for tests/dev, PostgreSQL + pgvector-ready Docker setup |
 | AI | OpenAI API with local rule-based fallback |
 | Frontend | Jinja2 templates, Tailwind CSS, vanilla JS |
-| Tests | pytest (228 tests, no external services required) |
+| Tests | pytest (417 tests, no external services required) |
 | CI | GitHub Actions — lint, compile, test, Docker build |
 
 Frontend convention: `app/static/app.js` is the small shell bootstrap for auth,

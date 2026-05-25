@@ -58,8 +58,10 @@ def _debug_item(chat):
     """Return one prompt-safe retrieval debug record."""
     diagnostics = chat.diagnostics()
     event = chat.audit_event
-    explainability = event.retrieval_explainability() if event else (
-        diagnostics.get("retrieval_explainability") or {}
+    explainability = (
+        event.retrieval_explainability()
+        if event
+        else (diagnostics.get("retrieval_explainability") or {})
     )
     query_understanding = explainability.get("query_understanding") or diagnostics.get(
         "query_understanding",
@@ -223,8 +225,7 @@ def _is_rag_chunk(source):
 def _reranking_summary(sources):
     """Return prompt-safe re-ranking diagnostics for retrieved sources."""
     ranked_sources = [
-        _flow_source(source, index)
-        for index, source in enumerate(sources or [], start=1)
+        _flow_source(source, index) for index, source in enumerate(sources or [], start=1)
     ][:8]
     reranked_count = sum(
         1

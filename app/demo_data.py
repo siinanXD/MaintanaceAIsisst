@@ -1566,9 +1566,7 @@ def _seed_machines():
         machine.criticality = criticality
         machine.status = status
         machine.last_downtime_at = (
-            datetime.now(UTC) - timedelta(days=downtime_days)
-            if downtime_days is not None
-            else None
+            datetime.now(UTC) - timedelta(days=downtime_days) if downtime_days is not None else None
         )
         machines[name] = machine
     db.session.flush()

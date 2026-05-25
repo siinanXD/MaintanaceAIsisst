@@ -46,10 +46,7 @@ class ShiftTemplate:
     @property
     def shift_times(self) -> dict[str, tuple[str, str]]:
         """Return shift time windows keyed by shift name."""
-        return {
-            shift.key: (shift.start_time, shift.end_time)
-            for shift in self.shifts
-        }
+        return {shift.key: (shift.start_time, shift.end_time) for shift in self.shifts}
 
     @property
     def rotation(self) -> tuple[str, ...]:

@@ -83,8 +83,7 @@ LIFECYCLE_STEP_DEFINITIONS = (
         "status": "available",
         "services": ["knowledge_service", "retrieval_service", "vector_store_service"],
         "notes": (
-            "RAG nutzt indexierte und sichtbare Quellen mit zentralem "
-            "Quality-Gate im Retrieval."
+            "RAG nutzt indexierte und sichtbare Quellen mit zentralem " "Quality-Gate im Retrieval."
         ),
     },
     {
@@ -93,8 +92,7 @@ LIFECYCLE_STEP_DEFINITIONS = (
         "status": "available",
         "services": ["ai_feedback_service", "ai_audit_service"],
         "notes": (
-            "AI-Antwortfeedback wird mit Frage, Antwort, Quellen und "
-            "Review-Status gespeichert."
+            "AI-Antwortfeedback wird mit Frage, Antwort, Quellen und " "Review-Status gespeichert."
         ),
     },
     {

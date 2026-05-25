@@ -56,9 +56,7 @@ class RetrievalDebugCounters:
 
     def to_dict(self):
         """Return a JSON-safe dictionary without prompts or source text."""
-        score_anchor_filtered = _safe_int(
-            self.score_anchor_filtered or self.score_filtered
-        )
+        score_anchor_filtered = _safe_int(self.score_anchor_filtered or self.score_filtered)
         return {
             "sql_candidates_found": _safe_int(self.sql_candidates_found),
             "keyword_candidates_found": _safe_int(self.keyword_candidates_found),
@@ -87,9 +85,7 @@ class RetrievalDebugCounters:
                 "sql": _safe_int(self.sql_candidates_found),
                 "keyword": _safe_int(self.keyword_candidates_found),
                 "vector": _safe_int(self.vector_candidates_found),
-                "sql_keyword_fallback": _safe_int(
-                    self.sql_keyword_fallback_candidates_found
-                ),
+                "sql_keyword_fallback": _safe_int(self.sql_keyword_fallback_candidates_found),
             },
             "filtered_by": {
                 "permissions": _safe_int(self.permission_filtered),
@@ -134,8 +130,8 @@ def merge_retrieval_debug(*items, **overrides):
         ):
             value = payload.get(field_name)
             if field_name == "sql_keyword_fallback_used":
-                counters.sql_keyword_fallback_used = (
-                    counters.sql_keyword_fallback_used or bool(value)
+                counters.sql_keyword_fallback_used = counters.sql_keyword_fallback_used or bool(
+                    value
                 )
                 continue
             if field_name == "sql_keyword_fallback_by_type" and isinstance(value, dict):
@@ -150,9 +146,7 @@ def merge_retrieval_debug(*items, **overrides):
                 )[:12]
                 continue
             if field_name == "decision_trace" and isinstance(value, list):
-                counters.decision_trace = _safe_decisions(
-                    [*counters.decision_trace, *value]
-                )
+                counters.decision_trace = _safe_decisions([*counters.decision_trace, *value])
                 continue
             if value not in (None, "", {}):
                 setattr(counters, field_name, value)

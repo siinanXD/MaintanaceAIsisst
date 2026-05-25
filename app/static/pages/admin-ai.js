@@ -927,7 +927,7 @@
     return classes[origin] || classes.automatic;
   }
 
-  function knowledgeQuelleCell(documentItem) {
+  function knowledgeSourceCell(documentItem) {
     const item = document.createElement("td");
     const origin = knowledgeOriginKind(documentItem);
     item.className = "knowledge-source-cell";
@@ -3203,7 +3203,7 @@
       row.setAttribute("data-knowledge-origin", knowledgeOriginKind(documentItem));
       row.append(
         cell(documentItem.title),
-        knowledgeQuelleCell(documentItem),
+        knowledgeSourceCell(documentItem),
         cell(documentItem.status),
         pillCell(
           qualityStatusLabel(documentItem.quality_status),

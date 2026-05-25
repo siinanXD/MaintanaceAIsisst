@@ -143,8 +143,10 @@ def _ai_log_row(chat):
     """Return one bounded AI log row."""
     diagnostics = chat.diagnostics()
     event = chat.audit_event
-    explainability = event.retrieval_explainability() if event else (
-        diagnostics.get("retrieval_explainability") or {}
+    explainability = (
+        event.retrieval_explainability()
+        if event
+        else (diagnostics.get("retrieval_explainability") or {})
     )
     sources = explainability.get("sources") if isinstance(explainability, dict) else []
     quality_warnings = diagnostics.get("quality_warnings") or []
@@ -234,15 +236,19 @@ def _request_analysis(chat):
     """Return one request analysis with retrieval, confidence, and safety signals."""
     diagnostics = chat.diagnostics()
     event = chat.audit_event
-    explainability = event.retrieval_explainability() if event else (
-        diagnostics.get("retrieval_explainability") or {}
+    explainability = (
+        event.retrieval_explainability()
+        if event
+        else (diagnostics.get("retrieval_explainability") or {})
     )
     context_builder = (
         explainability.get("context_builder") if isinstance(explainability, dict) else {}
     )
     query_understanding = (
-        explainability.get("query_understanding") if isinstance(explainability, dict) else {}
-    ) or diagnostics.get("query_understanding") or {}
+        (explainability.get("query_understanding") if isinstance(explainability, dict) else {})
+        or diagnostics.get("query_understanding")
+        or {}
+    )
     sources = explainability.get("sources") if isinstance(explainability, dict) else []
     return {
         "question": _bounded(chat.message, 500),
@@ -273,8 +279,10 @@ def _prompt_blueprint(chat):
     """Return a bounded prompt blueprint without raw chunk text."""
     diagnostics = chat.diagnostics()
     event = chat.audit_event
-    explainability = event.retrieval_explainability() if event else (
-        diagnostics.get("retrieval_explainability") or {}
+    explainability = (
+        event.retrieval_explainability()
+        if event
+        else (diagnostics.get("retrieval_explainability") or {})
     )
     context_builder = (
         explainability.get("context_builder") if isinstance(explainability, dict) else {}
@@ -448,9 +456,7 @@ def _source_hit_payload(row):
 def _score_summary(source_rows):
     """Return aggregate retrieval score metrics."""
     scores = [row["score"] for row in source_rows if row.get("score") is not None]
-    similarities = [
-        row["similarity"] for row in source_rows if row.get("similarity") is not None
-    ]
+    similarities = [row["similarity"] for row in source_rows if row.get("similarity") is not None]
     return {
         "source_count": len(source_rows),
         "average_score": _average(scores),
@@ -620,10 +626,7 @@ def _is_error_event(event):
 
 def _counter_rows(counter):
     """Return sorted counter rows."""
-    return [
-        {"key": key, "count": count}
-        for key, count in Counter(counter).most_common()
-    ]
+    return [{"key": key, "count": count} for key, count in Counter(counter).most_common()]
 
 
 def _normalized_question(message):

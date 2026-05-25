@@ -213,9 +213,7 @@ def assess_ai_safety(message, query_understanding=None, sources=None):
         if any(_normalized_text(keyword) in text for keyword in keywords)
     ]
     blocked_actions = [
-        keyword
-        for keyword in CRITICAL_KEYWORDS
-        if _normalized_text(keyword) in text
+        keyword for keyword in CRITICAL_KEYWORDS if _normalized_text(keyword) in text
     ]
     if query_understanding and getattr(query_understanding, "is_safety", False):
         if "query_understanding" not in categories:
@@ -505,11 +503,7 @@ def _has_dangerous_step_sequence(text):
 
 def _has_multiple_step_lines(text):
     """Return whether the text looks like a step-by-step instruction."""
-    step_lines = [
-        line
-        for line in str(text or "").splitlines()
-        if STEP_PREFIX_PATTERN.match(line)
-    ]
+    step_lines = [line for line in str(text or "").splitlines() if STEP_PREFIX_PATTERN.match(line)]
     return len(step_lines) >= 2
 
 

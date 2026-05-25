@@ -363,9 +363,7 @@ def test_ai_chat_blocks_hallucination_when_retrieval_is_empty(
     )
 
     payload = response.get_json()
-    warnings = {
-        warning["type"] for warning in payload["diagnostics"]["quality_warnings"]
-    }
+    warnings = {warning["type"] for warning in payload["diagnostics"]["quality_warnings"]}
     assert response.status_code == 200
     assert "Keine belastbare Quelle gefunden" in payload["answer"]
     assert "Gepruefte Datenquellen" in payload["answer"]
@@ -1768,10 +1766,7 @@ def test_ai_chat_admin_exposes_retrieval_debug_counters(
     assert debug["candidate_counts"]["sql"] == debug["sql_candidates_found"]
     assert debug["candidate_counts"]["vector"] == debug["vector_candidates_found"]
     assert debug["filtered_by"]["score_anchor"] == debug["score_anchor_filtered"]
-    assert any(
-        decision["step"] == "final_visible_sources"
-        for decision in debug["decision_trace"]
-    )
+    assert any(decision["step"] == "final_visible_sources" for decision in debug["decision_trace"])
     assert "DBG900" not in json.dumps(debug)
 
 
@@ -1869,10 +1864,7 @@ def test_ai_chat_retrieval_debug_counts_filtered_candidates(
     assert debug["filtered_by"]["permissions"] == debug["permission_filtered"]
     assert debug["filtered_by"]["quality"] == debug["quality_filtered"]
     assert debug["filtered_by"]["score_anchor"] == debug["score_anchor_filtered"]
-    assert any(
-        decision["step"] == "score_anchor_filter"
-        for decision in debug["decision_trace"]
-    )
+    assert any(decision["step"] == "score_anchor_filter" for decision in debug["decision_trace"])
     assert debug["final_visible_sources"] == len(response.get_json()["sources"])
 
 
@@ -1929,8 +1921,7 @@ def test_admin_training_crud_marks_knowledge_stale_and_deletes_document(
     assert create_response.status_code == 201
     assert create_response.get_json()["data"]["keywords"] == "Hydraulikfilter, X900, Filterpflege"
     assert (
-        create_response.get_json()["data"]["missing_information"]["status"]
-        == "needs_information"
+        create_response.get_json()["data"]["missing_information"]["status"] == "needs_information"
     )
     assert update_response.status_code == 200
     assert update_response.get_json()["data"]["priority"] == 90
@@ -2118,9 +2109,7 @@ def test_master_admin_can_update_knowledge_quality_status(
     assert rejected_response.get_json()["data"]["quality_status"] == "rejected"
     with app.app_context():
         assert db.session.get(KnowledgeDocument, document_id).quality_status == "admin_approved"
-        assert (
-            db.session.get(KnowledgeDocument, rejected_document_id).quality_status == "rejected"
-        )
+        assert db.session.get(KnowledgeDocument, rejected_document_id).quality_status == "rejected"
 
 
 def test_technician_quality_status_permissions_are_scoped(
@@ -2301,9 +2290,7 @@ def test_manual_training_rag_respects_active_state_and_department(
         "Z900" in source["title"] for source in department_response.get_json()["sources"]
     )
     assert not any("X900" in source["title"] for source in blocked_response.get_json()["sources"])
-    assert not any(
-        "X900" in source["title"] for source in no_scope_response.get_json()["sources"]
-    )
+    assert not any("X900" in source["title"] for source in no_scope_response.get_json()["sources"])
 
 
 def test_chat_templates_are_permission_aware(
@@ -2565,8 +2552,7 @@ def test_knowledge_lifecycle_status_covers_training_rag_feedback_flow(
             "title": "Lifecycle Filterpflege",
             "question": "Was ist bei Lifecycle Filterpflege wichtig?",
             "answer": (
-                "Lifecycle Filterpflege taeglich pruefen und Druckverlust "
-                "dokumentieren."
+                "Lifecycle Filterpflege taeglich pruefen und Druckverlust " "dokumentieren."
             ),
             "keywords": "Lifecycle, Filterpflege, Druckverlust",
             "department": "Produktion",
@@ -3343,13 +3329,13 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
     script = script_response.get_data(as_text=True)
     routes = {
         "/admin/ai": ("overview", "AI-Admin f&uuml;r Modelle, Retrieval, Wissen und Diagnose"),
-        "/admin/ai/models": ("models", "id=\"ai-models\""),
-        "/admin/ai/retrieval": ("retrieval", "id=\"ai-retrieval\""),
-        "/admin/ai/knowledge": ("knowledge", "id=\"ai-knowledge-sources\""),
-        "/admin/ai/training": ("training", "id=\"ai-training-data\""),
-        "/admin/ai/diagnostics": ("diagnostics", "id=\"ai-diagnostics\""),
-        "/admin/ai/feedback": ("feedback", "id=\"ai-feedback\""),
-        "/admin/ai/indexing": ("indexing", "id=\"ai-indexing-status\""),
+        "/admin/ai/models": ("models", 'id="ai-models"'),
+        "/admin/ai/retrieval": ("retrieval", 'id="ai-retrieval"'),
+        "/admin/ai/knowledge": ("knowledge", 'id="ai-knowledge-sources"'),
+        "/admin/ai/training": ("training", 'id="ai-training-data"'),
+        "/admin/ai/diagnostics": ("diagnostics", 'id="ai-diagnostics"'),
+        "/admin/ai/feedback": ("feedback", 'id="ai-feedback"'),
+        "/admin/ai/indexing": ("indexing", 'id="ai-indexing-status"'),
     }
     pages = {}
     for route, (view_name, marker) in routes.items():
@@ -3974,9 +3960,7 @@ def test_search_results_include_ui_links_for_core_entities(
         headers=auth_headers(user["username"]),
     )
 
-    results_by_type = {
-        result["type"]: result for result in response.get_json()["results"]
-    }
+    results_by_type = {result["type"]: result for result in response.get_json()["results"]}
     assert response.status_code == 200
     assert results_by_type["task"]["entity_id"] == task_id
     assert results_by_type["task"]["ui_url"].startswith("/tasks?search=")

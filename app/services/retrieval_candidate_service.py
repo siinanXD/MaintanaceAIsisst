@@ -99,9 +99,7 @@ def structured_candidate_score(
     scope_priority_bonus = STRUCTURED_SCOPE_PRIORITY.get(str(permission_scope or ""), 4.0)
     raw_score = len(overlap) * 20 + requested_bonus + scope_priority_bonus
     allowed = raw_score > 0 or permission_scope in requested_scope_set
-    reason = (
-        f"{len(overlap)} gemeinsame Begriffe" if overlap else "Aktueller sichtbarer Kontext"
-    )
+    reason = f"{len(overlap)} gemeinsame Begriffe" if overlap else "Aktueller sichtbarer Kontext"
     return StructuredCandidateScore(
         raw_score=max(raw_score, 5) - (index * 0.01),
         explanation=reason,

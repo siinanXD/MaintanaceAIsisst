@@ -274,9 +274,7 @@ def _previous_solution(messages):
 def _solution_summary(response):
     """Return one bounded answer line useful for reference resolution."""
     lines = [
-        _clean_markdown(line)
-        for line in str(response or "").splitlines()
-        if _clean_markdown(line)
+        _clean_markdown(line) for line in str(response or "").splitlines() if _clean_markdown(line)
     ]
     for line in lines:
         if SOLUTION_LABEL_PATTERN.search(line) or _has_solution_label(line):

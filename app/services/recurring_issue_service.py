@@ -120,8 +120,10 @@ def _entry_similarity(left, right):
         score += 35
     elif left_machine and right_machine and left_machine == right_machine:
         score += 35
-    elif left_machine and right_machine and (
-        left_machine in right_machine or right_machine in left_machine
+    elif (
+        left_machine
+        and right_machine
+        and (left_machine in right_machine or right_machine in left_machine)
     ):
         score += 20
 

@@ -299,8 +299,7 @@ def _retrieval_strategy(query_type, is_safety):
         "prompt_rules": _prompt_rules(query_type, is_safety),
         "prefer_structured": query_type
         in {QUERY_MACHINE, QUERY_INVENTORY, QUERY_TASK, QUERY_TREND_HISTORY},
-        "prefer_confirmed": query_type
-        in {QUERY_ERROR_ANALYSIS, QUERY_SAFETY, QUERY_DOCUMENT},
+        "prefer_confirmed": query_type in {QUERY_ERROR_ANALYSIS, QUERY_SAFETY, QUERY_DOCUMENT},
     }
 
 

@@ -100,8 +100,7 @@ def test_error_task_and_training_routes_return_tag_suggestions(
             "title": "Sensorik Fehler E104",
             "question": "Wie wird ein Sensorfehler E104 behoben?",
             "answer": (
-                "Sensor reinigen, Kabel messen, Abstand einstellen und "
-                "Probelauf dokumentieren."
+                "Sensor reinigen, Kabel messen, Abstand einstellen und " "Probelauf dokumentieren."
             ),
             "keywords": "Sensor, Kabel, Probelauf",
             "category": "stoerung",

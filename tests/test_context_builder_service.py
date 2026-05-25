@@ -47,9 +47,7 @@ def test_context_builder_does_not_cut_inside_words():
     payload = build_dynamic_context(
         "Hydraulikdruck",
         {
-            "structured_context": (
-                "Kurzer Start HydraulikdruckmesspunktAlphaBetaGamma beendet"
-            ),
+            "structured_context": ("Kurzer Start HydraulikdruckmesspunktAlphaBetaGamma beendet"),
             "vector_context": "",
             "sources": [{"type": "task", "id": 1}],
             "knowledge_sources": [],

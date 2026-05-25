@@ -262,9 +262,7 @@ def update_task(task, data, user):
     try:
         if old_status != task.status:
             event_type = "task.status_changed"
-            description = (
-                f"Task-Status geaendert: {old_status.value} -> {task.status.value}"
-            )
+            description = f"Task-Status geaendert: {old_status.value} -> {task.status.value}"
         elif old_priority != task.priority:
             event_type = "task.priority_changed"
             description = (
@@ -308,8 +306,7 @@ def update_task(task, data, user):
                 old_value=old_priority.value,
                 new_value=task.priority.value,
                 description=(
-                    "Task-Prioritaet geaendert: "
-                    f"{old_priority.value} -> {task.priority.value}"
+                    "Task-Prioritaet geaendert: " f"{old_priority.value} -> {task.priority.value}"
                 ),
             )
         mark_task_knowledge_stale(task)

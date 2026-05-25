@@ -36,11 +36,7 @@ def explainability_from_metadata(metadata, final_score=0):
     score_debug = metadata.get("score_debug") or {}
     components = _mapping(metadata.get("score_components") or score_debug.get("components"))
     signals = _mapping(metadata.get("score_signals") or score_debug.get("signals"))
-    quality_status = (
-        metadata.get("quality_status")
-        or signals.get("quality_status")
-        or ""
-    )
+    quality_status = metadata.get("quality_status") or signals.get("quality_status") or ""
     return {
         "semantic_similarity": _rounded_float(signals.get("semantic_similarity"), 4),
         "lexical_score": _rounded_float(components.get("lexical"), 2),
@@ -77,13 +73,8 @@ def explainability_from_source(source):
 def retrieval_explainability_summary(sources):
     """Return a prompt-free retrieval explainability summary for diagnostics and audit."""
     safe_sources = [source for source in sources or [] if isinstance(source, dict)]
-    explained_sources = [
-        source for source in safe_sources if source.get("explainability")
-    ]
-    explainability_items = [
-        explainability_from_source(source)
-        for source in explained_sources
-    ]
+    explained_sources = [source for source in safe_sources if source.get("explainability")]
+    explainability_items = [explainability_from_source(source) for source in explained_sources]
     return {
         "source_count": len(safe_sources),
         "explained_source_count": len(explained_sources),
@@ -99,8 +90,7 @@ def retrieval_explainability_summary(sources):
             1 for item in explainability_items if item.get("recency_influence", 0) > 0
         ),
         "sources": [
-            _audit_source_explainability(source)
-            for source in explained_sources[:MAX_AUDIT_SOURCES]
+            _audit_source_explainability(source) for source in explained_sources[:MAX_AUDIT_SOURCES]
         ],
     }
 
@@ -376,8 +366,7 @@ def _sanitize_knowledge_links(value):
     return {
         "links": links,
         "source_document_ids": [
-            _optional_int(item)
-            for item in _list_value(value.get("source_document_ids"))[:12]
+            _optional_int(item) for item in _list_value(value.get("source_document_ids"))[:12]
         ],
     }
 

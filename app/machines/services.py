@@ -72,12 +72,8 @@ def build_machine_profile(machine, user):
         maintenance_plans,
         handovers,
     )
-    active_errors = [
-        error for error in errors if error["status"] in ACTIVE_ERROR_STATUSES
-    ]
-    open_tasks = [
-        task for task in tasks if task["status"] not in COMPLETED_TASK_STATUSES
-    ]
+    active_errors = [error for error in errors if error["status"] in ACTIVE_ERROR_STATUSES]
+    open_tasks = [task for task in tasks if task["status"] not in COMPLETED_TASK_STATUSES]
     return {
         "machine": machine.to_dict(),
         "permissions": _machine_profile_permissions(user),
@@ -251,8 +247,7 @@ def _machine_profile_permissions(user):
     """Return section-level visibility used by the machine profile UI."""
     dashboards = ("tasks", "errors", "documents", "shiftplans", "inventory")
     return {
-        dashboard: has_dashboard_permission(user, dashboard, "view")
-        for dashboard in dashboards
+        dashboard: has_dashboard_permission(user, dashboard, "view") for dashboard in dashboards
     }
 
 
@@ -446,9 +441,7 @@ def _machine_profile_kpis(
 ):
     """Return headline KPIs for the machine profile."""
     critical_errors = [
-        error
-        for error in active_errors
-        if error.get("severity") in {"critical", "high"}
+        error for error in active_errors if error.get("severity") in {"critical", "high"}
     ]
     due_maintenance = [plan for plan in maintenance_plans if plan.get("is_due")]
     low_stock = [

@@ -76,9 +76,7 @@ def manual_move_rule_error(entry, plan, target_date, target_shift, target_machin
         "start_time": start_time,
         "end_time": end_time,
     }
-    existing_entries = [
-        plan_entry for plan_entry in plan.entries if plan_entry.id != entry.id
-    ]
+    existing_entries = [plan_entry for plan_entry in plan.entries if plan_entry.id != entry.id]
     qualification_map = qualification_map_for(
         [entry.employee],
         [target_machine] if target_machine else [],

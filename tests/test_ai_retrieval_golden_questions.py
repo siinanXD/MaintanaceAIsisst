@@ -349,6 +349,7 @@ def _seed_golden_sources(user):
         "foreign_doc": foreign_doc.id,
     }
 
+
 def _error_entry(
     machine,
     code,
@@ -424,10 +425,7 @@ def _knowledge_document(
 
 def _source_keys(sources):
     """Return stable type/id pairs from API source payloads."""
-    return {
-        (str(source.get("type") or ""), str(source.get("id") or ""))
-        for source in sources
-    }
+    return {(str(source.get("type") or ""), str(source.get("id") or "")) for source in sources}
 
 
 def _source_types(sources):
@@ -443,9 +441,7 @@ def _evaluate_golden_question(case, sources):
     allowed_types = allowed_source_types(case)
     expected_hits = [key for key in ranked_keys if key in expected_sources]
     forbidden_hits = [key for key in ranked_keys if key in forbidden_sources]
-    disallowed_type_hits = [
-        key for key in ranked_keys if key[0] and key[0] not in allowed_types
-    ]
+    disallowed_type_hits = [key for key in ranked_keys if key[0] and key[0] not in allowed_types]
     return {
         "question": case.question,
         "expected_count": len(expected_sources),
@@ -466,9 +462,7 @@ def _golden_metrics(evaluations):
         "recall_at_k": _average_metric(metric_items, "recall_at_k"),
         "mrr": _average_metric(metric_items, "mrr"),
         "no_result_count": sum(1 for item in evaluations if item["no_result"]),
-        "forbidden_source_count": sum(
-            item["forbidden_source_count"] for item in evaluations
-        ),
+        "forbidden_source_count": sum(item["forbidden_source_count"] for item in evaluations),
     }
 
 

@@ -186,9 +186,8 @@ class SqlAlchemyKnowledgeVectorStore(BaseVectorStore):
             query_vector=query_vector,
             embedding_provider=self.embedding_provider,
         )
-        base_query = (
-            KnowledgeChunk.query.join(KnowledgeDocument)
-            .filter(KnowledgeDocument.status == "indexed")
+        base_query = KnowledgeChunk.query.join(KnowledgeDocument).filter(
+            KnowledgeDocument.status == "indexed"
         )
         base_query = _apply_db_filters(base_query, filters)
         keyword_chunks, recent_chunks = _candidate_chunk_sets(
@@ -469,9 +468,7 @@ def _knowledge_metadata(document, chunk, score=None):
         metadata["score_signals"] = score_metadata["signals"]
         metadata["quality_status"] = score_metadata["signals"].get("quality_status")
         metadata["quality_gate"] = score_metadata["signals"].get("quality_gate")
-        metadata["quality_score_multiplier"] = score_metadata["signals"].get(
-            "quality_multiplier"
-        )
+        metadata["quality_score_multiplier"] = score_metadata["signals"].get("quality_multiplier")
     metadata.update(_public_source_entity_metadata(document_entity_metadata(document)))
     metadata.update(stored_chunk_metadata(chunk))
     return metadata
@@ -602,11 +599,7 @@ def _keyword_candidate_chunks(base_query, query_tokens, keyword_limit):
 
 def _informative_query_terms(query_tokens):
     """Return bounded query tokens useful for lexical candidate expansion."""
-    terms = [
-        str(token).lower()
-        for token in query_tokens
-        if _is_informative_query_token(token)
-    ]
+    terms = [str(token).lower() for token in query_tokens if _is_informative_query_token(token)]
     terms.sort(key=lambda token: (not _looks_like_code_token(token), -len(token), token))
     return terms[:DEFAULT_RAG_MAX_KEYWORD_TERMS]
 
