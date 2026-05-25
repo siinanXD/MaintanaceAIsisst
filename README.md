@@ -4,7 +4,31 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![Docker](https://img.shields.io/badge/docker-ready-2496ED?logo=docker&logoColor=white)](./Dockerfile)
 
-A modular Flask application for industrial maintenance teams. Manages tasks, error catalogs, employees, machines, inventory, and shift plans — with an optional OpenAI integration that falls back to local rules when no API key is configured.
+A full-stack AI SaaS demo for industrial maintenance teams. The app connects
+tasks, fault catalogs, machines, shift planning, documents, inventory and
+AI-assisted knowledge retrieval in one role-aware operations cockpit.
+
+## Why this project matters
+
+Maintenance teams lose time when tasks, machine history, shift context and
+manuals live in separate tools. This project demonstrates how a production
+maintenance assistant can combine operational workflows with an auditable AI/RAG
+layer: the assistant answers with sources, falls back to local rules without an
+API key, and keeps sensitive employee or admin data behind permissions.
+
+## Portfolio highlights
+
+- **Full-stack product surface:** Flask app factory, SQLAlchemy domain models,
+  Jinja/Tailwind UI, vanilla JS page modules and Docker deployment.
+- **SaaS-grade access control:** JWT authentication, role-based navigation,
+  per-dashboard permissions and audit logs for critical admin actions.
+- **AI-readiness without lock-in:** OpenAI provider integration, deterministic
+  local fallback, RAG indexing, source visibility policies and retrieval
+  diagnostics.
+- **Operational workflows:** tasks, errors, machines, documents, inventory,
+  shift planning, handover, vacations, notifications and backups.
+- **Quality baseline:** 417 passing tests with 83.58% coverage on the current
+  local baseline, plus Ruff, compile checks, OpenAPI docs and CI workflow.
 
 ## Screenshots
 
@@ -26,7 +50,7 @@ checked-in UI state.
 - Per-dashboard read/write permissions configurable by admins
 - Security audit log for user, permission, backup, restore, and shift plan changes
 - SMTP email notifications with dry-run mode and delivery dedupe
-- Employee data access tiers: none · basic · shift · confidential
+- Employee data access tiers: none / basic / shift / confidential
 
 **Tasks & Errors**
 - Department-scoped task and error catalog management
@@ -77,13 +101,12 @@ checked-in UI state.
 | AI | OpenAI API with local rule-based fallback |
 | Frontend | Jinja2 templates, Tailwind CSS, vanilla JS |
 | Tests | pytest (417 tests, no external services required) |
-| CI | GitHub Actions — lint, compile, test, Docker build |
+| CI | GitHub Actions: lint, compile, test, Docker build |
 
-Frontend convention: `app/static/app.js` is the small shell bootstrap for auth,
-feedback, toasts, live regions and route-module loading. Feature behavior lives
-in `app/static/pages/workflows.js` or route-specific modules such as
-`login.js`, `admin-ai.js`, `handover.js` and `shiftplans.js`; templates should
-not carry large inline scripts.
+Frontend convention: `app/static/app.js` is the shell bootstrap for auth,
+feedback, toasts, live regions and route-module loading. Route behavior lives in
+focused page modules such as `login.js`, `admin-ai.js`, `handover.js`,
+`shiftplans.js` and the workflow loader; templates avoid large inline scripts.
 
 ## Getting Started
 
@@ -381,12 +404,14 @@ See [`docs/API_PROTOCOL.md`](docs/API_PROTOCOL.md) for the full endpoint referen
 ## Running Tests
 
 ```bash
-pytest                    # run all tests
-pytest tests/test_auth.py # single file
-pytest -q --tb=short      # compact output
+python -m ruff check .
+python -m ruff format --check .
+python -m compileall app migrations tests seed_demo.py seed.py run.py
+python -m pytest tests --cov=app --cov-report=term-missing --cov-fail-under=75
 ```
 
-Tests use an in-memory SQLite database and a mock AI provider — no `.env` or external services required.
+Tests use an in-memory SQLite database and a mock AI provider. No `.env` or
+external services are required for the standard test suite.
 
 ## License
 
