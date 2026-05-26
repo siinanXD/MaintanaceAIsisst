@@ -1,0 +1,149 @@
+  .ai-action-grid {
+    align-items: stretch;
+  }
+
+  .quick-action-row,
+  .ai-action-card {
+    align-content: center;
+  }
+
+  .list-toolbar {
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius);
+    background: var(--ui-surface-soft);
+    padding: 0.75rem;
+  }
+
+  .compact-search-field {
+    min-width: min(100%, 18rem);
+    max-width: none;
+  }
+
+  .form-actions .panel-meta,
+  .form-message {
+    min-height: 1.5rem;
+    border-radius: var(--ui-radius-sm);
+    padding: 0.25rem 0.1rem;
+    font-weight: 780;
+  }
+
+  .form-actions .panel-meta.is-success,
+  .form-message.is-success {
+    color: var(--ui-green);
+  }
+
+  .form-actions .panel-meta.is-error,
+  .form-message.is-error {
+    color: var(--ui-red);
+  }
+
+  .employee-card-grid .resource-card,
+  .resource-card {
+    border-left: 4px solid var(--ui-primary);
+    border-radius: var(--ui-radius);
+  }
+
+  .employee-card-grid .resource-card:nth-child(3n + 1) {
+    border-left-color: var(--ui-teal);
+  }
+
+  .employee-card-grid .resource-card:nth-child(3n + 2) {
+    border-left-color: var(--ui-amber);
+  }
+
+  .resource-actions,
+  .resource-card .table-actions {
+    margin-top: auto;
+    border-top: 1px solid #e6eef6;
+    padding-top: 0.75rem;
+  }
+
+  .resource-upload {
+    border-radius: var(--ui-radius-sm);
+  }
+
+  .inventory-card-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .inventory-card {
+    min-height: 14rem;
+  }
+
+  .inventory-card.is-low-stock {
+    border-color: rgba(201, 119, 8, 0.32);
+    border-left-color: var(--ui-amber);
+    background:
+      linear-gradient(180deg, rgba(255, 248, 235, 0.75), rgba(255, 255, 255, 0.98)),
+      var(--ui-surface);
+  }
+
+  .inventory-card-meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .record-card-actions .btn,
+  .resource-actions .btn,
+  .resource-card .table-actions .btn {
+    white-space: nowrap;
+  }
+
+  .task-board-shell,
+  .incident-catalog-shell,
+  .handover-list-shell,
+  .vacation-history-panel,
+  .vacation-summary-panel,
+  .vacation-impact-panel {
+    overflow: hidden;
+  }
+
+  @media (max-width: 1180px) {
+    .inventory-card-grid,
+    .employee-card-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 760px) {
+    .app-main {
+      padding-inline: 0.85rem;
+    }
+
+    .surface-stat-grid.ux-ops-summary-grid,
+    .inventory-card-grid,
+    .employee-card-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .list-toolbar {
+      padding: 0.65rem;
+    }
+
+    .bounded-list-scroll {
+      max-height: none;
+      overflow: visible;
+      padding-right: 0;
+    }
+
+    .record-card-header,
+    .record-card-actions,
+    .resource-card-header,
+    .resource-actions,
+    .resource-card .table-actions {
+      display: grid;
+      justify-content: stretch;
+    }
+
+    .record-card-actions .btn,
+    .resource-actions .btn,
+    .resource-card .table-actions .btn {
+      width: 100%;
+    }
+
+    .inventory-card-meta,
+    .record-card-meta {
+      grid-template-columns: 1fr;
+    }
+  }
+}
+

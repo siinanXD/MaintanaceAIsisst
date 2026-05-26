@@ -473,7 +473,7 @@ def test_task_suggestion_includes_rag_sources_after_reindex(
 def test_task_page_contains_priority_ui(client):
     """Verify task prioritization is exposed on the task page."""
     response = client.get("/tasks")
-    script_response = client.get("/static/pages/workflows.js")
+    script_response = client.get("/static/pages/workflows/tasks.js")
     html = response.get_data(as_text=True)
     script = script_response.get_data(as_text=True)
 

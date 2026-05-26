@@ -45,33 +45,84 @@ def frontend_source_text():
     return "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
 
 
+DASHBOARD_SPLIT_ASSETS = (
+    "/static/pages/workflows/dashboard/state.js",
+    "/static/pages/workflows/dashboard/resources.js",
+    "/static/pages/workflows/dashboard/executive.js",
+    "/static/pages/workflows/dashboard/tasks.js",
+    "/static/pages/workflows/dashboard/operations.js",
+    "/static/pages/workflows/dashboard/shift-calendar.js",
+    "/static/pages/workflows/dashboard/actions.js",
+)
+
+
+SHIFTPLAN_SPLIT_ASSETS = (
+    "/static/pages/shiftplans/shared.js",
+    "/static/pages/shiftplans/models.js",
+    "/static/pages/shiftplans/plans.js",
+    "/static/pages/shiftplans/grid.js",
+    "/static/pages/shiftplans/validation.js",
+    "/static/pages/shiftplans/actions.js",
+)
+
+
+def served_asset_text(client, paths):
+    """Return combined text for served static asset paths."""
+    return "\n".join(client.get(path).get_data(as_text=True) for path in paths)
+
+
+def shiftplans_runtime_text(client):
+    """Return the shift planning entrypoint and split module source."""
+    return served_asset_text(client, ("/static/pages/shiftplans.js", *SHIFTPLAN_SPLIT_ASSETS))
+
+
 def frontend_runtime_text(client):
     """Return JavaScript served by the core and lazy frontend entrypoints."""
     asset_paths = (
         "/static/app.js",
         "/static/chat-loader.js",
         "/static/chat.js",
+        "/static/chat/session.js",
+        "/static/chat/evidence.js",
+        "/static/chat/rendering.js",
+        "/static/chat/history.js",
+        "/static/chat/actions.js",
         "/static/pages/workflows.js",
         "/static/pages/login.js",
         "/static/pages/admin-ai.js",
+        "/static/pages/admin-ai/shared.js",
+        "/static/pages/admin-ai/overview.js",
+        "/static/pages/admin-ai/knowledge.js",
+        "/static/pages/admin-ai/retrieval.js",
+        "/static/pages/admin-ai/observability.js",
+        "/static/pages/admin-ai/operations.js",
+        "/static/pages/admin-ai/actions.js",
         "/static/pages/handover.js",
         "/static/pages/shiftplans.js",
+        "/static/pages/workflows/shared.js",
+        "/static/pages/workflows/dashboard-shifts.js",
+        "/static/pages/workflows/dashboard.js",
+        *DASHBOARD_SPLIT_ASSETS,
+        "/static/pages/workflows/tasks.js",
+        "/static/pages/workflows/errors.js",
+        "/static/pages/workflows/machines.js",
+        "/static/pages/workflows/machine-profile.js",
+        "/static/pages/workflows/documents.js",
+        "/static/pages/workflows/admin-users.js",
+        "/static/pages/workflows/employees.js",
+        "/static/pages/workflows/vacations.js",
+        "/static/pages/workflows/inventory.js",
+        "/static/pages/workflows/legacy-shiftplans.js",
+        *SHIFTPLAN_SPLIT_ASSETS,
     )
-    return "\n".join(client.get(path).get_data(as_text=True) for path in asset_paths)
+    return served_asset_text(client, asset_paths)
 
 
 def task_workflow_source():
     """Return the task workflow initializer source."""
-    workflows = (REPO_ROOT / "app" / "static" / "pages" / "workflows.js").read_text(
+    return (REPO_ROOT / "app" / "static" / "pages" / "workflows" / "tasks.js").read_text(
         encoding="utf-8",
     )
-    match = re.search(
-        r"async function initAufgaben\(\) \{(?P<body>.*?)\n  async function initErrors",
-        workflows,
-        re.DOTALL,
-    )
-    assert match is not None
-    return match.group("body")
 
 
 def frontend_ui_source_files():
@@ -206,7 +257,7 @@ def test_feature_registry_covers_permissions_and_frontend_assets(client):
     registry = registry_response.get_data(as_text=True)
     auth_js = auth_response.get_data(as_text=True)
     app_js = app_js_response.get_data(as_text=True)
-    workflows = workflows_response.get_data(as_text=True)
+    workflows = frontend_runtime_text(client)
     html = base_response.get_data(as_text=True)
 
     assert registry_response.status_code == 200
@@ -275,6 +326,7 @@ def test_loaded_static_assets_exist(client):
     expected_assets = (
         "/static/css/output.css",
         "/static/core/feature-registry.js",
+        "/static/core/action-dialogs.js",
         "/static/core/api-client.js",
         "/static/auth.js",
         "/static/app.js",
@@ -287,11 +339,38 @@ def test_loaded_static_assets_exist(client):
 
     for lazy_asset in (
         "/static/chat.js",
+        "/static/chat/session.js",
+        "/static/chat/evidence.js",
+        "/static/chat/rendering.js",
+        "/static/chat/history.js",
+        "/static/chat/actions.js",
         "/static/pages/workflows.js",
+        "/static/pages/workflows/shared.js",
+        "/static/pages/workflows/dashboard-shifts.js",
+        "/static/pages/workflows/dashboard.js",
+        *DASHBOARD_SPLIT_ASSETS,
+        "/static/pages/workflows/tasks.js",
+        "/static/pages/workflows/errors.js",
+        "/static/pages/workflows/machines.js",
+        "/static/pages/workflows/machine-profile.js",
+        "/static/pages/workflows/documents.js",
+        "/static/pages/workflows/admin-users.js",
+        "/static/pages/workflows/employees.js",
+        "/static/pages/workflows/vacations.js",
+        "/static/pages/workflows/inventory.js",
+        "/static/pages/workflows/legacy-shiftplans.js",
         "/static/pages/login.js",
         "/static/pages/admin-ai.js",
+        "/static/pages/admin-ai/shared.js",
+        "/static/pages/admin-ai/overview.js",
+        "/static/pages/admin-ai/knowledge.js",
+        "/static/pages/admin-ai/retrieval.js",
+        "/static/pages/admin-ai/observability.js",
+        "/static/pages/admin-ai/operations.js",
+        "/static/pages/admin-ai/actions.js",
         "/static/pages/handover.js",
         "/static/pages/shiftplans.js",
+        *SHIFTPLAN_SPLIT_ASSETS,
     ):
         assert client.get(lazy_asset).status_code == 200
 
@@ -400,7 +479,7 @@ def test_shiftplans_page_prerenders_shift_model_options(client):
 
 def test_shiftplans_script_uses_selected_option_as_model_fallback(client):
     """Verify selected model lookup does not depend only on async cache state."""
-    script = client.get("/static/pages/shiftplans.js").get_data(as_text=True)
+    script = shiftplans_runtime_text(client)
 
     assert "if (!shiftModels.length) shiftModels = readShiftModelsFromSelect();" in script
     assert "selectedOption.dataset.displayName" in script
@@ -409,7 +488,7 @@ def test_shiftplans_script_uses_selected_option_as_model_fallback(client):
 
 def test_shiftplans_script_renders_generated_plan_before_list_refresh(client):
     """Verify a generated draft remains visible even if list reload is stale."""
-    script = client.get("/static/pages/shiftplans.js").get_data(as_text=True)
+    script = shiftplans_runtime_text(client)
 
     assert "async function loadPlans(selectId, fallbackPlan)" in script
     assert "allPlans.unshift(fallbackPlan)" in script

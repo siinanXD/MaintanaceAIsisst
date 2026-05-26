@@ -1,0 +1,55 @@
+    {% if ai_admin_view == 'training' %}
+    <section class="panel admin-training-panel" id="ai-training-data" data-ai-admin-area="training">
+      <div class="panel-header">
+        <div>
+          <span class="section-kicker">4. Trainingsdaten</span>
+          <h3>Manuelles Wissen gezielt pflegen</h3>
+          <p class="panel-meta">Freigegebene Trainingseintr&auml;ge erg&auml;nzen die strukturierten Quellen, umgehen aber keine Berechtigungen oder Qualitätsprüfungen.</p>
+        </div>
+        <div class="admin-filterbar">
+          <input class="input input-bordered" data-ai-training-search placeholder="Training durchsuchen">
+          <select class="input input-bordered" data-ai-training-active aria-label="Training nach Status filtern">
+            <option value="">Alle Trainings</option>
+            <option value="true">Nur aktiv</option>
+            <option value="false">Nur inaktiv</option>
+          </select>
+        </div>
+      </div>
+      <div class="admin-training-workflow">
+        <aside class="admin-training-list" data-ai-training aria-label="Trainingseintr&auml;ge"></aside>
+        <form class="admin-training-editor" data-ai-training-form>
+          <input type="hidden" name="id">
+          <div class="training-editor-header">
+            <div>
+              <span class="section-kicker">Editor</span>
+              <h4 data-ai-training-editor-title>Neuer Trainingseintrag</h4>
+            </div>
+            <span class="status-pill is-stale" data-ai-training-editor-status>Nach dem Speichern neu indexieren</span>
+          </div>
+          <div class="training-status-strip">
+            <label class="inline-form training-active-toggle">
+              <span>Aktiv</span>
+              <input name="is_active" type="checkbox" checked>
+            </label>
+            <label class="inline-form training-priority-field">
+              <span>Priorit&auml;t</span>
+              <input class="input input-bordered" name="priority" type="number" min="0" max="100" value="50">
+            </label>
+          </div>
+          <div class="content-grid two-columns">
+            <input class="input input-bordered" name="title" maxlength="220" placeholder="Titel">
+            <input class="input input-bordered" name="category" maxlength="80" placeholder="Kategorie, z. B. Wartung">
+            <input class="input input-bordered" name="department" maxlength="120" placeholder="Abteilung optional">
+            <input class="input input-bordered" name="keywords" maxlength="1000" placeholder="Keywords, Synonyme, Fehlercodes">
+          </div>
+          <textarea class="input input-bordered" name="question" maxlength="1000" rows="3" placeholder="Typische Frage oder Situation"></textarea>
+          <textarea class="input input-bordered" name="answer" maxlength="6000" rows="6" placeholder="Freigegebene Antwort, Regel oder Wartungshinweis"></textarea>
+          <p class="panel-meta">Aktuelle strukturierte Daten bleiben f&uuml;hrend; Training erg&auml;nzt nur freigegebenes Erfahrungswissen.</p>
+          <div class="toolbar training-editor-actions">
+            <button class="btn btn-primary" type="submit">Training speichern</button>
+            <button class="btn btn-ghost" type="button" data-ai-training-reset>Neu</button>
+          </div>
+        </form>
+      </div>
+    </section>
+    {% endif %}

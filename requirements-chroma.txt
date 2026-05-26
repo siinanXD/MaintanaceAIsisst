@@ -1,0 +1,7 @@
+# Optional Chroma vector-store backend.
+#
+# The application defaults to the local SQLAlchemy knowledge store and does not
+# need Chroma for normal development or tests. On Windows, chroma-hnswlib may
+# require Microsoft C++ Build Tools when no compatible wheel is available.
+-r requirements.txt
+chromadb>=0.5.20,<0.6.0

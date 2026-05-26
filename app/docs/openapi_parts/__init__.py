@@ -1,0 +1,1 @@
+"""Split OpenAPI specification fragments."""

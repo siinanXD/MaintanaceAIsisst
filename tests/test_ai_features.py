@@ -3227,16 +3227,18 @@ def test_daily_briefing_returns_no_sections_without_permissions(
 def test_dashboard_contains_daily_briefing_and_priority_ui(client):
     """Verify dashboard exposes briefing and task priority UI hooks."""
     response = client.get("/")
-    script_response = client.get("/static/pages/workflows.js")
+    script_response = client.get("/static/pages/workflows/dashboard.js")
+    shared_response = client.get("/static/pages/workflows/shared.js")
     chat_response = client.get("/static/chat.js")
     css_response = client.get("/static/css/output.css")
     html = response.get_data(as_text=True)
-    script = script_response.get_data(as_text=True)
-    chat_script = chat_response.get_data(as_text=True)
+    script = dashboard_runtime_source(client)
+    chat_script = chat_runtime_source(client)
     css = css_response.get_data(as_text=True)
 
     assert response.status_code == 200
     assert script_response.status_code == 200
+    assert shared_response.status_code == 200
     assert chat_response.status_code == 200
     assert css_response.status_code == 200
     assert "data-daily-briefing-list" in html
@@ -3302,7 +3304,7 @@ def test_dashboard_contains_daily_briefing_and_priority_ui(client):
 def test_admin_users_page_contains_ai_analytics_ui(client):
     """Verify Admin Users exposes AI analytics UI hooks."""
     page_response = client.get("/admin/users")
-    script_response = client.get("/static/pages/workflows.js")
+    script_response = client.get("/static/pages/workflows/admin-users.js")
     html = page_response.get_data(as_text=True)
     script = script_response.get_data(as_text=True)
 
@@ -3323,10 +3325,54 @@ def test_admin_users_page_contains_ai_analytics_ui(client):
     assert "/api/v1/admin/permissions/schema" in script
 
 
+def chat_runtime_source(client):
+    """Return the chat entrypoint and split module source."""
+    asset_paths = (
+        "/static/chat.js",
+        "/static/chat/session.js",
+        "/static/chat/evidence.js",
+        "/static/chat/rendering.js",
+        "/static/chat/history.js",
+        "/static/chat/actions.js",
+    )
+    return "\n".join(client.get(path).get_data(as_text=True) for path in asset_paths)
+
+
+def dashboard_runtime_source(client):
+    """Return the dashboard entrypoint and split module source."""
+    asset_paths = (
+        "/static/pages/workflows/dashboard.js",
+        "/static/pages/workflows/shared.js",
+        "/static/pages/workflows/dashboard/state.js",
+        "/static/pages/workflows/dashboard/resources.js",
+        "/static/pages/workflows/dashboard/executive.js",
+        "/static/pages/workflows/dashboard/tasks.js",
+        "/static/pages/workflows/dashboard/operations.js",
+        "/static/pages/workflows/dashboard/shift-calendar.js",
+        "/static/pages/workflows/dashboard/actions.js",
+    )
+    return "\n".join(client.get(path).get_data(as_text=True) for path in asset_paths)
+
+
+def admin_ai_runtime_source(client):
+    """Return the AI admin entrypoint and split module source."""
+    asset_paths = (
+        "/static/pages/admin-ai.js",
+        "/static/pages/admin-ai/shared.js",
+        "/static/pages/admin-ai/overview.js",
+        "/static/pages/admin-ai/knowledge.js",
+        "/static/pages/admin-ai/retrieval.js",
+        "/static/pages/admin-ai/observability.js",
+        "/static/pages/admin-ai/operations.js",
+        "/static/pages/admin-ai/actions.js",
+    )
+    return "\n".join(client.get(path).get_data(as_text=True) for path in asset_paths)
+
+
 def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
     """Verify AI admin pages expose route-specific management UI hooks."""
     script_response = client.get("/static/pages/admin-ai.js")
-    script = script_response.get_data(as_text=True)
+    script = admin_ai_runtime_source(client)
     routes = {
         "/admin/ai": ("overview", "AI-Admin f&uuml;r Modelle, Retrieval, Wissen und Diagnose"),
         "/admin/ai/models": ("models", 'id="ai-models"'),
@@ -3838,7 +3884,7 @@ def test_uploaded_document_check_validates_and_reviews_file(
 def test_documents_page_contains_review_ui(client):
     """Verify the documents page and static script expose review UI hooks."""
     page_response = client.get("/documents")
-    script_response = client.get("/static/pages/workflows.js")
+    script_response = client.get("/static/pages/workflows/documents.js")
     html = page_response.get_data(as_text=True)
     script = script_response.get_data(as_text=True)
 

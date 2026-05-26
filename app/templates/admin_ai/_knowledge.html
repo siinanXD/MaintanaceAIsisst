@@ -1,0 +1,243 @@
+  {% if ai_admin_view in ['knowledge', 'training'] %}
+  <section class="ai-admin-area" id="{% if ai_admin_view == 'training' %}ai-training-area{% else %}ai-knowledge-sources{% endif %}" data-ai-admin-area="{% if ai_admin_view == 'training' %}training{% else %}data-sources{% endif %}">
+    <div class="ai-admin-area-header">
+      <div>
+        {% if ai_admin_view == 'training' %}
+          <span class="section-kicker">4. Trainingsdaten</span>
+          <h3>Manuelles Wissen gezielt pflegen</h3>
+          <p class="panel-meta">Freigegebene Trainingseintr&auml;ge erg&auml;nzen strukturierte Quellen, ohne Berechtigungen oder Qualitätsprüfungen zu umgehen.</p>
+        {% else %}
+          <span class="section-kicker">3. Wissensquellen</span>
+          <h3>Welche Quellen speisen SQL, Keyword-Suche und RAG?</h3>
+          <p class="panel-meta">Fehlerkatalog, Dokumente, Aufgaben, Maschinen, Material, Wartungspl&auml;ne und Schichtdaten mit Status und Freigaben bewerten.</p>
+        {% endif %}
+      </div>
+      <span class="badge badge-ai" data-ai-section-status="{% if ai_admin_view == 'training' %}training{% else %}knowledge{% endif %}">Wissen wird geladen</span>
+    </div>
+
+    {% if ai_admin_view == 'knowledge' %}
+    <div class="ai-section-guide" aria-label="Wissensquellen Hinweise">
+      <article>
+        <span>Was beeinflusst das?</span>
+        <strong>Welche Quellen semantisch gefunden werden und ob Antworten belegte Dokument- oder App-Kontexte enthalten.</strong>
+      </article>
+      <article>
+        <span>Wann pr&uuml;fen?</span>
+        <strong>Nach Hochladungen, schlechter Quellenqualit&auml;t, abgelehnten Dokumenten, veralteten Textabschnitte oder offenen Wissenslücken.</strong>
+      </article>
+      <article>
+        <span>Betroffen</span>
+        <strong><code>/api/v1/admin/ai/knowledge/status</code> <code>/api/v1/admin/ai/knowledge</code> <code>/api/v1/admin/ai/training</code></strong>
+      </article>
+    </div>
+    <p class="ai-section-explain">Wissensquellen zeigt, ob Quellen fachlich freigegeben, indexiert und f&uuml;r Quellenabruf sichtbar sind. Qualitätsprüfungen und Berechtigungen bleiben die Grenze f&uuml;r den RAG-Kontext.</p>
+
+    <div class="ai-info-box-grid">
+      <article class="ai-info-box">
+        <span>Was ist RAG?</span>
+        <strong>Quellenabruf Augmented Generation verbindet Suche und Antwort.</strong>
+        <p>Die App sucht zuerst passende Wissensquellen, Dokument-Textabschnitte oder strukturierte Datens&auml;tze und gibt diese als Kontext an die KI. Dadurch werden Antworten nachvollziehbarer und weniger frei erfunden.</p>
+      </article>
+      <article class="ai-info-box">
+        <span>Qualitätsprüfung</span>
+        <strong>Rejected und Low-Quality Quellen bleiben au&szlig;erhalb sichtbarer Antworten.</strong>
+        <p>Freigabe, Abteilung und QuelleVisibilityPolicy entscheiden, ob eine Quelle trotz Treffer im finalen Kontext erscheinen darf.</p>
+      </article>
+    </div>
+
+    <div class="ai-status-legend" aria-label="Status-Badges">
+      <span class="status-pill is-active">indexed</span>
+      <span class="status-pill is-error">rejected</span>
+      <span class="status-pill is-active">active</span>
+      <span class="status-pill is-muted">disabled</span>
+      <span class="status-pill is-stale">low quality</span>
+      <span class="status-pill is-stale">duplicate</span>
+    </div>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <h3>Quelle Health Matrix</h3>
+          <p class="panel-meta">Eintr&auml;ge, Textabschnitte, RAG-Aktivierung und Health je Quelle.</p>
+        </div>
+      </div>
+      <div class="ai-source-grid" data-ai-source-health></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <h3>RAG-Index Status</h3>
+          <p class="panel-meta">Bereitschaft, Vektor-Sync, Problemquellen und Indexabdeckung.</p>
+        </div>
+        <span class="badge badge-ai" data-rag-readiness>RAG</span>
+      </div>
+      <div class="dashboard-grid dashboard-grid-4">
+        <article class="metric-card"><span>Dokumente</span><strong data-rag-kpi="documents">0</strong></article>
+        <article class="metric-card"><span>Indexiert</span><strong data-rag-kpi="indexed">0</strong></article>
+        <article class="metric-card"><span>Veraltet</span><strong data-rag-kpi="stale">0</strong></article>
+        <article class="metric-card"><span>Ausstehend</span><strong data-rag-kpi="pending">0</strong></article>
+        <article class="metric-card"><span>Durchsuchbar</span><strong data-rag-kpi="searchable_documents">0</strong></article>
+        <article class="metric-card"><span>Textabschnitte</span><strong data-rag-kpi="chunks">0</strong></article>
+        <article class="metric-card"><span>Bereitschaft</span><strong data-rag-readiness-score>0</strong></article>
+      </div>
+      <div class="content-grid two-columns mt-4">
+        <div class="stats-list" data-rag-source-status></div>
+        <div class="stats-list" data-rag-diagnostics></div>
+      </div>
+      <div class="content-grid two-columns mt-4">
+        <div class="stats-list" data-rag-readiness-reasons></div>
+        <div class="stats-list" data-rag-problem-documents></div>
+      </div>
+      <div class="content-grid two-columns mt-4">
+        <div class="stats-list" data-rag-vector-sync></div>
+        <div class="stats-list" data-rag-vector-issues></div>
+      </div>
+    </section>
+
+    <section class="panel" data-knowledge-lifecycle-panel>
+      <div class="panel-header">
+        <div>
+          <h3>Wissens-Lebenszyklus</h3>
+          <p class="panel-meta">Qualit&auml;tsstatus, Prüf-Gates und Freigaben der indexierbaren Wissensbasis.</p>
+        </div>
+        <span class="badge badge-ai" data-knowledge-lifecycle-state>Noch nicht geladen</span>
+      </div>
+      <div class="dashboard-grid dashboard-grid-4">
+        <article class="metric-card"><span>Drafts</span><strong data-lifecycle-kpi="drafts">0</strong></article>
+        <article class="metric-card"><span>Techniker OK</span><strong data-lifecycle-kpi="technician_confirmed">0</strong></article>
+        <article class="metric-card"><span>Admin frei</span><strong data-lifecycle-kpi="admin_approved">0</strong></article>
+        <article class="metric-card"><span>Problemquellen</span><strong data-lifecycle-kpi="problem_documents">0</strong></article>
+        <article class="metric-card"><span>Feedback offen</span><strong data-lifecycle-kpi="feedback_open">0</strong></article>
+        <article class="metric-card"><span>Gaps offen</span><strong data-lifecycle-kpi="knowledge_gaps_open">0</strong></article>
+        <article class="metric-card"><span>Prüfung offen</span><strong data-lifecycle-kpi="needs_admin_approval">0</strong></article>
+        <article class="metric-card"><span>Nicht freigegeben</span><strong data-lifecycle-kpi="non_approved_indexed_documents">0</strong></article>
+      </div>
+      <div class="content-grid two-columns mt-4">
+        <div class="stats-list" data-knowledge-lifecycle-review></div>
+        <div class="stats-list" data-knowledge-lifecycle-gate></div>
+      </div>
+      <div class="content-grid two-columns mt-4">
+        <div class="stats-list" data-knowledge-lifecycle-actions></div>
+        <div class="stats-list" data-knowledge-lifecycle-steps></div>
+      </div>
+    </section>
+
+    <section class="panel" data-knowledge-network-panel>
+      <div class="panel-header">
+        <div>
+          <h3>Wissensnetz</h3>
+          <p class="panel-meta">Nur-Lese Sicht auf Maschinen, Fehler, Dokumente, Inventar, Trends und Wissenslücken.</p>
+        </div>
+        <div class="toolbar admin-ai-toolbar">
+          <input class="input input-bordered" data-knowledge-network-search placeholder="Netzwerk durchsuchen">
+          <select class="input input-bordered" data-knowledge-network-source aria-label="Netzwerk nach Quelle filtern">
+            <option value="">Alle Quellen</option>
+            <option value="upload">Hochladungen</option>
+            <option value="manual_training">Manuelles Training</option>
+            <option value="generated_document">Berichte</option>
+            <option value="error_entry">Fehlerkatalog</option>
+            <option value="task">Aufgaben</option>
+            <option value="machine">Maschinen</option>
+            <option value="inventory_material">Inventar</option>
+            <option value="maintenance_plan">Wartungspl&auml;ne</option>
+            <option value="machine_manual">Maschinenhandb&uuml;cher</option>
+            <option value="shift_handover">Schicht&uuml;bergaben</option>
+          </select>
+          <select class="input input-bordered" data-knowledge-network-quality aria-label="Netzwerk nach Qualit&auml;t filtern">
+            <option value="">Alle Qualit&auml;tsstatus</option>
+            <option value="draft">Draft</option>
+            <option value="ai_suggested">AI-Vorschlag</option>
+            <option value="technician_confirmed">Techniker best&auml;tigt</option>
+            <option value="admin_approved">Admin freigegeben</option>
+            <option value="low_quality">Niedrige Qualit&auml;t</option>
+            <option value="duplicate">Duplikat</option>
+            <option value="outdated">Veraltet</option>
+            <option value="rejected">Abgelehnt</option>
+          </select>
+          <select class="input input-bordered" data-knowledge-network-focus-type aria-label="Wissensnetz Ansicht">
+            <option value="">Gesamtnetz</option>
+            <option value="machine">Maschinenzentriert</option>
+            <option value="error">Fehlerzentriert</option>
+            <option value="task">Aufgabezentriert</option>
+            <option value="knowledge_gap">Gapzentriert</option>
+          </select>
+          <input class="input input-bordered" data-knowledge-network-focus placeholder="Fokus optional">
+          <button class="btn btn-secondary" type="button" data-knowledge-network-refresh>Aktualisieren</button>
+        </div>
+      </div>
+      <div class="dashboard-grid dashboard-grid-4" data-knowledge-network-stats></div>
+      <div class="knowledge-network-groups mt-4" data-knowledge-network-groups aria-label="Gruppierte Wissensknoten"></div>
+      <div class="knowledge-network-layout mt-4">
+        <div class="stats-list" data-knowledge-network-canvas aria-label="Wissensnetz Visualisierung"></div>
+        <aside class="stats-list" data-knowledge-network-detail aria-label="Wissensnetz Details"></aside>
+      </div>
+      <div class="knowledge-network-relations mt-4" data-knowledge-network-relations aria-label="Klickbare Wissensverbindungen"></div>
+      <div class="stats-list mt-4" data-knowledge-network-legend aria-label="Wissensnetz Legende"></div>
+    </section>
+    {% endif %}
+    {% include "admin_ai/_training.html" %}
+    {% if ai_admin_view == 'knowledge' %}
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <h3>Wissensdatenbank</h3>
+          <p class="panel-meta">Dokumente, Trainingseintr&auml;ge und automatisch erzeugte Quellen verwalten.</p>
+        </div>
+        <div class="toolbar admin-ai-toolbar">
+          <input class="input input-bordered" data-ai-knowledge-search placeholder="Wissen durchsuchen">
+          <select class="input input-bordered" data-ai-knowledge-source>
+            <option value="">Alle Quellen</option>
+            <option value="upload">Hochladungen</option>
+            <option value="manual_training">Manuelles Training</option>
+            <option value="generated_document">Berichte</option>
+            <option value="error_entry">Fehlerkatalog</option>
+            <option value="task">Aufgaben</option>
+            <option value="machine">Maschinen</option>
+            <option value="inventory_material">Inventar</option>
+            <option value="maintenance_plan">Wartungspl&auml;ne</option>
+            <option value="machine_manual">Maschinenhandb&uuml;cher</option>
+            <option value="shift_handover">Schicht&uuml;bergaben</option>
+          </select>
+          <select class="input input-bordered" data-ai-knowledge-status aria-label="Wissen nach Indexstatus filtern">
+            <option value="">Alle Status</option>
+            <option value="indexed">Indexiert</option>
+            <option value="stale">Veraltet</option>
+            <option value="pending">Ausstehend</option>
+            <option value="error">Fehler</option>
+            <option value="no_text">Ohne Text</option>
+          </select>
+          <select class="input input-bordered" data-ai-knowledge-quality aria-label="Wissen nach Qualit&auml;tsstatus filtern">
+            <option value="">Alle Qualit&auml;tsstatus</option>
+            <option value="draft">Draft</option>
+            <option value="ai_suggested">AI-Vorschlag</option>
+            <option value="technician_confirmed">Techniker best&auml;tigt</option>
+            <option value="admin_approved">Admin freigegeben</option>
+            <option value="low_quality">Niedrige Qualit&auml;t</option>
+            <option value="duplicate">Duplikat</option>
+            <option value="outdated">Veraltet</option>
+            <option value="rejected">Abgelehnt</option>
+          </select>
+          <form class="inline-form" data-ai-knowledge-upload>
+            <input class="input input-bordered" name="department" placeholder="Abteilung optional">
+            <input class="input input-bordered" name="file" type="file" accept=".pdf,.txt,.html,.htm">
+            <button class="btn btn-secondary" type="submit">Hochladen</button>
+          </form>
+        </div>
+        <div class="knowledge-origin-legend" data-knowledge-origin-legend aria-label="Herkunft der Wissensquellen">
+          <span class="status-pill is-source-automatic">Automatisch</span>
+          <span class="status-pill is-source-manual">Manuell</span>
+          <span class="status-pill is-source-prebuilt">Vorgefertigt</span>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <caption>Wissensdatenbank mit Quelle, Indexstatus, Qualit&auml;t, Textabschnitte und Abteilung</caption>
+          <thead><tr><th scope="col">Titel</th><th scope="col">Quelle</th><th scope="col">Index</th><th scope="col">Qualit&auml;t</th><th scope="col">Textabschnitte</th><th scope="col">Abteilung</th><th scope="col">Aktionen</th></tr></thead>
+          <tbody data-ai-knowledge></tbody>
+        </table>
+      </div>
+    </section>
+    {% endif %}
+  </section>
+  {% endif %}

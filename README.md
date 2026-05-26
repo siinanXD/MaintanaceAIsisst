@@ -111,10 +111,8 @@ focused page modules such as `login.js`, `admin-ai.js`, `handover.js`,
 ## Getting Started
 
 **Prerequisites:** Python 3.11 or 3.12, Node.js only if rebuilding CSS.
-On Windows/PyCharm, prefer a Python 3.12 virtual environment for the current
-AI/vector dependency set. Python 3.13 can make `chroma-hnswlib` build from
-source during sync; if you must stay on Python 3.13, install Microsoft C++
-Build Tools before running `pip install -r requirements.txt`.
+The default setup uses the local SQLAlchemy knowledge store, so it works without
+native vector-store build tools.
 
 ```bash
 python -m venv .venv
@@ -124,6 +122,15 @@ cp .env.example .env             # Windows: copy .env.example .env
 python seed.py
 python run.py --host 127.0.0.1 --port 5050
 ```
+
+Optional Chroma backend:
+
+```bash
+pip install -r requirements-chroma.txt
+```
+
+On Windows, this optional install can require Microsoft C++ Build Tools because
+`chroma-hnswlib` may need to compile from source when no compatible wheel exists.
 
 Seed profiles are separated:
 

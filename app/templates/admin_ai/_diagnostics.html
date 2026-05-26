@@ -1,0 +1,153 @@
+  {% if ai_admin_view == 'diagnostics' %}
+  <section class="ai-admin-area" id="ai-diagnostics" data-ai-admin-area="answers">
+    <div class="ai-admin-area-header">
+      <div>
+        <span class="section-kicker">5. Diagnose</span>
+        <h3>Fehler, Protokolle, Prompt-Debugging und Wissensl&uuml;cken</h3>
+        <p class="panel-meta">Admins sehen prompt-sichere Betriebsdiagnosen, letzte fehlgeschlagene Abfragen, Workflows, Wissenslücken und Debug-Blueprints.</p>
+      </div>
+      <div class="toolbar">
+        <span class="badge badge-ai" data-ai-observability-status>Noch nicht geladen</span>
+        <button class="btn btn-secondary" type="button" data-ai-observability-refresh>Monitoring aktualisieren</button>
+      </div>
+    </div>
+
+    <div class="ai-section-guide" aria-label="Diagnose Hinweise">
+      <article>
+        <span>Was beeinflusst das?</span>
+        <strong>Fehleranalyse, leere Abrufe, Sicherheit, Debug-Blueprints, Anbieter-Probleme und Wissenslücke-Erkennung.</strong>
+      </article>
+      <article>
+        <span>Wann pr&uuml;fen?</span>
+        <strong>Bei Anbieterfehlern, h&auml;ufigen leeren Abrufe, niedriger Sicherheit oder neuen Prompt-Risiken.</strong>
+      </article>
+      <article>
+        <span>Betroffen</span>
+        <strong><code>/api/v1/admin/ai/observability</code> <code>/api/v1/admin/ai/knowledge-gaps</code> <code>/api/v1/admin/ai/summary</code></strong>
+      </article>
+    </div>
+    <p class="ai-section-explain">Diagnose zeigt Metadaten statt Rohfragen: Fehlerkategorien, Quellenanzahl, Sicherheit, Antwortqualit&auml;t und Debug-Signale bleiben nachvollziehbar, ohne Prompts oder Antworttexte offenzulegen.</p>
+
+    <div class="ai-info-box-grid">
+      <article class="ai-info-box">
+        <span>Warum kann die KI manche Fragen nicht beantworten?</span>
+        <strong>Fehlende Quellen, niedrige Sicherheit oder Sicherheit-Regeln stoppen unsichere Antworten.</strong>
+        <p>Wenn keine freigegebene Quelle passt, Berechtigungen Quellen ausblenden oder die Frage sicherheitskritisch ist, zeigt die UI einen Gap, Ausweichbetrieb oder Warnstatus statt eine riskante Antwort zu erzwingen.</p>
+      </article>
+    </div>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <h3>Letzte fehlgeschlagene AI-Abfragen</h3>
+          <p class="panel-meta">Aus bestehenden Audit-Ereignisse abgeleitet; ohne Rohfrage oder Antworttext.</p>
+        </div>
+      </div>
+      <div class="ai-failed-query-list" data-ai-failed-queries></div>
+    </section>
+
+    <section class="panel ai-answer-quality-panel">
+      <div class="panel-header">
+          <h3>Antwortqualität im Chat</h3>
+        <span class="panel-meta">Jede Antwort zeigt Quellen, Sicherheit, Unsicherheit, Sicherheit und verwendete Dokumente.</span>
+      </div>
+      <div class="ai-answer-quality-grid" data-ai-answer-quality-guide></div>
+    </section>
+
+    <section class="panel ai-observability-panel">
+      <div class="panel-header">
+        <div>
+          <h3>KI-Metrik-Cockpit</h3>
+          <p class="panel-meta">Latenz, Tokens, Fehler, leere Abrufe und Halluzinationswarnungen.</p>
+        </div>
+      </div>
+      <div class="dashboard-grid dashboard-grid-4">
+        <article class="metric-card"><span>Antwortzeit &Oslash;</span><strong data-ai-monitoring-kpi="average_response_ms">0 ms</strong></article>
+        <article class="metric-card"><span>Quellenabruf &Oslash;</span><strong data-ai-monitoring-kpi="average_retrieval_ms">0 ms</strong></article>
+        <article class="metric-card"><span>Tokenverbrauch</span><strong data-ai-monitoring-kpi="total_tokens">0</strong></article>
+        <article class="metric-card"><span>Fehlerquote</span><strong data-ai-monitoring-kpi="error_rate">0%</strong></article>
+        <article class="metric-card"><span>Leere Abrufe</span><strong data-ai-monitoring-kpi="empty_retrieval_rate">0%</strong></article>
+        <article class="metric-card"><span>Halluzinationswarnungen</span><strong data-ai-monitoring-kpi="hallucination_warning_count">0</strong></article>
+        <article class="metric-card"><span>Trefferquote</span><strong data-ai-monitoring-kpi="retrieval_hit_rate">0%</strong></article>
+        <article class="metric-card"><span>Similarity &Oslash;</span><strong data-ai-monitoring-kpi="average_similarity_score">0%</strong></article>
+      </div>
+      <div class="content-grid two-columns mt-4">
+        <div class="ai-monitor-list" data-ai-top-questions></div>
+        <div class="ai-monitor-list" data-ai-source-distribution></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h3>Quellenabruf Monitoring</h3>
+        <span class="panel-meta">Top Treffer, schlechte Treffer, Textabschnitt-Nutzung und Dokumentverteilung.</span>
+      </div>
+      <div class="content-grid two-columns">
+        <div class="ai-monitor-list" data-ai-top-hits></div>
+        <div class="ai-monitor-list" data-ai-poor-hits></div>
+      </div>
+      <div class="content-grid two-columns mt-4">
+        <div class="ai-monitor-list" data-ai-chunk-usage></div>
+        <div class="ai-monitor-list" data-ai-quality-metrics></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h3>Workflow-Kosten und Fehler</h3>
+        <span class="panel-meta">Metadata-only Auswertung ohne Prompt- oder Antworttexte</span>
+      </div>
+      <div class="content-grid two-columns">
+        <div class="table-wrap">
+          <table class="data-table">
+            <caption>AI-Workflows nach Ereignisse, Fehlern, Ausweichbetriebs, Tokens und Kosten</caption>
+            <thead><tr><th scope="col">Workflow</th><th scope="col">Ereignisse</th><th scope="col">Ausweichbetrieb</th><th scope="col">Fehler</th><th scope="col">Tokens</th><th scope="col">Kosten</th><th scope="col">Latenz</th></tr></thead>
+            <tbody data-ai-workflows></tbody>
+          </table>
+        </div>
+        <div class="stats-list" data-ai-top-errors></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h3>Wissenslücken</h3>
+        <span class="panel-meta" data-ai-knowledge-gap-count>0 offen</span>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <caption>Offene Wissensl&uuml;cken aus KI-Fragen ohne belastbare Quellen</caption>
+          <thead><tr><th scope="col">Referenz</th><th scope="col">Bereich</th><th scope="col">Maschine</th><th scope="col">Status</th><th scope="col">Treffer</th><th scope="col">Zuletzt</th></tr></thead>
+          <tbody data-ai-knowledge-gaps></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h3>KI-Protokolle</h3>
+        <span class="panel-meta">Prompt-sichere Referenz, Quellen, Sicherheit, Antwortqualit&auml;t, Fehler und Dauer.</span>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <caption>AI-Monitoring-Protokolle mit Antwortqualit&auml;t, Sicherheit und Quellen</caption>
+          <thead><tr><th scope="col">Zeit</th><th scope="col">Referenz</th><th scope="col">Qualität</th><th scope="col">Sicherheit</th><th scope="col">Quellen</th><th scope="col">Dauer</th><th scope="col">Debug</th></tr></thead>
+          <tbody data-ai-observability-logs></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h3>Debug Tools</h3>
+        <div class="toolbar">
+          <select class="input input-bordered" data-ai-debug-request aria-label="AI-Anfrage analysieren"></select>
+        </div>
+      </div>
+      <div class="content-grid two-columns">
+        <div class="ai-monitor-list" data-ai-debug-analysis></div>
+        <pre class="ai-debug-prompt" data-ai-debug-prompt>Kein Prompt-Blueprint geladen.</pre>
+      </div>
+    </section>
+  </section>
+  {% endif %}

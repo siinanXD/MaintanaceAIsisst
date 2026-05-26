@@ -1,0 +1,700 @@
+    align-items: start;
+  }
+
+  .vacation-ops-grid {
+    display: grid;
+    grid-template-columns: minmax(18rem, 0.75fr) minmax(20rem, 1fr) minmax(22rem, 1.15fr);
+    gap: 1rem;
+    margin-top: 1rem;
+    align-items: start;
+  }
+
+  .vacation-request-panel,
+  .vacation-decision-panel,
+  .vacation-impact-panel,
+  .vacation-summary-panel,
+  .vacation-history-panel {
+    border: 1px solid #dbe5f1;
+    border-radius: 0.75rem;
+    background: #ffffff;
+    padding: 1rem;
+  }
+
+  .vacation-panel-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .vacation-panel-header h2 {
+    margin: 0;
+    color: #102036;
+    font-size: 1.05rem;
+    font-weight: 900;
+    line-height: 1.2;
+  }
+
+  .vacation-panel-header p {
+    margin: 0.25rem 0 0;
+    color: #66758b;
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1.4;
+  }
+
+  .vacation-form {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.85rem;
+  }
+
+  .vacation-form .is-full {
+    grid-column: 1 / -1;
+  }
+
+  .vacation-form-footer {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .vacation-impact-preview {
+    border: 1px solid #d7e1ec;
+    border-radius: 0.65rem;
+    background: #f8fafc;
+    color: #334155;
+    font-size: 0.8rem;
+    font-weight: 750;
+    line-height: 1.35;
+    padding: 0.8rem 0.9rem;
+  }
+
+  .vacation-impact-preview.is-ok {
+    border-color: #bbf7d0;
+    background: #f0fdf4;
+    color: #15803d;
+  }
+
+  .vacation-impact-preview.is-warning {
+    border-color: #fed7aa;
+    background: #fff7ed;
+    color: #c2410c;
+  }
+
+  .vacation-impact-preview.is-critical,
+  .vacation-impact-preview.is-error {
+    border-color: #fecaca;
+    background: #fff1f2;
+    color: #be123c;
+  }
+
+  .vacation-request-card,
+  .vacation-summary-card,
+  .vacation-calendar-item {
+    border: 1px solid #dfe8f3;
+    border-radius: 0.7rem;
+    background: #ffffff;
+    padding: 0.9rem;
+  }
+
+  .vacation-request-card {
+    display: grid;
+    gap: 0.75rem;
+    border-left: 4px solid #10b981;
+  }
+
+  .vacation-request-card.is-warning {
+    border-left-color: #f59e0b;
+  }
+
+  .vacation-request-card.is-critical {
+    border-left-color: #ef4444;
+  }
+
+  .vacation-request-card header,
+  .vacation-summary-card header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.8rem;
+  }
+
+  .vacation-request-card h3,
+  .vacation-summary-card h3 {
+    margin: 0;
+    color: #102036;
+    font-size: 0.95rem;
+    font-weight: 900;
+    line-height: 1.2;
+  }
+
+  .vacation-card-meta,
+  .vacation-summary-card p {
+    margin: 0.25rem 0 0;
+    color: #64748b;
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1.35;
+  }
+
+  .vacation-card-badges,
+  .vacation-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.45rem;
+  }
+
+  .vacation-card-metrics,
+  .vacation-summary-numbers {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.45rem;
+  }
+
+  .vacation-summary-numbers {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin-top: 0.8rem;
+  }
+
+  .vacation-metric {
+    min-width: 0;
+    border-radius: 0.55rem;
+    background: #f5f8fc;
+    padding: 0.55rem 0.6rem;
+  }
+
+  .vacation-metric strong,
+  .vacation-metric small {
+    display: block;
+    overflow-wrap: anywhere;
+  }
+
+  .vacation-metric strong {
+    color: #17223b;
+    font-size: 0.86rem;
+    font-weight: 900;
+    line-height: 1.1;
+  }
+
+  .vacation-metric small {
+    margin-top: 0.15rem;
+    color: #718096;
+    font-size: 0.65rem;
+    font-weight: 750;
+  }
+
+  .vacation-status-badge,
+  .vacation-impact-badge,
+  .vacation-card-state {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 850;
+    line-height: 1;
+    padding: 0.36rem 0.52rem;
+    white-space: nowrap;
+  }
+
+  .vacation-status-badge.is-approved,
+  .vacation-impact-badge.is-ok {
+    background: #dcfce7;
+    color: #15803d;
+  }
+
+  .vacation-status-badge.is-pending,
+  .vacation-impact-badge.is-warning {
+    background: #ffedd5;
+    color: #c2410c;
+  }
+
+  .vacation-status-badge.is-rejected,
+  .vacation-impact-badge.is-critical {
+    background: #fee2e2;
+    color: #b91c1c;
+  }
+
+  .vacation-status-badge.is-cancelled,
+  .vacation-card-state {
+    background: #e2e8f0;
+    color: #475569;
+  }
+
+  .vacation-summary-list,
+  .vacation-history-list,
+  .vacation-calendar-list {
+    display: grid;
+    gap: 0.7rem;
+  }
+
+  .vacation-summary-card.is-warning {
+    background: #fffaf0;
+  }
+
+  .vacation-summary-card.is-critical {
+    background: #fff1f2;
+  }
+
+  .vacation-calendar-item {
+    border-left: 4px solid #10b981;
+  }
+
+  .vacation-calendar-item.is-warning {
+    border-left-color: #f59e0b;
+  }
+
+  .vacation-calendar-item.is-critical {
+    border-left-color: #ef4444;
+  }
+
+  @media (max-width: 1180px) {
+    .vacation-control-strip {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .vacation-planning-grid,
+    .vacation-ops-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .vacation-hero,
+    .vacation-panel-header {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .vacation-hero-actions,
+    .vacation-hero-actions .btn,
+    .vacation-history-controls,
+    .vacation-history-controls .btn,
+    .vacation-history-controls .select {
+      width: 100%;
+    }
+
+    .vacation-control-strip,
+    .vacation-form,
+    .vacation-card-metrics,
+    .vacation-summary-numbers {
+      grid-template-columns: 1fr;
+    }
+
+    .vacation-request-card header,
+    .vacation-summary-card header,
+    .vacation-form-footer {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .vacation-card-badges,
+    .vacation-card-actions {
+      justify-content: flex-start;
+    }
+  }
+
+  @media (max-width: 1440px) {
+    .dashboard-kpi-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .ops-dashboard-grid {
+      grid-template-columns: minmax(0, 1fr) 26rem;
+    }
+  }
+
+  @media (max-width: 1280px) {
+    .desktop-topbar {
+      gap: 0.65rem;
+      padding-inline: 1rem;
+    }
+
+    .desktop-topbar h1 {
+      font-size: 1.18rem;
+    }
+
+    .topbar-actions {
+      gap: 0.45rem;
+    }
+
+    .topbar-select {
+      padding-inline: 0.55rem;
+    }
+
+    .user-menu small {
+      display: none;
+    }
+  }
+
+  @media (max-width: 1180px) {
+    .ops-dashboard-grid,
+    .ops-lower-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .ops-side-column {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .inventory-panel {
+      grid-column: 1 / -1;
+    }
+  }
+
+  @media (max-width: 900px) {
+    .desktop-topbar {
+      display: none;
+    }
+
+    .app-main {
+      padding: 1rem 0.85rem 5rem;
+    }
+
+    .dashboard-kpi-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .cockpit-board,
+    .ops-side-column {
+      grid-template-columns: 1fr;
+    }
+
+    .task-cockpit-panel .cockpit-board {
+      height: auto;
+      overflow: visible;
+    }
+
+    .task-cockpit-panel .cockpit-task-list {
+      max-height: none;
+      overflow: visible;
+    }
+
+    .cockpit-column {
+      border-right: 0;
+      border-bottom: 1px solid var(--ops-border);
+    }
+
+    .cockpit-column:last-child {
+      border-bottom: 0;
+    }
+
+    .incident-row,
+    .employee-row {
+      grid-template-columns: 1fr;
+      gap: 0.25rem;
+      align-items: start;
+      padding: 0.7rem 0;
+    }
+
+    .inventory-stats {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 560px) {
+    .dashboard-kpi-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .kpi-card {
+      min-height: 5.6rem;
+    }
+
+    .timeline-axis {
+      left: 4.6rem;
+    }
+
+    .timeline-row {
+      grid-template-columns: 4.6rem minmax(0, 1fr);
+    }
+
+    .timeline-row::after {
+      left: 4.6rem;
+    }
+
+    .now-marker-track {
+      left: 4.6rem;
+    }
+
+    .timeline-status {
+      margin-left: 4.6rem;
+    }
+  }
+}
+
+@layer components {
+  .task-workflow-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .task-priority-panel {
+    grid-column: 1 / -1;
+    padding: 0.85rem 1rem;
+  }
+
+  .task-priority-panel .panel-header {
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .priority-score-list {
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    gap: 0.75rem;
+  }
+
+  .task-board-shell {
+    margin-top: 0;
+  }
+
+  .ai-admin-hero {
+    grid-template-columns: minmax(0, 1fr) minmax(15rem, 0.28fr);
+    min-height: auto;
+  }
+
+  .ai-admin-hero h2 {
+    max-width: 46rem;
+    font-size: clamp(1.65rem, 2vw, 2.25rem);
+    line-height: 1.06;
+  }
+
+  .ai-admin-hero-status {
+    padding: 0.75rem;
+  }
+
+  .knowledge-center-shell {
+    grid-template-columns: minmax(13rem, 0.72fr) minmax(0, 2.2fr) minmax(16rem, 0.88fr);
+    align-items: start;
+  }
+
+  .knowledge-test-chat {
+    min-height: 20rem;
+  }
+
+  @media (max-width: 1100px) {
+    .task-workflow-grid,
+    .ai-admin-hero,
+    .knowledge-center-shell {
+      grid-template-columns: 1fr;
+    }
+
+    .task-priority-panel {
+      grid-column: auto;
+    }
+  }
+}
+
+@layer components {
+  :root {
+    --sidebar-width: 268px;
+  }
+
+  .app-shell-layout {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(244, 247, 251, 0.95)),
+      var(--ui-bg, #f4f7fb);
+    transition: grid-template-columns 180ms ease;
+  }
+
+  .app-sidebar {
+    background: #12263f;
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: none;
+  }
+
+  .app-shell-layout.is-sidebar-collapsed {
+    --sidebar-width: 88px;
+  }
+
+  .app-shell-layout.is-sidebar-collapsed .sidebar-brand > span:not(.sidebar-brand-mark),
+  .app-shell-layout.is-sidebar-collapsed .sidebar-nav-group h2,
+  .app-shell-layout.is-sidebar-collapsed .nav-link > span:not(.nav-icon),
+  .app-shell-layout.is-sidebar-collapsed [data-sidebar-toggle-label] {
+    display: none;
+  }
+
+  .app-shell-layout.is-sidebar-collapsed .sidebar-brand,
+  .app-shell-layout.is-sidebar-collapsed .nav-link,
+  .app-shell-layout.is-sidebar-collapsed .sidebar-minimize {
+    justify-content: center;
+  }
+
+  .nav-link {
+    border: 1px solid transparent;
+    border-radius: 0.5rem;
+    min-height: 2.55rem;
+  }
+
+  .nav-link.is-active {
+    background: #ffffff;
+    border-color: rgba(255, 255, 255, 0.24);
+    color: #0d2744;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  }
+
+  .nav-icon {
+    display: block;
+    width: 1.65rem;
+    height: 1.65rem;
+    padding: 0.38rem;
+    flex-shrink: 0;
+    border-radius: 0.42rem;
+    background: rgba(255, 255, 255, 0.1);
+    color: #d8e7f8;
+    fill: currentColor;
+  }
+
+  .nav-link.is-active .nav-icon {
+    background: #eaf3ff;
+    color: #075fca;
+  }
+
+  .sidebar-minimize {
+    border-radius: 0.5rem;
+    padding: 0.4rem 0.65rem;
+  }
+
+  .sidebar-minimize-icon {
+    position: relative;
+    width: 1.35rem;
+    height: 1.35rem;
+    border-radius: 0.4rem;
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .sidebar-minimize-icon::before {
+    content: "";
+    position: absolute;
+    inset: 0.42rem 0.35rem;
+    border-left: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(45deg);
+  }
+
+  .app-shell-layout.is-sidebar-collapsed .sidebar-minimize-icon::before {
+    transform: rotate(225deg);
+  }
+
+  .topbar-select,
+  .notification-button,
+  .panel,
+  .metric-card,
+  .ops-panel,
+  .app-card,
+  .kpi-card {
+    border-radius: 0.55rem;
+    border-color: var(--ui-border, #dbe4ef);
+    box-shadow: var(--ui-shadow-sm, 0 1px 2px rgba(15, 23, 42, 0.05));
+  }
+
+  .topbar-select::after {
+    content: "";
+    width: 0.42rem;
+    height: 0.42rem;
+    border-right: 2px solid #8a9ab0;
+    border-bottom: 2px solid #8a9ab0;
+    transform: rotate(45deg) translateY(-1px);
+  }
+
+  .topbar-control-icon {
+    display: inline-grid;
+    width: 1.45rem;
+    height: 1.45rem;
+    place-items: center;
+    border-radius: 0.35rem;
+    background: #eef6ff;
+    color: var(--ui-blue, #0b72e7);
+    font-size: 0.62rem;
+    font-weight: 900;
+  }
+
+  .dashboard-kpi-grid {
+    grid-template-columns: repeat(auto-fit, minmax(12.2rem, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+
+  .kpi-card {
+    min-height: 6.4rem;
+    gap: 0.8rem;
+    padding: 0.95rem;
+  }
+
+  .kpi-card:hover {
+    border-color: #b8d5fb;
+    box-shadow: var(--ui-shadow-md, 0 8px 24px rgba(15, 23, 42, 0.08));
+    transform: translateY(-1px);
+  }
+
+  .kpi-icon {
+    width: 2.45rem;
+    height: 2.45rem;
+    border-radius: 0.55rem;
+    font-size: 0.7rem;
+    box-shadow: none;
+  }
+
+  .ops-dashboard-grid {
+    grid-template-columns: minmax(0, 1.42fr) minmax(21rem, 0.58fr);
+    gap: 1rem;
+  }
+
+  .task-cockpit-panel .cockpit-board {
+    height: auto;
+    min-height: 21rem;
+  }
+
+  .cockpit-task-list {
+    max-height: 18.5rem;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+
+  .cockpit-task-meta span + span::before {
+    content: "/";
+    margin-right: 0.55rem;
+    color: #9aa8ba;
+  }
+
+  .chat-widget {
+    right: 1.1rem;
+    bottom: 1.1rem;
+    z-index: 70;
+  }
+
+  .chat-toggle {
+    width: 3.35rem;
+    height: 3.35rem;
+    border: 3px solid #ffffff;
+    border-radius: 999px;
+    background: #0891a8;
+    font-size: 0.78rem;
+    font-weight: 950;
+    box-shadow: 0 14px 28px rgba(8, 145, 168, 0.28);
+  }
+
+  .chat-panel {
+    width: min(38rem, calc(100vw - 2rem));
+    height: min(46rem, calc(100vh - 6.5rem));
+    border-radius: 0.65rem;
+    border-color: var(--ui-border, #dbe4ef);
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+  }
+
+  .chat-panel-header {
+    align-items: center;
+    background: #f8fbff;
+    padding: 0.85rem;
+  }
+
+  .chat-clear,
+  .chat-close {
+    min-height: 2rem;

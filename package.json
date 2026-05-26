@@ -7,7 +7,7 @@
     "doc": "docs"
   },
   "scripts": {
-    "build:css": "tailwindcss -i ./app/static/css/input.css -o ./app/static/css/output.css --minify",
+    "build:css": "node ./scripts/build_css.mjs",
     "lint": ".\\.venv\\Scripts\\python.exe -m ruff check app tests",
     "test": "npm run lint && .\\.venv\\Scripts\\python.exe -m pytest"
   },

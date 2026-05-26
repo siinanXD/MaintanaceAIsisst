@@ -1,0 +1,83 @@
+  {% if ai_admin_view == 'feedback' %}
+  <section class="ai-admin-area" id="ai-feedback" data-ai-admin-area="capabilities">
+    <div class="ai-admin-area-header">
+      <div>
+        <span class="section-kicker">6. KI-Feedback</span>
+        <h3>Welche Feedback-, Sicherheit- und Ausweichbetrieb-Signale brauchen Review?</h3>
+        <p class="panel-meta">Bewusst getrennte Sicht auf Antwortfeedback, unterst&uuml;tzte F&auml;higkeiten, gesperrte Aussagen, lokale Antworten und Risikosignale.</p>
+      </div>
+      <span class="badge badge-ai" data-ai-section-status="safety">Sicherheit wird geladen</span>
+    </div>
+
+    <div class="ai-section-guide" aria-label="KI-Feedback Hinweise">
+      <article>
+        <span>Was beeinflusst das?</span>
+        <strong>Ob Antworten verbessert, entsch&auml;rft, als unsicher markiert, lokal beantwortet oder bewusst nicht unterst&uuml;tzt werden.</strong>
+      </article>
+      <article>
+        <span>Wann pr&uuml;fen?</span>
+        <strong>Bei negativem Feedback, Sicherheit-Warnungen, hoher Ausweichbetrieb-Rate, Antworten ohne Quellen oder riskanten Wartungshinweisen.</strong>
+      </article>
+      <article>
+        <span>Betroffen</span>
+        <strong><code>ai_confidence_service</code> <code>retrieval_telemetry_service</code> <code>ai_observability_service</code></strong>
+      </article>
+    </div>
+    <p class="ai-section-explain">KI-Feedback b&uuml;ndelt Review-Signale: negatives Feedback, niedrige Sicherheit, Sicherheit-Risiken und Ausweichbetriebs zeigen, wo Quellen, Prompts oder Trainingsdaten nachgesch&auml;rft werden sollten.</p>
+
+    <div class="ai-info-box-grid">
+      <article class="ai-info-box">
+        <span>Was ist ein lokaler Ausweichbetrieb?</span>
+        <strong>Die App beantwortet sichere Standardf&auml;lle ohne externen Modellaufruf.</strong>
+        <p>Lokale Ausweichbetriebs greifen zum Beispiel bei Z&auml;hlungen, sichtbaren Aufgaben oder bekannten App-Daten. Das h&auml;lt Basisfunktionen verf&uuml;gbar, auch wenn der Anbieter nicht erreichbar ist.</p>
+      </article>
+    </div>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <h3>Sicherheit &amp; Ausweichbetrieb Momentaufnahme</h3>
+          <p class="panel-meta">Aus bestehenden Summary-, Telemetry- und Observability-Daten abgeleitet.</p>
+        </div>
+        <span class="status-pill is-muted" data-ai-safety-summary-state>Noch nicht geladen</span>
+      </div>
+      <div class="ai-safety-grid" data-ai-safety-summary>
+        <article class="ai-safety-card">
+          <span>Ausweichbetrieb-Rate</span>
+          <strong data-ai-safety-field="fallback_rate">0%</strong>
+          <small>Viele Ausweichbetriebs deuten auf Anbieter-, Quellen- oder Prompt-Probleme hin.</small>
+        </article>
+        <article class="ai-safety-card">
+          <span>Sicherheitsrisiken</span>
+          <strong data-ai-safety-field="safety_risk_count">0</strong>
+          <small>Riskante Aussagen m&uuml;ssen fachlich kontrolliert werden.</small>
+        </article>
+        <article class="ai-safety-card">
+          <span>Ohne Quellen</span>
+          <strong data-ai-safety-field="no_source_rate">0%</strong>
+          <small>Antworten ohne Quellen brauchen Datenpflege oder klarere Prompts.</small>
+        </article>
+        <article class="ai-safety-card">
+          <span>Niedrige Sicherheit</span>
+          <strong data-ai-safety-field="low_confidence_rate">0%</strong>
+          <small>Niedrige Sicherheit ist ein Signal f&uuml;r Review oder Wissenslücken.</small>
+        </article>
+      </div>
+    </section>
+
+    <div class="ai-capability-grid">
+      <section class="panel ai-capability-column">
+        <div class="panel-header"><h3>Unterst&uuml;tzt</h3><span class="status-pill is-active">aktiv</span></div>
+        <div class="stack" data-ai-capabilities="supported"></div>
+      </section>
+      <section class="panel ai-capability-column">
+        <div class="panel-header"><h3>Teilweise unterst&uuml;tzt</h3><span class="status-pill is-stale">abh&auml;ngig von Daten</span></div>
+        <div class="stack" data-ai-capabilities="partial"></div>
+      </section>
+      <section class="panel ai-capability-column">
+        <div class="panel-header"><h3>Nicht unterst&uuml;tzt</h3><span class="status-pill is-muted">bewusst gesperrt</span></div>
+        <div class="stack" data-ai-capabilities="unsupported"></div>
+      </section>
+    </div>
+  </section>
+  {% endif %}

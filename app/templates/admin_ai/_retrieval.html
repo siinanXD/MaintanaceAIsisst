@@ -1,0 +1,169 @@
+  {% if ai_admin_view == 'retrieval' %}
+  <section class="ai-admin-area" id="ai-retrieval" data-ai-admin-area="retrieval">
+    <div class="ai-admin-area-header">
+      <div>
+        <span class="section-kicker">2. Quellenabruf</span>
+        <h3>Warum wurden Quellen gefunden, gefiltert oder verworfen?</h3>
+        <p class="panel-meta">Prompt-sichere Analyse f&uuml;r Abfrage-Klassifizierung, SQL-Ausweichbetrieb, Keyword-Suche, Vektorsuche, Bewertungen und finale Quellen.</p>
+      </div>
+      <span class="badge badge-ai" data-ai-section-status="retrieval">Quellenabruf wird geladen</span>
+    </div>
+
+    <div class="ai-section-guide" aria-label="Quellenabruf Hinweise">
+      <article>
+        <span>Was beeinflusst das?</span>
+        <strong>Trefferqualit&auml;t, Quellenabdeckung, Sicherheit, SQL-Ausweichbetrieb und ob Filter relevante Quellen entfernen.</strong>
+      </article>
+      <article>
+        <span>Wann pr&uuml;fen?</span>
+        <strong>Bei falschen Quellen, niedriger Sicherheit, Antworten ohne Quellen oder Regressionen nach Reindex/Training.</strong>
+      </article>
+      <article>
+        <span>Betroffen</span>
+        <strong><code>/api/v1/admin/ai/retrieval-debug</code> <code>/api/v1/admin/ai/retrieval-telemetry</code> <code>retrieval_debug_items</code></strong>
+      </article>
+    </div>
+    <p class="ai-section-explain">Quellenabruf erkl&auml;rt nicht die Antwort im Wortlaut, sondern den Weg dorthin: Abfrage-Typ, Kandidaten, Filter, Bewertungen, Anchors und Sicherheit-Signale bleiben prompt-sicher sichtbar.</p>
+
+    <section class="panel ai-retrieval-settings-panel">
+      <div class="panel-header">
+        <div>
+          <h3>Quellenabruf-Einstellungen im Ablauf</h3>
+          <p class="panel-meta">Die Pipeline bleibt unver&auml;ndert; diese Karten machen sichtbar, welche Stellschrauben welchen Schritt beeinflussen.</p>
+        </div>
+      </div>
+      <div class="ai-setting-flow" aria-label="Quellenabruf Einstellungen">
+        <article>
+          <span>01</span>
+          <strong>Abfrage-Klassifizierung</strong>
+          <small>LIVE_SQL priorisiert strukturierte Suche, KNOWLEDGE_RAG priorisiert Vektoren, HYBRID kombiniert beide.</small>
+        </article>
+        <article>
+          <span>02</span>
+          <strong>SQL &amp; Keyword</strong>
+          <small>Normalisierte Tokens, Synonyme und Exakt-Treffer Gewichtung f&uuml;r Fehlercodes, Maschinen, Material, Dokumente und Aufgaben.</small>
+        </article>
+        <article>
+          <span>03</span>
+          <strong>Vektorsuche</strong>
+          <small>Top K und Scan Limit bestimmen, wie viele semantische Kandidaten vor Qualitätsprüfungen betrachtet werden.</small>
+        </article>
+        <article>
+          <span>04</span>
+          <strong>Visibility &amp; Quality</strong>
+          <small>QuelleVisibilityPolicy, Abteilung, Rollen und Qualitätsprüfungen blockieren ungeeignete oder nicht erlaubte Quellen.</small>
+        </article>
+        <article>
+          <span>05</span>
+          <strong>Bewertung &amp; Anchor</strong>
+          <small>Bewertung-Schwellen, Maschinenkontext, Fehlercodes und Abschnittsanker entscheiden, welche Quellen final sichtbar bleiben.</small>
+        </article>
+      </div>
+    </section>
+
+    <section class="panel" data-retrieval-slo-panel>
+      <div class="panel-header">
+        <div>
+          <h3>Suchqualit&auml;t SLO</h3>
+          <p class="panel-meta">Qualit&auml;ts- und Betriebsmetriken f&uuml;r AI-Antworten.</p>
+        </div>
+        <span class="badge badge-ai" data-retrieval-slo-status>Noch nicht geladen</span>
+      </div>
+      <div class="dashboard-grid dashboard-grid-4">
+        <article class="metric-card"><span>P95 Suchzeit</span><strong data-retrieval-slo-kpi="retrieval_p95_ms">0 ms</strong></article>
+        <article class="metric-card"><span>Ohne Quellen</span><strong data-retrieval-slo-kpi="no_source_rate">0%</strong></article>
+        <article class="metric-card"><span>Niedrige Sicherheit</span><strong data-retrieval-slo-kpi="low_confidence_rate">0%</strong></article>
+        <article class="metric-card"><span>Berechtigungsfilter</span><strong data-retrieval-slo-kpi="permission_filtered_candidate_count">0</strong></article>
+        <article class="metric-card"><span>Negatives Feedback</span><strong data-retrieval-slo-kpi="negative_feedback_rate">0%</strong></article>
+        <article class="metric-card"><span>Sicherheitsrisiken</span><strong data-retrieval-slo-kpi="safety_risk_count">0</strong></article>
+        <article class="metric-card"><span>Ausweichantworten</span><strong data-retrieval-slo-kpi="fallback_rate">0%</strong></article>
+        <article class="metric-card"><span>Index/Sync Risiken</span><strong data-retrieval-slo-kpi="index_sync_risks">0</strong></article>
+      </div>
+      <div class="content-grid two-columns mt-4">
+        <div class="stats-list" data-retrieval-slo-trends></div>
+        <div class="stats-list" data-retrieval-slo-warnings></div>
+      </div>
+    </section>
+
+    <section class="panel" data-retrieval-debug-panel>
+      <div class="panel-header">
+        <div>
+          <h3>Quellenabruf Analyse</h3>
+          <p class="panel-meta">Nur-Lese Nachvollziehbarkeit ohne Roh-Prompts, Antworten oder Textabschnitt-Volltexte.</p>
+        </div>
+        <div class="toolbar admin-ai-toolbar">
+          <input class="input input-bordered" data-retrieval-debug-search placeholder="Quellenabruf-Fälle filtern">
+          <select class="input input-bordered" data-retrieval-debug-type aria-label="Nach Abfrage-Typ filtern">
+            <option value="">Alle Abfrage-Typen</option>
+            <option value="error_analysis">Fehleranalyse</option>
+            <option value="machine_question">Maschinenfrage</option>
+            <option value="inventory_question">Inventarfrage</option>
+            <option value="task_question">Aufgabefrage</option>
+            <option value="document_question">Dokumentfrage</option>
+            <option value="safety_question">Sicherheitsfrage</option>
+            <option value="knowledge_gap">Wissensl&uuml;cke</option>
+            <option value="trend_history_question">Trend/Historie</option>
+            <option value="general_question">Allgemein</option>
+          </select>
+          <button class="btn btn-secondary" type="button" data-retrieval-debug-refresh>Aktualisieren</button>
+        </div>
+      </div>
+
+      <div class="ai-retrieval-inspector" data-retrieval-inspector>
+        <div class="ai-retrieval-metrics" data-retrieval-analysis></div>
+        <section class="retrieval-flow-panel" data-retrieval-flow-panel aria-label="AI Quellenabruf Ablauf">
+          <div class="retrieval-flow-header">
+            <div>
+              <span class="section-kicker">Warum diese Antwort?</span>
+              <h4>AI Quellenabruf Ablauf</h4>
+              <p class="panel-meta">Prompt-sichere Timeline vom Abfrage-Verst&auml;ndnis bis zur finalen Antwort.</p>
+            </div>
+            <div class="retrieval-flow-header-actions">
+              <span class="badge badge-ai" data-retrieval-flow-status>Noch nicht geladen</span>
+              <span class="panel-meta" data-retrieval-flow-duration>-</span>
+            </div>
+          </div>
+          <div class="retrieval-flow-summary" data-retrieval-flow-summary></div>
+          <div class="retrieval-flow-timeline" data-retrieval-flow-timeline></div>
+          <div class="content-grid two-columns mt-4">
+            <div class="retrieval-flow-source-map" data-retrieval-flow-source-map></div>
+            <div class="retrieval-flow-answer" data-retrieval-flow-answer></div>
+          </div>
+        </section>
+      </div>
+
+      <div class="table-wrap">
+        <table class="data-table">
+          <caption>Prompt-sichere Quellenabruf-Debug-Daten mit Abfrage-Typ, Quellen, Sicherheit und Konflikten</caption>
+            <thead><tr><th scope="col">Zeit</th><th scope="col">Referenz</th><th scope="col">Typ</th><th scope="col">Quellen</th><th scope="col">Sicherheit</th><th scope="col">Konflikte</th><th scope="col">Dauer</th><th scope="col">Ablauf</th></tr></thead>
+          <tbody data-retrieval-debug-rows></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel" data-retrieval-evaluation-history-panel>
+      <div class="panel-header">
+        <div>
+          <h3>Golden Eval Historie</h3>
+          <p class="panel-meta">Regressionen und Qualit&auml;tstrends f&uuml;r bekannte Quellenabruf-Fragen.</p>
+        </div>
+        <div class="toolbar">
+          <span class="badge badge-ai" data-retrieval-evaluation-status>Noch nicht geladen</span>
+          <button class="btn btn-secondary" type="button" data-retrieval-evaluation-run>
+            Golden Eval ausf&uuml;hren
+          </button>
+        </div>
+      </div>
+      <div class="dashboard-grid dashboard-grid-4">
+        <article class="metric-card"><span>Recall@K</span><strong data-retrieval-evaluation-kpi="recall_at_k">0%</strong></article>
+        <article class="metric-card"><span>MRR</span><strong data-retrieval-evaluation-kpi="mrr">0%</strong></article>
+        <article class="metric-card"><span>nDCG@K</span><strong data-retrieval-evaluation-kpi="ndcg_at_k">0%</strong></article>
+        <article class="metric-card"><span>Keine Treffer</span><strong data-retrieval-evaluation-kpi="no_result_count">0</strong></article>
+      </div>
+      <div class="content-grid two-columns mt-4">
+        <div class="stats-list" data-retrieval-evaluation-regression></div>
+        <div class="stats-list" data-retrieval-evaluation-runs></div>
+      </div>
+    </section>
+  </section>
+  {% endif %}
