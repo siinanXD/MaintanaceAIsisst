@@ -70,6 +70,9 @@ class RetrievalCandidate:
         _copy_optional(source, self.metadata, "section_title")
         _copy_optional(source, self.metadata, "source_offset")
         _copy_optional(source, self.metadata, "chunk_order")
+        _copy_optional(source, self.metadata, "chunking_mode")
+        _copy_optional(source, self.metadata, "semantic_group")
+        _copy_optional(source, self.metadata, "semantic_break_distance")
         if self.quality_status:
             source["quality_status"] = self.quality_status
         if include_score_debug:
@@ -164,6 +167,9 @@ def vector_result_candidate(result, include_score_debug=False):
     _copy_optional(candidate_metadata, metadata, "section_title")
     _copy_optional(candidate_metadata, metadata, "source_offset")
     _copy_optional(candidate_metadata, metadata, "chunk_order")
+    _copy_optional(candidate_metadata, metadata, "chunking_mode")
+    _copy_optional(candidate_metadata, metadata, "semantic_group")
+    _copy_optional(candidate_metadata, metadata, "semantic_break_distance")
     if include_score_debug and metadata.get("score_debug"):
         candidate_metadata["score_debug"] = metadata["score_debug"]
     return RetrievalCandidate(

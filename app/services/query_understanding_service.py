@@ -317,15 +317,32 @@ def _scope_weights(query_type):
 
 def _prompt_rules(query_type, is_safety):
     """Return prompt guidance attached to context builder diagnostics."""
-    rules = []
-    if query_type == QUERY_TREND_HISTORY:
-        rules.append("Zeitliche Reihenfolge und Unsicherheit explizit nennen.")
-    if query_type == QUERY_KNOWLEDGE_GAP:
-        rules.append("Wenn keine belastbare Quelle vorhanden ist, Wissensluecke nennen.")
-    if query_type == QUERY_ERROR_ANALYSIS:
-        rules.append("Ursachen, Pruefung und dokumentierte Loesungen trennen.")
+    rules_by_query_type = {
+        QUERY_TREND_HISTORY: [
+            "Zeitliche Reihenfolge, Datenbasis und Unsicherheit explizit nennen.",
+        ],
+        QUERY_KNOWLEDGE_GAP: [
+            "Wenn keine belastbare Quelle vorhanden ist, Wissensluecke klar benennen.",
+        ],
+        QUERY_ERROR_ANALYSIS: [
+            "Ursachen, Pruefschritte und dokumentierte Loesungen klar trennen.",
+        ],
+    }
+
+    rules = [
+        "Nutze ausschliesslich bereitgestellte und freigegebene Kontextdaten.",
+        "Erfinde keine fehlenden Informationen.",
+        "Nenne Unsicherheit, wenn Quellenlage unvollstaendig ist.",
+    ]
+
+    rules.extend(rules_by_query_type.get(query_type, []))
+
     if is_safety:
-        rules.append("Sicherheitskritisch: vorsichtig formulieren und Fachkraft hinzuziehen.")
+        rules.append(
+            "Sicherheitskritisch: keine riskanten Handlungsanweisungen ohne "
+            "belastbare Quelle geben und qualifizierte Fachkraft hinzuziehen."
+        )
+
     return rules
 
 

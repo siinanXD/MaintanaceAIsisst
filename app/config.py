@@ -46,6 +46,9 @@ def validate_runtime_config(config):
     """Validate high-risk runtime configuration values."""
     chunk_size = config.get("RAG_CHUNK_SIZE", 1400)
     chunk_overlap = config.get("RAG_CHUNK_OVERLAP", 160)
+    semantic_min_chars = config.get("RAG_SEMANTIC_MIN_CHUNK_CHARS", 600)
+    semantic_target_chars = config.get("RAG_SEMANTIC_TARGET_CHUNK_CHARS", 1200)
+    semantic_max_chars = config.get("RAG_SEMANTIC_MAX_CHUNK_CHARS", 1800)
     top_k = config.get("RAG_TOP_K", 4)
     if chunk_size < 200:
         raise RuntimeError("RAG_CHUNK_SIZE must be at least 200")
@@ -53,6 +56,18 @@ def validate_runtime_config(config):
         raise RuntimeError("RAG_CHUNK_OVERLAP must not be negative")
     if chunk_overlap >= chunk_size:
         raise RuntimeError("RAG_CHUNK_OVERLAP must be smaller than RAG_CHUNK_SIZE")
+    if semantic_min_chars < 100:
+        raise RuntimeError("RAG_SEMANTIC_MIN_CHUNK_CHARS must be at least 100")
+    if semantic_target_chars < semantic_min_chars:
+        raise RuntimeError(
+            "RAG_SEMANTIC_TARGET_CHUNK_CHARS must be greater than or equal to "
+            "RAG_SEMANTIC_MIN_CHUNK_CHARS"
+        )
+    if semantic_max_chars < semantic_target_chars:
+        raise RuntimeError(
+            "RAG_SEMANTIC_MAX_CHUNK_CHARS must be greater than or equal to "
+            "RAG_SEMANTIC_TARGET_CHUNK_CHARS"
+        )
     if top_k < 1:
         raise RuntimeError("RAG_TOP_K must be at least 1")
     if config.get("TESTING"):
@@ -96,7 +111,7 @@ class Config:
     AI_MAX_RETRIES = env_int("AI_MAX_RETRIES", 1)
     AI_TASK_PRIORITIZATION_TIMEOUT_SECONDS = env_float(
         "AI_TASK_PRIORITIZATION_TIMEOUT_SECONDS",
-        2.0,
+        6.0,
     )
     AI_TASK_PRIORITIZATION_MAX_RETRIES = env_int(
         "AI_TASK_PRIORITIZATION_MAX_RETRIES",
@@ -104,10 +119,18 @@ class Config:
     )
     AI_ENABLE_STREAMING = env_bool("AI_ENABLE_STREAMING", default=True)
     RAG_ENABLED = env_bool("RAG_ENABLED", default=True)
-    RAG_VECTOR_STORE = os.getenv("RAG_VECTOR_STORE", "local")
+    RAG_VECTOR_STORE = os.getenv("RAG_VECTOR_STORE", "pgvector")
+    RAG_CHUNKING_MODE = os.getenv("RAG_CHUNKING_MODE", "hybrid_semantic")
     RAG_CHUNK_SIZE = env_int("RAG_CHUNK_SIZE", 1400)
     RAG_CHUNK_OVERLAP = env_int("RAG_CHUNK_OVERLAP", 160)
     RAG_MAX_CHUNKS = env_int("RAG_MAX_CHUNKS", 80)
+    RAG_SEMANTIC_BREAKPOINT_THRESHOLD = env_float(
+        "RAG_SEMANTIC_BREAKPOINT_THRESHOLD",
+        0.35,
+    )
+    RAG_SEMANTIC_MIN_CHUNK_CHARS = env_int("RAG_SEMANTIC_MIN_CHUNK_CHARS", 600)
+    RAG_SEMANTIC_TARGET_CHUNK_CHARS = env_int("RAG_SEMANTIC_TARGET_CHUNK_CHARS", 1200)
+    RAG_SEMANTIC_MAX_CHUNK_CHARS = env_int("RAG_SEMANTIC_MAX_CHUNK_CHARS", 1800)
     RAG_TOP_K = env_int("RAG_TOP_K", 4)
     RAG_SCAN_LIMIT = env_int("RAG_SCAN_LIMIT", 300)
     RAG_MIN_SCORE = env_int("RAG_MIN_SCORE", 1)

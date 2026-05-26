@@ -90,12 +90,25 @@ def rebuild_chunks(document, text):
         document,
         quality_report,
     )
+    provider = None
+    embeddings = []
+    if chunks:
+        try:
+            provider, embeddings = _chunk_embeddings(
+                [_chunk_payload_text(chunk_payload) for chunk_payload in chunks]
+            )
+        except Exception as exc:
+            _mark_embedding_failure(document, exc)
+            return
     chunk_objects = []
     entity_catalog = load_technical_entity_catalog()
     source_metadata = document_entity_metadata(document)
     for index, chunk_payload in enumerate(chunks):
         chunk = _chunk_payload_text(chunk_payload)
         chunk_metadata = _chunk_payload_metadata(chunk_payload, index)
+        chunk_metadata.setdefault("chunking_mode", _configured_chunking_mode())
+        if provider is not None:
+            chunk_metadata["embedding_model"] = _embedding_model_label(provider)
         entities = extract_technical_entities(
             chunk,
             metadata={**source_metadata, **chunk_metadata},
@@ -117,6 +130,7 @@ def rebuild_chunks(document, text):
                 entities,
                 chunk_metadata,
             ),
+            embedding=embeddings[index] if index < len(embeddings) else None,
             created_at=utc_now(),
         )
         db.session.add(chunk_object)
@@ -124,6 +138,49 @@ def rebuild_chunks(document, text):
     db.session.flush()
     document.chunk_count = len(chunks)
     sync_vector_store_document(document, chunk_objects)
+
+
+def _chunk_embeddings(texts):
+    """Return the configured embedding provider and one embedding per chunk text."""
+    from app.services.embedding_service import get_embedding_provider
+
+    provider = get_embedding_provider()
+    embeddings = provider.embed_texts(texts)
+    if len(embeddings) != len(texts):
+        raise RuntimeError("Embedding provider returned an unexpected vector count")
+    return provider, embeddings
+
+
+def _mark_embedding_failure(document, error):
+    """Mark a knowledge document as failed when embeddings cannot be created."""
+    document.status = "error"
+    document.error_message = "Embedding provider failed during chunk indexing"
+    document.chunk_count = 0
+    logger.exception(
+        "knowledge_embedding_failed document_id=%s error=%s",
+        getattr(document, "id", None),
+        error,
+    )
+    record_vector_sync_failure(document.id, _configured_vector_store_name(), error)
+    db.session.flush()
+
+
+def _configured_chunking_mode():
+    """Return the configured chunking mode for chunk metadata."""
+    return str(current_app.config.get("RAG_CHUNKING_MODE", "hybrid_semantic"))
+
+
+def _configured_vector_store_name():
+    """Return the configured vector store name for diagnostics."""
+    return str(current_app.config.get("RAG_VECTOR_STORE", "pgvector")).lower()
+
+
+def _embedding_model_label(provider):
+    """Return a compact embedding model/provider label for chunk metadata."""
+    model = getattr(provider, "model", "")
+    if model:
+        return str(model)[:180]
+    return str(getattr(provider, "name", "unknown"))[:180]
 
 
 def sync_vector_store_document(document, chunks):
@@ -139,6 +196,16 @@ def sync_vector_store_document(document, chunks):
         return
 
     store = get_vector_store()
+    if getattr(store, "name", "") == "pgvector":
+        if all(getattr(chunk, "embedding", None) is not None for chunk in chunks):
+            record_vector_sync_success(document.id, store.name, len(chunks))
+        else:
+            record_vector_sync_failure(
+                document.id,
+                store.name,
+                RuntimeError("One or more knowledge chunks are missing embeddings"),
+            )
+        return
     if getattr(store, "name", "") != "chroma":
         configured_store = str(current_app.config.get("RAG_VECTOR_STORE", "local")).lower()
         if configured_store == "chroma":

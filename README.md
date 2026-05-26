@@ -186,8 +186,8 @@ image.
 Copy `.env.example` to `.env` and set these values:
 
 ```env
-SECRET_KEY=change-this-in-production
-JWT_SECRET_KEY=change-this-in-production
+SECRET_KEY=                  # set in .env; keep empty in examples
+JWT_SECRET_KEY=              # set in .env; keep empty in examples
 DATABASE_URL=sqlite:///data/maintenance.db
 # Docker/Postgres:
 # DATABASE_URL=postgresql+psycopg://maintenance:maintenance@db:5432/maintenance
@@ -196,9 +196,14 @@ AI_PROVIDER=openai          # or "mock" for local-only mode
 OPENAI_API_KEY=             # leave empty to use local fallback
 OPENAI_MODEL=gpt-4o-mini
 RAG_ENABLED=true
-RAG_VECTOR_STORE=local      # local now, chroma later
+RAG_VECTOR_STORE=pgvector   # pgvector primary, local/chroma optional
+RAG_CHUNKING_MODE=hybrid_semantic
 RAG_CHUNK_SIZE=1400
 RAG_CHUNK_OVERLAP=160
+RAG_SEMANTIC_BREAKPOINT_THRESHOLD=0.35
+RAG_SEMANTIC_MIN_CHUNK_CHARS=600
+RAG_SEMANTIC_TARGET_CHUNK_CHARS=1200
+RAG_SEMANTIC_MAX_CHUNK_CHARS=1800
 RAG_TOP_K=4
 EMBEDDING_PROVIDER=hashing  # hashing now, openai later
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
@@ -333,9 +338,9 @@ flowchart LR
 ```
 
 Current implementation:
-- `chunking_service.py` provides configurable intelligent chunking with overlap and metadata-ready chunk payloads.
+- `chunking_service.py` provides structure-aware and hybrid semantic chunking with metadata-ready chunk payloads.
 - `embedding_service.py` abstracts embeddings. It defaults to deterministic local hashing and can switch to OpenAI embeddings by config.
-- `vector_store_service.py` abstracts vector backends. It uses the existing SQLAlchemy knowledge chunks locally and can switch to Chroma.
+- `vector_store_service.py` abstracts vector backends. It uses PostgreSQL pgvector when available, with local SQLAlchemy and optional Chroma fallbacks.
 - `retrieval_service.py` combines permission-aware structured retrieval with RAG knowledge chunks.
 - `rag_service.py` owns the high-level RAG context pipeline so future LangChain or LangGraph orchestration can be added without changing API routes.
 - `knowledge_gap_service.py` records open `KnowledgeGap` entries when AI chat cannot find reliable RAG/source context; recent duplicate questions are folded into one gap.

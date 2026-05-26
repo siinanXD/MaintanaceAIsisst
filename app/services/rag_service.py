@@ -67,7 +67,11 @@ def answer_with_rag(
         conversation_context=conversation_context,
     )
     ai_provider = provider or get_ai_provider()
-    answer = ai_provider.answer_question(message, retrieval["context"])
+    answer = ai_provider.answer_question(
+        message,
+        retrieval["context"],
+        extra_rules=_prompt_rules_for_retrieval(retrieval),
+    )
     result = attach_confidence_to_result(
         message,
         {
@@ -88,3 +92,18 @@ def answer_with_rag(
 def _knowledge_source_count(sources):
     """Return how many retrieved sources came from RAG knowledge chunks."""
     return sum(1 for source in sources if source.get("type") == "knowledge")
+
+
+def _prompt_rules_for_retrieval(retrieval):
+    """Return query-type-specific prompt rules from retrieval strategy metadata."""
+    understanding = retrieval.get("query_understanding") or {}
+    strategy = understanding.get("retrieval_strategy") or {}
+    rules = [str(rule).strip() for rule in strategy.get("prompt_rules") or [] if rule]
+    query_type = str(understanding.get("query_type") or "")
+    if query_type == "error_analysis":
+        rules.append("Trenne dokumentierte Ursache, Pruefung und empfohlene Massnahme klar.")
+    elif query_type == "safety_question":
+        rules.append("Bei Sicherheitsfragen nur quellenbasierte, vorsichtige Hinweise geben.")
+    elif query_type == "document_question":
+        rules.append("Nenne Dokument, Abschnitt oder Chunk, wenn diese Hinweise im Kontext stehen.")
+    return " ".join(dict.fromkeys(rules))

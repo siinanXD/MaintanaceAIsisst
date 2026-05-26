@@ -296,10 +296,10 @@ async function initAufgaben() {
     );
     let priorities = [];
     try {
-      priorities = await api("/api/v1/tasks/prioritize", {
+      priorities = listData(await api("/api/v1/tasks/prioritize", {
         method: "POST",
         body: JSON.stringify({ status: "open", limit: 10 })
-      });
+      }));
     } catch (error) {
       priorityList.innerHTML = '<div class="guided-empty-state"><strong>Priorisierung konnte nicht geladen werden.</strong><p>Die Aufgabeliste bleibt nutzbar. Prüfe später erneut oder sortiere nach Fälligkeit und Risiko.</p></div>';
       return;
@@ -308,6 +308,7 @@ async function initAufgaben() {
       priorityList.innerHTML = '<div class="guided-empty-state"><strong>Keine offenen Aufgaben</strong><p>Wenn Arbeit entsteht, lege einen Aufgabe an oder nutze den AI-Vorschlag aus einer kurzen Beschreibung.</p><a class="btn btn-primary btn-sm" href="#task-list">Aufgabeliste prüfen</a></div>';
       return;
     }
+    priorityList.innerHTML = "";
     priorities.forEach((item) => {
       const scoreClass = (item.risk_level === "critical" || item.risk_level === "high")
         ? "priority-score-num is-high"

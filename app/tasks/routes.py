@@ -17,6 +17,7 @@ from app.services.operations_tracking_service import record_event
 from app.services.task_service import (
     create_task,
     delete_task,
+    parse_task_priority_mode,
     prioritize_visible_tasks,
     start_task,
     suggest_task_from_text,
@@ -99,13 +100,15 @@ def suggest_task():
 @dashboard_permission_required("tasks", "view")
 def prioritize_tasks():
     """Return non-persisted priorities for visible tasks."""
+    payload = request.get_json(silent=True) or {}
     priorities, error, status = prioritize_visible_tasks(
-        request.get_json(silent=True) or {},
+        payload,
         current_user(),
     )
     if error:
         return service_error_response(error, status)
     user = current_user()
+    priority_mode = parse_task_priority_mode(payload.get("mode"))
     record_event(
         "ai.tasks_prioritized",
         "ai",
@@ -113,7 +116,10 @@ def prioritize_tasks():
         user=user,
         department=user.department,
         source="ai",
-        metadata={"result_count": len(priorities or [])},
+        metadata={
+            "priority_mode": priority_mode,
+            "result_count": len(priorities or []),
+        },
         commit=True,
     )
     return success_response(priorities, status, "Task priorities loaded")

@@ -205,6 +205,8 @@ def test_new_ai_frontend_routes_exist(app, client):
     }
     assert expected_routes <= routes
     assert "/api/v1/tasks/prioritize" in script
+    assert 'mode: "local"' in script
+    assert 'listData(await api("/api/v1/tasks/prioritize"' in script
     assert "/api/v1/errors/similar" in script
     assert "/api/v1/inventory/forecast" in script
     assert "/api/v1/shiftplans/calendar" in script

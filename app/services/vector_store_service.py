@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 
 from flask import current_app, has_app_context
 from sqlalchemy import or_
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
 from app.models import GeneratedDocument, KnowledgeChunk, KnowledgeDocument
@@ -324,6 +325,174 @@ class SqlAlchemyKnowledgeVectorStore(BaseVectorStore):
         )
 
 
+class PgVectorKnowledgeVectorStore(BaseVectorStore):
+    """Use PostgreSQL pgvector embeddings stored on knowledge chunks."""
+
+    name = "pgvector"
+
+    def __init__(self, embedding_provider=None):
+        """Initialize the pgvector knowledge vector adapter."""
+        self.embedding_provider = embedding_provider or get_embedding_provider()
+        self._last_debug = empty_retrieval_debug(vector_store=self.name)
+
+    def add_documents(self, records):
+        """Reject direct writes because knowledge indexing owns chunk embeddings."""
+        raise VectorStoreError("PgVectorKnowledgeVectorStore is indexed via KnowledgeChunk")
+
+    def similarity_search(self, query_text, user=None, limit=None, filters=None):
+        """Return pgvector-ranked visible knowledge chunks for query text."""
+        self._last_debug = empty_retrieval_debug(vector_store=self.name, filters=filters or {})
+        if not query_text or user is None:
+            return []
+        limit_value = _positive_int(limit, _config_value("RAG_TOP_K", DEFAULT_RAG_TOP_K))
+        query_vector = self.embedding_provider.embed_text(query_text)
+        candidate_limit = max(limit_value * 4, limit_value)
+        try:
+            raw_rows = self._candidate_rows(query_vector, candidate_limit, filters)
+        except SQLAlchemyError:
+            logger.exception("pgvector_retrieval_failed fallback=local")
+            fallback = SqlAlchemyKnowledgeVectorStore(self.embedding_provider)
+            results = fallback.similarity_search(
+                query_text,
+                user=user,
+                limit=limit,
+                filters=filters,
+            )
+            self._last_debug = fallback.last_debug()
+            return results
+
+        results, debug_counts = self._visible_results(
+            raw_rows,
+            query_text=query_text,
+            user=user,
+            filters=filters,
+            min_score=_positive_int(
+                _config_value("RAG_MIN_SCORE", DEFAULT_RAG_MIN_SCORE),
+                DEFAULT_RAG_MIN_SCORE,
+            ),
+        )
+        results.sort(
+            key=lambda item: (item.score, item.metadata.get("updated_at", "")),
+            reverse=True,
+        )
+        decisions = [
+            retrieval_debug_decision(
+                "vector_candidate_scan",
+                "ok" if raw_rows else "empty",
+                "pgvector_similarity_candidates_returned",
+                {"unique_candidates": len(raw_rows)},
+            ),
+            *_filter_decisions(
+                debug_counts["permission_filtered"],
+                debug_counts["quality_filtered"],
+                debug_counts["score_filtered"],
+                len(results),
+                debug_counts["min_score"],
+            ),
+        ]
+        self._last_debug = empty_retrieval_debug(
+            vector_candidates_found=len(raw_rows),
+            permission_filtered=debug_counts["permission_filtered"],
+            quality_filtered=debug_counts["quality_filtered"],
+            score_filtered=debug_counts["score_filtered"],
+            score_anchor_filtered=debug_counts["score_filtered"],
+            vector_store=self.name,
+            filters=filters or {},
+            top_k=limit_value,
+            decision_trace=decisions,
+        )
+        return results[:limit_value]
+
+    def document_vector_count(self, document_id):
+        """Return the stored embedding count for one knowledge document."""
+        try:
+            parsed_id = int(document_id)
+        except (TypeError, ValueError):
+            return None
+        return (
+            KnowledgeChunk.query.filter_by(document_id=parsed_id)
+            .filter(KnowledgeChunk.embedding.isnot(None))
+            .count()
+        )
+
+    def collection_vector_count(self):
+        """Return the stored embedding count for indexed knowledge documents."""
+        return (
+            KnowledgeChunk.query.join(KnowledgeDocument)
+            .filter(KnowledgeDocument.status == "indexed")
+            .filter(KnowledgeChunk.embedding.isnot(None))
+            .count()
+        )
+
+    def _candidate_rows(self, query_vector, limit_value, filters):
+        """Return pgvector candidate chunks with cosine distance."""
+        distance = KnowledgeChunk.embedding.cosine_distance(query_vector).label("distance")
+        query = (
+            KnowledgeChunk.query.join(KnowledgeDocument)
+            .filter(KnowledgeDocument.status == "indexed")
+            .filter(KnowledgeChunk.embedding.isnot(None))
+        )
+        query = _apply_db_filters(query, filters)
+        return (
+            query.with_entities(KnowledgeChunk, distance)
+            .order_by(distance.asc(), KnowledgeDocument.updated_at.desc())
+            .limit(limit_value)
+            .all()
+        )
+
+    def _visible_results(self, raw_rows, query_text, user, filters, min_score):
+        """Return visible scored pgvector results and prompt-safe filter counts."""
+        scorer = HybridRetrievalScorer(query_text=query_text)
+        results = []
+        permission_filtered = 0
+        quality_filtered = 0
+        score_filtered = 0
+        for chunk, distance in raw_rows:
+            document = chunk.document
+            if not _matches_filters(document, filters):
+                continue
+            quality_gate = retrieval_quality_gate_for_document(document)
+            if not quality_gate.allowed:
+                quality_filtered += 1
+                _log_vector_filter_decision("quality", document, chunk, quality_gate.reason)
+                continue
+            if not can_user_read_knowledge_document(user, document):
+                permission_filtered += 1
+                visibility = source_visibility_decision(user, document)
+                _log_vector_filter_decision("permission", document, chunk, visibility.reason)
+                continue
+            semantic_similarity = max(0.0, 1.0 - float(distance or 0.0))
+            score = scorer.score_text_result(
+                text=chunk.text,
+                document=document,
+                chunk_id=chunk.id,
+                semantic_similarity=semantic_similarity,
+                token_text=chunk.token_text,
+            )
+            if not score.allowed or score.final_score < min_score:
+                score_filtered += 1
+                _log_vector_filter_decision(
+                    "score_anchor",
+                    document,
+                    chunk,
+                    score.explanation if score.allowed else "insufficient_relevance_anchor",
+                )
+                continue
+            results.append(
+                VectorSearchResult(
+                    text=chunk.text,
+                    score=score.final_score,
+                    metadata=_knowledge_metadata(document, chunk, score=score),
+                )
+            )
+        return results, {
+            "permission_filtered": permission_filtered,
+            "quality_filtered": quality_filtered,
+            "score_filtered": score_filtered,
+            "min_score": min_score,
+        }
+
+
 class ChromaVectorStore(BaseVectorStore):
     """Use Chroma as a persistent vector-store backend."""
 
@@ -426,7 +595,12 @@ class ChromaVectorStore(BaseVectorStore):
 
 def get_vector_store():
     """Return the configured vector store with a local fallback."""
-    store_name = _config_value("RAG_VECTOR_STORE", "local").lower()
+    store_name = _config_value("RAG_VECTOR_STORE", "pgvector").lower()
+    if store_name == "pgvector":
+        if _is_postgresql():
+            return PgVectorKnowledgeVectorStore()
+        logger.info("vector_store_fallback store=pgvector reason=non_postgresql_database")
+        return SqlAlchemyKnowledgeVectorStore()
     if store_name in {"local", "sqlalchemy", "knowledge"}:
         return SqlAlchemyKnowledgeVectorStore()
     if store_name == "chroma":
@@ -808,6 +982,10 @@ def _chunk_for_metadata(result):
             "source_offset",
             "source_section",
             "section_title",
+            "chunking_mode",
+            "semantic_group",
+            "semantic_break_distance",
+            "embedding_model",
         )
         if result.metadata.get(key) not in (None, "")
     }
@@ -833,3 +1011,10 @@ def _positive_int(value, default):
     except (TypeError, ValueError):
         return default
     return parsed if parsed > 0 else default
+
+
+def _is_postgresql():
+    """Return whether the current SQLAlchemy bind is PostgreSQL."""
+    if not has_app_context():
+        return False
+    return db.engine.url.get_backend_name() == "postgresql"

@@ -73,6 +73,27 @@ class AIServiceError(Exception):
         self.error_code = error_code
 
 
+def log_ai_call_failure(provider_name, model, mode, error_code, exc):
+    """Log expected AI provider timeouts compactly and unexpected failures fully."""
+    if error_code == "timeout":
+        logger.warning(
+            "ai_call_failed provider=%s model=%s mode=%s error_code=%s detail=%s",
+            provider_name,
+            model,
+            mode,
+            error_code,
+            exc,
+        )
+        return
+    logger.exception(
+        "ai_call_failed provider=%s model=%s mode=%s error_code=%s",
+        provider_name,
+        model,
+        mode,
+        error_code,
+    )
+
+
 class BaseAIProvider(ABC):
     """Define the provider contract for AI-assisted workflows."""
 
@@ -91,7 +112,7 @@ class BaseAIProvider(ABC):
         """Return generated maintenance report text."""
 
     @abstractmethod
-    def answer_question(self, question, context, workflow="chat"):
+    def answer_question(self, question, context, workflow="chat", extra_rules=None):
         """Return a natural-language answer for a question and context."""
 
     @abstractmethod
@@ -173,7 +194,7 @@ class MockAIProvider(BaseAIProvider):
             f"{data.get('title')}. Ergebnis: {data.get('result') or 'erledigt'}."
         )
 
-    def answer_question(self, question, context, workflow="chat"):
+    def answer_question(self, question, context, workflow="chat", extra_rules=None):
         """Return a cautious local answer for a question and context."""
         self.last_call_metadata = local_metadata(self.name, workflow)
         if not context.strip():
@@ -299,9 +320,9 @@ class OpenAIProvider(BaseAIProvider):
         ]
         return self._text_completion(messages, "document_text")
 
-    def answer_question(self, question, context, workflow="chat"):
+    def answer_question(self, question, context, workflow="chat", extra_rules=None):
         """Return a natural-language answer for a question and context."""
-        messages = build_text_messages(question, context)
+        messages = build_text_messages(question, context, extra_rules=extra_rules)
         return self._text_completion(messages, workflow)
 
     def answer_general_question(self, question):
@@ -337,21 +358,56 @@ class OpenAIProvider(BaseAIProvider):
         return self._json_completion(prompt, "task_prioritization")
 
     def error_assistant_query(self, query, matches):
-        """Return AI-enhanced causes and fixes for a fault description."""
+        """Return AI-enhanced fault analysis from catalog matches."""
+        catalog_context = []
+        for match in matches[:3]:
+            match_payload = match if isinstance(match, dict) else {}
+            entry = match_payload.get("entry")
+            entry = entry if isinstance(entry, dict) else {}
+            catalog_context.append(
+                {
+                    "source_id": match_payload.get("id") or entry.get("id"),
+                    "machine": match_payload.get("machine") or entry.get("machine"),
+                    "relevance": match_payload.get("score"),
+                    "entry": entry,
+                }
+            )
+
         prompt = build_json_prompt(
-            "Leite aus Fehlerbeschreibung und Katalogtreffern Ursachen und " "Pruefschritte ab.",
-            {
-                "causes": ["string - one German cause per item"],
-                "fixes": ["string - one German fix instruction per item"],
-                "summary": "string - one-sentence German summary of the fault",
+            instruction=(
+                "Analysiere eine technische Stoerungsbeschreibung anhand "
+                "passender Fehlerkatalog-Treffer."
+            ),
+            schema={
+                "summary": "short German technical summary",
+                "causes": [
+                    {
+                        "cause": "string",
+                        "confidence": "low|medium|high",
+                        "source_id": "string",
+                    }
+                ],
+                "fixes": [
+                    {
+                        "step": "string",
+                        "priority": "high|medium|low",
+                    }
+                ],
+                "uncertainty": "niedrig|mittel|hoch",
             },
             payload={
-                "query": query,
-                "catalog_matches": [m["entry"] for m in matches[:3]],
+                "user_query": query,
+                "catalog_matches": catalog_context,
             },
             rules=[
-                "Bevorzuge Katalogdaten gegenueber Vermutungen.",
-                "Kennzeichne Unsicherheit durch vorsichtige Formulierungen.",
+                "Nutze primaer die Fehlerkatalog-Treffer.",
+                "Erfinde keine technischen Ursachen.",
+                "Wenn keine ausreichenden Informationen vorhanden sind, "
+                "weise auf Unsicherheit hin.",
+                "Bevorzuge Treffer mit hoher Relevanz.",
+                "Gib konkrete technische Pruefschritte.",
+                "Vermeide allgemeine Standardantworten.",
+                "Nutze vorsichtige Formulierungen bei geringer Sicherheit.",
             ],
         )
         return self._json_completion(prompt, "error_assistant")
@@ -359,14 +415,16 @@ class OpenAIProvider(BaseAIProvider):
     def review_document(self, html_text, metadata=None):
         """Return an AI-generated maintenance document quality review."""
         prompt = build_json_prompt(
-            "Pruefe einen deutschen Wartungsbericht auf Vollstaendigkeit und "
-            "konkrete Nachvollziehbarkeit.",
-            {
+            instruction=(
+                "Pruefe einen deutschen Wartungsbericht auf Vollstaendigkeit, "
+                "konkrete Nachvollziehbarkeit und technische Verwertbarkeit."
+            ),
+            schema={
                 "quality_score": "integer 0-100",
                 "status": "good|needs_review|incomplete",
                 "findings": [
                     {
-                        "field": "string",
+                        "field": "machine|cause|action|result|notes|metadata",
                         "severity": "info|warning|critical",
                         "message": "short German message",
                     }
@@ -378,8 +436,12 @@ class OpenAIProvider(BaseAIProvider):
                 "html_text": html_text[:12000],
             },
             rules=[
-                "Bewerte Maschine, Ursache, durchgefuehrte Massnahme, " "Ergebnis und Notizen.",
-                "Gib konkrete, kurze Empfehlungen.",
+                "Bewerte nur den bereitgestellten Wartungsbericht.",
+                "Erfinde keine fehlenden Inhalte.",
+                "Pruefe Maschine, Ursache, durchgefuehrte Massnahme, Ergebnis und Notizen.",
+                "Markiere fehlende oder unklare Angaben konkret.",
+                "Gib kurze, umsetzbare Empfehlungen.",
+                "Setze quality_score niedrig, wenn Ursache, Massnahme oder Ergebnis fehlen.",
             ],
         )
         return self._json_completion(prompt, "document_review")
@@ -424,11 +486,12 @@ class OpenAIProvider(BaseAIProvider):
             error_code = (
                 openai_error_code(exc) if isinstance(exc, OpenAIError) else "invalid_response"
             )
-            logger.exception(
-                "ai_call_failed provider=%s model=%s mode=json error_code=%s",
+            log_ai_call_failure(
                 self.name,
                 self.model,
+                "json",
                 error_code,
+                exc,
             )
             raise AIServiceError(
                 "AI provider failed to return valid JSON",
@@ -463,11 +526,12 @@ class OpenAIProvider(BaseAIProvider):
             return completion.choices[0].message.content
         except OpenAIError as exc:
             error_code = openai_error_code(exc)
-            logger.exception(
-                "ai_call_failed provider=%s model=%s mode=text error_code=%s",
+            log_ai_call_failure(
                 self.name,
                 self.model,
+                "text",
                 error_code,
+                exc,
             )
             raise AIServiceError(
                 "AI provider failed to return text",

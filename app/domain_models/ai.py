@@ -5,6 +5,18 @@ import json
 from app.domain_models.common import utc_now
 from app.extensions import db
 
+try:
+    from pgvector.sqlalchemy import Vector
+except ImportError:  # pragma: no cover - dependency is installed in supported envs
+    Vector = None
+
+
+def _knowledge_embedding_type():
+    """Return a portable SQLAlchemy type for stored knowledge embeddings."""
+    if Vector is None:
+        return db.JSON
+    return Vector()
+
 
 class ChatMessage(db.Model):
     """Persisted AI chat exchange for history and context retrieval."""
@@ -326,6 +338,7 @@ class KnowledgeChunk(db.Model):
     text = db.Column(db.Text, nullable=False)
     token_text = db.Column(db.Text, nullable=False, default="")
     entities_json = db.Column(db.Text, nullable=False, default="{}")
+    embedding = db.Column(_knowledge_embedding_type())
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
 
     document = db.relationship("KnowledgeDocument", back_populates="chunks")

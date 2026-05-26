@@ -8,6 +8,11 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
 
+try:
+    from pgvector.sqlalchemy import Vector
+except ImportError:  # pragma: no cover - dependency is installed in supported envs
+    Vector = None
+
 MIGRATION_COMMAND = "flask --app run:app db upgrade"
 
 REQUIRED_TABLE_COLUMNS = {
@@ -134,6 +139,7 @@ REQUIRED_TABLE_COLUMNS = {
         "text",
         "token_text",
         "entities_json",
+        "embedding",
     },
     "knowledge_gap": {
         "question",
@@ -324,6 +330,7 @@ LOCAL_DEV_SCHEMA_COLUMNS = {
     ),
     "knowledge_chunk": (
         sa.Column("entities_json", sa.Text(), nullable=False, server_default="{}"),
+        sa.Column("embedding", Vector() if Vector is not None else sa.JSON(), nullable=True),
     ),
     "shift_plan": (
         sa.Column("coverage_percent", sa.Float(), nullable=False, server_default="0"),

@@ -175,9 +175,10 @@ def _tier_model(tier, legacy_model=None):
     key = f"OPENAI_MODEL_{tier.upper()}"
     return (
         current_app.config.get(key)
-        or os.getenv(key)
         or legacy_model
         or current_app.config.get("OPENAI_MODEL")
+        or os.getenv(key)
+        or os.getenv("OPENAI_MODEL")
         or DEFAULT_MODELS[tier]
     )
 
@@ -185,7 +186,7 @@ def _tier_model(tier, legacy_model=None):
 def _workflow_default_timeout(workflow):
     """Return the default timeout for one workflow."""
     if workflow == "task_prioritization":
-        return float(current_app.config.get("AI_TASK_PRIORITIZATION_TIMEOUT_SECONDS", 2.0))
+        return float(current_app.config.get("AI_TASK_PRIORITIZATION_TIMEOUT_SECONDS", 6.0))
     return float(current_app.config.get("AI_TIMEOUT_SECONDS", 10))
 
 

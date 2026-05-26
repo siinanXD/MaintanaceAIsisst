@@ -48,10 +48,10 @@
         priorityList.innerHTML = "";
         let priorities = [];
         try {
-          priorities = await api("/api/v1/tasks/prioritize", {
+          priorities = listData(await api("/api/v1/tasks/prioritize", {
             method: "POST",
-            body: JSON.stringify({ status: "open", limit: 3 })
-          });
+            body: JSON.stringify({ status: "open", limit: 3, mode: "local" })
+          }));
         } catch (error) {
           priorityList.appendChild(priorityInsightCard("KI-Priorisierung", "Nicht verfügbar", "is-muted"));
           return;

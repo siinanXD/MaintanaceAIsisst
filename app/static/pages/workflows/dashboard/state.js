@@ -16,11 +16,41 @@
       }
 
       function todayIso() {
-        return dashboardTodayIso();
+        const now = new Date();
+        const month = String(now.getMonth() + 1).padStart(2, "0");
+        const day = String(now.getDate()).padStart(2, "0");
+        return now.getFullYear() + "-" + month + "-" + day;
       }
 
       function isOverdue(task) {
         return task.due_date && task.due_date < todayIso() && task.status !== "done";
+      }
+
+      function isoDateOnly(value) {
+        const text = String(value || "").slice(0, 10);
+        return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : "";
+      }
+
+      function dateDiffDays(fromIso, toIso) {
+        const from = isoDateOnly(fromIso).split("-").map(Number);
+        const to = isoDateOnly(toIso).split("-").map(Number);
+        if (from.length !== 3 || to.length !== 3 || from.some(Number.isNaN) || to.some(Number.isNaN)) {
+          return 0;
+        }
+        const fromTime = Date.UTC(from[0], from[1] - 1, from[2]);
+        const toTime = Date.UTC(to[0], to[1] - 1, to[2]);
+        return Math.round((toTime - fromTime) / 86400000);
+      }
+
+      function relativeDateLabel(dateValue) {
+        const target = isoDateOnly(dateValue);
+        if (!target) return "";
+        const diff = dateDiffDays(todayIso(), target);
+        if (diff === 0) return "heute faellig";
+        if (diff === 1) return "morgen faellig";
+        if (diff === -1) return "seit gestern überfällig";
+        if (diff < 0) return "seit " + Math.abs(diff) + " Tagen überfällig";
+        return "in " + diff + " Tagen faellig";
       }
 
       function setDashboardText(selector, value) {
@@ -115,7 +145,7 @@
         ].filter(Boolean);
         return parts.join(" · ");
       }
-      Object.assign(Dashboard, { announce, todayIso, isOverdue, setDashboardText, formatRatePercent, formatMilliseconds, currentUserIsMasterAdmin, dashboardSignalClass, dashboardSignalRank, dashboardWorstSeverity, dashboardStatusLabel, emptyRailMessage, controlCenterBadge, controlCenterLinkCard, taskMachineHint, taskMetaLine });
+      Object.assign(Dashboard, { announce, todayIso, isOverdue, isoDateOnly, dateDiffDays, relativeDateLabel, setDashboardText, formatRatePercent, formatMilliseconds, currentUserIsMasterAdmin, dashboardSignalClass, dashboardSignalRank, dashboardWorstSeverity, dashboardStatusLabel, emptyRailMessage, controlCenterBadge, controlCenterLinkCard, taskMachineHint, taskMetaLine });
     }
   };
 })();

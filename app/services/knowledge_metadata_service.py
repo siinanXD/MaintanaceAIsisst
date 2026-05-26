@@ -136,12 +136,19 @@ def _safe_chunk_metadata(metadata):
         "source_offset",
         "source_section",
         "section_title",
+        "chunking_mode",
+        "semantic_group",
+        "semantic_break_distance",
+        "embedding_model",
     ):
         value = metadata.get(key)
         if value in (None, ""):
             continue
-        if key in {"chunk_index", "chunk_order", "source_offset"}:
+        if key in {"chunk_index", "chunk_order", "source_offset", "semantic_group"}:
             safe[key] = _optional_int(value)
+            continue
+        if key == "semantic_break_distance":
+            safe[key] = _optional_float(value)
             continue
         safe[key] = str(value)[:180]
     return {key: value for key, value in safe.items() if value is not None}
@@ -151,6 +158,14 @@ def _optional_int(value):
     """Return an integer value when parsing succeeds."""
     try:
         return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _optional_float(value):
+    """Return a float value when parsing succeeds."""
+    try:
+        return float(value)
     except (TypeError, ValueError):
         return None
 

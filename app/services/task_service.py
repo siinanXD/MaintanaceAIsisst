@@ -22,6 +22,10 @@ from app.services.operations_tracking_service import record_event
 
 logger = logging.getLogger(__name__)
 
+TASK_PRIORITY_MODE_AI = "ai"
+TASK_PRIORITY_MODE_LOCAL = "local"
+TASK_PRIORITY_MODES = {TASK_PRIORITY_MODE_AI, TASK_PRIORITY_MODE_LOCAL}
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -483,6 +487,7 @@ def prioritize_visible_tasks(data, user):
     try:
         status = parse_enum(TaskStatus, data.get("status"), None)
         limit = parse_priority_limit(data.get("limit", 20))
+        priority_mode = parse_task_priority_mode(data.get("mode"))
     except ValueError as exc:
         return None, {"error": str(exc)}, 400
 
@@ -497,15 +502,18 @@ def prioritize_visible_tasks(data, user):
         "department": user.department.name if user.department else "",
     }
 
-    try:
-        provider_result = get_ai_provider().prioritize_tasks(serialized, context)
-    except AIServiceError:
-        logger.warning(
-            "ai_fallback workflow=task_prioritization user_id=%s task_count=%s",
-            user.id,
-            len(serialized),
-        )
+    if priority_mode == TASK_PRIORITY_MODE_LOCAL:
         provider_result = MockAIProvider().prioritize_tasks(serialized, context)
+    else:
+        try:
+            provider_result = get_ai_provider().prioritize_tasks(serialized, context)
+        except AIServiceError:
+            logger.warning(
+                "ai_fallback workflow=task_prioritization user_id=%s task_count=%s",
+                user.id,
+                len(serialized),
+            )
+            provider_result = MockAIProvider().prioritize_tasks(serialized, context)
 
     priorities = normalize_task_priorities(provider_result, tasks)
     return priorities, None, 200
@@ -571,6 +579,14 @@ def parse_priority_limit(value):
     if limit < 1 or limit > 100:
         raise ValueError("limit must be an integer between 1 and 100")
     return limit
+
+
+def parse_task_priority_mode(value):
+    """Return the requested task priority provider mode."""
+    mode = str(value or TASK_PRIORITY_MODE_AI).strip().lower()
+    if mode not in TASK_PRIORITY_MODES:
+        raise ValueError("mode must be one of: ai, local")
+    return mode
 
 
 def normalize_task_priorities(provider_result, tasks):

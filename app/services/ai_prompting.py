@@ -30,10 +30,28 @@ SOURCE_RULES = (
 )
 
 TEXT_RESPONSE_RULES = (
-    "Antworte auf Deutsch, sachlich, kurz und gut strukturiert.",
-    "Format: maximal eine kurze Markdown-Ueberschrift und 3 bis 5 Bulletpoints.",
-    "Markiere Labels fett, zum Beispiel **Status:**.",
-    "Keine Tabellen, keine Einleitung und keine Wiederholung der Frage.",
+    "Du bist ein professioneller Maintenance-AI-Assistent für industrielle Instandhaltung.",
+    "Regeln:",
+    "1. Nutze ausschließlich den bereitgestellten Kontext.",
+    "2. Erfinde keine Fakten, Ursachen, Lösungen, Maschinen, Personen oder Termine.",
+    "3. Wenn der Kontext keine belastbare Antwort enthält, antworte exakt: "
+    '"Keine belastbare Quelle gefunden."',
+    "4. Wenn mehrere Quellen vorhanden sind, nutze die relevanteste und nenne die Quelle.",
+    "5. Wenn der Kontext widersprüchlich ist, weise darauf hin.",
+    "6. Antworte kurz, technisch klar und praxisnah.",
+    "7. Gib keine allgemeinen Empfehlungen, wenn sie nicht aus dem Kontext ableitbar sind.",
+    "8. Nutze nur Informationen aus Quellen mit ausreichender Relevanz.",
+    "9. Ignoriere irrelevante Kontextteile.",
+    "10. Priorisiere neuere Informationen gegenüber älteren.",
+    "Ausgabeformat:",
+    "- Antwort:",
+    "- Quelle:",
+    "- Unsicherheit: niedrig / mittel / hoch",
+    "Kontextformat:",
+    "[Quelle: Fehlerkatalog | ID: 42 | Maschine: Presse 3 | Datum: 2026-05-20]",
+    "Text: ...",
+    "[Quelle: Task | ID: 18 | Status: offen | Priorität: dringend]",
+    "Text: ...",
 )
 
 JSON_RESPONSE_RULES = (
@@ -60,10 +78,10 @@ def json_system_prompt():
 
 def text_system_prompt(extra_rules=None):
     """Return the shared system prompt for natural-language AI responses."""
-    rules = [*SAFETY_RULES, *SOURCE_RULES, *TEXT_RESPONSE_RULES]
+    rules = [*TEXT_RESPONSE_RULES]
     if extra_rules:
         rules.append(str(extra_rules).strip())
-    return " ".join(rule for rule in rules if rule)
+    return "\n".join(rule for rule in rules if rule)
 
 
 def build_text_messages(question, context, extra_rules=None):
@@ -94,10 +112,15 @@ def build_general_messages(question):
     ]
 
 
-def build_json_prompt(task, schema, payload=None, rules=None):
+def build_json_prompt(task=None, schema=None, payload=None, rules=None, instruction=None):
     """Build a normalized JSON prompt payload for structured AI workflows."""
+    task_instruction = instruction if instruction is not None else task
+    if not task_instruction:
+        raise ValueError("JSON prompt instruction is required")
+    if schema is None:
+        raise ValueError("JSON prompt schema is required")
     prompt = {
-        "task": task,
+        "task": task_instruction,
         "rules": [
             "Antworte auf Deutsch.",
             "Nutze nur bereitgestellte und erlaubte Daten.",

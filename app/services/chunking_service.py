@@ -1,5 +1,7 @@
 """Text chunking helpers for the maintenance RAG pipeline."""
 
+import logging
+import math
 import re
 from dataclasses import dataclass, field
 
@@ -13,10 +15,17 @@ from app.services.text_normalization_service import tokenize_text
 DEFAULT_CHUNK_SIZE = 1200
 DEFAULT_CHUNK_OVERLAP = 220
 DEFAULT_MAX_CHUNKS = 80
+DEFAULT_CHUNKING_MODE = "hybrid_semantic"
+DEFAULT_SEMANTIC_BREAKPOINT_THRESHOLD = 0.35
+DEFAULT_SEMANTIC_MIN_CHUNK_CHARS = 600
+DEFAULT_SEMANTIC_TARGET_CHUNK_CHARS = 1200
+DEFAULT_SEMANTIC_MAX_CHUNK_CHARS = 1800
 MIN_CHUNK_SIZE = 200
 MIN_CHUNK_OVERLAP = 0
 MAX_SECTION_TITLE_CHARS = 140
 MAX_PROTECTED_BLOCK_OVERSIZE_FACTOR = 1.35
+SUPPORTED_CHUNKING_MODES = {"structured", "hybrid_semantic"}
+logger = logging.getLogger(__name__)
 HEADING_NUMBER_PATTERN = re.compile(r"^\d+(?:\.\d+)*[.)]?\s+\S+")
 LIST_ITEM_PATTERN = re.compile(
     r"^\s*(?:[-*]|\u2022|\d+[.)]|schritt\s+\d+[:.)-])\s+",
@@ -41,6 +50,11 @@ class ChunkingConfig:
     max_chars: int = DEFAULT_CHUNK_SIZE
     overlap: int = DEFAULT_CHUNK_OVERLAP
     max_chunks: int = DEFAULT_MAX_CHUNKS
+    mode: str = DEFAULT_CHUNKING_MODE
+    semantic_breakpoint_threshold: float = DEFAULT_SEMANTIC_BREAKPOINT_THRESHOLD
+    semantic_min_chars: int = DEFAULT_SEMANTIC_MIN_CHUNK_CHARS
+    semantic_target_chars: int = DEFAULT_SEMANTIC_TARGET_CHUNK_CHARS
+    semantic_max_chars: int = DEFAULT_SEMANTIC_MAX_CHUNK_CHARS
 
 
 @dataclass(frozen=True)
@@ -80,6 +94,23 @@ def configured_chunking(default=None):
         max_chars=current_app.config.get("RAG_CHUNK_SIZE", fallback.max_chars),
         overlap=current_app.config.get("RAG_CHUNK_OVERLAP", fallback.overlap),
         max_chunks=current_app.config.get("RAG_MAX_CHUNKS", fallback.max_chunks),
+        mode=current_app.config.get("RAG_CHUNKING_MODE", fallback.mode),
+        semantic_breakpoint_threshold=current_app.config.get(
+            "RAG_SEMANTIC_BREAKPOINT_THRESHOLD",
+            fallback.semantic_breakpoint_threshold,
+        ),
+        semantic_min_chars=current_app.config.get(
+            "RAG_SEMANTIC_MIN_CHUNK_CHARS",
+            fallback.semantic_min_chars,
+        ),
+        semantic_target_chars=current_app.config.get(
+            "RAG_SEMANTIC_TARGET_CHUNK_CHARS",
+            fallback.semantic_target_chars,
+        ),
+        semantic_max_chars=current_app.config.get(
+            "RAG_SEMANTIC_MAX_CHUNK_CHARS",
+            fallback.semantic_max_chars,
+        ),
     )
 
 
@@ -89,9 +120,14 @@ def validate_chunking_config(config):
         max_chars = int(config.max_chars)
         overlap = int(config.overlap)
         max_chunks = int(config.max_chunks)
+        semantic_threshold = float(config.semantic_breakpoint_threshold)
+        semantic_min_chars = int(config.semantic_min_chars)
+        semantic_target_chars = int(config.semantic_target_chars)
+        semantic_max_chars = int(config.semantic_max_chars)
     except (TypeError, ValueError) as exc:
-        raise ValueError("Chunking values must be integers") from exc
+        raise ValueError("Chunking values must be numeric") from exc
 
+    mode = str(config.mode or DEFAULT_CHUNKING_MODE).strip().lower()
     if max_chars < MIN_CHUNK_SIZE:
         raise ValueError(f"Chunk size must be at least {MIN_CHUNK_SIZE} characters")
     if overlap < MIN_CHUNK_OVERLAP:
@@ -100,7 +136,26 @@ def validate_chunking_config(config):
         raise ValueError("Chunk overlap must be smaller than chunk size")
     if max_chunks < 1:
         raise ValueError("Chunk limit must be at least 1")
-    return ChunkingConfig(max_chars=max_chars, overlap=overlap, max_chunks=max_chunks)
+    if mode not in SUPPORTED_CHUNKING_MODES:
+        raise ValueError(f"Chunking mode must be one of {sorted(SUPPORTED_CHUNKING_MODES)}")
+    if not 0 <= semantic_threshold <= 1:
+        raise ValueError("Semantic breakpoint threshold must be between 0 and 1")
+    if semantic_min_chars < 100:
+        raise ValueError("Semantic minimum chunk size must be at least 100 characters")
+    if semantic_target_chars < semantic_min_chars:
+        raise ValueError("Semantic target chunk size must not be smaller than minimum size")
+    if semantic_max_chars < semantic_target_chars:
+        raise ValueError("Semantic maximum chunk size must not be smaller than target size")
+    return ChunkingConfig(
+        max_chars=max_chars,
+        overlap=overlap,
+        max_chunks=max_chunks,
+        mode=mode,
+        semantic_breakpoint_threshold=semantic_threshold,
+        semantic_min_chars=semantic_min_chars,
+        semantic_target_chars=semantic_target_chars,
+        semantic_max_chars=semantic_max_chars,
+    )
 
 
 def normalize_text(value):
@@ -121,6 +176,11 @@ def chunk_text(text, metadata=None, config=None):
 
     chunking_config = validate_chunking_config(configured_chunking(config))
     blocks = _structured_blocks(structured_text)
+    if chunking_config.mode == "hybrid_semantic" and len(blocks) > 1:
+        try:
+            return _pack_semantic_blocks(blocks, metadata, chunking_config)
+        except Exception:
+            logger.exception("semantic_chunking_fallback mode=structured")
     if _has_structural_signal(blocks):
         return _pack_structured_blocks(blocks, metadata, chunking_config)
     normalized_text = normalize_text(text)
@@ -383,6 +443,122 @@ def _pack_structured_blocks(blocks, metadata, chunking_config):
     )
 
 
+def _pack_semantic_blocks(blocks, metadata, chunking_config):
+    """Pack source blocks using structure guards plus semantic breakpoints."""
+    parts = _semantic_candidate_blocks(blocks, chunking_config)
+    if not parts:
+        return []
+    distances = _semantic_distances(parts)
+    chunks = []
+    current_blocks = []
+    current_break_distance = 0.0
+    max_chars = min(chunking_config.semantic_max_chars, chunking_config.max_chars)
+    for index, block in enumerate(parts):
+        if len(chunks) >= chunking_config.max_chunks:
+            break
+        if current_blocks and _should_flush_semantic_chunk(
+            current_blocks,
+            block,
+            distances[index - 1] if index else 0.0,
+            chunking_config,
+            max_chars,
+        ):
+            _append_structured_chunk(
+                chunks,
+                current_blocks,
+                metadata,
+                extra_metadata={
+                    "chunking_mode": "hybrid_semantic",
+                    "semantic_group": len(chunks),
+                    "semantic_break_distance": round(current_break_distance, 4),
+                },
+            )
+            current_blocks = []
+            current_break_distance = 0.0
+        current_blocks.append(block)
+        if index < len(distances):
+            current_break_distance = max(current_break_distance, distances[index])
+    if current_blocks and len(chunks) < chunking_config.max_chunks:
+        _append_structured_chunk(
+            chunks,
+            current_blocks,
+            metadata,
+            extra_metadata={
+                "chunking_mode": "hybrid_semantic",
+                "semantic_group": len(chunks),
+                "semantic_break_distance": round(current_break_distance, 4),
+            },
+        )
+    return _merge_leading_metadata_preface(
+        [chunk.to_dict() for chunk in chunks],
+        max_chars,
+    )
+
+
+def _semantic_candidate_blocks(blocks, chunking_config):
+    """Return block parts small enough for semantic packing."""
+    parts = []
+    max_chars = min(chunking_config.semantic_max_chars, chunking_config.max_chars)
+    for block in blocks:
+        parts.extend(_split_oversized_block(block, max_chars))
+    return [part for part in parts if part.text.strip()]
+
+
+def _semantic_distances(blocks):
+    """Return cosine distances between neighboring source blocks."""
+    if len(blocks) <= 1:
+        return []
+    embeddings = _embed_block_texts([block.text for block in blocks])
+    return [
+        _cosine_distance(embeddings[index], embeddings[index + 1])
+        for index in range(len(embeddings) - 1)
+    ]
+
+
+def _embed_block_texts(texts):
+    """Return embeddings for semantic chunking using the configured provider."""
+    from app.services.embedding_service import get_embedding_provider
+
+    return get_embedding_provider().embed_texts(texts)
+
+
+def _cosine_distance(left_vector, right_vector):
+    """Return bounded cosine distance for two embedding vectors."""
+    left = [float(value) for value in (left_vector or [])]
+    right = [float(value) for value in (right_vector or [])]
+    if not left or not right or len(left) != len(right):
+        return 1.0
+    dot_product = sum(left[index] * right[index] for index in range(len(left)))
+    left_norm = math.sqrt(sum(value * value for value in left))
+    right_norm = math.sqrt(sum(value * value for value in right))
+    if left_norm <= 0 or right_norm <= 0:
+        return 1.0
+    similarity = dot_product / (left_norm * right_norm)
+    return max(0.0, min(1.0, 1.0 - similarity))
+
+
+def _should_flush_semantic_chunk(
+    current_blocks,
+    next_block,
+    semantic_distance,
+    chunking_config,
+    max_chars,
+):
+    """Return whether semantic packing should start a new chunk."""
+    current_text = _blocks_text(current_blocks)
+    candidate_length = len(current_text) + 2 + len(next_block.text)
+    if candidate_length > max_chars:
+        return True
+    current_length = len(current_text)
+    if current_length < chunking_config.semantic_min_chars:
+        return False
+    if current_blocks[-1].section_index != next_block.section_index:
+        return True
+    if current_length >= chunking_config.semantic_target_chars:
+        return semantic_distance >= chunking_config.semantic_breakpoint_threshold
+    return False
+
+
 def _merge_leading_metadata_preface(chunks, max_chars):
     """Merge a leading source-metadata preface with the first real content chunk."""
     if len(chunks) < 2:
@@ -462,7 +638,7 @@ def _should_flush_structured_chunk(current_blocks, next_block, max_chars):
     return len(current_text) + 2 + len(next_block.text) > max_chars
 
 
-def _append_structured_chunk(chunks, blocks, metadata):
+def _append_structured_chunk(chunks, blocks, metadata, extra_metadata=None):
     """Append one packed structured chunk with section metadata."""
     text = _blocks_text(blocks)
     first_block = blocks[0]
@@ -476,6 +652,7 @@ def _append_structured_chunk(chunks, blocks, metadata):
                 section_title=first_block.section_title,
                 source_section=_source_section(first_block),
                 source_offset=first_block.offset,
+                extra_metadata=extra_metadata,
             ),
         )
     )
@@ -652,6 +829,7 @@ def _chunk_metadata(
     section_title="",
     source_section="",
     source_offset=None,
+    extra_metadata=None,
 ):
     """Return metadata for one chunk with a stable chunk index."""
     payload = dict(metadata or {})
@@ -663,4 +841,5 @@ def _chunk_metadata(
         payload["source_section"] = source_section
     if section_title:
         payload["section_title"] = section_title
+    payload.update(extra_metadata or {})
     return payload

@@ -2,7 +2,7 @@
 
 from datetime import date, timedelta
 
-from app.models import Priority, Role, TaskStatus
+from app.models import OperationalEvent, Priority, Role, TaskStatus
 from app.services.ai_service import AIServiceError
 
 
@@ -308,9 +308,15 @@ def test_prioritize_tasks_rejects_invalid_filters(client, make_user, auth_header
         headers=headers,
         json={"limit": 0},
     )
+    bad_mode = client.post(
+        "/api/v1/tasks/prioritize",
+        headers=headers,
+        json={"mode": "remote"},
+    )
 
     assert bad_status.status_code == 400
     assert bad_limit.status_code == 400
+    assert bad_mode.status_code == 400
 
 
 def test_prioritize_tasks_sorts_urgent_overdue_before_normal(
@@ -380,6 +386,114 @@ def test_prioritize_tasks_uses_local_fallback_without_openai_key(
         "reason",
         "recommended_action",
     }
+
+
+def test_prioritize_tasks_local_mode_skips_ai_provider(
+    client,
+    make_user,
+    make_task,
+    auth_headers,
+    monkeypatch,
+):
+    """Verify local mode never calls the configured AI provider."""
+
+    def failing_provider():
+        """Fail if local mode tries to create a remote provider."""
+        raise AssertionError("AI provider must not be called in local mode")
+
+    user = make_user(username="priority_local_mode")
+    make_task(
+        "Lokale Dashboard-Prioritaet",
+        creator_username=user["username"],
+        priority=Priority.URGENT,
+        description="Presse steht und muss lokal priorisiert werden",
+    )
+    monkeypatch.setattr(
+        "app.services.task_service.get_ai_provider",
+        failing_provider,
+    )
+
+    response = client.post(
+        "/api/v1/tasks/prioritize",
+        headers=auth_headers(user["username"]),
+        json={"limit": 1, "mode": "local"},
+    )
+
+    payload = response.get_json()["data"]
+    event = (
+        OperationalEvent.query.filter_by(event_type="ai.tasks_prioritized")
+        .order_by(OperationalEvent.id.desc())
+        .first()
+    )
+    assert response.status_code == 200
+    assert len(payload) == 1
+    assert payload[0]["task"]["title"] == "Lokale Dashboard-Prioritaet"
+    assert event.metadata_dict()["priority_mode"] == "local"
+
+
+def test_prioritize_tasks_default_mode_uses_ai_provider(
+    client,
+    make_user,
+    make_task,
+    auth_headers,
+    monkeypatch,
+):
+    """Verify default task prioritization mode remains AI-backed."""
+
+    class RecordingProvider:
+        """Record whether the AI provider was used."""
+
+        called = False
+
+        def prioritize_tasks(self, tasks, context=None):
+            """Return a deterministic remote-style priority response."""
+            self.called = True
+            return {
+                "priorities": [
+                    {
+                        "task_id": tasks[0]["id"],
+                        "score": 99,
+                        "risk_level": "critical",
+                        "reason": "AI-Modus genutzt.",
+                        "recommended_action": "Sofort pruefen.",
+                    }
+                ]
+            }
+
+    provider = RecordingProvider()
+
+    def recording_provider():
+        """Return the provider used to assert default AI mode."""
+        return provider
+
+    user = make_user(username="priority_default_ai")
+    make_task(
+        "AI Default Prioritaet",
+        creator_username=user["username"],
+        priority=Priority.NORMAL,
+        description="Routine mit AI Provider",
+    )
+    monkeypatch.setattr(
+        "app.services.task_service.get_ai_provider",
+        recording_provider,
+    )
+
+    response = client.post(
+        "/api/v1/tasks/prioritize",
+        headers=auth_headers(user["username"]),
+        json={"limit": 1},
+    )
+
+    payload = response.get_json()["data"]
+    event = (
+        OperationalEvent.query.filter_by(event_type="ai.tasks_prioritized")
+        .order_by(OperationalEvent.id.desc())
+        .first()
+    )
+    assert response.status_code == 200
+    assert provider.called is True
+    assert payload[0]["score"] == 99
+    assert event.metadata_dict()["priority_mode"] == "ai"
 
 
 def test_prioritize_tasks_uses_local_fallback_on_provider_error(

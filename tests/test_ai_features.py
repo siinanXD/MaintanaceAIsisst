@@ -2838,7 +2838,7 @@ def test_ai_workflow_routing_uses_balanced_defaults(app):
     assert task_profile.tier == "fast"
     assert task_profile.temperature == 0.1
     assert priority_profile.model == "fast-test-model"
-    assert priority_profile.timeout_seconds == 2.0
+    assert priority_profile.timeout_seconds == 6.0
     assert priority_profile.max_retries == 0
     assert chat_profile.model == "balanced-test-model"
     assert chat_profile.tier == "balanced"

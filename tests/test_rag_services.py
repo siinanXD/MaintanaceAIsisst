@@ -39,6 +39,7 @@ from app.services.knowledge_source_quality_service import (
 )
 from app.services.retrieval_service import knowledge_context_for_chat, retrieve_context
 from app.services.technical_entity_service import extract_technical_entities
+from app.services.vector_store_service import get_vector_store
 
 
 def test_chunk_text_preserves_metadata_and_overlap():
@@ -90,6 +91,38 @@ def test_chunk_text_preserves_section_headings_steps_and_tables():
     assert [chunk["metadata"]["source_offset"] for chunk in chunks] == sorted(
         chunk["metadata"]["source_offset"] for chunk in chunks
     )
+
+
+def test_hybrid_semantic_chunking_splits_topic_changes():
+    """Verify hybrid semantic chunking can split paragraph-level topic changes."""
+    text = "\n\n".join(
+        (
+            "Hydraulikpumpe HP900 pruefen. Druckleitung entlueften und "
+            "Manometerwert dokumentieren. Hydraulikfilter kontrollieren.",
+            "Schaltschrank Temperatur pruefen. Luefter reinigen und SPS Diagnose "
+            "auslesen. Elektrische Klemmen durch Fachpersonal kontrollieren.",
+        )
+    )
+
+    chunks = chunk_text(
+        text,
+        config=ChunkingConfig(
+            max_chars=1000,
+            overlap=40,
+            max_chunks=5,
+            mode="hybrid_semantic",
+            semantic_breakpoint_threshold=0.05,
+            semantic_min_chars=100,
+            semantic_target_chars=110,
+            semantic_max_chars=500,
+        ),
+    )
+
+    assert len(chunks) == 2
+    assert "Hydraulikpumpe" in chunks[0]["text"]
+    assert "Schaltschrank" in chunks[1]["text"]
+    assert chunks[0]["metadata"]["chunking_mode"] == "hybrid_semantic"
+    assert chunks[1]["metadata"]["semantic_group"] == 1
 
 
 def test_chunk_text_keeps_error_code_block_together():
@@ -274,6 +307,7 @@ def test_rebuild_chunks_persists_technical_entities(app):
     assert "technical_entities" in metadata
     assert metadata["technical_entities"]["error_codes"] == ["E-10"]
     assert "hydraulikfilter" in chunk.token_text
+    assert chunk.embedding is not None
 
 
 def test_rebuild_chunks_persists_section_metadata(app):
@@ -317,6 +351,59 @@ def test_rebuild_chunks_persists_section_metadata(app):
     assert vector_metadata["section_title"] == "Wartungsschritte"
     assert vector_metadata["source_section"] == "section-1"
     assert "wartungsschritte" in chunk.token_text
+
+
+def test_rebuild_chunks_marks_document_error_when_embedding_fails(app):
+    """Verify indexing fails visibly when chunk embeddings cannot be created."""
+
+    class BrokenEmbeddingProvider:
+        """Embedding provider test double that fails explicitly."""
+
+        name = "broken"
+
+        def embed_texts(self, texts):
+            """Raise an embedding failure for every call."""
+            raise RuntimeError("embedding unavailable")
+
+    with app.app_context():
+        document = KnowledgeDocument(
+            source_type="upload",
+            title="Embedding Fehler",
+            original_filename="embedding.txt",
+            relative_path="uploads/embedding.txt",
+            content_type="text/plain",
+            department="Instandhaltung",
+            status="indexed",
+            is_public=True,
+            chunk_count=0,
+            created_at=utc_now(),
+            updated_at=utc_now(),
+        )
+        db.session.add(document)
+        db.session.flush()
+
+        with patch(
+            "app.services.embedding_service.get_embedding_provider",
+            return_value=BrokenEmbeddingProvider(),
+        ):
+            rebuild_chunks(
+                document,
+                "Fehlercode EMB-100\nUrsache: Sensor liefert kein Signal.\n"
+                "Loesung: Sensor reinigen und Testlauf dokumentieren.",
+            )
+
+    assert document.status == "error"
+    assert document.chunk_count == 0
+    assert "Embedding provider failed" in document.error_message
+
+
+def test_pgvector_store_falls_back_to_local_on_sqlite(app):
+    """Verify SQLite development uses local retrieval when pgvector is configured."""
+    with app.app_context():
+        app.config["RAG_VECTOR_STORE"] = "pgvector"
+        store = get_vector_store()
+
+    assert store.name == "local_knowledge"
 
 
 def test_rebuild_chunks_deduplicates_and_skips_low_quality_chunks(app):

@@ -162,6 +162,8 @@ def index_knowledge_document(document, raw_content=None, filename=None):
 
     document.updated_at = utc_now()
     rebuild_chunks(document, text)
+    if document.status == "error":
+        return document
     document.status = "indexed" if document.chunk_count else "no_text"
     document.error_message = "" if document.chunk_count else "Keine Textschicht gefunden."
     return document

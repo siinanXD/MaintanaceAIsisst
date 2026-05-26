@@ -13,6 +13,7 @@ from app.services.task_service import (  # noqa: F401
     parse_date,
     parse_enum,
     parse_priority_limit,
+    parse_task_priority_mode,
     prioritize_visible_tasks,
     start_task,
     suggest_task_from_text,

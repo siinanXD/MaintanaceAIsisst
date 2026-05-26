@@ -22,6 +22,7 @@ from app.models import (
     MachineManualVersion,
     Role,
 )
+from app.services.ai_prompting import build_json_prompt
 from app.services.ai_service import AIServiceError, get_ai_provider
 
 ALLOWED_CHECK_EXTENSIONS = {".html", ".htm", ".txt"}
@@ -134,15 +135,61 @@ def summarize_text(text, metadata=None):
     provider = get_ai_provider()
     if provider.name != "mock":
         try:
-            prompt = (
-                "Fasse dieses Wartungsdokument auf Deutsch zusammen. "
-                "Nenne Kernaussagen, Risiken und naechste Schritte."
+            prompt = build_json_prompt(
+                instruction="Analysiere und fasse ein Wartungsdokument technisch zusammen.",
+                schema={
+                    "summary": "short German technical summary",
+                    "key_findings": ["string"],
+                    "risks": ["string"],
+                    "next_steps": ["string"],
+                    "affected_machines": ["string"],
+                    "uncertainty": "niedrig|mittel|hoch",
+                },
+                payload={
+                    "document_text": cleaned[:12000],
+                    "metadata": metadata or {},
+                },
+                rules=[
+                    "Nutze ausschliesslich Informationen aus dem Dokument.",
+                    "Erfinde keine Risiken oder Fehler.",
+                    "Fasse technische Inhalte kompakt zusammen.",
+                    "Bevorzuge konkrete technische Aussagen.",
+                    "Nenne nur Maschinen, die explizit im Dokument vorkommen.",
+                ],
             )
-            summary = provider.answer_question(prompt, cleaned[:12000], workflow="document_summary")
-            return str(summary).strip()[:4000], "openai_used"
+            summary = provider._json_completion(prompt, "document_summary")
+            return format_ai_document_summary(summary)[:4000], "openai_used"
         except AIServiceError:
             logger.warning("ai_fallback workflow=document_summary metadata=%s", metadata or {})
     return local_summary(cleaned), "local_answer"
+
+
+def format_ai_document_summary(summary):
+    """Return a compact text summary from structured AI document analysis."""
+    if not isinstance(summary, dict):
+        return str(summary or "").strip()
+    lines = []
+    summary_text = str(summary.get("summary") or "").strip()
+    if summary_text:
+        lines.append(summary_text)
+    lines.extend(_summary_list_lines("Kernaussagen", summary.get("key_findings")))
+    lines.extend(_summary_list_lines("Risiken", summary.get("risks")))
+    lines.extend(_summary_list_lines("Naechste Schritte", summary.get("next_steps")))
+    lines.extend(_summary_list_lines("Betroffene Maschinen", summary.get("affected_machines")))
+    uncertainty = str(summary.get("uncertainty") or "").strip()
+    if uncertainty:
+        lines.append(f"Unsicherheit: {uncertainty}")
+    return "\n".join(lines).strip()
+
+
+def _summary_list_lines(title, values):
+    """Return formatted summary lines for one structured list field."""
+    if not isinstance(values, list):
+        return []
+    cleaned_values = [str(value).strip() for value in values if str(value or "").strip()]
+    if not cleaned_values:
+        return []
+    return [f"{title}:"] + [f"- {value}" for value in cleaned_values[:8]]
 
 
 def local_summary(text):
@@ -265,6 +312,7 @@ __all__ = [
     "extract_pdf_text",
     "extract_literal_pdf_strings",
     "summarize_text",
+    "format_ai_document_summary",
     "local_summary",
     "local_manual_analysis",
     "matching_lines",
