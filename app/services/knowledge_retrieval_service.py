@@ -78,6 +78,7 @@ STRUCTURED_SOURCE_TYPES = (
     "machine_manual",
     "shift_handover",
     "manual_training",
+    "faq",
 )
 
 
@@ -153,7 +154,8 @@ def source_url(document):
         "maintenance_plan": "/machines",
         "machine_manual": "/documents",
         "shift_handover": "/handover",
-        "manual_training": "/admin/ai",
+        "manual_training": "/admin/ai/rag-board",
+        "faq": "/admin/ai/prompt-faq",
     }
     return urls.get(document.source_type, "/admin/ai")
 

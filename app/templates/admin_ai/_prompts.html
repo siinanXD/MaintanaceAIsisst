@@ -1,0 +1,37 @@
+  {% if ai_admin_view == 'prompt_faq' %}
+  <section class="ai-admin-area" id="ai-prompts" data-ai-admin-area="prompts">
+    <div class="ai-admin-area-header">
+      <div>
+        <span class="section-kicker">3. Prompt & FAQ</span>
+        <h3>AI-Calls und Prompt-Versionen steuern</h3>
+        <p class="panel-meta">Master-Admins sehen aktive Prompts, Entwürfe und Rollback-Optionen pro Workflow.</p>
+      </div>
+      <span class="badge badge-ai" data-ai-section-status="prompts">Prompts werden geladen</span>
+    </div>
+    <div class="content-grid two-columns">
+      <section class="panel">
+        <div class="panel-header">
+          <h3>Workflows</h3>
+          <span class="panel-meta">Aktive Version, Antwortmodus und Zweck</span>
+        </div>
+        <div class="stack" data-ai-prompts></div>
+      </section>
+      <section class="panel">
+        <div class="panel-header">
+          <h3>Neuer Prompt-Entwurf</h3>
+          <span class="panel-meta">Entwurf speichern, danach gezielt aktivieren</span>
+        </div>
+        <form class="stack" data-ai-prompt-version-form>
+          <select class="input input-bordered" name="template_id" data-ai-prompt-template-select aria-label="Workflow auswählen"></select>
+          <textarea class="input input-bordered" name="system_prompt" rows="9" placeholder="System-Prompt"></textarea>
+          <textarea class="input input-bordered" name="user_prompt_template" rows="5" placeholder="User-Prompt-Template, z. B. {question}, {context}, {payload_json}"></textarea>
+          <input class="input input-bordered" name="change_note" placeholder="Änderungsnotiz">
+          <div class="toolbar">
+            <button class="btn btn-primary" type="submit">Entwurf speichern</button>
+            <span class="panel-meta" data-ai-prompt-form-status></span>
+          </div>
+        </form>
+      </section>
+    </div>
+  </section>
+  {% endif %}

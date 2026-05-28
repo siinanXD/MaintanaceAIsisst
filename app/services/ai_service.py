@@ -13,7 +13,6 @@ from openai import (
     AuthenticationError,
     BadRequestError,
     NotFoundError,
-    OpenAI,
     OpenAIError,
     PermissionDeniedError,
     RateLimitError,
@@ -21,10 +20,9 @@ from openai import (
 
 from app.services.ai_prompting import (
     build_general_messages,
+    build_json_messages,
     build_json_prompt,
     build_text_messages,
-    json_system_prompt,
-    text_system_prompt,
 )
 from app.services.ai_routing import (
     call_timer,
@@ -33,6 +31,12 @@ from app.services.ai_routing import (
     local_metadata,
     openai_client_options,
     workflow_profile,
+)
+from app.services.langfuse_service import (
+    langfuse_observation,
+    normalize_observation_metadata,
+    openai_client_class,
+    openai_langfuse_kwargs,
 )
 
 logger = logging.getLogger(__name__)
@@ -247,7 +251,8 @@ class OpenAIProvider(BaseAIProvider):
 
     def __init__(self, api_key, model):
         """Initialize the OpenAI provider."""
-        self.client = OpenAI(api_key=api_key, **openai_client_options())
+        client_class = openai_client_class()
+        self.client = client_class(api_key=api_key, **openai_client_options())
         self.legacy_model = model
         self.model = model
         self.last_call_metadata = {}
@@ -305,30 +310,33 @@ class OpenAIProvider(BaseAIProvider):
 
     def generate_document_text(self, data):
         """Return generated maintenance report text."""
-        messages = [
-            {
-                "role": "system",
-                "content": text_system_prompt(
-                    "Formuliere kurze, sachliche Wartungsberichte aus den "
-                    "bereitgestellten Taskdaten."
-                ),
-            },
-            {
-                "role": "user",
-                "content": json.dumps(data, ensure_ascii=True),
-            },
-        ]
-        return self._text_completion(messages, "document_text")
+        messages, prompt_metadata = build_text_messages(
+            "Formuliere einen kurzen, sachlichen Wartungsbericht.",
+            json.dumps(data, ensure_ascii=True),
+            extra_rules=(
+                "Formuliere kurze, sachliche Wartungsberichte aus den "
+                "bereitgestellten Taskdaten."
+            ),
+            workflow="document_text",
+            include_metadata=True,
+        )
+        return self._text_completion(messages, "document_text", prompt_metadata=prompt_metadata)
 
     def answer_question(self, question, context, workflow="chat", extra_rules=None):
         """Return a natural-language answer for a question and context."""
-        messages = build_text_messages(question, context, extra_rules=extra_rules)
-        return self._text_completion(messages, workflow)
+        messages, prompt_metadata = build_text_messages(
+            question,
+            context,
+            extra_rules=extra_rules,
+            workflow=workflow,
+            include_metadata=True,
+        )
+        return self._text_completion(messages, workflow, prompt_metadata=prompt_metadata)
 
     def answer_general_question(self, question):
         """Return a short natural-language answer for general hybrid mode."""
-        messages = build_general_messages(question)
-        return self._text_completion(messages, "general_chat")
+        messages, prompt_metadata = build_general_messages(question, include_metadata=True)
+        return self._text_completion(messages, "general_chat", prompt_metadata=prompt_metadata)
 
     def prioritize_tasks(self, tasks, context=None):
         """Return AI-generated task priorities as structured JSON."""
@@ -458,29 +466,25 @@ class OpenAIProvider(BaseAIProvider):
             prompt.get("task", "unknown"),
         )
         try:
-            started_at = call_timer()
-            completion = self._client_for_profile(profile).chat.completions.create(
-                model=profile.model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": json_system_prompt(),
-                    },
-                    {
-                        "role": "user",
-                        "content": json.dumps(prompt, ensure_ascii=True),
-                    },
-                ],
+            messages, prompt_metadata = build_json_messages(
+                prompt,
+                workflow=workflow,
+                include_metadata=True,
+            )
+            completion, latency_ms, trace_metadata = self._chat_completion(
+                profile,
+                workflow,
+                messages,
                 response_format={"type": "json_object"},
-                temperature=profile.temperature,
-                max_tokens=profile.max_tokens,
             )
             self.last_call_metadata = completion_metadata(
                 self.name,
                 profile,
                 completion,
-                elapsed_ms(started_at),
+                latency_ms,
             )
+            self.last_call_metadata.update(prompt_metadata)
+            self.last_call_metadata.update(trace_metadata)
             return json.loads(completion.choices[0].message.content)
         except (OpenAIError, TypeError, json.JSONDecodeError) as exc:
             error_code = (
@@ -498,7 +502,7 @@ class OpenAIProvider(BaseAIProvider):
                 error_code=error_code,
             ) from exc
 
-    def _text_completion(self, messages, workflow):
+    def _text_completion(self, messages, workflow, prompt_metadata=None):
         """Call OpenAI and return text content."""
         profile = workflow_profile(workflow, self.legacy_model)
         self.model = profile.model
@@ -510,19 +514,19 @@ class OpenAIProvider(BaseAIProvider):
             len(messages),
         )
         try:
-            started_at = call_timer()
-            completion = self._client_for_profile(profile).chat.completions.create(
-                model=profile.model,
-                messages=messages,
-                temperature=profile.temperature,
-                max_tokens=profile.max_tokens,
+            completion, latency_ms, trace_metadata = self._chat_completion(
+                profile,
+                workflow,
+                messages,
             )
             self.last_call_metadata = completion_metadata(
                 self.name,
                 profile,
                 completion,
-                elapsed_ms(started_at),
+                latency_ms,
             )
+            self.last_call_metadata.update(prompt_metadata or {})
+            self.last_call_metadata.update(trace_metadata)
             return completion.choices[0].message.content
         except OpenAIError as exc:
             error_code = openai_error_code(exc)
@@ -537,6 +541,39 @@ class OpenAIProvider(BaseAIProvider):
                 "AI provider failed to return text",
                 error_code=error_code,
             ) from exc
+
+    def _chat_completion(self, profile, workflow, messages, response_format=None):
+        """Call Chat Completions with optional Langfuse tracing metadata."""
+        call_kwargs = {
+            "model": profile.model,
+            "messages": messages,
+            "temperature": profile.temperature,
+            "max_tokens": profile.max_tokens,
+        }
+        if response_format:
+            call_kwargs["response_format"] = response_format
+        call_kwargs.update(openai_langfuse_kwargs(workflow, profile))
+
+        started_at = call_timer()
+        with langfuse_observation(workflow, profile) as observation:
+
+            def _call_completion():
+                """Execute the OpenAI chat completion request."""
+                return self._client_for_profile(profile).chat.completions.create(
+                    **call_kwargs,
+                )
+
+            runner = observation.get("runner") if observation else None
+            if runner:
+                completion = runner(_call_completion)
+            else:
+                completion = _call_completion()
+
+        return (
+            completion,
+            elapsed_ms(started_at),
+            normalize_observation_metadata(observation),
+        )
 
 
 def get_ai_provider():

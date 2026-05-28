@@ -7,7 +7,9 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
-from app.models import AIAuditEvent, AIFeedback
+from app.models import AIAuditEvent, AIFeedback, User
+from app.services.ai_routing import ai_price_configuration_status
+from app.services.langfuse_metrics_service import langfuse_metrics_summary
 from app.services.retrieval_explainability_service import explainability_to_json
 from app.services.retrieval_telemetry_service import retrieval_quality_analytics
 
@@ -51,6 +53,9 @@ def create_ai_audit_event(
             diagnostics.get("retrieval_explainability") or {},
         ),
         error_category=str(diagnostics.get("error") or "")[:120],
+        prompt_template_key=str(diagnostics.get("prompt_template_key") or "")[:80],
+        prompt_version_id=_optional_int_value(diagnostics.get("prompt_version_id")),
+        prompt_version_number=_optional_int_value(diagnostics.get("prompt_version_number")),
     )
     db.session.add(event)
     try:
@@ -111,6 +116,9 @@ def ai_analytics_summary(days=7):
         "total_tokens": total_tokens,
         "cache_rate": cache_rate,
         "estimated_cost_usd": estimated_cost_usd,
+        "langfuse_metrics": langfuse_metrics_summary(days=days),
+        "price_configuration": ai_price_configuration_status(),
+        "user_metrics": ai_user_usage_metrics(days=days),
         "cost_per_1k_tokens": _cost_per_1k_tokens(estimated_cost_usd, total_tokens),
         "status_counts": dict(status_counts),
         "workflow_counts": dict(workflow_counts),
@@ -140,9 +148,92 @@ def ai_analytics_summary(days=7):
     }
 
 
+def ai_user_usage_metrics(days=7, limit=10):
+    """Return AI usage and cost metrics grouped by application user."""
+    since = datetime.now(UTC) - timedelta(days=days)
+    events = (
+        AIAuditEvent.query.filter(AIAuditEvent.created_at >= since)
+        .order_by(AIAuditEvent.created_at.desc())
+        .all()
+    )
+    users_by_id = _users_by_id(event.user_id for event in events)
+    metrics = {}
+    for event in events:
+        key = event.user_id or 0
+        user = users_by_id.get(event.user_id)
+        item = metrics.setdefault(key, _empty_user_metrics(event.user_id, user))
+        item["events"] += 1
+        item["fallback_count"] += 1 if event.fallback_used else 0
+        item["error_count"] += 1 if _is_error_event(event) else 0
+        item["input_tokens"] += event.input_tokens or 0
+        item["output_tokens"] += event.output_tokens or 0
+        item["cached_tokens"] += event.cached_tokens or 0
+        item["total_tokens"] += event.total_tokens or 0
+        item["estimated_cost_usd"] += event.estimated_cost_usd or 0.0
+        if not item["latest_used_at"] or event.created_at > item["_latest_datetime"]:
+            item["_latest_datetime"] = event.created_at
+            item["latest_used_at"] = event.created_at.isoformat()
+    rows = [_finalize_user_metrics(item) for item in metrics.values()]
+    rows.sort(
+        key=lambda item: (
+            item["estimated_cost_usd"],
+            item["total_tokens"],
+            item["events"],
+            item["latest_used_at"] or "",
+        ),
+        reverse=True,
+    )
+    return rows[: max(1, int(limit or 10))]
+
+
 def _json_list(values):
     """Serialize a list-like value for compact audit storage."""
     return json.dumps(sorted(set(values or [])), ensure_ascii=True)
+
+
+def _users_by_id(user_ids):
+    """Return users keyed by id for the supplied non-empty user ids."""
+    ids = sorted({int(user_id) for user_id in user_ids if user_id})
+    if not ids:
+        return {}
+    return {user.id: user for user in User.query.filter(User.id.in_(ids)).all()}
+
+
+def _empty_user_metrics(user_id, user):
+    """Return an initialized user metrics row."""
+    return {
+        "user_id": user_id,
+        "langfuse_user_id": f"user:{user_id}" if user_id else "",
+        "username": user.username if user else "Unbekannt",
+        "role": user.role.value if user else "",
+        "events": 0,
+        "fallback_count": 0,
+        "fallback_rate": 0,
+        "error_count": 0,
+        "error_rate": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cached_tokens": 0,
+        "total_tokens": 0,
+        "estimated_cost_usd": 0.0,
+        "cost_per_1k_tokens": 0,
+        "latest_used_at": "",
+        "_latest_datetime": None,
+    }
+
+
+def _finalize_user_metrics(item):
+    """Return a public user metrics row with derived rates."""
+    payload = dict(item)
+    payload.pop("_latest_datetime", None)
+    payload["fallback_rate"] = _rate(payload["fallback_count"], payload["events"])
+    payload["error_rate"] = _rate(payload["error_count"], payload["events"])
+    payload["estimated_cost_usd"] = round(payload["estimated_cost_usd"], 6)
+    payload["cost_per_1k_tokens"] = _cost_per_1k_tokens(
+        payload["estimated_cost_usd"],
+        payload["total_tokens"],
+    )
+    return payload
 
 
 def _workflow_metrics(events):

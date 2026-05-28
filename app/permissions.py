@@ -13,6 +13,7 @@ DASHBOARD_KEYS = (
     "inventory",
     "documents",
     "admin_users",
+    "admin_ai",
 )
 
 DASHBOARD_GROUPS = (
@@ -34,7 +35,7 @@ DASHBOARD_GROUPS = (
     {
         "key": "administration",
         "label": "Administration",
-        "dashboards": ("admin_users",),
+        "dashboards": ("admin_users", "admin_ai"),
     },
 )
 
@@ -48,6 +49,7 @@ DASHBOARD_LABELS = {
     "inventory": "Lager",
     "documents": "Dokumente",
     "admin_users": "Users",
+    "admin_ai": "KI-Administration",
 }
 
 EMPLOYEE_ACCESS_LEVELS = ("none", "basic", "shift", "confidential")
@@ -77,6 +79,7 @@ ROLE_DEFAULT_PERMISSIONS = {
         "inventory": (True, True),
         "documents": (True, True),
         "admin_users": (True, True),
+        "admin_ai": (True, True),
     },
     Role.IT: {
         "dashboard": (True, False),

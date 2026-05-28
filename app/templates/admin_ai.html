@@ -6,92 +6,88 @@
 {% block content %}
 {% set ai_admin_view = admin_ai_view|default('overview') %}
 {% set ai_admin_nav = [
-  ('overview', '/admin/ai', 'Übersicht', '00', 'KPI-Status, Bereitschaft, offene Gaps und Schnellzugriffe.'),
-  ('models', '/admin/ai/models', 'Modelle', '01', 'Anbieter, Modell, Modus und Laufzeitbereitschaft.'),
-  ('retrieval', '/admin/ai/retrieval', 'Quellenabruf', '02', 'Abfrage-Typ, SQL, Keyword, Vektor, Bewertungen und Quellenfluss.'),
-  ('knowledge', '/admin/ai/knowledge', 'Wissensquellen', '03', 'Dokumente, strukturierte Quellen, Freigaben und Qualitätsprüfungen.'),
-  ('training', '/admin/ai/training', 'Trainingsdaten', '04', 'Manuelles, freigegebenes Assistant-Wissen.'),
-  ('diagnostics', '/admin/ai/diagnostics', 'Diagnose', '05', 'Fehler, Protokolle, Workflows, Debug-Blueprints und offene Gaps.'),
-  ('feedback', '/admin/ai/feedback', 'KI-Feedback', '06', 'Antwortqualität, negative Signale und Prüfhinweise.'),
-  ('indexing', '/admin/ai/indexing', 'Indexstatus', '07', 'Reindex, Verarbeitung, Textabschnitte, Vektoren und Drift.')
+  ('overview', '/admin/ai', 'Cockpit', '00', 'Ampeln, Top-Fragen, Wissenslücken, Kostenstatus und letzte Fehler.'),
+  ('rag_board', '/admin/ai/rag-board', 'RAG-Spielbrett', '01', 'Quellen-Kacheln, Index-Fortschritt und offene Pflegeaktionen.'),
+  ('source_check', '/admin/ai/source-check', 'Quellenprüfung', '02', 'Testfragen, Antwortqualität, Quellenbewertung und FAQ-Folgeaktionen.'),
+  ('prompt_faq', '/admin/ai/prompt-faq', 'Prompt & FAQ', '03', 'Prompt-Versionen, häufige Fragen, Antwortbausteine und Freigaben.'),
+  ('effectiveness', '/admin/ai/effectiveness', 'Kosten & Effektivität', '04', 'Nutzerkosten, Workflowkosten, Feedbackrate und No-Source-Rate.'),
+  ('technical', '/admin/ai/technical', 'Technik', '05', 'Retrieval, Reindex, Observability, Debug und SLO-Diagnose.')
 ] %}
 <section class="page-section ai-admin-page" data-admin-ai-page data-ai-admin-view="{{ ai_admin_view }}">
   <header class="ai-admin-hero">
     <div>
       <span class="section-kicker">KI-Steuerzentrale</span>
-      <h2>AI-Admin f&uuml;r Modelle, Retrieval, Wissen und Diagnose</h2>
-      <p class="panel-meta">Ein klar gegliedertes Cockpit f&uuml;r Betrieb, Quellenqualit&auml;t, Indexierung, Feedback und prompt-sichere Abrufanalyse.</p>
+      <h2>AI-Admin als RAG-Spielbrett</h2>
+      <p class="panel-meta">Pflege Wissen, Index und Quellen wie ein übersichtliches Spielfeld: testen, bewerten, verbessern und Kosten im Blick behalten.</p>
     </div>
     <div class="ai-admin-hero-status" aria-label="KI-Administration Schnellstatus">
       <span class="badge badge-ai" data-ai-overview-state>Noch nicht geladen</span>
-      <span class="panel-meta">Nur-Lese Status oben, operative Aktionen im Indexierung-Bereich.</span>
+      <span class="panel-meta">Fachliche Steuerung in RAG-Spielbrett, Quellenprüfung, Prompt & FAQ und Kosten.</span>
       <div class="surface-action-row" aria-label="KI-Administration Schnellzugriff">
-        <a class="btn btn-primary btn-sm" href="/admin/ai/retrieval">Quellenabruf pr&uuml;fen</a>
-        <a class="btn btn-secondary btn-sm" href="/admin/ai/knowledge">Quellenstatus</a>
-        <a class="btn btn-ghost btn-sm" href="/admin/ai/indexing">Indexierung</a>
+        <a class="btn btn-primary btn-sm" href="/admin/ai/source-check">Testfrage prüfen</a>
+        <a class="btn btn-secondary btn-sm" href="/admin/ai/rag-board">RAG pflegen</a>
+        <a class="btn btn-ghost btn-sm" href="/admin/ai/effectiveness">Kosten ansehen</a>
       </div>
     </div>
   </header>
 
-  <section class="knowledge-center-shell" aria-label="KI-Wissenscenter">
-    <aside class="knowledge-side-nav" aria-label="Wissenscenter Navigation">
+  {% if ai_admin_view == 'overview' %}
+  <section class="knowledge-center-shell" aria-label="KI-Administrationscenter">
+    <aside class="knowledge-side-nav" aria-label="KI-Administration Navigation">
       <div class="knowledge-side-brand">
         <span class="badge badge-ai">RAG aktiv</span>
-        <strong>Wissenscenter</strong>
-        <small>Quellen, Quellenabruf, Prompts, Modelle und Protokolle in einem Arbeitsbereich.</small>
+        <strong>Spielbrett</strong>
+        <small>RAG-Quellen, Testfragen, Prompts, FAQ, Kosten und technische Diagnose in einem Admin-Bereich.</small>
       </div>
-      <a href="/admin/ai" class="{% if ai_admin_view == 'overview' %}is-active{% endif %}" {% if ai_admin_view == 'overview' %}aria-current="page"{% endif %}><span>00</span><strong>&Uuml;bersicht</strong><small>KPI-Status, Bereitschaft und offene Gaps.</small></a>
-      <a href="/admin/ai/knowledge" class="{% if ai_admin_view == 'knowledge' %}is-active{% endif %}" {% if ai_admin_view == 'knowledge' %}aria-current="page"{% endif %}><span>01</span><strong>Wissensbasis</strong><small>Dokumente, Textabschnitte, Quellen und Freigaben.</small></a>
-      <a href="/admin/ai/retrieval" class="{% if ai_admin_view == 'retrieval' %}is-active{% endif %}" {% if ai_admin_view == 'retrieval' %}aria-current="page"{% endif %}><span>02</span><strong>Abruf-Test</strong><small>Abfrage, Bewertungen und Quellenfluss testen.</small></a>
-      <a href="/admin/ai/training" class="{% if ai_admin_view == 'training' %}is-active{% endif %}" {% if ai_admin_view == 'training' %}aria-current="page"{% endif %}><span>03</span><strong>Prompts</strong><small>Antwortverhalten und manuelles Wissen steuern.</small></a>
-      <a href="/admin/ai/models" class="{% if ai_admin_view == 'models' %}is-active{% endif %}" {% if ai_admin_view == 'models' %}aria-current="page"{% endif %}><span>04</span><strong>Modelle</strong><small>Anbieter, Modell, Modus und Laufzeit.</small></a>
-      <a href="/admin/ai/diagnostics" class="{% if ai_admin_view == 'diagnostics' %}is-active{% endif %}" {% if ai_admin_view == 'diagnostics' %}aria-current="page"{% endif %}><span>05</span><strong>Protokolle</strong><small>Fehler, Debug-Blueprints und offene Gaps.</small></a>
+      {% for view_key, view_url, view_label, view_number, view_description in ai_admin_nav %}
+        <a href="{{ view_url }}" class="{% if ai_admin_view == view_key %}is-active{% endif %}" {% if ai_admin_view == view_key %}aria-current="page"{% endif %}><span>{{ view_number }}</span><strong>{{ view_label }}</strong><small>{{ view_description }}</small></a>
+      {% endfor %}
     </aside>
     <div class="knowledge-center-main">
       <div class="knowledge-center-header">
         <div>
           <span class="section-kicker">Admin-Arbeitsbereich</span>
-          <h3>Wissensbasis, Textabschnitte und Quellenabruf steuerbar machen</h3>
-          <p class="panel-meta">Jede Einstellung zeigt, ob sie Antwortqualit&auml;t, Quellenabdeckung, Modellkosten, Prompt-Verhalten oder Protokolle beeinflusst.</p>
+          <h3>Antwortqualität fachlich steuerbar machen</h3>
+          <p class="panel-meta">Jede Fläche zeigt, ob sie Quellenabdeckung, Indexgesundheit, Antwortqualität, Modellkosten oder technische Protokolle beeinflusst.</p>
         </div>
         <a class="btn btn-primary btn-sm" href="/documents">Dokumente hochladen</a>
       </div>
-      <div class="document-card-grid" aria-label="Wissenskomponenten">
+      <div class="document-card-grid" aria-label="KI-Administrationskomponenten">
         <article class="document-card">
-          <span>Wissensbasis</span>
-          <strong>Freigegebene Dokumente</strong>
-          <small>Beeinflusst Quellenabdeckung und Antwortbelege.</small>
+          <span>RAG</span>
+          <strong>Spielbrett pflegen</strong>
+          <small>Zeigt Quellen, Indexfortschritt, Pflegeaktionen und Qualitätsstatus.</small>
         </article>
         <article class="document-card">
-          <span>Textabschnitte</span>
-          <strong>Indexierte Textsegmente</strong>
-          <small>Beeinflusst Trefferqualit&auml;t, Recall und Kontextfenster.</small>
+          <span>Prüfung</span>
+          <strong>Testfragen bewerten</strong>
+          <small>Sendet Testfragen, zeigt Quellen und speichert Feedback.</small>
         </article>
         <article class="document-card">
-          <span>Abruf-Test</span>
-          <strong>Frage gegen Quellen testen</strong>
-          <small>Zeigt Bewertungen, Quellen und Wissenslücken vor dem Live-Einsatz.</small>
+          <span>Prompt & FAQ</span>
+          <strong>Antwortverhalten steuern</strong>
+          <small>Verbindet Prompt-Versionen, FAQ-Entwürfe und Antwortbausteine.</small>
         </article>
         <article class="document-card">
-          <span>Prompts &amp; Modelle</span>
-          <strong>Antwortverhalten kontrollieren</strong>
-          <small>Beeinflusst Ton, Sicherheit, Kosten, Latenz und Ausweichbetriebs.</small>
+          <span>Effektivität</span>
+          <strong>Kosten gegen Nutzen sehen</strong>
+          <small>Vergleicht Tokens, Kosten, Feedback und Quellenlücken.</small>
         </article>
       </div>
     </div>
-    <aside class="knowledge-test-chat" aria-label="Abruf-Test Chat">
+    <aside class="knowledge-test-chat" aria-label="Antwort-Test Chat">
       <header>
         <span class="badge badge-ai">Test Chat</span>
-        <strong>Quellenpr&uuml;fung</strong>
+        <strong>Quellenprüfung</strong>
       </header>
       <div class="test-chat-thread">
         <div class="test-chat-message is-assistant">Stelle eine Wartungsfrage. Die Antwort muss Quellen und Sicherheit zeigen.</div>
-        <div class="test-chat-message is-user">Warum f&auml;llt Presse 3 bei Hydraulikdruck ab?</div>
-        <div class="test-chat-message is-assistant">Pr&uuml;fe Fehlerkatalog, Dokument-Textabschnitte und offene Aufgaben. Fehlende Quellen werden als Gap markiert.</div>
+        <div class="test-chat-message is-user">Warum fällt Presse 3 bei Hydraulikdruck ab?</div>
+        <div class="test-chat-message is-assistant">Prüfe Fehlerkatalog, Dokument-Textabschnitte und offene Aufgaben. Fehlende Quellen werden als Gap markiert.</div>
       </div>
       <div class="source-chip-row" aria-label="Quellenanzeige">
         <span class="source-chip">Fehlerkatalog</span>
-        <span class="source-chip">Manual Textabschnitt</span>
+        <span class="source-chip">FAQ</span>
         <span class="source-chip">Aufgabenverlauf</span>
       </div>
       <label class="chat-test-input" for="ai-admin-test-query">
@@ -100,13 +96,16 @@
       </label>
     </aside>
   </section>
+  {% endif %}
 
   <nav class="ai-admin-nav" aria-label="KI-Administration Bereiche">
     {% for view_key, view_url, view_label, _, _ in ai_admin_nav %}
       <a href="{{ view_url }}" class="{% if ai_admin_view == view_key %}is-active{% endif %}" {% if ai_admin_view == view_key %}aria-current="page"{% endif %}>{{ view_label }}</a>
     {% endfor %}
   </nav>
+  <p class="panel-meta ai-admin-load-message" data-ai-admin-message hidden></p>
 
+  {% if ai_admin_view == 'overview' %}
   <section class="ai-admin-map" aria-label="KI-Administration Struktur">
     {% for view_key, view_url, view_label, view_number, view_description in ai_admin_nav %}
       <a href="{{ view_url }}" class="{% if ai_admin_view == view_key %}is-active{% endif %}">
@@ -114,8 +113,15 @@
       </a>
     {% endfor %}
   </section>
+  {% endif %}
 
   {% include "admin_ai/_overview.html" %}
+  {% include "admin_ai/_rag_board.html" %}
+  {% include "admin_ai/_lab.html" %}
+  {% include "admin_ai/_costs.html" %}
+  {% include "admin_ai/_prompts.html" %}
+  {% include "admin_ai/_faq.html" %}
+  {% include "admin_ai/_technical.html" %}
   {% include "admin_ai/_knowledge.html" %}
   {% include "admin_ai/_indexing.html" %}
   {% include "admin_ai/_retrieval.html" %}

@@ -45,6 +45,7 @@ from app.services.empty_retrieval_response_service import build_empty_retrieval_
 from app.services.error_service import search_errors
 from app.services.incident_timeline_service import daily_briefing_timeline_section
 from app.services.knowledge_service import knowledge_sources_for_chat
+from app.services.langfuse_service import langfuse_status
 from app.services.order_planning_service import (
     REQUIRED_SCOPES as REQUIRED_ORDER_PLANNING_SCOPES,
 )
@@ -300,6 +301,10 @@ def ai_diagnostics(
         "cached_tokens",
         "total_tokens",
         "estimated_cost_usd",
+        "langfuse_enabled",
+        "langfuse_trace_id",
+        "langfuse_observation_id",
+        "langfuse_host",
     ):
         if key in metadata:
             payload[key] = metadata[key]
@@ -407,6 +412,7 @@ def ai_status():
         },
         "provider": provider,
         "streaming_enabled": bool(current_app.config.get("AI_ENABLE_STREAMING", True)),
+        "langfuse": langfuse_status(current_app.config),
         "ready": api_key_configured and last_error is None,
         "last_error": last_error,
         "analytics": ai_analytics_summary(7),

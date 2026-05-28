@@ -195,6 +195,15 @@ AUTO_CREATE_DATABASE=true  # set false in production and run migrations
 AI_PROVIDER=openai          # or "mock" for local-only mode
 OPENAI_API_KEY=             # leave empty to use local fallback
 OPENAI_MODEL=gpt-4o-mini
+LANGFUSE_ENABLED=false      # set true to trace OpenAI calls in Langfuse
+LANGFUSE_PUBLIC_KEY=
+LANGFUSE_SECRET_KEY=
+LANGFUSE_BASE_URL=https://cloud.langfuse.com
+LANGFUSE_TRACING_ENVIRONMENT=development
+LANGFUSE_RELEASE=
+GITHUB_REPOSITORY=siinanXD/MaintanaceAIsisst
+GITHUB_SHA=
+GITHUB_REF_NAME=
 RAG_ENABLED=true
 RAG_VECTOR_STORE=pgvector   # pgvector primary, local/chroma optional
 RAG_CHUNKING_MODE=hybrid_semantic
@@ -232,6 +241,15 @@ For mail, keep `MAIL_DRY_RUN=true` until SMTP credentials are verified. Dry-run
 creates delivery records but does not open an SMTP connection.
 Documents and manuals are stored below `DOCUMENTS_FOLDER` and `MANUALS_FOLDER`.
 Keep both folders on persistent storage in production.
+
+AI costs are calculated from OpenAI token usage and optional `AI_PRICE_*`
+settings in `.env`. Values are USD per 1M tokens. If no price keys are set,
+admin dashboards keep costs at `$0.0000` and show `Kosten nicht konfiguriert`
+instead of inventing prices. Langfuse receives only pseudonymous app user IDs
+such as `user:3` plus GitHub repository/commit metadata; GitHub accounts are
+not linked to application users. For the default models, configure keys such as
+`AI_PRICE_GPT_4O_MINI_INPUT_PER_1M`, `AI_PRICE_GPT_4O_MINI_OUTPUT_PER_1M`,
+`AI_PRICE_GPT_5_MINI_INPUT_PER_1M`, and `AI_PRICE_GPT_5_MINI_OUTPUT_PER_1M`.
 
 ### Scheduled Notifications
 

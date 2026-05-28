@@ -219,6 +219,13 @@
     const score = Number(status.readiness_score || 0);
     const scoreTarget = root.querySelector("[data-rag-readiness-score]");
     if (scoreTarget) scoreTarget.textContent = score + "/100";
+    root.querySelectorAll("[data-rag-vector-count]").forEach((target) => {
+      const vectorStore = status.vector_store || {};
+      const actual = vectorStore.actual_vector_count;
+      target.textContent = actual == null
+        ? numberText(vectorStore.expected_vector_count || 0)
+        : numberText(actual);
+    });
     const ragHealth = score >= 80 ? "ok" : (score >= 40 ? "warning" : "critical");
     setHealthCard(
       "rag",
@@ -295,17 +302,19 @@
   }
 
   async function loadJobs() {
-    const data = await api("/api/v1/admin/jobs?job_type=rag_reindex&limit=10");
     const tbody = root.querySelector("[data-ai-jobs]");
     const count = root.querySelector("[data-ai-job-count]");
     const statusList = root.querySelector("[data-ai-job-status]");
-    tbody.innerHTML = "";
+    if (!tbody && !count && !statusList) return;
+    const data = await api("/api/v1/admin/jobs?job_type=rag_reindex&limit=10");
+    if (tbody) tbody.innerHTML = "";
     if (count) count.textContent = data.pagination.total + " Jobs";
     const statusCounts = {};
     let oldestQueued = null;
     data.items.forEach((job) => {
       statusCounts[job.status] = (statusCounts[job.status] || 0) + 1;
       if (job.status === "queued" && !oldestQueued) oldestQueued = job;
+      if (!tbody) return;
       const row = document.createElement("tr");
       row.dataset.jobStatus = job.status;
       row.append(
@@ -317,7 +326,7 @@
       );
       tbody.appendChild(row);
     });
-    if (!data.items.length) {
+    if (tbody && !data.items.length) {
       renderAdminEmptyState(
         tbody,
         "Keine RAG-Reindex-Jobs vorhanden.",
@@ -488,9 +497,11 @@
   }
 
   async function loadChats() {
-    const query = root.querySelector("[data-ai-chat-search]").value;
-    const data = await api("/api/v1/admin/ai/chats?limit=20&q=" + encodeURIComponent(query));
+    const search = root.querySelector("[data-ai-chat-search]");
     const list = root.querySelector("[data-ai-chats]");
+    if (!list) return;
+    const query = search ? search.value : "";
+    const data = await api("/api/v1/admin/ai/chats?limit=20&q=" + encodeURIComponent(query));
     list.innerHTML = "";
     if (!data.items.length) {
       renderAdminEmptyState(
@@ -762,5 +773,281 @@
     });
     return select;
   }
-  Object.assign(AdminAI, { renderWorkflowMetrics, renderTopErrors, lifecycleKpiValue, renderLifecycle, renderLifecycleReview, renderLifecycleGate, renderLifecycleActions, renderLifecycleSteps, vectorSyncEventText, renderVectorStoreStatus, renderKnowledgeStatus, loadKnowledgeStatus, loadJobs, safeJobResultText, renderOperationsMetrics, loadOperationsMetrics, isFailedAiEvent, renderFailedQueries, loadEvents, loadChats, loadKnowledgeGaps, trainingPayload, resetTrainingForm, fillTrainingForm, loadTraining, loadTrainingSummary, loadKnowledge, knowledgeQualitySelect });
+
+  async function loadPrompts() {
+    const target = root.querySelector("[data-ai-prompts]");
+    if (!target) return;
+    const data = await api("/api/v1/admin/ai/prompts");
+    const items = data.items || [];
+    state.latestPrompts = items;
+    target.innerHTML = "";
+    const select = root.querySelector("[data-ai-prompt-template-select]");
+    if (select) select.innerHTML = "";
+    items.forEach((item) => {
+      const card = document.createElement("article");
+      const title = document.createElement("strong");
+      const detail = document.createElement("small");
+      const meta = document.createElement("div");
+      const active = (item.versions || []).find((version) => version.status === "active");
+      card.className = "training-card";
+      title.textContent = item.name + " (" + item.workflow_key + ")";
+      detail.textContent = item.purpose || "Prompt-Workflow";
+      meta.className = "training-card-meta";
+      meta.append(
+        statusPill(item.response_mode, "is-active"),
+        statusPill(active ? "v" + active.version + " aktiv" : "kein aktiver Prompt", active ? "is-active" : "is-stale")
+      );
+      card.append(title, detail, meta);
+      target.appendChild(card);
+      if (select) {
+        const option = document.createElement("option");
+        option.value = item.id;
+        option.textContent = item.name + " (" + item.workflow_key + ")";
+        select.appendChild(option);
+      }
+    });
+    setHealthCard("prompts", items.length ? "ok" : "warning", items.length + " Prompt-Workflows");
+  }
+
+  async function loadFaq() {
+    const tbody = root.querySelector("[data-ai-faq]");
+    if (!tbody) return;
+    const data = await api("/api/v1/admin/ai/faq?limit=50");
+    tbody.innerHTML = "";
+    (data.items || []).forEach((item) => {
+      const row = document.createElement("tr");
+      const actions = document.createElement("td");
+      if (item.status !== "approved") {
+        const approve = document.createElement("button");
+        approve.type = "button";
+        approve.className = "btn btn-secondary btn-sm";
+        approve.dataset.approveFaq = item.id;
+        approve.textContent = "Freigeben";
+        actions.appendChild(approve);
+      }
+      row.append(
+        cell(item.question),
+        cell(item.category),
+        pillCell(item.status, item.status === "approved" ? "is-active" : "is-stale"),
+        cell(item.source),
+        actions
+      );
+      tbody.appendChild(row);
+    });
+    if (!(data.items || []).length) {
+      renderAdminEmptyState(tbody, "Noch keine FAQ-Eintraege.", "Lege einen Entwurf an oder nutze Vorschlaege.");
+    }
+  }
+
+  async function loadFaqSuggestions() {
+    const questionTarget = root.querySelector("[data-ai-faq-frequent-questions]");
+    const gapTarget = root.querySelector("[data-ai-faq-knowledge-gaps]");
+    if (!questionTarget || !gapTarget) return;
+    const data = await api("/api/v1/admin/ai/faq/suggestions?days=30&limit=10");
+    questionTarget.innerHTML = "";
+    gapTarget.innerHTML = "";
+    questionTarget.appendChild(statusRow("Haeufige Fragen", (data.frequent_questions || []).length));
+    (data.frequent_questions || []).slice(0, 8).forEach((item) => {
+      questionTarget.appendChild(statusRow(item.question, item.count + "x"));
+    });
+    gapTarget.appendChild(statusRow("Offene Wissensluecken", (data.knowledge_gaps || []).length));
+    (data.knowledge_gaps || []).slice(0, 8).forEach((item) => {
+      gapTarget.appendChild(statusRow(item.question, item.occurrence_count + "x"));
+    });
+  }
+
+  async function loadResponseSnippets() {
+    const target = root.querySelector("[data-ai-response-snippets]");
+    if (!target) return;
+    const data = await api("/api/v1/admin/ai/response-snippets");
+    target.innerHTML = "";
+    (data.items || []).forEach((item) => {
+      target.appendChild(statusRow(item.title, item.category + " / " + (item.is_active ? "aktiv" : "inaktiv")));
+    });
+    if (!(data.items || []).length) {
+      target.appendChild(statusRow("Keine Antwortbausteine", "Noch nicht gepflegt"));
+    }
+  }
+
+  async function loadAdminUserCosts() {
+    const tbody = root.querySelector("[data-ai-user-costs-admin]");
+    if (!tbody) return;
+    const data = await api("/api/v1/admin/ai/users?days=30&limit=50");
+    tbody.innerHTML = "";
+    (data.items || []).forEach((item) => {
+      const row = document.createElement("tr");
+      row.append(
+        cell(item.username || "Unbekannt"),
+        cell(item.langfuse_user_id || "-"),
+        cell(item.events),
+        cell(item.total_tokens),
+        cell(moneyText(item.estimated_cost_usd)),
+        cell(percentText(item.fallback_rate)),
+        cell(dateTimeText(item.latest_used_at))
+      );
+      tbody.appendChild(row);
+    });
+    if (!(data.items || []).length) {
+      renderAdminEmptyState(tbody, "Noch keine AI-Nutzung.", "Nach echten AI-Anfragen erscheinen hier Nutzerkosten.");
+    }
+  }
+
+  async function runPromptDryRun(form) {
+    const payload = Object.fromEntries(new FormData(form).entries());
+    payload.mode = payload.workflow === "general_chat" || payload.workflow === "chat" ? "text" : "json";
+    const data = await api("/api/v1/admin/ai/prompts/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const preview = root.querySelector("[data-ai-lab-preview]");
+    const meta = root.querySelector("[data-ai-lab-meta]");
+    if (preview) preview.textContent = JSON.stringify(data.messages || [], null, 2);
+    if (meta) meta.textContent = "Prompt-Zeichen: " + numberText(data.estimated_prompt_characters || 0);
+    return data;
+  }
+
+  function sourceTestAnswerText(result) {
+    return result.answer || result.response || result.message || "Keine Antwort im Ergebnis.";
+  }
+
+  function sourceTestDiagnostics(result) {
+    return result.diagnostics || {};
+  }
+
+  function sourceTestCost(result) {
+    const diagnostics = sourceTestDiagnostics(result);
+    return diagnostics.estimated_cost_usd
+      || diagnostics.cost_usd
+      || diagnostics.cost
+      || 0;
+  }
+
+  function renderSourceTestSources(sources) {
+    const target = root.querySelector("[data-ai-source-test-sources]");
+    if (!target) return;
+    target.innerHTML = "";
+    if (!sources.length) {
+      target.appendChild(statusRow("Quellen", "Keine Quellen gefunden."));
+      return;
+    }
+    sources.slice(0, 8).forEach((source, index) => {
+      const item = document.createElement("article");
+      const title = document.createElement("strong");
+      const meta = document.createElement("small");
+      item.className = "source-test-source";
+      title.textContent = source.title || source.name || ("Quelle " + (index + 1));
+      meta.textContent = [
+        source.type || source.source_type || "knowledge",
+        source.score != null ? "Score " + source.score : "",
+        source.reason || source.module || ""
+      ].filter(Boolean).join(" - ");
+      item.append(title, meta);
+      target.appendChild(item);
+    });
+  }
+
+  function renderSourceTestResult(result, mode) {
+    const diagnostics = sourceTestDiagnostics(result);
+    const sources = result.sources || [];
+    const answer = sourceTestAnswerText(result);
+    const answerTarget = root.querySelector("[data-ai-source-test-answer]");
+    const meta = root.querySelector("[data-ai-source-test-meta]");
+    const stateTarget = root.querySelector("[data-ai-source-test-state]");
+    const actions = root.querySelector("[data-ai-source-test-actions]");
+    if (answerTarget) answerTarget.textContent = answer;
+    if (meta) {
+      meta.textContent = mode === "live"
+        ? "Live-Test ausgeführt. Bewerte die Antwort, damit Retrieval-Qualität messbar wird."
+        : "Dry-run ausgeführt. Kein Modellaufruf und keine Kosten.";
+    }
+    if (stateTarget) {
+      stateTarget.textContent = mode === "live" ? "Live" : "Dry-run";
+      stateTarget.className = "status-pill " + (mode === "live" ? "is-active" : "is-muted");
+    }
+    const kpis = {
+      sources: sources.length,
+      confidence: diagnostics.confidence_level
+        || (diagnostics.confidence_score != null ? diagnostics.confidence_score + "/100" : "-"),
+      cost: moneyText(sourceTestCost(result)),
+      latency: numberText(diagnostics.latency_ms || diagnostics.duration_ms || 0) + " ms"
+    };
+    Object.keys(kpis).forEach((key) => {
+      const target = root.querySelector('[data-ai-source-test-kpi="' + key + '"]');
+      if (target) target.textContent = kpis[key];
+    });
+    renderSourceTestSources(sources);
+    if (actions) actions.hidden = mode !== "live";
+  }
+
+  async function runSourceTest(form, intent) {
+    const payload = Object.fromEntries(new FormData(form).entries());
+    const mode = intent || payload.mode || "dry";
+    if (mode !== "live") {
+      const dryRun = await runPromptDryRun(form);
+      const preview = root.querySelector("[data-ai-lab-preview]");
+      const dryResult = {
+        answer: preview ? preview.textContent : JSON.stringify(dryRun.messages || [], null, 2),
+        sources: [],
+        diagnostics: { latency_ms: 0, estimated_cost_usd: 0 }
+      };
+      state.latestSourceTest = { mode: "dry", question: payload.question || "", result: dryResult };
+      renderSourceTestResult(dryResult, "dry");
+      return;
+    }
+
+    const question = String(payload.question || "").trim();
+    const context = String(payload.context || "").trim();
+    const message = context ? question + "\n\nKontext: " + context : question;
+    const result = await api("/api/v1/ai/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message })
+    });
+    state.latestSourceTest = { mode: "live", question, result };
+    renderSourceTestResult(result, "live");
+  }
+
+  async function submitSourceTestFeedback(rating, comment) {
+    const latest = state.latestSourceTest;
+    if (!latest || latest.mode !== "live" || !latest.result) {
+      throw new Error("Keine Live-Quellenprüfung vorhanden.");
+    }
+    const result = latest.result;
+    const diagnostics = sourceTestDiagnostics(result);
+    return api("/api/v1/ai/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_message_id: result.chat_message_id,
+        audit_event_id: diagnostics.audit_event_id,
+        prompt: latest.question,
+        response: sourceTestAnswerText(result),
+        response_type: result.response_type || "assistant",
+        rating,
+        comment: comment || "Bewertung aus KI-Admin Quellenprüfung",
+        sources: result.sources || []
+      })
+    });
+  }
+
+  async function createFaqFromSourceTest() {
+    const latest = state.latestSourceTest;
+    if (!latest || latest.mode !== "live" || !latest.result) {
+      throw new Error("Keine Live-Quellenprüfung vorhanden.");
+    }
+    return api("/api/v1/admin/ai/faq", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question: latest.question,
+        answer: sourceTestAnswerText(latest.result),
+        status: "draft",
+        source: "chat",
+        source_ref_id: latest.result.chat_message_id
+      })
+    });
+  }
+
+  Object.assign(AdminAI, { renderWorkflowMetrics, renderTopErrors, lifecycleKpiValue, renderLifecycle, renderLifecycleReview, renderLifecycleGate, renderLifecycleActions, renderLifecycleSteps, vectorSyncEventText, renderVectorStoreStatus, renderKnowledgeStatus, loadKnowledgeStatus, loadJobs, safeJobResultText, renderOperationsMetrics, loadOperationsMetrics, isFailedAiEvent, renderFailedQueries, loadEvents, loadChats, loadKnowledgeGaps, trainingPayload, resetTrainingForm, fillTrainingForm, loadTraining, loadTrainingSummary, loadKnowledge, knowledgeQualitySelect, loadPrompts, loadFaq, loadFaqSuggestions, loadResponseSnippets, loadAdminUserCosts, runPromptDryRun, renderSourceTestResult, runSourceTest, submitSourceTestFeedback, createFaqFromSourceTest });
 })(window.MaintenanceAdminAI);

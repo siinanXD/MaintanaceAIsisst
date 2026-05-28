@@ -10,6 +10,9 @@ from app.auth.services import find_department, parse_role
 from app.extensions import db
 from app.models import (
     AIAuditEvent,
+    AIFAQEntry,
+    AIPromptVersion,
+    AIResponseSnippet,
     AssistantTrainingEntry,
     Employee,
     KnowledgeDocument,
@@ -27,9 +30,25 @@ from app.permissions import (
 from app.responses import error_response, service_error_response, success_response
 from app.security import roles_required
 from app.services.admin_retrieval_debug_service import retrieval_debug_items
-from app.services.ai_audit_service import ai_analytics_summary
+from app.services.ai_audit_service import ai_analytics_summary, ai_user_usage_metrics
 from app.services.ai_history_service import paginated_chat_history, parse_limit_offset
 from app.services.ai_observability_service import ai_observability_dashboard
+from app.services.ai_faq_admin_service import (
+    approve_faq_entry,
+    create_faq_entry,
+    create_response_snippet,
+    faq_suggestions,
+    list_faq_entries,
+    list_response_snippets,
+    update_faq_entry,
+)
+from app.services.ai_prompt_admin_service import (
+    activate_prompt_version,
+    create_prompt_version,
+    get_prompt_template,
+    list_prompt_templates,
+    prompt_test_preview,
+)
 from app.services.assistant_training_service import (
     create_training_entry,
     delete_training_entry,

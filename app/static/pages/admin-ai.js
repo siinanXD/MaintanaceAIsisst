@@ -27,7 +27,8 @@
       latestOperationsStatus: null,
       latestJobSummary: null,
       latestTrainingSummary: null,
-      latestKnowledgeGaps: null
+      latestKnowledgeGaps: null,
+      latestPrompts: null
     }
   };
   window.MaintenanceAdminAI = AdminAI;
@@ -70,7 +71,7 @@
   start().catch((error) => {
     if (AdminAI.setAdminMessage && AdminAI.safeErrorMessage) {
       AdminAI.setAdminMessage(
-        AdminAI.safeErrorMessage(error, "KI-Administration konnte nicht vollst?ndig geladen werden"),
+        AdminAI.safeErrorMessage(error, "KI-Administration konnte nicht vollständig geladen werden"),
         true
       );
       return;

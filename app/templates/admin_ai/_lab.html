@@ -1,0 +1,83 @@
+  {% if ai_admin_view == 'source_check' %}
+  <section class="ai-admin-area source-check-area" id="ai-source-check" data-ai-admin-area="source-check">
+    <div class="ai-admin-area-header">
+      <div>
+        <span class="section-kicker">2. Quellenprüfung</span>
+        <h3>Testfrage stellen, Quellen prüfen und direkt bewerten</h3>
+        <p class="panel-meta">Dry-run bleibt kostenlos. Live-Test ist explizit und speichert normale Chat-, Audit- und Feedback-Daten.</p>
+      </div>
+      <span class="badge badge-ai" data-ai-section-status="lab">Bereit</span>
+    </div>
+
+    <div class="source-test-layout">
+      <form class="panel stack source-test-form" data-ai-source-test-form>
+        <div class="form-grid">
+          <label>
+            <span>Workflow</span>
+            <select class="input input-bordered" name="workflow" aria-label="Workflow">
+              <option value="chat">Wartungs-Chat</option>
+              <option value="general_chat">Allgemeiner Chat</option>
+              <option value="error_analysis">Fehleranalyse</option>
+              <option value="task_suggestion">Aufgaben-Vorschlag</option>
+              <option value="document_review">Dokument-Prüfung</option>
+            </select>
+          </label>
+          <label>
+            <span>Modus</span>
+            <select class="input input-bordered" name="mode" aria-label="Testmodus">
+              <option value="dry">Dry-run ohne Modellkosten</option>
+              <option value="live">Live-Test mit echtem AI-Call</option>
+            </select>
+          </label>
+        </div>
+        <label>
+          <span>Testfrage</span>
+          <textarea class="input input-bordered" name="question" rows="5" placeholder="z. B. Warum fällt Presse 3 bei Hydraulikdruck ab?"></textarea>
+        </label>
+        <label>
+          <span>Optionaler Kontext</span>
+          <textarea class="input input-bordered" name="context" rows="4" placeholder="Maschine, Abteilung, Fehlercode oder bekannte Quelle"></textarea>
+        </label>
+        <div class="toolbar">
+          <button class="btn btn-secondary" type="submit" name="intent" value="dry">Dry-run anzeigen</button>
+          <button class="btn btn-primary" type="submit" name="intent" value="live">Live-Test starten</button>
+        </div>
+      </form>
+
+      <section class="panel source-test-result">
+        <div class="panel-header">
+          <div>
+            <h3>Antwort & Quellen</h3>
+            <p class="panel-meta" data-ai-source-test-meta>Noch keine Testfrage ausgeführt</p>
+          </div>
+          <span class="status-pill is-muted" data-ai-source-test-state>Bereit</span>
+        </div>
+        <div class="source-test-answer" data-ai-source-test-answer>
+          Wähle Dry-run für Prompt/Kosten-Nähe oder Live-Test für echte Antwort mit Quellen.
+        </div>
+        <div class="source-test-score-grid">
+          <article><span>Quellen</span><strong data-ai-source-test-kpi="sources">0</strong></article>
+          <article><span>Sicherheit</span><strong data-ai-source-test-kpi="confidence">-</strong></article>
+          <article><span>Kosten</span><strong data-ai-source-test-kpi="cost">$0</strong></article>
+          <article><span>Latenz</span><strong data-ai-source-test-kpi="latency">0 ms</strong></article>
+        </div>
+        <div class="source-test-sources" data-ai-source-test-sources></div>
+        <div class="toolbar source-test-actions" data-ai-source-test-actions hidden>
+          <button class="btn btn-primary" type="button" data-ai-source-feedback="helpful">Gut</button>
+          <button class="btn btn-secondary" type="button" data-ai-source-feedback="partially_helpful">Teilweise</button>
+          <button class="btn btn-ghost" type="button" data-ai-source-feedback="not_helpful">Schlecht</button>
+          <button class="btn btn-secondary" type="button" data-ai-source-create-faq>FAQ daraus erstellen</button>
+          <button class="btn btn-ghost" type="button" data-ai-source-missing>Quelle fehlt</button>
+        </div>
+      </section>
+    </div>
+
+    <section class="panel mt-4">
+      <div class="panel-header">
+        <h3>Prompt-Vorschau</h3>
+        <span class="panel-meta" data-ai-lab-meta>Noch kein Dry-run</span>
+      </div>
+      <pre class="ai-debug-prompt" data-ai-lab-preview>Wähle Workflow und Frage.</pre>
+    </section>
+  </section>
+  {% endif %}

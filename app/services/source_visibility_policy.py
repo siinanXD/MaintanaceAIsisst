@@ -43,6 +43,7 @@ SOURCE_VISIBILITY_RULES = {
     "machine_manual": SourceVisibilityRule(dashboards=("documents",)),
     "shift_handover": SourceVisibilityRule(dashboards=("shiftplans",)),
     "manual_training": SourceVisibilityRule(dashboards=("documents",)),
+    "faq": SourceVisibilityRule(dashboards=("documents",)),
 }
 
 

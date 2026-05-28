@@ -85,11 +85,21 @@
   }
 
   function hydrateChatPanel() {
+    updateGuidanceVisibility();
     if (!state.hasHydratedPanel) {
       state.hasHydratedPanel = true;
       renderSuggestions();
     }
     loadChatHistory();
+  }
+
+  /**
+   * Hide diagnostic guidance from users who cannot inspect AI evidence.
+   */
+  function updateGuidanceVisibility() {
+    const guidance = document.querySelector(".chat-guidance");
+    if (!guidance || typeof Chat.canViewChatEvidence !== "function") return;
+    guidance.hidden = !Chat.canViewChatEvidence();
   }
 
   function focusChatInput() {
@@ -130,5 +140,5 @@
       restorePreviousFocus();
     }
   }
-  Object.assign(Chat, { isOpen, buildChatSessionId, warnChatSessionStorage, chatSessionId, resetChatSession, hydrateChatPanel, focusChatInput, focusableChatElements, restorePreviousFocus, setOpen });
+  Object.assign(Chat, { isOpen, buildChatSessionId, warnChatSessionStorage, chatSessionId, resetChatSession, hydrateChatPanel, updateGuidanceVisibility, focusChatInput, focusableChatElements, restorePreviousFocus, setOpen });
 })(window.MaintenanceChatRuntime);

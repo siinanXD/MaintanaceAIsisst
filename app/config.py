@@ -118,6 +118,23 @@ class Config:
         0,
     )
     AI_ENABLE_STREAMING = env_bool("AI_ENABLE_STREAMING", default=True)
+    LANGFUSE_ENABLED = env_bool("LANGFUSE_ENABLED", default=False)
+    LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "")
+    LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY", "")
+    LANGFUSE_BASE_URL = os.getenv(
+        "LANGFUSE_BASE_URL",
+        os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com"),
+    )
+    LANGFUSE_HOST = LANGFUSE_BASE_URL
+    LANGFUSE_TRACING_ENVIRONMENT = os.getenv(
+        "LANGFUSE_TRACING_ENVIRONMENT",
+        os.getenv("LANGFUSE_ENVIRONMENT", FLASK_ENV),
+    )
+    LANGFUSE_ENVIRONMENT = LANGFUSE_TRACING_ENVIRONMENT
+    LANGFUSE_RELEASE = os.getenv("LANGFUSE_RELEASE", "")
+    GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY", "siinanXD/MaintanaceAIsisst")
+    GITHUB_SHA = os.getenv("GITHUB_SHA", "")
+    GITHUB_REF_NAME = os.getenv("GITHUB_REF_NAME", "")
     RAG_ENABLED = env_bool("RAG_ENABLED", default=True)
     RAG_VECTOR_STORE = os.getenv("RAG_VECTOR_STORE", "pgvector")
     RAG_CHUNKING_MODE = os.getenv("RAG_CHUNKING_MODE", "hybrid_semantic")

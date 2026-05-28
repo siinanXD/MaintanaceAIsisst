@@ -21,7 +21,8 @@
       maintenance_plan: "Wartungspläne",
       machine_manual: "Maschineninfos",
       shift_handover: "Schichtübergaben",
-      manual_training: "Manuelles Training"
+      manual_training: "Manuelles Training",
+      faq: "FAQ"
     };
     return labels[sourceType] || sourceType;
   }
@@ -29,40 +30,46 @@
   function dataQuelleDefinitions() {
     return [
       {
-        key: "error_catalog",
-        label: "Fehlerkatalog",
-        description: "Fehlercodes, Ursachen und L&ouml;sungen",
-        types: ["error_entry"]
-      },
-      {
         key: "documents",
         label: "Dokumente",
+        icon: "D",
         description: "Uploads, Berichte und Maschinenhandb&uuml;cher",
         types: ["upload", "generated_document", "machine_manual", "maintenance_plan"]
       },
       {
+        key: "faq",
+        label: "FAQ",
+        icon: "F",
+        description: "Freigegebene Fragen und Antworten",
+        types: ["faq"]
+      },
+      {
+        key: "training",
+        label: "Trainingswissen",
+        icon: "T",
+        description: "Manuelles Assistant-Training",
+        types: ["manual_training"]
+      },
+      {
+        key: "error_catalog",
+        label: "Fehlerkatalog",
+        icon: "!",
+        description: "Fehlercodes, Ursachen und L&ouml;sungen",
+        types: ["error_entry"]
+      },
+      {
         key: "tasks",
         label: "Aufgaben",
+        icon: "A",
         description: "Wartungs- und Eskalationsaufgaben",
         types: ["task"]
       },
       {
         key: "machines",
         label: "Maschinen",
+        icon: "M",
         description: "Anlagen, Komponenten und Maschinenkontext",
         types: ["machine"]
-      },
-      {
-        key: "shift_data",
-        label: "Schichtdaten",
-        description: "Schicht&uuml;bergaben und operative Hinweise",
-        types: ["shift_handover"]
-      },
-      {
-        key: "training",
-        label: "Trainingsdaten",
-        description: "Manuelles Assistant-Training",
-        types: ["manual_training"]
       }
     ];
   }
@@ -79,19 +86,20 @@
   }
 
   function sourceHealth(metrics, ragEnabled) {
+    const ratio = metrics.documents ? metrics.searchable / metrics.documents : 0;
     if (!ragEnabled) {
-      return { label: "RAG aus", className: "is-muted", detail: "Strukturierte Daten bleiben nutzbar" };
+      return { label: "RAG aus", className: "is-muted", detail: "Strukturierte Daten bleiben nutzbar", ratio };
     }
     if (!metrics.documents) {
-      return { label: "leer", className: "is-muted", detail: "noch keine Quelle registriert" };
+      return { label: "leer", className: "is-muted", detail: "noch keine Quelle registriert", ratio };
     }
-    if (metrics.active && metrics.searchable === metrics.documents) {
-      return { label: "gesund", className: "is-active", detail: "vollst&auml;ndig im Quellenabruf nutzbar" };
+    if (metrics.active && ratio >= 0.85) {
+      return { label: "gesund", className: "is-active", detail: "vollst&auml;ndig im Quellenabruf nutzbar", ratio };
     }
-    if (metrics.active) {
-      return { label: "teilweise", className: "is-stale", detail: "ein Teil ist suchbar" };
+    if (metrics.active || ratio >= 0.6) {
+      return { label: "Achtung", className: "is-stale", detail: "ein Teil ist suchbar", ratio };
     }
-    return { label: "nicht aktiv", className: "is-error", detail: "nicht im RAG-Kontext verf&uuml;gbar" };
+    return { label: "kritisch", className: "is-error", detail: "nicht im RAG-Kontext verf&uuml;gbar", ratio };
   }
 
   function appendQuelleStat(target, label, value) {
@@ -121,16 +129,20 @@
       const header = document.createElement("div");
       const title = document.createElement("strong");
       const badge = statusPill(health.label, health.className);
+      const scorePercent = Math.round((health.ratio || 0) * 100);
+      const score = document.createElement("div");
       const description = document.createElement("p");
       const stats = document.createElement("div");
       const meta = document.createElement("small");
       card.className = "ai-source-card " + health.className;
       header.className = "ai-source-card-header";
+      score.className = "ai-source-score";
+      score.innerHTML = "<strong>" + numberText(scorePercent) + "%</strong><small>Gesundheit</small>";
       title.textContent = definition.label;
       description.innerHTML = definition.description;
       stats.className = "ai-source-stats";
-      appendQuelleStat(stats, "Einträge", numberText(metrics.documents));
-      appendQuelleStat(stats, "Textabschnitte", numberText(metrics.chunks));
+      appendQuelleStat(stats, "Quellen", numberText(metrics.documents));
+      appendQuelleStat(stats, "Chunks", numberText(metrics.chunks));
       appendQuelleStat(stats, "Suchbar", numberText(metrics.searchable));
       meta.innerHTML = [
         "Embedding: " + text(data.diagnostics && data.diagnostics.embedding_provider),
@@ -139,7 +151,7 @@
         "Health: " + health.detail
       ].join(" &middot; ");
       header.append(title, badge);
-      card.append(header, description, stats, meta);
+      card.append(header, score, description, stats, meta);
       target.appendChild(card);
     });
   }

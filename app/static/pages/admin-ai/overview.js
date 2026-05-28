@@ -500,10 +500,10 @@
       || Number(noQuelleRate || 0) >= 0.2
       || Number(lowConfidenceRate || 0) >= 0.2
     );
-    const state = root.querySelector("[data-ai-safety-summary-state]");
-    if (state) {
-      state.textContent = critical ? "Handlungsbedarf" : (warning ? "Beobachten" : "unauffällig");
-      state.className = "status-pill " + (critical ? "is-error" : (warning ? "is-stale" : "is-active"));
+    const summaryState = root.querySelector("[data-ai-safety-summary-state]");
+    if (summaryState) {
+      summaryState.textContent = critical ? "Handlungsbedarf" : (warning ? "Beobachten" : "unauffällig");
+      summaryState.className = "status-pill " + (critical ? "is-error" : (warning ? "is-stale" : "is-active"));
     }
   }
 

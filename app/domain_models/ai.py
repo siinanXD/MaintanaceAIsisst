@@ -179,6 +179,194 @@ class AssistantTrainingEntry(db.Model):
         }
 
 
+class AIPromptTemplate(db.Model):
+    """Admin-managed prompt template grouped by AI workflow."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    workflow_key = db.Column(db.String(80), nullable=False, unique=True, index=True)
+    name = db.Column(db.String(160), nullable=False)
+    purpose = db.Column(db.Text, nullable=False, default="")
+    response_mode = db.Column(db.String(20), nullable=False, default="text")
+    variables_json = db.Column(db.Text, nullable=False, default="[]")
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+    versions = db.relationship(
+        "AIPromptVersion",
+        back_populates="template",
+        cascade="all, delete-orphan",
+        order_by="AIPromptVersion.version.desc()",
+    )
+
+    def variables(self):
+        """Return prompt variable definitions as a safe list."""
+        return _loads_json_list(self.variables_json)
+
+    def active_version(self):
+        """Return the active version for this template, if present."""
+        return next((version for version in self.versions if version.status == "active"), None)
+
+    def to_dict(self, include_versions=False):
+        """Return a JSON-serializable prompt template."""
+        active = self.active_version()
+        payload = {
+            "id": self.id,
+            "workflow_key": self.workflow_key,
+            "name": self.name,
+            "purpose": self.purpose,
+            "response_mode": self.response_mode,
+            "variables": self.variables(),
+            "is_active": self.is_active,
+            "active_version_id": active.id if active else None,
+            "active_version_number": active.version if active else None,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+        }
+        if include_versions:
+            payload["versions"] = [
+                version.to_dict(include_prompt=True) for version in self.versions
+            ]
+        return payload
+
+
+class AIPromptVersion(db.Model):
+    """Versioned prompt text for one admin-managed prompt template."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    template_id = db.Column(db.Integer, db.ForeignKey("ai_prompt_template.id"), nullable=False)
+    version = db.Column(db.Integer, nullable=False)
+    status = db.Column(db.String(40), nullable=False, default="draft", index=True)
+    system_prompt = db.Column(db.Text, nullable=False, default="")
+    user_prompt_template = db.Column(db.Text, nullable=False, default="")
+    json_schema = db.Column(db.Text, nullable=False, default="")
+    rules_json = db.Column(db.Text, nullable=False, default="[]")
+    change_note = db.Column(db.Text, nullable=False, default="")
+    created_by = db.Column(db.Integer, db.ForeignKey("user.id"))
+    activated_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+
+    template = db.relationship("AIPromptTemplate", back_populates="versions")
+    creator = db.relationship("User", foreign_keys=[created_by])
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "template_id",
+            "version",
+            name="uq_ai_prompt_version_template_version",
+        ),
+        db.Index("ix_ai_prompt_version_template_status", "template_id", "status"),
+    )
+
+    def rules(self):
+        """Return additional prompt rules as a safe list."""
+        return _loads_json_list(self.rules_json)
+
+    def to_dict(self, include_prompt=False):
+        """Return a JSON-serializable prompt version."""
+        payload = {
+            "id": self.id,
+            "template_id": self.template_id,
+            "version": self.version,
+            "status": self.status,
+            "change_note": self.change_note,
+            "created_by": self.creator.username if self.creator else None,
+            "activated_at": self.activated_at.isoformat() if self.activated_at else None,
+            "created_at": self.created_at.isoformat(),
+        }
+        if include_prompt:
+            payload.update(
+                {
+                    "system_prompt": self.system_prompt,
+                    "user_prompt_template": self.user_prompt_template,
+                    "json_schema": self.json_schema,
+                    "rules": self.rules(),
+                }
+            )
+        return payload
+
+
+class AIFAQEntry(db.Model):
+    """Admin-approved FAQ answer that can become a searchable AI knowledge source."""
+
+    __tablename__ = "ai_faq_entry"
+
+    id = db.Column(db.Integer, primary_key=True)
+    question = db.Column(db.Text, nullable=False)
+    answer = db.Column(db.Text, nullable=False)
+    category = db.Column(db.String(80), nullable=False, default="wartung")
+    keywords = db.Column(db.Text, nullable=False, default="")
+    machine = db.Column(db.String(160), nullable=False, default="")
+    department = db.Column(db.String(120), nullable=False, default="")
+    status = db.Column(db.String(40), nullable=False, default="draft", index=True)
+    source = db.Column(db.String(40), nullable=False, default="manual")
+    source_ref_id = db.Column(db.Integer)
+    approved_by = db.Column(db.Integer, db.ForeignKey("user.id"))
+    approved_at = db.Column(db.DateTime)
+    created_by = db.Column(db.Integer, db.ForeignKey("user.id"))
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+    creator = db.relationship("User", foreign_keys=[created_by])
+    approver = db.relationship("User", foreign_keys=[approved_by])
+
+    __table_args__ = (
+        db.Index("ix_ai_faq_entry_status_updated", "status", "updated_at"),
+        db.Index("ix_ai_faq_entry_department_status", "department", "status"),
+        db.Index("ix_ai_faq_entry_category_status", "category", "status"),
+    )
+
+    def to_dict(self):
+        """Return a JSON-serializable FAQ entry."""
+        return {
+            "id": self.id,
+            "question": self.question,
+            "answer": self.answer,
+            "category": self.category,
+            "keywords": self.keywords,
+            "machine": self.machine,
+            "department": self.department,
+            "status": self.status,
+            "source": self.source,
+            "source_ref_id": self.source_ref_id,
+            "created_by": self.creator.username if self.creator else None,
+            "approved_by": self.approver.username if self.approver else None,
+            "approved_at": self.approved_at.isoformat() if self.approved_at else None,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+        }
+
+
+class AIResponseSnippet(db.Model):
+    """Reusable admin-managed response snippet for common AI answer states."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(80), nullable=False, unique=True, index=True)
+    title = db.Column(db.String(160), nullable=False)
+    body = db.Column(db.Text, nullable=False)
+    category = db.Column(db.String(80), nullable=False, default="fallback")
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    created_by = db.Column(db.Integer, db.ForeignKey("user.id"))
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+    creator = db.relationship("User", foreign_keys=[created_by])
+
+    def to_dict(self):
+        """Return a JSON-serializable response snippet."""
+        return {
+            "id": self.id,
+            "key": self.key,
+            "title": self.title,
+            "body": self.body,
+            "category": self.category,
+            "is_active": self.is_active,
+            "created_by": self.creator.username if self.creator else None,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+        }
+
+
 class AIAuditEvent(db.Model):
     """Metadata-only audit record for one AI workflow execution."""
 
@@ -204,9 +392,13 @@ class AIAuditEvent(db.Model):
     confidence_level = db.Column(db.String(40), nullable=False, default="")
     retrieval_explainability_json = db.Column(db.Text, nullable=False, default="{}")
     error_category = db.Column(db.String(120), nullable=False, default="")
+    prompt_template_key = db.Column(db.String(80), nullable=False, default="")
+    prompt_version_id = db.Column(db.Integer, db.ForeignKey("ai_prompt_version.id"))
+    prompt_version_number = db.Column(db.Integer)
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
 
     user = db.relationship("User")
+    prompt_version = db.relationship("AIPromptVersion", foreign_keys=[prompt_version_id])
 
     __table_args__ = (
         db.Index("ix_ai_audit_event_created", "created_at"),
@@ -245,6 +437,9 @@ class AIAuditEvent(db.Model):
             "confidence_level": self.confidence_level,
             "retrieval_explainability": self.retrieval_explainability(),
             "error_category": self.error_category,
+            "prompt_template_key": self.prompt_template_key,
+            "prompt_version_id": self.prompt_version_id,
+            "prompt_version_number": self.prompt_version_number,
             "created_at": self.created_at.isoformat(),
         }
 

@@ -1,0 +1,18 @@
+  {% if ai_admin_view == 'technical' %}
+  <section class="ai-admin-area" id="ai-technical" data-ai-admin-area="technical">
+    <div class="ai-admin-area-header">
+      <div>
+        <span class="section-kicker">7. Technische Diagnose</span>
+        <h3>Retrieval, Protokolle, Reindex und SLOs</h3>
+        <p class="panel-meta">Die bisherigen technischen Detailansichten bleiben erhalten und sind hier gebündelt verlinkt.</p>
+      </div>
+      <span class="badge badge-ai" data-ai-section-status="technical">Diagnose bereit</span>
+    </div>
+    <div class="document-card-grid">
+      <a class="document-card" href="#ai-retrieval"><span>Retrieval</span><strong>Quellenabruf analysieren</strong><small>Debug, SLO und Golden Eval.</small></a>
+      <a class="document-card" href="#ai-diagnostics"><span>Protokolle</span><strong>AI-Logs und Wissenslücken</strong><small>Observability, Fehler und Debug-Blueprints.</small></a>
+      <a class="document-card" href="#ai-indexing-status"><span>Index</span><strong>Reindex und Jobs</strong><small>Queue, Vektor-Sync und Drift.</small></a>
+      <a class="document-card" href="/admin/ai#ai-models"><span>Modelle</span><strong>Provider und Laufzeit</strong><small>Status, Fallbacks und Modellprofile.</small></a>
+    </div>
+  </section>
+  {% endif %}

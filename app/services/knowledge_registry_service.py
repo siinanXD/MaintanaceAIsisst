@@ -12,6 +12,7 @@ from werkzeug.utils import secure_filename
 from app.domain_models.common import utc_now
 from app.extensions import db
 from app.models import (
+    AIFAQEntry,
     AssistantTrainingEntry,
     ErrorEntry,
     GeneratedDocument,
@@ -78,6 +79,7 @@ STRUCTURED_SOURCE_TYPES = (
     "machine_manual",
     "shift_handover",
     "manual_training",
+    "faq",
 )
 
 
@@ -122,6 +124,7 @@ def ensure_structured_sources_registered():
     registered += ensure_machine_manuals_registered()
     registered += ensure_shift_handovers_registered()
     registered += ensure_assistant_training_entries_registered()
+    registered += ensure_faq_entries_registered()
     return registered
 
 
@@ -273,6 +276,24 @@ def ensure_assistant_training_entries_registered():
     return count
 
 
+def ensure_faq_entries_registered():
+    """Register approved FAQ entries in the knowledge base."""
+    existing = existing_source_ids("faq")
+    count = 0
+    entries = (
+        AIFAQEntry.query.filter_by(status="approved")
+        .order_by(AIFAQEntry.updated_at.desc(), AIFAQEntry.id.asc())
+        .all()
+    )
+    for entry in entries:
+        if entry.id in existing:
+            continue
+        register_faq_entry_document(entry)
+        count += 1
+    db.session.flush()
+    return count
+
+
 def existing_source_ids(source_type):
     """Return registered source ids for a knowledge source type."""
     return {
@@ -346,6 +367,37 @@ def register_training_entry_document(entry):
         created_at=entry.created_at,
         url_path="/admin/ai",
     )
+
+
+def register_faq_entry_document(entry):
+    """Register one approved FAQ entry as a pending knowledge document."""
+    register_source_document(
+        source_type="faq",
+        source_id=entry.id,
+        title=entry.question[:220],
+        department=entry.department,
+        created_by=entry.created_by,
+        created_at=entry.created_at,
+        url_path="/admin/ai/prompt-faq",
+    )
+
+
+def mark_faq_entry_knowledge_stale(entry):
+    """Create or mark an FAQ knowledge document as stale after a change."""
+    if entry.status != "approved":
+        delete_source_knowledge_document("faq", entry.id)
+        return
+    document = source_document("faq", entry.id)
+    if not document:
+        register_faq_entry_document(entry)
+        return
+    document.title = entry.question[:220]
+    document.department = entry.department
+    document.relative_path = "/admin/ai/prompt-faq"
+    document.status = "stale"
+    mark_quality_outdated_if_reviewed(document)
+    document.error_message = "FAQ wurde geaendert und muss neu indexiert werden."
+    document.updated_at = utc_now()
 
 
 def mark_task_knowledge_stale(task):
@@ -445,13 +497,16 @@ __all__ = [
     "ensure_machine_manuals_registered",
     "ensure_shift_handovers_registered",
     "ensure_assistant_training_entries_registered",
+    "ensure_faq_entries_registered",
     "existing_source_ids",
     "register_source_document",
     "register_error_entry_document",
     "register_task_document",
     "register_training_entry_document",
+    "register_faq_entry_document",
     "mark_task_knowledge_stale",
     "mark_training_entry_knowledge_stale",
+    "mark_faq_entry_knowledge_stale",
     "mark_error_entry_knowledge_stale",
     "mark_machine_knowledge_stale",
     "delete_source_knowledge_document",

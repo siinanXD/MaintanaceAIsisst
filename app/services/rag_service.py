@@ -6,6 +6,7 @@ from app.services.ai_safety_service import (
     enforce_post_generation_safety,
 )
 from app.services.ai_service import get_ai_provider
+from app.services.langfuse_service import langfuse_trace_context
 from app.services.query_classifier_service import classify_ai_query
 from app.services.retrieval_explainability_service import retrieval_explainability_summary
 from app.services.retrieval_service import is_rag_enabled, retrieve_context
@@ -67,11 +68,18 @@ def answer_with_rag(
         conversation_context=conversation_context,
     )
     ai_provider = provider or get_ai_provider()
-    answer = ai_provider.answer_question(
-        message,
-        retrieval["context"],
-        extra_rules=_prompt_rules_for_retrieval(retrieval),
-    )
+    with langfuse_trace_context(
+        "chat",
+        user=user,
+        session_id=getattr(conversation_context, "session_id", ""),
+        metadata={"source_count": len(retrieval.get("sources") or [])},
+        tags=["rag", *sorted(retrieval.get("requested_scopes") or [])],
+    ):
+        answer = ai_provider.answer_question(
+            message,
+            retrieval["context"],
+            extra_rules=_prompt_rules_for_retrieval(retrieval),
+        )
     result = attach_confidence_to_result(
         message,
         {

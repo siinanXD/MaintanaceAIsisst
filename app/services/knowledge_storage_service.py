@@ -12,6 +12,7 @@ from werkzeug.utils import secure_filename
 from app.domain_models.common import utc_now
 from app.extensions import db
 from app.models import (
+    AIFAQEntry,
     AssistantTrainingEntry,
     ErrorEntry,
     GeneratedDocument,
@@ -78,6 +79,7 @@ STRUCTURED_SOURCE_TYPES = (
     "machine_manual",
     "shift_handover",
     "manual_training",
+    "faq",
 )
 
 
@@ -193,6 +195,8 @@ def extract_knowledge_text(document, raw_content=None, filename=None):
         return shift_handover_text(document.source_id)
     if document.source_type == "manual_training":
         return manual_training_text(document.source_id)
+    if document.source_type == "faq":
+        return faq_entry_text(document.source_id)
 
     path = knowledge_path(document)
     if not path.exists():
@@ -397,6 +401,26 @@ def manual_training_text(entry_id):
     )
 
 
+def faq_entry_text(entry_id):
+    """Return searchable text for an approved AI FAQ entry."""
+    entry = db.session.get(AIFAQEntry, entry_id)
+    if not entry or entry.status != "approved":
+        return ""
+    return "\n".join(
+        part
+        for part in (
+            f"FAQ #{entry.id}",
+            f"Kategorie: {entry.category}",
+            f"Abteilung: {entry.department}",
+            f"Maschine: {entry.machine}",
+            f"Frage: {entry.question}",
+            f"Antwort: {entry.answer}",
+            f"Keywords: {entry.keywords}",
+        )
+        if part
+    )
+
+
 def delete_knowledge_document(document):
     """Delete a knowledge document and its stored upload if applicable."""
     if document.source_type == "upload" and document.relative_path:
@@ -426,5 +450,6 @@ __all__ = [
     "machine_manual_text",
     "shift_handover_text",
     "manual_training_text",
+    "faq_entry_text",
     "delete_knowledge_document",
 ]

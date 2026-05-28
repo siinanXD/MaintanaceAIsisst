@@ -84,32 +84,56 @@ def text_system_prompt(extra_rules=None):
     return "\n".join(rule for rule in rules if rule)
 
 
-def build_text_messages(question, context, extra_rules=None):
+def build_text_messages(
+    question,
+    context,
+    extra_rules=None,
+    workflow="chat",
+    include_metadata=False,
+):
     """Build chat messages for read-only assistant answers."""
-    return [
+    fallback_user_prompt = "Kontext:\n{context}\n\nFrage:\n{question}"
+    system_prompt = text_system_prompt(extra_rules)
+    resolved = _resolve_runtime_prompt(workflow, system_prompt, fallback_user_prompt)
+    user_prompt = _render_runtime_prompt(
+        resolved.user_prompt_template,
+        {"context": context, "question": question},
+    )
+    messages = [
         {
             "role": "system",
-            "content": text_system_prompt(extra_rules),
+            "content": resolved.system_prompt,
         },
         {
             "role": "user",
-            "content": f"Kontext:\n{context}\n\nFrage:\n{question}",
+            "content": user_prompt,
         },
     ]
+    if include_metadata:
+        return messages, resolved.metadata()
+    return messages
 
 
-def build_general_messages(question):
+def build_general_messages(question, include_metadata=False):
     """Build chat messages for short general hybrid-mode answers."""
-    return [
+    fallback_user_prompt = "{question}"
+    resolved = _resolve_runtime_prompt("general_chat", GENERAL_SYSTEM_PROMPT, fallback_user_prompt)
+    messages = [
         {
             "role": "system",
-            "content": GENERAL_SYSTEM_PROMPT,
+            "content": resolved.system_prompt,
         },
         {
             "role": "user",
-            "content": str(question or ""),
+            "content": _render_runtime_prompt(
+                resolved.user_prompt_template,
+                {"question": question},
+            ),
         },
     ]
+    if include_metadata:
+        return messages, resolved.metadata()
+    return messages
 
 
 def build_json_prompt(task=None, schema=None, payload=None, rules=None, instruction=None):
@@ -137,6 +161,30 @@ def build_json_prompt(task=None, schema=None, payload=None, rules=None, instruct
     return prompt
 
 
+def build_json_messages(prompt, workflow="chat", include_metadata=False):
+    """Build JSON completion messages with an optional admin-managed prompt."""
+    import json
+
+    payload_json = json.dumps(prompt, ensure_ascii=True)
+    resolved = _resolve_runtime_prompt(workflow, json_system_prompt(), "{payload_json}")
+    messages = [
+        {
+            "role": "system",
+            "content": resolved.system_prompt,
+        },
+        {
+            "role": "user",
+            "content": _render_runtime_prompt(
+                resolved.user_prompt_template,
+                {"payload_json": payload_json},
+            ),
+        },
+    ]
+    if include_metadata:
+        return messages, resolved.metadata()
+    return messages
+
+
 def permission_denied_answer(scope, permission_key=None):
     """Return a professional permission message for assistant answers."""
     permission_text = permission_key or scope
@@ -155,3 +203,25 @@ def permission_denied_context(scope, permission_key=None):
         f"Keine Berechtigung fuer {scope}. "
         f"Benoetigte Berechtigung beim Admin anfragen: {permission_text}."
     )
+
+
+def _resolve_runtime_prompt(workflow, fallback_system_prompt, fallback_user_prompt):
+    """Return a DB-backed prompt when available, otherwise the supplied fallback."""
+    try:
+        from app.services.ai_prompt_admin_service import resolve_prompt
+
+        return resolve_prompt(workflow, fallback_system_prompt, fallback_user_prompt)
+    except Exception:
+        from app.services.ai_prompt_admin_service import ResolvedPrompt
+
+        return ResolvedPrompt(str(workflow or "chat"), fallback_system_prompt, fallback_user_prompt)
+
+
+def _render_runtime_prompt(template, variables):
+    """Render a runtime prompt template while tolerating unavailable admin services."""
+    try:
+        from app.services.ai_prompt_admin_service import render_prompt_template
+
+        return render_prompt_template(template, variables)
+    except Exception:
+        return str(template or "")

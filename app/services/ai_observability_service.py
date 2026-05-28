@@ -169,6 +169,7 @@ def _ai_log_row(chat):
         "response_duration_ms": event.latency_ms if event else 0,
         "retrieval_duration_ms": _retrieval_duration_ms(event) if event else 0,
         "quality_warnings": quality_warnings,
+        "langfuse": _langfuse_reference(diagnostics),
     }
 
 
@@ -622,6 +623,16 @@ def _answer_quality(chat, warnings):
 def _is_error_event(event):
     """Return whether an audit event counts as an AI error."""
     return bool(event.error_category) or "error" in str(event.status or "").lower()
+
+
+def _langfuse_reference(diagnostics):
+    """Return safe Langfuse trace identifiers from diagnostics."""
+    return {
+        "enabled": bool(diagnostics.get("langfuse_enabled")),
+        "trace_id": diagnostics.get("langfuse_trace_id") or "",
+        "observation_id": diagnostics.get("langfuse_observation_id") or "",
+        "host": diagnostics.get("langfuse_host") or "",
+    }
 
 
 def _counter_rows(counter):

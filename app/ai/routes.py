@@ -10,6 +10,11 @@ from app.responses import error_response, service_error_response, success_respon
 from app.security import current_user, has_dashboard_permission, roles_required
 from app.services.ai_feedback_service import record_ai_feedback
 from app.services.ai_history_service import paginated_chat_history
+from app.services.ai_response_visibility_service import (
+    redact_ai_chat_response,
+    redact_chat_history_result,
+    wants_answer_only_response,
+)
 from app.services.chat_template_service import chat_templates_for_user
 from app.services.conversation_context_service import normalize_session_id
 from app.services.error_assistant_service import run_error_assistant
@@ -54,18 +59,27 @@ def chat():
         commit=True,
     )
 
-    return success_response(result, message="AI response generated")
+    visible_result = redact_ai_chat_response(
+        result,
+        user,
+        answer_only=wants_answer_only_response(data),
+    )
+    return success_response(visible_result, message="AI response generated")
 
 
 @ai_bp.get("/chat/history")
 @jwt_required()
 def chat_history():
     """Return the current user's searchable AI chat history."""
+    user = current_user()
     try:
-        result = paginated_chat_history(current_user(), request.args)
+        result = paginated_chat_history(user, request.args)
     except ValueError as exc:
         return error_response(str(exc), 400)
-    return success_response(result, message="Chat history loaded")
+    return success_response(
+        redact_chat_history_result(result, user),
+        message="Chat history loaded",
+    )
 
 
 @ai_bp.get("/chat/templates")

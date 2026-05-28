@@ -1,6 +1,6 @@
 """Server-rendered web page routes."""
 
-from flask import Blueprint, render_template
+from flask import Blueprint, abort, redirect, render_template, request
 
 from app.shiftplans.templates import list_shift_templates
 
@@ -8,13 +8,25 @@ web_bp = Blueprint("web", __name__)
 
 AI_ADMIN_VIEWS = {
     "overview": "/admin/ai",
-    "models": "/admin/ai/models",
-    "retrieval": "/admin/ai/retrieval",
-    "knowledge": "/admin/ai/knowledge",
-    "training": "/admin/ai/training",
-    "diagnostics": "/admin/ai/diagnostics",
-    "feedback": "/admin/ai/feedback",
-    "indexing": "/admin/ai/indexing",
+    "rag_board": "/admin/ai/rag-board",
+    "source_check": "/admin/ai/source-check",
+    "prompt_faq": "/admin/ai/prompt-faq",
+    "effectiveness": "/admin/ai/effectiveness",
+    "technical": "/admin/ai/technical",
+}
+
+AI_ADMIN_LEGACY_REDIRECTS = {
+    "/admin/ai/prompts": "/admin/ai/prompt-faq",
+    "/admin/ai/faq": "/admin/ai/prompt-faq",
+    "/admin/ai/lab": "/admin/ai/source-check",
+    "/admin/ai/costs": "/admin/ai/effectiveness",
+    "/admin/ai/feedback": "/admin/ai/effectiveness",
+    "/admin/ai/models": "/admin/ai#ai-models",
+    "/admin/ai/knowledge": "/admin/ai/rag-board",
+    "/admin/ai/training": "/admin/ai/rag-board",
+    "/admin/ai/retrieval": "/admin/ai/technical",
+    "/admin/ai/diagnostics": "/admin/ai/technical",
+    "/admin/ai/indexing": "/admin/ai/technical",
 }
 
 SHIFT_MODEL_LABELS = {
@@ -68,6 +80,25 @@ def render_ai_admin_page(view_name):
     )
 
 
+@web_bp.get("/admin/ai/prompts")
+@web_bp.get("/admin/ai/faq")
+@web_bp.get("/admin/ai/lab")
+@web_bp.get("/admin/ai/costs")
+@web_bp.get("/admin/ai/feedback")
+@web_bp.get("/admin/ai/models")
+@web_bp.get("/admin/ai/knowledge")
+@web_bp.get("/admin/ai/training")
+@web_bp.get("/admin/ai/retrieval")
+@web_bp.get("/admin/ai/diagnostics")
+@web_bp.get("/admin/ai/indexing")
+def admin_ai_legacy_redirect_page():
+    """Redirect legacy AI admin web pages to their canonical sections."""
+    target_path = AI_ADMIN_LEGACY_REDIRECTS.get(request.path)
+    if target_path is None:
+        abort(404)
+    return redirect(target_path, code=302)
+
+
 @web_bp.get("/")
 def dashboard():
     """Render the dashboard page."""
@@ -110,46 +141,34 @@ def admin_ai_page():
     return render_ai_admin_page("overview")
 
 
-@web_bp.get("/admin/ai/models")
-def admin_ai_models_page():
-    """Render the AI model administration page."""
-    return render_ai_admin_page("models")
+@web_bp.get("/admin/ai/rag-board")
+def admin_ai_rag_board_page():
+    """Render the RAG board administration page."""
+    return render_ai_admin_page("rag_board")
 
 
-@web_bp.get("/admin/ai/retrieval")
-def admin_ai_retrieval_page():
-    """Render the AI retrieval administration page."""
-    return render_ai_admin_page("retrieval")
+@web_bp.get("/admin/ai/source-check")
+def admin_ai_source_check_page():
+    """Render the AI source check administration page."""
+    return render_ai_admin_page("source_check")
 
 
-@web_bp.get("/admin/ai/knowledge")
-def admin_ai_knowledge_page():
-    """Render the AI knowledge source administration page."""
-    return render_ai_admin_page("knowledge")
+@web_bp.get("/admin/ai/prompt-faq")
+def admin_ai_prompt_faq_page():
+    """Render the combined AI prompt and FAQ administration page."""
+    return render_ai_admin_page("prompt_faq")
 
 
-@web_bp.get("/admin/ai/training")
-def admin_ai_training_page():
-    """Render the AI training data administration page."""
-    return render_ai_admin_page("training")
+@web_bp.get("/admin/ai/effectiveness")
+def admin_ai_effectiveness_page():
+    """Render the AI cost and effectiveness administration page."""
+    return render_ai_admin_page("effectiveness")
 
 
-@web_bp.get("/admin/ai/diagnostics")
-def admin_ai_diagnostics_page():
-    """Render the AI diagnostics administration page."""
-    return render_ai_admin_page("diagnostics")
-
-
-@web_bp.get("/admin/ai/feedback")
-def admin_ai_feedback_page():
-    """Render the AI feedback administration page."""
-    return render_ai_admin_page("feedback")
-
-
-@web_bp.get("/admin/ai/indexing")
-def admin_ai_indexing_page():
-    """Render the AI indexing administration page."""
-    return render_ai_admin_page("indexing")
+@web_bp.get("/admin/ai/technical")
+def admin_ai_technical_page():
+    """Render the AI technical diagnostics page."""
+    return render_ai_admin_page("technical")
 
 
 @web_bp.get("/employees")

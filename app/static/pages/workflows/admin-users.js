@@ -78,6 +78,8 @@ async function initUsers() {
   const aiLatency = document.querySelector("[data-ai-latency]");
   const aiTokens = document.querySelector("[data-ai-tokens]");
   const aiCost = document.querySelector("[data-ai-cost]");
+  const aiCostStatus = document.querySelector("[data-ai-cost-status]");
+  const aiUserCosts = document.querySelector("[data-ai-user-costs]");
   const aiLatestEvents = document.querySelector("[data-ai-latest-events]");
   const aiWorkflows = document.querySelector("[data-ai-workflows]");
   const aiErrorCategories = document.querySelector("[data-ai-error-categories]");
@@ -139,6 +141,8 @@ async function initUsers() {
       if (aiLatency) aiLatency.textContent = String(summary.average_latency_ms || 0);
       if (aiTokens) aiTokens.textContent = compactNumber(summary.total_tokens || 0);
       if (aiCost) aiCost.textContent = "$" + Number(summary.estimated_cost_usd || 0).toFixed(4);
+      renderCostStatus(summary.price_configuration || {});
+      renderAiUserCosts(summary.user_metrics || []);
       renderMetricList(aiWorkflows, summary.workflow_counts, "Keine Workflows");
       renderMetricList(aiErrorCategories, summary.error_counts, "Keine Fehler");
       if (aiLatestEvents) {
@@ -170,6 +174,41 @@ async function initUsers() {
     if (number >= 1000000) return (number / 1000000).toFixed(1) + "M";
     if (number >= 1000) return (number / 1000).toFixed(1) + "k";
     return String(number);
+  }
+
+  function formatUsd(value) {
+    return "$" + Number(value || 0).toFixed(4);
+  }
+
+  function percentLabel(value) {
+    return Math.round(Number(value || 0) * 100) + "%";
+  }
+
+  function renderCostStatus(status) {
+    if (!aiCostStatus) return;
+    aiCostStatus.textContent = status.configured
+      ? "geschätzt"
+      : (status.message || "Kosten nicht konfiguriert");
+  }
+
+  function renderAiUserCosts(items) {
+    if (!aiUserCosts) return;
+    aiUserCosts.innerHTML = "";
+    if (!items.length) {
+      aiUserCosts.innerHTML = '<tr><td colspan="7">Noch keine nutzerbezogenen AI-Kosten vorhanden.</td></tr>';
+      return;
+    }
+    items.forEach((item) => {
+      aiUserCosts.appendChild(row([
+        item.username || "Unbekannt",
+        item.langfuse_user_id || "-",
+        String(item.events || 0),
+        compactNumber(item.total_tokens || 0),
+        formatUsd(item.estimated_cost_usd || 0),
+        percentLabel(item.fallback_rate || 0),
+        item.latest_used_at ? formatDate(item.latest_used_at) : "-"
+      ]));
+    });
   }
 
   function renderMetricList(container, values, emptyText) {

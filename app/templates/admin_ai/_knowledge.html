@@ -1,21 +1,15 @@
-  {% if ai_admin_view in ['knowledge', 'training'] %}
-  <section class="ai-admin-area" id="{% if ai_admin_view == 'training' %}ai-training-area{% else %}ai-knowledge-sources{% endif %}" data-ai-admin-area="{% if ai_admin_view == 'training' %}training{% else %}data-sources{% endif %}">
+  {% if ai_admin_view == 'rag_board' %}
+  <section class="ai-admin-area" id="ai-knowledge-sources" data-ai-admin-area="data-sources">
     <div class="ai-admin-area-header">
       <div>
-        {% if ai_admin_view == 'training' %}
-          <span class="section-kicker">4. Trainingsdaten</span>
-          <h3>Manuelles Wissen gezielt pflegen</h3>
-          <p class="panel-meta">Freigegebene Trainingseintr&auml;ge erg&auml;nzen strukturierte Quellen, ohne Berechtigungen oder Qualitätsprüfungen zu umgehen.</p>
-        {% else %}
           <span class="section-kicker">3. Wissensquellen</span>
           <h3>Welche Quellen speisen SQL, Keyword-Suche und RAG?</h3>
           <p class="panel-meta">Fehlerkatalog, Dokumente, Aufgaben, Maschinen, Material, Wartungspl&auml;ne und Schichtdaten mit Status und Freigaben bewerten.</p>
-        {% endif %}
       </div>
-      <span class="badge badge-ai" data-ai-section-status="{% if ai_admin_view == 'training' %}training{% else %}knowledge{% endif %}">Wissen wird geladen</span>
+      <span class="badge badge-ai" data-ai-section-status="knowledge">Wissen wird geladen</span>
     </div>
 
-    {% if ai_admin_view == 'knowledge' %}
+    {% if ai_admin_view == 'rag_board' %}
     <div class="ai-section-guide" aria-label="Wissensquellen Hinweise">
       <article>
         <span>Was beeinflusst das?</span>
@@ -23,14 +17,14 @@
       </article>
       <article>
         <span>Wann pr&uuml;fen?</span>
-        <strong>Nach Hochladungen, schlechter Quellenqualit&auml;t, abgelehnten Dokumenten, veralteten Textabschnitte oder offenen Wissenslücken.</strong>
+        <strong>Nach Hochladungen, schlechter Quellenqualit&auml;t, abgelehnten Dokumenten, veralteten Textabschnitte oder offenen Wissensl&uuml;cken.</strong>
       </article>
       <article>
         <span>Betroffen</span>
         <strong><code>/api/v1/admin/ai/knowledge/status</code> <code>/api/v1/admin/ai/knowledge</code> <code>/api/v1/admin/ai/training</code></strong>
       </article>
     </div>
-    <p class="ai-section-explain">Wissensquellen zeigt, ob Quellen fachlich freigegeben, indexiert und f&uuml;r Quellenabruf sichtbar sind. Qualitätsprüfungen und Berechtigungen bleiben die Grenze f&uuml;r den RAG-Kontext.</p>
+    <p class="ai-section-explain">Wissensquellen zeigt, ob Quellen fachlich freigegeben, indexiert und f&uuml;r Quellenabruf sichtbar sind. Qualit&auml;tspr&uuml;fungen und Berechtigungen bleiben die Grenze f&uuml;r den RAG-Kontext.</p>
 
     <div class="ai-info-box-grid">
       <article class="ai-info-box">
@@ -39,7 +33,7 @@
         <p>Die App sucht zuerst passende Wissensquellen, Dokument-Textabschnitte oder strukturierte Datens&auml;tze und gibt diese als Kontext an die KI. Dadurch werden Antworten nachvollziehbarer und weniger frei erfunden.</p>
       </article>
       <article class="ai-info-box">
-        <span>Qualitätsprüfung</span>
+        <span>Qualit&auml;tspr&uuml;fung</span>
         <strong>Rejected und Low-Quality Quellen bleiben au&szlig;erhalb sichtbarer Antworten.</strong>
         <p>Freigabe, Abteilung und QuelleVisibilityPolicy entscheiden, ob eine Quelle trotz Treffer im finalen Kontext erscheinen darf.</p>
       </article>
@@ -99,7 +93,7 @@
       <div class="panel-header">
         <div>
           <h3>Wissens-Lebenszyklus</h3>
-          <p class="panel-meta">Qualit&auml;tsstatus, Prüf-Gates und Freigaben der indexierbaren Wissensbasis.</p>
+          <p class="panel-meta">Qualit&auml;tsstatus, Pr&uuml;f-Gates und Freigaben der indexierbaren Wissensbasis.</p>
         </div>
         <span class="badge badge-ai" data-knowledge-lifecycle-state>Noch nicht geladen</span>
       </div>
@@ -110,7 +104,7 @@
         <article class="metric-card"><span>Problemquellen</span><strong data-lifecycle-kpi="problem_documents">0</strong></article>
         <article class="metric-card"><span>Feedback offen</span><strong data-lifecycle-kpi="feedback_open">0</strong></article>
         <article class="metric-card"><span>Gaps offen</span><strong data-lifecycle-kpi="knowledge_gaps_open">0</strong></article>
-        <article class="metric-card"><span>Prüfung offen</span><strong data-lifecycle-kpi="needs_admin_approval">0</strong></article>
+        <article class="metric-card"><span>Pr&uuml;fung offen</span><strong data-lifecycle-kpi="needs_admin_approval">0</strong></article>
         <article class="metric-card"><span>Nicht freigegeben</span><strong data-lifecycle-kpi="non_approved_indexed_documents">0</strong></article>
       </div>
       <div class="content-grid two-columns mt-4">
@@ -127,7 +121,7 @@
       <div class="panel-header">
         <div>
           <h3>Wissensnetz</h3>
-          <p class="panel-meta">Nur-Lese Sicht auf Maschinen, Fehler, Dokumente, Inventar, Trends und Wissenslücken.</p>
+          <p class="panel-meta">Nur-Lese Sicht auf Maschinen, Fehler, Dokumente, Inventar, Trends und Wissensl&uuml;cken.</p>
         </div>
         <div class="toolbar admin-ai-toolbar">
           <input class="input input-bordered" data-knowledge-network-search placeholder="Netzwerk durchsuchen">
@@ -177,7 +171,7 @@
     </section>
     {% endif %}
     {% include "admin_ai/_training.html" %}
-    {% if ai_admin_view == 'knowledge' %}
+    {% if ai_admin_view == 'rag_board' %}
     <section class="panel">
       <div class="panel-header">
         <div>

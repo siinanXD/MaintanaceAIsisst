@@ -642,6 +642,14 @@
     return Boolean(featureRegistry.forPath(pathname));
   }
 
+  function pageLoadErrorMessage(label, pathname) {
+    return label + " für " + pathname + " konnte nicht geladen werden. Bitte Seite neu laden.";
+  }
+
+  function pageLoadToastMessage(label, pathname) {
+    return label + " für " + pathname + " konnte nicht geladen werden.";
+  }
+
   async function loadPageModule() {
     const moduleUrl = pageModuleUrlForPath(window.location.pathname);
     if (!moduleUrl) return null;
@@ -653,9 +661,13 @@
       setWorkflowStatus("Seitendaten werden geladen...", "info");
       pageImportPromises.set(moduleUrl, import(moduleUrl).catch((error) => {
         pageImportPromises.delete(moduleUrl);
-        setWorkflowStatus("Seitenmodul konnte nicht geladen werden. Bitte Seite neu laden.", "error");
-        console.warn(error);
-        showInterfaceToast("Seitenmodul konnte nicht geladen werden.", "error");
+        setWorkflowStatus(pageLoadErrorMessage("Seitenmodul", window.location.pathname), "error");
+        console.warn("page_module_load_failed", {
+          route: window.location.pathname,
+          moduleUrl,
+          error
+        });
+        showInterfaceToast(pageLoadToastMessage("Seitenmodul", window.location.pathname), "error");
         throw error;
       }));
     }
@@ -676,9 +688,13 @@
       workflowImportPromise = import(WORKFLOW_MODULE_URL).catch((error) => {
         workflowImportPromise = null;
         document.body.classList.remove("is-workflow-loading");
-        setWorkflowStatus("Seitendaten konnten nicht geladen werden. Bitte Seite neu laden.", "error");
-        console.warn(error);
-        showInterfaceToast("Seitendaten konnten nicht geladen werden.", "error");
+        setWorkflowStatus(pageLoadErrorMessage("Seitendaten", window.location.pathname), "error");
+        console.warn("workflow_module_load_failed", {
+          route: window.location.pathname,
+          moduleUrl: WORKFLOW_MODULE_URL,
+          error
+        });
+        showInterfaceToast(pageLoadToastMessage("Seitendaten", window.location.pathname), "error");
         throw error;
       });
     }

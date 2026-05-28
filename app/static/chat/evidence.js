@@ -44,6 +44,38 @@
     return "Ausweichantwort - OpenAI nicht erreichbar";
   }
 
+  /**
+   * Return the authenticated user object known by the shell.
+   */
+  function currentChatUser() {
+    if (window.maintenanceAuth && typeof window.maintenanceAuth.user === "function") {
+      return window.maintenanceAuth.user();
+    }
+    try {
+      return JSON.parse(window.localStorage.getItem("maintenance_user") || "null");
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
+   * Return whether the current user may see source and diagnostic cards.
+   */
+  function canViewChatEvidence() {
+    const user = currentChatUser();
+    const role = String((user && user.role) || "").toLowerCase();
+    return role === "master_admin" || role === "it";
+  }
+
+  /**
+   * Return whether an assistant answer should show evidence sections.
+   */
+  function canRenderAssistantEvidence(diagnostics) {
+    if (!canViewChatEvidence()) return false;
+    if (diagnostics && diagnostics.evidence_visible === false) return false;
+    return !(diagnostics && diagnostics.status === "permission_denied");
+  }
+
   function statusText(diagnostics) {
     const status = diagnostics && diagnostics.status;
     const provider = (diagnostics && diagnostics.provider) || "OpenAI";
@@ -631,5 +663,5 @@
   /**
    * Render the answer-card header with status and trust badges.
    */
-  Object.assign(Chat, { openAIErrorLabel, statusText, numericValue, boundedText, clearElement, scoreLabel, confidencePayload, normalizedSicherheitLevel, confidenceLevelLabel, confidenceTrustCopy, confidenceScorePercent, confidenceTone, confidenceMeter, appendAnswerBadge, sourceTypeLabel, sourceKind, sourceKindLabel, sourceKindClass, sourceMachineLabel, sourceDepartmentLabel, sourceRelevanceLabel, qualityStatusLabel, sourceExplainability, machineReasonLabels, sourceMachineReasons, sourceQualityReason, sourceReasonLabels, sourceTrustTitle, answerBasisItems, isMachineOrErrorQuelle, retrievalExplainability, safetyPayloads, safetyWarnings, conflictPayload, conflictWarnings, queryTypeLabel, answerModeLabel, qualityWarnings, retrievalDuration });
+  Object.assign(Chat, { openAIErrorLabel, currentChatUser, canViewChatEvidence, canRenderAssistantEvidence, statusText, numericValue, boundedText, clearElement, scoreLabel, confidencePayload, normalizedSicherheitLevel, confidenceLevelLabel, confidenceTrustCopy, confidenceScorePercent, confidenceTone, confidenceMeter, appendAnswerBadge, sourceTypeLabel, sourceKind, sourceKindLabel, sourceKindClass, sourceMachineLabel, sourceDepartmentLabel, sourceRelevanceLabel, qualityStatusLabel, sourceExplainability, machineReasonLabels, sourceMachineReasons, sourceQualityReason, sourceReasonLabels, sourceTrustTitle, answerBasisItems, isMachineOrErrorQuelle, retrievalExplainability, safetyPayloads, safetyWarnings, conflictPayload, conflictWarnings, queryTypeLabel, answerModeLabel, qualityWarnings, retrievalDuration });
 })(window.MaintenanceChatRuntime);

@@ -1,8 +1,8 @@
 """Document API routes."""
 
-from io import BytesIO
-from datetime import UTC, date, datetime
 import logging
+from datetime import UTC, date, datetime
+from io import BytesIO
 
 from flask import Blueprint, request, send_file
 from sqlalchemy.orm import joinedload, selectinload
@@ -20,8 +20,8 @@ from app.services.document_service import (
     analyze_machine_manual,
     approve_document,
     delete_machine_manual,
-    document_versions,
     document_path,
+    document_versions,
     manual_path,
     reject_document,
     render_document_pdf,
@@ -35,7 +35,6 @@ from app.services.document_service import (
     visible_manuals_query,
 )
 from app.services.operations_tracking_service import record_event
-
 
 logger = logging.getLogger(__name__)
 
@@ -101,9 +100,9 @@ def list_documents():
 def download_document(document_id):
     """Serve the generated HTML file for a document."""
     user = current_user()
-    document = visible_documents_query(user).filter(
-        GeneratedDocument.id == document_id
-    ).first_or_404()
+    document = (
+        visible_documents_query(user).filter(GeneratedDocument.id == document_id).first_or_404()
+    )
 
     try:
         path = document_path(document)
@@ -133,9 +132,9 @@ def download_document(document_id):
 def download_document_pdf(document_id):
     """Render and serve a generated maintenance report as a PDF."""
     user = current_user()
-    document = visible_documents_query(user).filter(
-        GeneratedDocument.id == document_id
-    ).first_or_404()
+    document = (
+        visible_documents_query(user).filter(GeneratedDocument.id == document_id).first_or_404()
+    )
 
     pdf_bytes, error, status = render_document_pdf(document)
     if error:
@@ -171,9 +170,9 @@ def list_document_versions(document_id):
 def summarize_document(document_id):
     """Create or update a stored summary for a generated document."""
     user = current_user()
-    document = visible_documents_query(user).filter(
-        GeneratedDocument.id == document_id
-    ).first_or_404()
+    document = (
+        visible_documents_query(user).filter(GeneratedDocument.id == document_id).first_or_404()
+    )
     summary, error, status = summarize_generated_document(document)
     if error:
         return service_error_response(error, status)
@@ -185,9 +184,9 @@ def summarize_document(document_id):
 def submit_document_review_route(document_id):
     """Submit a generated document for approval."""
     user = current_user()
-    document = visible_documents_query(user).filter(
-        GeneratedDocument.id == document_id
-    ).first_or_404()
+    document = (
+        visible_documents_query(user).filter(GeneratedDocument.id == document_id).first_or_404()
+    )
     data = request.get_json(silent=True) or {}
     updated = submit_document_review(document, user, data.get("comment"))
     record_event(
@@ -209,9 +208,9 @@ def submit_document_review_route(document_id):
 def approve_document_route(document_id):
     """Approve a generated document."""
     user = current_user()
-    document = visible_documents_query(user).filter(
-        GeneratedDocument.id == document_id
-    ).first_or_404()
+    document = (
+        visible_documents_query(user).filter(GeneratedDocument.id == document_id).first_or_404()
+    )
     data = request.get_json(silent=True) or {}
     updated = approve_document(document, user, data.get("comment"))
     record_event(
@@ -233,9 +232,9 @@ def approve_document_route(document_id):
 def reject_document_route(document_id):
     """Reject a generated document."""
     user = current_user()
-    document = visible_documents_query(user).filter(
-        GeneratedDocument.id == document_id
-    ).first_or_404()
+    document = (
+        visible_documents_query(user).filter(GeneratedDocument.id == document_id).first_or_404()
+    )
     data = request.get_json(silent=True) or {}
     updated = reject_document(document, user, data.get("comment"))
     record_event(
@@ -281,9 +280,9 @@ def check_uploaded_document():
 def review_document(document_id):
     """Return a non-persisted quality review for a generated document."""
     user = current_user()
-    document = visible_documents_query(user).filter(
-        GeneratedDocument.id == document_id
-    ).first_or_404()
+    document = (
+        visible_documents_query(user).filter(GeneratedDocument.id == document_id).first_or_404()
+    )
 
     review, error, status = review_document_quality(document)
     if error:

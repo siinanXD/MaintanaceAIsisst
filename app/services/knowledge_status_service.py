@@ -78,6 +78,7 @@ STRUCTURED_SOURCE_TYPES = (
     "machine_manual",
     "shift_handover",
     "manual_training",
+    "faq",
 )
 
 

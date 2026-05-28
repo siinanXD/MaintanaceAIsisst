@@ -2,7 +2,11 @@
 
 from app.domain_models.ai import (
     AIAuditEvent,
+    AIFAQEntry,
     AIFeedback,
+    AIPromptTemplate,
+    AIPromptVersion,
+    AIResponseSnippet,
     AssistantTrainingEntry,
     BackgroundJob,
     ChatMessage,
@@ -41,6 +45,10 @@ from app.domain_models.workforce import (
 __all__ = [
     "AIAuditEvent",
     "AIFeedback",
+    "AIFAQEntry",
+    "AIPromptTemplate",
+    "AIPromptVersion",
+    "AIResponseSnippet",
     "AssistantTrainingEntry",
     "AuditLogEntry",
     "BackgroundJob",

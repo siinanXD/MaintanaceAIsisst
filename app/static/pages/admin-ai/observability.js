@@ -9,6 +9,7 @@
   const confidenceLabel = (...args) => AdminAI.confidenceLabel(...args);
   const dateTimeText = (...args) => AdminAI.dateTimeText(...args);
   const healthClass = (...args) => AdminAI.healthClass(...args);
+  const moneyText = (...args) => AdminAI.moneyText(...args);
   const msText = (...args) => AdminAI.msText(...args);
   const numberText = (...args) => AdminAI.numberText(...args);
   const percentText = (...args) => AdminAI.percentText(...args);
@@ -52,13 +53,124 @@
       const target = root.querySelector('[data-ai-kpi="' + key + '"]');
       if (target) target.textContent = formatters[key](summary[key]);
     });
+    const priceStatusItems = root.querySelectorAll("[data-ai-price-status]");
+    if (priceStatusItems.length) {
+      const priceConfiguration = summary.price_configuration || {};
+      const statusText = priceConfiguration.configured
+        ? "konfiguriert"
+        : "AI_PRICE_* fehlen - Kosten bleiben 0,00";
+      priceStatusItems.forEach((priceStatus) => {
+        priceStatus.textContent = statusText;
+      });
+    }
+    renderLangfuseMetrics(summary.langfuse_metrics || {});
     renderWorkflowMetrics(summary.top_workflows || []);
     renderTopErrors(summary.top_errors || []);
+    renderEffectivenessCharts();
     const readiness = summary.readiness || {};
     setHealthCard("ai", readiness.status || "warning", (readiness.reasons || []).join(" "));
     renderSafetyFallbackSummary();
     renderSectionStatusSummaries();
     renderAiClaritySummary();
+  }
+
+  function renderLangfuseMetrics(metrics) {
+    const statusTarget = root.querySelector("[data-langfuse-metrics-status]");
+    if (statusTarget) {
+      statusTarget.textContent = metrics.available ? "Langfuse geladen" : text(metrics.message || "Nicht verfuegbar");
+      statusTarget.className = "badge badge-ai " + (metrics.available ? "is-active" : "is-stale");
+    }
+    const formatters = {
+      total_cost_usd: moneyText,
+      total_tokens: numberText,
+      observation_count: numberText,
+      cost_per_1k_tokens: moneyText
+    };
+    Object.keys(formatters).forEach((key) => {
+      const target = root.querySelector('[data-langfuse-metric="' + key + '"]');
+      if (target) target.textContent = formatters[key](metrics[key]);
+    });
+    renderLangfuseCostRows(
+      root.querySelector("[data-langfuse-model-costs]"),
+      metrics.models || [],
+      "model",
+      "Noch keine Langfuse-Modellkosten"
+    );
+    renderLangfuseCostRows(
+      root.querySelector("[data-langfuse-workflow-costs]"),
+      metrics.workflows || [],
+      "workflow",
+      "Noch keine Langfuse-Workflowkosten"
+    );
+  }
+
+  function renderLangfuseCostRows(target, rows, labelKey, emptyText) {
+    if (!target) return;
+    target.innerHTML = "";
+    if (!rows.length) {
+      target.appendChild(statusRow(emptyText, "Metrics API liefert keine Zeilen."));
+      return;
+    }
+    const maxCost = Math.max(...rows.map((item) => Number(item.total_cost_usd || 0)), 0.000001);
+    rows.slice(0, 8).forEach((item) => {
+      const row = document.createElement("div");
+      const label = document.createElement("span");
+      const bar = document.createElement("i");
+      const value = document.createElement("strong");
+      row.className = "mini-bar-row";
+      label.textContent = item[labelKey] || "unbekannt";
+      bar.style.width = Math.max(4, (Number(item.total_cost_usd || 0) / maxCost) * 100) + "%";
+      value.textContent = moneyText(item.total_cost_usd) + " / " + numberText(item.total_tokens) + " Tokens";
+      row.append(label, bar, value);
+      target.appendChild(row);
+    });
+  }
+
+  function renderEffectivenessCharts() {
+    const summary = state.latestAiSummary || {};
+    const telemetry = state.latestRetrievalTelemetry || {};
+    const target = root.querySelector("[data-ai-workflow-cost-chart]");
+    if (target) {
+      target.innerHTML = "";
+      const workflows = (summary.top_workflows || []).slice(0, 6);
+      const maxCost = Math.max(...workflows.map((item) => Number(item.estimated_cost_usd || 0)), 0.000001);
+      workflows.forEach((workflow) => {
+        const row = document.createElement("div");
+        const label = document.createElement("span");
+        const bar = document.createElement("i");
+        const value = document.createElement("strong");
+        row.className = "mini-bar-row";
+        label.textContent = workflow.workflow || "workflow";
+        bar.style.width = Math.max(4, (Number(workflow.estimated_cost_usd || 0) / maxCost) * 100) + "%";
+        value.textContent = moneyText(workflow.estimated_cost_usd);
+        row.append(label, bar, value);
+        target.appendChild(row);
+      });
+      if (!workflows.length) {
+        target.appendChild(statusRow("Noch keine Workflowkosten", "Nach AI-Anfragen erscheinen hier Balken."));
+      }
+    }
+
+    const feedback = summary.feedback || {};
+    const helpfulRate = feedback.helpful_rate == null ? 0 : Number(feedback.helpful_rate || 0);
+    const donut = root.querySelector("[data-ai-quality-donut]");
+    if (donut) {
+      donut.style.setProperty("--quality-value", Math.round(helpfulRate * 100) + "%");
+      const value = donut.querySelector("strong");
+      if (value) value.textContent = percentText(helpfulRate);
+    }
+
+    const risks = root.querySelector("[data-ai-effectiveness-risks]");
+    if (risks) {
+      const values = (telemetry.retrieval_slo && telemetry.retrieval_slo.values) || {};
+      risks.innerHTML = "";
+      risks.append(
+        statusRow("Ohne Quellen", percentText(values.no_source_rate || 0)),
+        statusRow("Negatives Feedback", percentText(values.negative_feedback_rate || 0)),
+        statusRow("Niedrige Sicherheit", percentText(values.low_confidence_rate || 0)),
+        statusRow("Fallback-Rate", percentText(summary.fallback_rate || values.fallback_rate || 0))
+      );
+    }
   }
 
   function retrievalSloLabel(metric) {
@@ -527,6 +639,7 @@
     state.latestRetrievalTelemetry = telemetry;
     renderRetrievalSlo(telemetry);
     renderRetrievalEvaluationHistory(telemetry);
+    renderEffectivenessCharts();
   }
 
   async function runRetrievalEvaluation() {
@@ -667,5 +780,5 @@
       renderCapabilityCard(target, title, detail, tone);
     });
   }
-  Object.assign(AdminAI, { loadSummary, retrievalSloLabel, retrievalSloValue, renderRetrievalSlo, monitoringStatus, monitoringKpiValue, renderMiniBar, renderMonitoringList, monitoringRow, renderAiObservability, renderTopQuestions, renderQuelleDistribution, renderRetrievalHits, renderQualityMetrics, renderAiObservabilityLogs, answerQualityLabel, answerQualityClass, renderDebugTools, renderDebugAnalysis, promptDebugText, loadAiObservability, retrievalEvaluationValue, retrievalEvaluationLabel, renderRetrievalEvaluationHistory, loadRetrievalTelemetry, runRetrievalEvaluation, renderAiStatus, loadAiStatus, renderOverviewState, capabilityGroups, renderCapabilityCard, renderCapabilities, renderAnswerQualityGuide });
+  Object.assign(AdminAI, { loadSummary, renderLangfuseMetrics, renderLangfuseCostRows, renderEffectivenessCharts, retrievalSloLabel, retrievalSloValue, renderRetrievalSlo, monitoringStatus, monitoringKpiValue, renderMiniBar, renderMonitoringList, monitoringRow, renderAiObservability, renderTopQuestions, renderQuelleDistribution, renderRetrievalHits, renderQualityMetrics, renderAiObservabilityLogs, answerQualityLabel, answerQualityClass, renderDebugTools, renderDebugAnalysis, promptDebugText, loadAiObservability, retrievalEvaluationValue, retrievalEvaluationLabel, renderRetrievalEvaluationHistory, loadRetrievalTelemetry, runRetrievalEvaluation, renderAiStatus, loadAiStatus, renderOverviewState, capabilityGroups, renderCapabilityCard, renderCapabilities, renderAnswerQualityGuide });
 })(window.MaintenanceAdminAI);

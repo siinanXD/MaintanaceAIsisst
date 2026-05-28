@@ -25,6 +25,7 @@
   const answerModeLabel = (...args) => Chat.answerModeLabel(...args);
   const appendAnswerBadge = (...args) => Chat.appendAnswerBadge(...args);
   const boundedText = (...args) => Chat.boundedText(...args);
+  const canRenderAssistantEvidence = (...args) => Chat.canRenderAssistantEvidence(...args);
   const clearElement = (...args) => Chat.clearElement(...args);
   const confidenceLevelLabel = (...args) => Chat.confidenceLevelLabel(...args);
   const confidenceMeter = (...args) => Chat.confidenceMeter(...args);
@@ -600,6 +601,9 @@
     const safeQuelles = Array.isArray(sources) ? sources : [];
     renderAnswerHeader(bubble, safeDiagnostics, safeQuelles);
     clearAnswerEvidence(bubble);
+    if (!canRenderAssistantEvidence(safeDiagnostics)) {
+      return;
+    }
     renderAnswerAlerts(bubble, safeDiagnostics);
     renderAnswerInsights(bubble, safeDiagnostics, safeQuelles);
     renderAnswerBasis(bubble, safeDiagnostics, safeQuelles);

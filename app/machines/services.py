@@ -23,6 +23,7 @@ from app.security import has_dashboard_permission
 from app.services.ai_service import AIServiceError, get_ai_provider
 from app.services.document_service import visible_documents_query, visible_manuals_query
 from app.services.error_service import visible_errors_query
+from app.services.langfuse_service import langfuse_trace_context
 from app.services.retrieval_service import knowledge_context_for_chat
 from app.services.task_service import visible_tasks_query
 
@@ -131,12 +132,21 @@ def answer_machine_assistant(machine, user, data):
         )
 
     try:
-        answer = _answer_question_with_workflow(
-            provider,
-            question,
-            context,
+        with langfuse_trace_context(
             "machine_assistant",
-        )
+            user=user,
+            metadata={
+                "machine_id": machine.id,
+                "rag_source_count": len(rag_sources),
+            },
+            tags=["machine", "rag"],
+        ):
+            answer = _answer_question_with_workflow(
+                provider,
+                question,
+                context,
+                "machine_assistant",
+            )
     except AIServiceError:
         logger.warning(
             "ai_fallback workflow=machine_assistant user_id=%s machine_id=%s",
@@ -550,12 +560,20 @@ def _machine_summary(machine, timeline, source_counts):
 
     context = _summary_context(machine, timeline, source_counts)
     try:
-        answer = _answer_question_with_workflow(
-            provider,
-            ("Fasse diese Maschinenhistorie auf Deutsch in maximal " "3 kurzen Saetzen zusammen."),
-            context,
+        with langfuse_trace_context(
             "machine_summary",
-        )
+            metadata={"machine_id": machine.id},
+            tags=["machine"],
+        ):
+            answer = _answer_question_with_workflow(
+                provider,
+                (
+                    "Fasse diese Maschinenhistorie auf Deutsch in maximal "
+                    "3 kurzen Saetzen zusammen."
+                ),
+                context,
+                "machine_summary",
+            )
     except AIServiceError:
         logger.warning(
             "ai_fallback workflow=machine_summary machine_id=%s",

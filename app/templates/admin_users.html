@@ -55,8 +55,25 @@
         <article class="kpi-card">
           <span class="kpi-label">Kosten</span>
           <strong class="kpi-value" data-ai-cost>-</strong>
-          <span class="kpi-meta">geschätzt</span>
+          <span class="kpi-meta" data-ai-cost-status>geschätzt</span>
         </article>
+      </div>
+      <div class="table-wrap mt-4">
+        <table class="table data-table">
+          <caption>AI-Kosten nach Nutzer mit Langfuse User-ID</caption>
+          <thead>
+            <tr>
+              <th scope="col">Nutzer</th>
+              <th scope="col">Langfuse User</th>
+              <th scope="col">Events</th>
+              <th scope="col">Tokens</th>
+              <th scope="col">Kosten</th>
+              <th scope="col">Fallback</th>
+              <th scope="col">Letzte Nutzung</th>
+            </tr>
+          </thead>
+          <tbody data-ai-user-costs></tbody>
+        </table>
       </div>
       <div class="grid gap-4 md:grid-cols-2 mt-4">
         <div class="surface-panel">

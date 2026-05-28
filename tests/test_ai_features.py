@@ -22,7 +22,11 @@ from app.models import (
     Task,
     User,
 )
-from app.services.ai_audit_service import ai_analytics_summary, create_ai_audit_event
+from app.services.ai_audit_service import (
+    ai_analytics_summary,
+    ai_user_usage_metrics,
+    create_ai_audit_event,
+)
 from app.services.ai_confidence_service import calculate_ai_confidence
 from app.services.ai_observability_service import ai_observability_dashboard
 from app.services.ai_routing import estimate_cost_usd, workflow_profile
@@ -98,6 +102,9 @@ def test_ai_chat_denies_requested_scope_with_admin_hint(
     assert payload["diagnostics"]["status"] == "permission_denied"
     assert "Mitarbeiter" in payload["answer"]
     assert "Admin" in payload["answer"]
+    assert payload["sources"] == []
+    assert payload["diagnostics"]["evidence_visible"] is False
+    assert "confidence" not in payload
 
 
 def test_ai_chat_answers_machine_scope_without_error_fallback(
@@ -203,6 +210,74 @@ def test_ai_chat_returns_sources_and_audit_metadata(
         assert chat_message.confidence_level == payload["confidence"]["level"]
         assert not hasattr(event, "prompt")
         assert not hasattr(event, "response")
+
+
+def test_ai_chat_bubble_redacts_evidence_for_non_it_users(
+    app,
+    client,
+    make_user,
+    make_machine,
+    auth_headers,
+):
+    """Verify normal chat-bubble users receive answer-only AI responses."""
+    user = make_user(username="ai_bubble_redacted_user", role=Role.INSTANDHALTUNG)
+    make_machine(name="Anlage Bubble", produced_item="Deckel")
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={
+            "message": "Welche Maschinen sind sichtbar?",
+            "response_mode": "answer_only",
+        },
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["answer"]
+    assert payload["sources"] == []
+    assert payload["data"] == {}
+    assert payload["evidence_visible"] is False
+    assert payload["diagnostics"] == {
+        "answer_origin": "local",
+        "evidence_visible": False,
+        "fallback_used": False,
+        "status": "local_answer",
+    }
+    assert "confidence" not in payload
+    assert "rag" not in payload
+    assert "action_preview" not in payload
+
+    with app.app_context():
+        chat_message = db.session.get(ChatMessage, payload["chat_message_id"])
+        assert chat_message.source_count > 0
+        assert chat_message.confidence_score is not None
+
+
+def test_ai_chat_bubble_keeps_evidence_for_it_users(
+    client,
+    make_user,
+    make_machine,
+    auth_headers,
+):
+    """Verify IT users may still inspect chat-bubble sources and diagnostics."""
+    user = make_user(username="ai_bubble_it_user", role=Role.IT)
+    make_machine(name="Anlage IT Bubble", produced_item="Deckel")
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={
+            "message": "Welche Maschinen sind sichtbar?",
+            "response_mode": "answer_only",
+        },
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["sources"]
+    assert payload["diagnostics"]["source_count"] == len(payload["sources"])
+    assert payload["confidence"]["score"] == payload["diagnostics"]["confidence_score"]
 
 
 def test_ai_confidence_scores_high_for_strong_sourced_context(app, make_user):
@@ -1056,23 +1131,37 @@ def test_admin_ai_summary_is_admin_only(
         "/api/v1/admin/ai/summary",
         headers=auth_headers(user["username"]),
     )
+    forbidden_user_metrics_response = client.get(
+        "/api/v1/admin/ai/users",
+        headers=auth_headers(user["username"]),
+    )
     admin_response = client.get(
         "/api/v1/admin/ai/summary",
         headers=auth_headers(admin["username"]),
     )
+    admin_user_metrics_response = client.get(
+        "/api/v1/admin/ai/users",
+        headers=auth_headers(admin["username"]),
+    )
 
     assert forbidden_response.status_code == 403
+    assert forbidden_user_metrics_response.status_code == 403
     assert admin_response.status_code == 200
+    assert admin_user_metrics_response.status_code == 200
     assert set(admin_response.get_json().keys()) >= {
         "average_latency_ms",
         "estimated_cost_usd",
         "events_total",
         "fallback_count",
         "feedback",
+        "langfuse_metrics",
         "latest_events",
+        "price_configuration",
         "total_tokens",
+        "user_metrics",
         "workflow_metrics",
     }
+    assert "items" in admin_user_metrics_response.get_json()["data"]
 
 
 def test_ai_analytics_summary_reports_ops_readiness(app, make_user):
@@ -1123,12 +1212,73 @@ def test_ai_analytics_summary_reports_ops_readiness(app, make_user):
     assert summary["error_rate"] == 0.33
     assert summary["cache_rate"] == 0.17
     assert summary["cost_per_1k_tokens"] == 0.1
+    assert summary["price_configuration"]["message"] == "Kosten nicht konfiguriert"
+    assert summary["user_metrics"][0]["username"] == user["username"]
+    assert summary["user_metrics"][0]["langfuse_user_id"] == f"user:{user['id']}"
+    assert summary["user_metrics"][0]["estimated_cost_usd"] == 0.015
     assert summary["top_workflows"][0]["workflow"] == "general_chat"
     assert summary["top_workflows"][0]["errors"] == 1
     assert summary["top_errors"][0] == {"error_category": "rate_limit", "count": 1}
     assert summary["readiness"]["status"] == "critical"
     assert summary["readiness"]["reasons"]
     assert "retrieval_quality" in summary
+
+
+def test_ai_user_usage_metrics_group_costs_by_user(app, make_user):
+    """Verify AI usage and costs are grouped by app user for admin reporting."""
+    first_user = make_user(username="ai_cost_first_user")
+    second_user = make_user(username="ai_cost_second_user")
+    with app.app_context():
+        first_actor = type("UserRef", (), {"id": first_user["id"]})()
+        second_actor = type("UserRef", (), {"id": second_user["id"]})()
+        create_ai_audit_event(
+            first_actor,
+            "chat",
+            {
+                "status": "openai_used",
+                "input_tokens": 100,
+                "output_tokens": 50,
+                "total_tokens": 150,
+                "estimated_cost_usd": 0.003,
+            },
+        )
+        create_ai_audit_event(
+            first_actor,
+            "general_chat",
+            {
+                "status": "openai_error",
+                "fallback_used": True,
+                "input_tokens": 20,
+                "output_tokens": 10,
+                "total_tokens": 30,
+                "estimated_cost_usd": 0.001,
+                "error": "rate_limit",
+            },
+        )
+        create_ai_audit_event(
+            second_actor,
+            "chat",
+            {
+                "status": "openai_used",
+                "input_tokens": 40,
+                "output_tokens": 10,
+                "total_tokens": 50,
+                "estimated_cost_usd": 0.01,
+            },
+        )
+        db.session.commit()
+
+        metrics = ai_user_usage_metrics(days=7, limit=10)
+
+    assert metrics[0]["username"] == second_user["username"]
+    assert metrics[0]["estimated_cost_usd"] == 0.01
+    first_metrics = next(item for item in metrics if item["user_id"] == first_user["id"])
+    assert first_metrics["langfuse_user_id"] == f"user:{first_user['id']}"
+    assert first_metrics["events"] == 2
+    assert first_metrics["fallback_rate"] == 0.5
+    assert first_metrics["error_rate"] == 0.5
+    assert first_metrics["total_tokens"] == 180
+    assert first_metrics["estimated_cost_usd"] == 0.004
 
 
 def test_retrieval_quality_analytics_aggregates_prompt_safe_signals(app, make_user):
@@ -3314,12 +3464,15 @@ def test_admin_users_page_contains_ai_analytics_ui(client):
     assert "data-ai-latency" in html
     assert "data-ai-tokens" in html
     assert "data-ai-cost" in html
+    assert "data-ai-cost-status" in html
+    assert "data-ai-user-costs" in html
     assert "data-ai-workflows" in html
     assert "data-ai-error-categories" in html
     assert "data-audit-log-list" in html
     assert "data-backup-list" in html
     assert "data-permission-defaults" in html
     assert "/api/v1/admin/ai/summary" in script
+    assert "renderAiUserCosts" in script
     assert "/api/v1/admin/audit-log" in script
     assert "/api/v1/admin/backups" in script
     assert "/api/v1/admin/permissions/schema" in script
@@ -3374,14 +3527,12 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
     script_response = client.get("/static/pages/admin-ai.js")
     script = admin_ai_runtime_source(client)
     routes = {
-        "/admin/ai": ("overview", "AI-Admin f&uuml;r Modelle, Retrieval, Wissen und Diagnose"),
-        "/admin/ai/models": ("models", 'id="ai-models"'),
-        "/admin/ai/retrieval": ("retrieval", 'id="ai-retrieval"'),
-        "/admin/ai/knowledge": ("knowledge", 'id="ai-knowledge-sources"'),
-        "/admin/ai/training": ("training", 'id="ai-training-data"'),
-        "/admin/ai/diagnostics": ("diagnostics", 'id="ai-diagnostics"'),
-        "/admin/ai/feedback": ("feedback", 'id="ai-feedback"'),
-        "/admin/ai/indexing": ("indexing", 'id="ai-indexing-status"'),
+        "/admin/ai": ("overview", "AI-Admin als RAG-Spielbrett"),
+        "/admin/ai/rag-board": ("rag_board", 'id="ai-rag-board"'),
+        "/admin/ai/source-check": ("source_check", 'id="ai-source-check"'),
+        "/admin/ai/prompt-faq": ("prompt_faq", 'id="ai-prompts"'),
+        "/admin/ai/effectiveness": ("effectiveness", 'id="ai-costs"'),
+        "/admin/ai/technical": ("technical", 'id="ai-technical"'),
     }
     pages = {}
     for route, (view_name, marker) in routes.items():
@@ -3395,6 +3546,24 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
         assert f'href="{route}" class="is-active"' in page_html
         assert 'aria-current="page"' in page_html
 
+    legacy_routes = {
+        "/admin/ai/prompts": "/admin/ai/prompt-faq",
+        "/admin/ai/faq": "/admin/ai/prompt-faq",
+        "/admin/ai/knowledge": "/admin/ai/rag-board",
+        "/admin/ai/lab": "/admin/ai/source-check",
+        "/admin/ai/costs": "/admin/ai/effectiveness",
+        "/admin/ai/feedback": "/admin/ai/effectiveness",
+        "/admin/ai/models": "/admin/ai#ai-models",
+        "/admin/ai/retrieval": "/admin/ai/technical",
+        "/admin/ai/training": "/admin/ai/rag-board",
+        "/admin/ai/diagnostics": "/admin/ai/technical",
+        "/admin/ai/indexing": "/admin/ai/technical",
+    }
+    for route, target in legacy_routes.items():
+        response = client.get(route)
+        assert response.status_code == 302
+        assert response.headers["Location"] == target
+
     overview_html = pages["/admin/ai"]
     html = "\n".join(pages.values())
     source = html + script
@@ -3403,6 +3572,12 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
     for route in routes:
         assert f'href="{route}"' in overview_html
     for section_id in (
+        "ai-rag-board",
+        "ai-source-check",
+        "ai-prompts",
+        "ai-faq",
+        "ai-costs",
+        "ai-technical",
         "ai-models",
         "ai-retrieval",
         "ai-knowledge-sources",

@@ -45,6 +45,7 @@ from app.services.empty_retrieval_response_service import build_empty_retrieval_
 from app.services.error_service import search_errors
 from app.services.incident_timeline_service import daily_briefing_timeline_section
 from app.services.knowledge_service import knowledge_sources_for_chat
+from app.services.langfuse_service import langfuse_trace_context
 from app.services.order_planning_service import (
     REQUIRED_SCOPES as REQUIRED_ORDER_PLANNING_SCOPES,
 )
@@ -266,7 +267,14 @@ def answer_chat(message, user, session_id=""):
             user,
             conversation_context=conversation_context,
         )
-        answer, diagnostics = openai_general_answer(message, knowledge_context)
+        with langfuse_trace_context(
+            "general_chat",
+            user=user,
+            session_id=conversation_context.session_id,
+            metadata={"source_count": len(knowledge_sources)},
+            tags=["chat", "general"],
+        ):
+            answer, diagnostics = openai_general_answer(message, knowledge_context)
         return attach_audit_metadata(
             user,
             {
@@ -398,7 +406,14 @@ def answer_chat(message, user, session_id=""):
         conversation_context=conversation_context,
     )
     if retrieval_has_evidence(retrieval) or should_generate_without_evidence():
-        answer, diagnostics = openai_assistant_answer(message, retrieval["context"])
+        with langfuse_trace_context(
+            "chat",
+            user=user,
+            session_id=conversation_context.session_id,
+            metadata={"source_count": len(retrieval.get("sources") or [])},
+            tags=["chat", "rag", *sorted(retrieval.get("requested_scopes") or [])],
+        ):
+            answer, diagnostics = openai_assistant_answer(message, retrieval["context"])
     else:
         answer = grounded_empty_retrieval_answer(message, retrieval=retrieval, user=user)
         diagnostics = ai_diagnostics("local_answer", fallback_used=True)

@@ -6,12 +6,24 @@
   const { root, adminView, state, QUALITY_STATUS_OPTIONS } = AdminAI;
   const api = (...args) => AdminAI.api(...args);
   const bind = (...args) => AdminAI.bind(...args);
+  const loadAiStatus = (...args) => AdminAI.loadAiStatus(...args);
   const loadAiObservability = (...args) => AdminAI.loadAiObservability(...args);
+  const loadAdminUserCosts = (...args) => AdminAI.loadAdminUserCosts(...args);
+  const loadChats = (...args) => AdminAI.loadChats(...args);
+  const loadEvents = (...args) => AdminAI.loadEvents(...args);
+  const loadFaq = (...args) => AdminAI.loadFaq(...args);
+  const loadFaqSuggestions = (...args) => AdminAI.loadFaqSuggestions(...args);
   const loadJobs = (...args) => AdminAI.loadJobs(...args);
   const loadKnowledge = (...args) => AdminAI.loadKnowledge(...args);
+  const loadKnowledgeGaps = (...args) => AdminAI.loadKnowledgeGaps(...args);
   const loadKnowledgeNetwork = (...args) => AdminAI.loadKnowledgeNetwork(...args);
   const loadKnowledgeStatus = (...args) => AdminAI.loadKnowledgeStatus(...args);
   const loadOperationsMetrics = (...args) => AdminAI.loadOperationsMetrics(...args);
+  const loadPrompts = (...args) => AdminAI.loadPrompts(...args);
+  const loadResponseSnippets = (...args) => AdminAI.loadResponseSnippets(...args);
+  const loadRetrievalDebug = (...args) => AdminAI.loadRetrievalDebug(...args);
+  const loadRetrievalTelemetry = (...args) => AdminAI.loadRetrievalTelemetry(...args);
+  const loadSummary = (...args) => AdminAI.loadSummary(...args);
   const loadTraining = (...args) => AdminAI.loadTraining(...args);
   const loadTrainingSummary = (...args) => AdminAI.loadTrainingSummary(...args);
   const qualityStatusLabel = (...args) => AdminAI.qualityStatusLabel(...args);
@@ -25,57 +37,78 @@
   const setAdminMessage = (...args) => AdminAI.setAdminMessage(...args);
   const setButtonBusy = (...args) => AdminAI.setButtonBusy(...args);
   const setFormBusy = (...args) => AdminAI.setFormBusy(...args);
+  const setHealthCard = (...args) => AdminAI.setHealthCard(...args);
+  const runSourceTest = (...args) => AdminAI.runSourceTest(...args);
+  const submitSourceTestFeedback = (...args) => AdminAI.submitSourceTestFeedback(...args);
+  const createFaqFromSourceTest = (...args) => AdminAI.createFaqFromSourceTest(...args);
   const trainingPayload = (...args) => AdminAI.trainingPayload(...args);
+  const runPromptDryRun = (...args) => AdminAI.runPromptDryRun(...args);
+
+  function adminLoader(label, loader, statusKey) {
+    return { label, loader, statusKey };
+  }
+
+  function markAdminLoaderFailure(item, error) {
+    if (!item.statusKey) return;
+    const status = Number(error && error.status);
+    const endpoint = error && error.path ? String(error.path).split("?")[0] : "";
+    const detail = [
+      status ? "Status " + status : "Ladefehler",
+      endpoint
+    ].filter(Boolean).join(" - ");
+    setHealthCard(item.statusKey, "critical", detail);
+  }
+
   function adminLoadersForView() {
   const loadersByView = {
     overview: [
-      loadAiStatus,
-      loadSummary,
-      loadKnowledgeGaps,
-      loadKnowledgeStatus,
-      loadOperationsMetrics
+      adminLoader("AI-Status", loadAiStatus, "ai"),
+      adminLoader("AI-Zusammenfassung", loadSummary),
+      adminLoader("Wissenslücken", loadKnowledgeGaps),
+      adminLoader("RAG-Status", loadKnowledgeStatus, "rag"),
+      adminLoader("Betriebsmetriken", loadOperationsMetrics, "queue")
     ],
-    models: [
-      loadAiStatus,
-      loadSummary,
-      loadEvents,
-      loadChats,
-      loadOperationsMetrics
+    rag_board: [
+      adminLoader("AI-Status", loadAiStatus, "ai"),
+      adminLoader("RAG-Status", loadKnowledgeStatus, "rag"),
+      adminLoader("Training-Zusammenfassung", loadTrainingSummary),
+      adminLoader("Training", loadTraining),
+      adminLoader("Wissensquellen", loadKnowledge),
+      adminLoader("Wissensnetz", loadKnowledgeNetwork),
+      adminLoader("Wissenslücken", loadKnowledgeGaps),
+      adminLoader("AI-Zusammenfassung", loadSummary),
+      adminLoader("Index-Jobs", loadJobs, "queue"),
+      adminLoader("Betriebsmetriken", loadOperationsMetrics),
+      adminLoader("Retrieval-Telemetrie", loadRetrievalTelemetry)
     ],
-    retrieval: [
-      loadRetrievalDebug,
-      loadRetrievalTelemetry,
-      loadSummary
+    source_check: [
+      adminLoader("Prompts", loadPrompts, "prompts"),
+      adminLoader("RAG-Status", loadKnowledgeStatus, "rag"),
+      adminLoader("AI-Zusammenfassung", loadSummary)
     ],
-    knowledge: [
-      loadKnowledgeStatus,
-      loadTrainingSummary,
-      loadKnowledge,
-      loadKnowledgeNetwork,
-      loadKnowledgeGaps,
-      loadOperationsMetrics
+    prompt_faq: [
+      adminLoader("Prompts", loadPrompts, "prompts"),
+      adminLoader("FAQ", loadFaq),
+      adminLoader("FAQ-Vorschläge", loadFaqSuggestions),
+      adminLoader("Antwortbausteine", loadResponseSnippets)
     ],
-    training: [
-      loadTrainingSummary,
-      loadTraining,
-      loadKnowledgeStatus
+    effectiveness: [
+      adminLoader("AI-Zusammenfassung", loadSummary),
+      adminLoader("Nutzerkosten", loadAdminUserCosts),
+      adminLoader("Retrieval-Telemetrie", loadRetrievalTelemetry),
+      adminLoader("Wissenslücken", loadKnowledgeGaps),
+      adminLoader("Observability", loadAiObservability, "ai")
     ],
-    diagnostics: [
-      loadSummary,
-      loadEvents,
-      loadKnowledgeGaps,
-      loadAiObservability
-    ],
-    feedback: [
-      loadSummary,
-      loadKnowledgeGaps,
-      loadRetrievalTelemetry,
-      loadAiObservability
-    ],
-    indexing: [
-      loadKnowledgeStatus,
-      loadJobs,
-      loadOperationsMetrics
+    technical: [
+      adminLoader("AI-Status", loadAiStatus, "ai"),
+      adminLoader("AI-Zusammenfassung", loadSummary),
+      adminLoader("Retrieval-Debug", loadRetrievalDebug),
+      adminLoader("Retrieval-Telemetrie", loadRetrievalTelemetry),
+      adminLoader("RAG-Status", loadKnowledgeStatus, "rag"),
+      adminLoader("Wissenslücken", loadKnowledgeGaps),
+      adminLoader("Observability", loadAiObservability),
+      adminLoader("Index-Jobs", loadJobs, "queue"),
+      adminLoader("Betriebsmetriken", loadOperationsMetrics)
     ]
   };
   return loadersByView[adminView] || loadersByView.overview;
@@ -84,7 +117,29 @@
   async function refreshAll() {
   renderCapabilities();
   renderAnswerQualityGuide();
-  await Promise.all(adminLoadersForView().map((loader) => loader()));
+  const loaders = adminLoadersForView();
+  const results = await Promise.allSettled(loaders.map((item) => item.loader()));
+  const failedResults = results
+    .map((result, index) => ({ ...result, item: loaders[index] }))
+    .filter((result) => result.status === "rejected");
+  if (!failedResults.length) return;
+  failedResults.forEach((result) => markAdminLoaderFailure(result.item, result.reason));
+  const firstFailure = failedResults[0];
+  const context = failedResults.length === 1
+    ? firstFailure.item.label + " konnte nicht geladen werden"
+    : failedResults.length + " KI-Admin-Bereiche konnten nicht geladen werden";
+  const message = safeErrorMessage(
+    firstFailure.reason,
+    context
+  );
+  setAdminMessage(message, true);
+  if (window.console && window.console.warn) {
+    window.console.warn("admin_ai_partial_load", failedResults.map((result) => ({
+      area: result.item.label,
+      endpoint: result.reason && result.reason.path,
+      status: result.reason && result.reason.status
+    })));
+  }
   }
 
   function bindAdminAiActions() {
@@ -101,6 +156,60 @@
   });
   bind("[data-ai-training-active]", "change", () => {
     runAdminLoad(loadTraining, "Training laden");
+  });
+  bind("[data-ai-lab-form]", "submit", async (event) => {
+    event.preventDefault();
+    await runAdminLoad(() => runPromptDryRun(event.currentTarget), "Prompt Dry-run");
+  });
+  bind("[data-ai-source-test-form]", "submit", async (event) => {
+    event.preventDefault();
+    const submitter = event.submitter;
+    const intent = submitter && submitter.value ? submitter.value : undefined;
+    await runAdminLoad(() => runSourceTest(event.currentTarget, intent), "Quellenprüfung");
+  });
+  bind("[data-ai-source-reset]", "click", () => {
+    const form = root.querySelector("[data-ai-source-test-form]");
+    if (form) form.reset();
+    state.latestSourceTest = null;
+    const answer = root.querySelector("[data-ai-source-test-answer]");
+    const meta = root.querySelector("[data-ai-lab-meta]");
+    const actions = root.querySelector("[data-ai-source-test-actions]");
+    if (answer) answer.textContent = "Wähle Dry-run für Prompt-/Kontextprüfung oder Live für eine echte Antwort mit Quellen.";
+    if (meta) meta.textContent = "Noch kein Test ausgeführt.";
+    if (actions) actions.hidden = true;
+    root.querySelectorAll("[data-ai-source-test-kpi]").forEach((target) => {
+      target.textContent = target.dataset.aiSourceTestKpi === "confidence" ? "-" : "0";
+    });
+  });
+  bind("[data-ai-prompt-version-form]", "submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const payload = Object.fromEntries(new FormData(form).entries());
+    const templateId = payload.template_id;
+    const status = root.querySelector("[data-ai-prompt-form-status]");
+    if (!templateId) return;
+    await api("/api/v1/admin/ai/prompts/" + templateId + "/versions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (status) status.textContent = "Entwurf gespeichert";
+    form.reset();
+    await loadPrompts();
+  });
+  bind("[data-ai-faq-form]", "submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const payload = Object.fromEntries(new FormData(form).entries());
+    payload.status = "draft";
+    payload.source = "manual";
+    await api("/api/v1/admin/ai/faq", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    form.reset();
+    await Promise.all([loadFaq(), loadFaqSuggestions()]);
   });
   bind("[data-ai-training-reset]", "click", resetTrainingForm);
   bind("[data-ai-knowledge-search]", "input", () => {
@@ -281,6 +390,68 @@
     }
   });
   root.addEventListener("click", async (event) => {
+    const approveFaqButton = event.target.closest("[data-approve-faq]");
+    if (approveFaqButton) {
+      setButtonBusy(approveFaqButton, true, "Freigibt...");
+      try {
+        await api("/api/v1/admin/ai/faq/" + approveFaqButton.dataset.approveFaq + "/approve", {
+          method: "POST"
+        });
+        setAdminMessage("FAQ freigegeben und fuer den Index vorgemerkt.");
+        await Promise.all([loadFaq(), loadKnowledgeStatus()]);
+      } catch (error) {
+        setAdminMessage(safeErrorMessage(error, "FAQ freigeben"), true);
+      } finally {
+        setButtonBusy(approveFaqButton, false);
+      }
+      return;
+    }
+
+    const sourceFeedbackButton = event.target.closest("[data-ai-source-feedback]");
+    if (sourceFeedbackButton) {
+      setButtonBusy(sourceFeedbackButton, true, "Speichert...");
+      try {
+        await submitSourceTestFeedback(sourceFeedbackButton.dataset.aiSourceFeedback);
+        setAdminMessage("Quellenprüfung bewertet.");
+        await Promise.all([loadSummary(), loadRetrievalTelemetry()]);
+      } catch (error) {
+        setAdminMessage(safeErrorMessage(error, "Quellenprüfung bewerten"), true);
+      } finally {
+        setButtonBusy(sourceFeedbackButton, false);
+      }
+      return;
+    }
+
+    const sourceFaqButton = event.target.closest("[data-ai-source-create-faq]");
+    if (sourceFaqButton) {
+      setButtonBusy(sourceFaqButton, true, "Erstellt...");
+      try {
+        await createFaqFromSourceTest();
+        setAdminMessage("FAQ-Entwurf aus der Testfrage erstellt.");
+        await Promise.all([loadFaq(), loadFaqSuggestions()]);
+      } catch (error) {
+        setAdminMessage(safeErrorMessage(error, "FAQ aus Quellenprüfung erstellen"), true);
+      } finally {
+        setButtonBusy(sourceFaqButton, false);
+      }
+      return;
+    }
+
+    const missingSourceButton = event.target.closest("[data-ai-source-missing]");
+    if (missingSourceButton) {
+      setButtonBusy(missingSourceButton, true, "Markiert...");
+      try {
+        await submitSourceTestFeedback("not_helpful", "Quelle fehlt laut KI-Admin Quellenprüfung");
+        setAdminMessage("Fehlende Quelle als negatives Feedback markiert.");
+        await Promise.all([loadSummary(), loadKnowledgeGaps(), loadRetrievalTelemetry()]);
+      } catch (error) {
+        setAdminMessage(safeErrorMessage(error, "Fehlende Quelle markieren"), true);
+      } finally {
+        setButtonBusy(missingSourceButton, false);
+      }
+      return;
+    }
+
     const trainingDeleteButton = event.target.closest("[data-delete-training]");
     if (trainingDeleteButton) {
       setButtonBusy(trainingDeleteButton, true, "Löscht...");
@@ -407,5 +578,5 @@
     }
   });
   }
-  Object.assign(AdminAI, { adminLoadersForView, refreshAll, bindAdminAiActions, runReindex });
+  Object.assign(AdminAI, { adminLoadersForView, refreshAll, bindAdminAiActions });
 })(window.MaintenanceAdminAI);

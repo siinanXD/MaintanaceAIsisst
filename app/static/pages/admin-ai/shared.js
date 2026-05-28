@@ -28,9 +28,17 @@
       error.status = response.status;
       error.statusText = response.statusText;
       error.path = path;
+      error.payload = payload;
       throw error;
     }
     return payload.data || payload;
+  }
+
+  function adminAiBackendMessage(status, endpoint) {
+    if (status !== 500 || !endpoint.startsWith("/api/v1/admin/ai/")) {
+      return "Das Backend konnte die Aktion nicht ausführen.";
+    }
+    return "Das Backend konnte die Aktion nicht ausführen. Falls dies nach einem Update passiert: Datenbankmigration ausführen.";
   }
 
   /**
@@ -52,7 +60,10 @@
       503: "Der Service ist gerade nicht verfügbar.",
       504: "Die Aktion hat zu lange gedauert."
     };
-    const summary = messages[status] || "Die Aktion konnte nicht abgeschlossen werden.";
+    let summary = messages[status] || "Die Aktion konnte nicht abgeschlossen werden.";
+    if (status === 500) {
+      summary = adminAiBackendMessage(status, endpoint);
+    }
     return [
       context || "KI-Administration",
       summary,
@@ -217,10 +228,13 @@
   }
 
   function setAdminMessage(message, isError) {
-    const target = root.querySelector("[data-ai-reindex-message]");
-    if (!target) return;
-    target.textContent = message || "";
-    target.classList.toggle("is-error", Boolean(isError));
+    const target = root.querySelector("[data-ai-reindex-message]")
+      || root.querySelector("[data-ai-admin-message]");
+    if (target) {
+      target.textContent = message || "";
+      target.hidden = !message;
+      target.classList.toggle("is-error", Boolean(isError));
+    }
     if (message && window.maintenanceFrontend && window.maintenanceFrontend.showInterfaceToast) {
       window.maintenanceFrontend.showInterfaceToast(message, isError ? "error" : "info");
     }

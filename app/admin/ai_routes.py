@@ -19,6 +19,172 @@ def ai_summary():
     return jsonify(ai_analytics_summary(days))
 
 
+@admin_bp.get("/ai/users")
+@roles_required(Role.MASTER_ADMIN)
+def ai_users():
+    """Return AI usage, token, and cost metrics grouped by app user."""
+    try:
+        days = int(request.args.get("days", 7))
+        limit = int(request.args.get("limit", 25))
+    except (TypeError, ValueError):
+        return error_response("days and limit must be integers", 400)
+    if days < 1 or days > 90:
+        return error_response("days must be an integer between 1 and 90", 400)
+    if limit < 1 or limit > 100:
+        return error_response("limit must be an integer between 1 and 100", 400)
+    return success_response(
+        {
+            "items": ai_user_usage_metrics(days=days, limit=limit),
+            "window_days": days,
+        },
+        message="AI user usage loaded",
+    )
+
+
+@admin_bp.get("/ai/prompts")
+@roles_required(Role.MASTER_ADMIN)
+def ai_prompts():
+    """Return admin-managed prompt templates and versions."""
+    return success_response(
+        {"items": list_prompt_templates(include_versions=True)},
+        message="AI prompts loaded",
+    )
+
+
+@admin_bp.post("/ai/prompts/<int:template_id>/versions")
+@roles_required(Role.MASTER_ADMIN)
+def create_ai_prompt_version(template_id):
+    """Create a new prompt template version."""
+    template = get_prompt_template(template_id)
+    try:
+        result, error, status = create_prompt_version(
+            template,
+            request.get_json(silent=True) or {},
+            current_admin_user(),
+        )
+    except ValueError as exc:
+        return error_response(str(exc), 400)
+    if error:
+        return service_error_response(error, status)
+    return success_response(result, status, "Prompt version created")
+
+
+@admin_bp.post("/ai/prompts/<int:template_id>/activate")
+@roles_required(Role.MASTER_ADMIN)
+def activate_ai_prompt_version(template_id):
+    """Activate one prompt version for a template."""
+    template = get_prompt_template(template_id)
+    payload = request.get_json(silent=True) or {}
+    try:
+        version_id = int(payload.get("version_id"))
+    except (TypeError, ValueError):
+        return error_response("version_id must be an integer", 400)
+    result, error, status = activate_prompt_version(
+        template,
+        version_id,
+        current_admin_user(),
+    )
+    if error:
+        return service_error_response(error, status)
+    return success_response(result, status, "Prompt version activated")
+
+
+@admin_bp.post("/ai/prompts/test")
+@roles_required(Role.MASTER_ADMIN)
+def test_ai_prompt():
+    """Return a prompt dry-run preview for the admin test lab."""
+    return success_response(
+        prompt_test_preview(request.get_json(silent=True) or {}),
+        message="Prompt test preview loaded",
+    )
+
+
+@admin_bp.get("/ai/faq")
+@roles_required(Role.MASTER_ADMIN)
+def ai_faq_entries():
+    """Return filtered AI FAQ entries."""
+    try:
+        limit, offset = parse_limit_offset(request.args, default_limit=50)
+    except ValueError as exc:
+        return error_response(str(exc), 400)
+    query = list_faq_entries(request.args)
+    total = query.count()
+    entries = query.offset(offset).limit(limit).all()
+    return success_response(
+        {
+            "items": [entry.to_dict() for entry in entries],
+            "pagination": {"limit": limit, "offset": offset, "total": total},
+        },
+        message="AI FAQ entries loaded",
+    )
+
+
+@admin_bp.post("/ai/faq")
+@roles_required(Role.MASTER_ADMIN)
+def create_ai_faq_entry():
+    """Create an AI FAQ draft or approved entry."""
+    result, error, status = create_faq_entry(
+        request.get_json(silent=True) or {},
+        current_admin_user(),
+    )
+    if error:
+        return service_error_response(error, status)
+    return success_response(result, status, "AI FAQ entry created")
+
+
+@admin_bp.put("/ai/faq/<int:entry_id>")
+@roles_required(Role.MASTER_ADMIN)
+def update_ai_faq_entry(entry_id):
+    """Update an AI FAQ entry."""
+    entry = db.get_or_404(AIFAQEntry, entry_id)
+    result, error, status = update_faq_entry(entry, request.get_json(silent=True) or {})
+    if error:
+        return service_error_response(error, status)
+    return success_response(result, status, "AI FAQ entry updated")
+
+
+@admin_bp.post("/ai/faq/<int:entry_id>/approve")
+@roles_required(Role.MASTER_ADMIN)
+def approve_ai_faq_entry(entry_id):
+    """Approve an AI FAQ entry and make it indexable."""
+    entry = db.get_or_404(AIFAQEntry, entry_id)
+    result, error, status = approve_faq_entry(entry, current_admin_user())
+    if error:
+        return service_error_response(error, status)
+    return success_response(result, status, "AI FAQ entry approved")
+
+
+@admin_bp.get("/ai/faq/suggestions")
+@roles_required(Role.MASTER_ADMIN)
+def ai_faq_suggestions():
+    """Return frequent questions, answers and knowledge-gap FAQ suggestions."""
+    return success_response(faq_suggestions(request.args), message="AI FAQ suggestions loaded")
+
+
+@admin_bp.get("/ai/response-snippets")
+@roles_required(Role.MASTER_ADMIN)
+def ai_response_snippets():
+    """Return reusable response snippets."""
+    query = list_response_snippets(request.args)
+    return success_response(
+        {"items": [snippet.to_dict() for snippet in query.all()]},
+        message="AI response snippets loaded",
+    )
+
+
+@admin_bp.post("/ai/response-snippets")
+@roles_required(Role.MASTER_ADMIN)
+def create_ai_response_snippet():
+    """Create a reusable response snippet."""
+    result, error, status = create_response_snippet(
+        request.get_json(silent=True) or {},
+        current_admin_user(),
+    )
+    if error:
+        return service_error_response(error, status)
+    return success_response(result, status, "AI response snippet created")
+
+
 @admin_bp.get("/ai/retrieval-telemetry")
 @roles_required(Role.MASTER_ADMIN)
 def ai_retrieval_telemetry():
@@ -519,6 +685,18 @@ def delete_ai_knowledge(document_id):
 
 __all__ = [
     "ai_summary",
+    "ai_users",
+    "ai_prompts",
+    "create_ai_prompt_version",
+    "activate_ai_prompt_version",
+    "test_ai_prompt",
+    "ai_faq_entries",
+    "create_ai_faq_entry",
+    "update_ai_faq_entry",
+    "approve_ai_faq_entry",
+    "ai_faq_suggestions",
+    "ai_response_snippets",
+    "create_ai_response_snippet",
     "ai_retrieval_telemetry",
     "ai_retrieval_evaluations",
     "ai_run_retrieval_evaluation",

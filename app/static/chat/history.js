@@ -22,6 +22,7 @@
   } = Chat;
 
   const appendMessage = (...args) => Chat.appendMessage(...args);
+  const canViewChatEvidence = (...args) => Chat.canViewChatEvidence(...args);
   const chatSessionId = (...args) => Chat.chatSessionId(...args);
   const renderAssistantEvidence = (...args) => Chat.renderAssistantEvidence(...args);
   const renderFormattedText = (...args) => Chat.renderFormattedText(...args);
@@ -138,7 +139,11 @@
         "Authorization": "Bearer " + token,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ message, session_id: chatSessionId() })
+      body: JSON.stringify({
+        message,
+        session_id: chatSessionId(),
+        response_mode: canViewChatEvidence() ? "full" : "answer_only"
+      })
     });
 
     if (!response.ok) {

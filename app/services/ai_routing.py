@@ -164,6 +164,20 @@ def estimate_cost_usd(model, input_tokens, output_tokens, cached_tokens=0):
     return round(cost, 6)
 
 
+def ai_price_configuration_status():
+    """Return whether AI token price settings are configured."""
+    keys = [
+        key
+        for key, value in os.environ.items()
+        if key.startswith("AI_PRICE_") and key.endswith("_PER_1M") and str(value or "").strip()
+    ]
+    return {
+        "configured": bool(keys),
+        "configured_keys": sorted(keys),
+        "message": "" if keys else "Kosten nicht konfiguriert",
+    }
+
+
 def _workflow_model(workflow):
     """Return an optional workflow-specific model override."""
     key = f"OPENAI_MODEL_{_safe_price_key(workflow)}"

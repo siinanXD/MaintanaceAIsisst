@@ -313,7 +313,11 @@ def test_feature_registry_covers_permissions_and_frontend_assets(client):
     assert 'moduleUrl: "/static/pages/admin-ai.js"' in registry
     assert "routeAliases" in registry
     assert "routePrefixes" in registry
+    assert '"/admin/ai/technical"' in registry
     assert '"/admin/ai/models"' in registry
+    assert '"/admin/ai/retrieval"' in registry
+    assert '"/admin/ai/knowledge"' in registry
+    assert '"/admin/ai/training"' in registry
     assert "featureRoutes(feature)" in auth_js
     assert "feature.routeAliases" in auth_js
     assert 'moduleUrl: "/static/pages/handover.js"' in registry
