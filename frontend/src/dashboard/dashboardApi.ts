@@ -1,0 +1,245 @@
+import { apiRequest } from "../api/client";
+import { isObjectPayload, listData, unwrapData } from "../api/payload";
+import { todayIsoDate } from "../utils/date";
+import { safeErrorMessage } from "../utils/errors";
+
+export type DashboardPayload = Record<string, unknown>;
+
+export type DashboardRuntimeData = {
+  readonly aiStatus: DashboardPayload | null;
+  readonly employees: readonly DashboardPayload[];
+  readonly errors: readonly DashboardPayload[];
+  readonly handovers: readonly DashboardPayload[];
+  readonly inventorySummary: DashboardPayload | null;
+  readonly knowledgeGaps: readonly DashboardPayload[];
+  readonly knowledgeStatus: DashboardPayload | null;
+  readonly loadErrors: readonly string[];
+  readonly machines: readonly DashboardPayload[];
+  readonly operationsSummary: DashboardPayload | null;
+  readonly dailyBriefing: DashboardPayload | null;
+  readonly retrievalTelemetry: DashboardPayload | null;
+  readonly tasks: readonly DashboardPayload[];
+  readonly vacations: readonly DashboardPayload[];
+};
+
+export type DashboardTaskMutation = {
+  readonly department?: string;
+  readonly description?: string;
+  readonly due_date?: string;
+  readonly priority?: string;
+  readonly status?: string;
+  readonly title?: string;
+};
+
+export type DashboardTaskReportPayload = {
+  readonly action?: string;
+  readonly cause?: string;
+  readonly generate_report?: boolean;
+  readonly machine?: string;
+  readonly notes?: string;
+  readonly result?: string;
+};
+
+export type DashboardShiftCalendar = {
+  readonly employee?: DashboardPayload | null;
+  readonly entries?: readonly DashboardPayload[];
+  readonly message?: string;
+};
+
+const EMPTY_DASHBOARD_DATA: DashboardRuntimeData = {
+  aiStatus: null,
+  employees: [],
+  errors: [],
+  handovers: [],
+  inventorySummary: null,
+  knowledgeGaps: [],
+  knowledgeStatus: null,
+  loadErrors: [],
+  machines: [],
+  operationsSummary: null,
+  dailyBriefing: null,
+  retrievalTelemetry: null,
+  tasks: [],
+  vacations: []
+};
+
+/**
+ * Return a plain-object payload from a raw API response.
+ */
+function objectData(payload: unknown): DashboardPayload | null {
+  const data = unwrapData<unknown>(payload);
+  return isObjectPayload(data) ? data : null;
+}
+
+/**
+ * Load one dashboard list endpoint with the shared React API client.
+ */
+async function loadDashboardList(path: string, signal?: AbortSignal): Promise<readonly DashboardPayload[]> {
+  return listData<DashboardPayload>(await apiRequest<unknown>(path, { signal }));
+}
+
+/**
+ * Load one dashboard object endpoint with the shared React API client.
+ */
+async function loadDashboardObject(path: string, signal?: AbortSignal): Promise<DashboardPayload | null> {
+  return objectData(await apiRequest<unknown>(path, { signal }));
+}
+
+/**
+ * Resolve a fulfilled dashboard result or collect a visible load error.
+ */
+function settledValue<TValue>(
+  result: PromiseSettledResult<TValue>,
+  fallback: TValue,
+  label: string,
+  errors: string[]
+): TValue {
+  if (result.status === "fulfilled") {
+    return result.value;
+  }
+
+  errors.push(`${label}: ${safeErrorMessage(result.reason, "Daten konnten nicht geladen werden.")}`);
+  return fallback;
+}
+
+/**
+ * Load the dashboard data that is safe to render directly from React.
+ */
+export async function loadDashboardRuntimeData(signal?: AbortSignal): Promise<DashboardRuntimeData> {
+  const [
+    tasksResult,
+    errorsResult,
+    machinesResult,
+    employeesResult,
+    vacationsResult,
+    handoversResult,
+    inventoryResult,
+    aiStatusResult,
+    retrievalResult,
+    knowledgeStatusResult,
+    knowledgeGapsResult,
+    operationsResult,
+    briefingResult
+  ] = await Promise.allSettled([
+    loadDashboardList("/api/v1/tasks?limit=100", signal),
+    loadDashboardList("/api/v1/errors?limit=100&active=1", signal),
+    loadDashboardList("/api/v1/machines?limit=100", signal),
+    loadDashboardList("/api/v1/employees?limit=200", signal),
+    loadDashboardList("/api/v1/vacations?limit=100", signal),
+    loadDashboardList(`/api/v1/handover?date=${todayIsoDate()}`, signal),
+    loadDashboardObject("/api/v1/inventory/summary?include_materials=0", signal),
+    loadDashboardObject("/api/v1/ai/status", signal),
+    loadDashboardObject("/api/v1/admin/ai/retrieval-telemetry?days=7&limit=5", signal),
+    loadDashboardObject("/api/v1/admin/ai/knowledge/status", signal),
+    loadDashboardList("/api/v1/admin/ai/knowledge-gaps?status=open&limit=5", signal),
+    loadDashboardObject(`/api/v1/operations/summary?from=${todayIsoDate()}&to=${todayIsoDate()}`, signal),
+    loadDashboardObject("/api/v1/ai/daily-briefing", signal)
+  ]);
+  const loadErrors: string[] = [];
+
+  return {
+    ...EMPTY_DASHBOARD_DATA,
+    aiStatus: settledValue(aiStatusResult, null, "AI-Status", loadErrors),
+    employees: settledValue(employeesResult, [], "Mitarbeiter", loadErrors),
+    errors: settledValue(errorsResult, [], "Störungen", loadErrors),
+    handovers: settledValue(handoversResult, [], "Übergaben", loadErrors),
+    inventorySummary: settledValue(inventoryResult, null, "Lager", loadErrors),
+    knowledgeGaps: settledValue(knowledgeGapsResult, [], "Wissenslücken", loadErrors),
+    knowledgeStatus: settledValue(knowledgeStatusResult, null, "Wissensstatus", loadErrors),
+    loadErrors,
+    machines: settledValue(machinesResult, [], "Maschinen", loadErrors),
+    operationsSummary: settledValue(operationsResult, null, "Operations", loadErrors),
+    dailyBriefing: settledValue(briefingResult, null, "Briefing", loadErrors),
+    retrievalTelemetry: settledValue(retrievalResult, null, "Retrieval", loadErrors),
+    tasks: settledValue(tasksResult, [], "Aufgaben", loadErrors),
+    vacations: settledValue(vacationsResult, [], "Urlaub", loadErrors)
+  };
+}
+
+/**
+ * Load one task for the React dashboard detail modal.
+ */
+export async function loadDashboardTask(taskId: number, signal?: AbortSignal): Promise<DashboardPayload> {
+  return objectData(await apiRequest<unknown>(`/api/v1/tasks/${taskId}`, { signal })) ?? {};
+}
+
+/**
+ * Start a task from the React dashboard.
+ */
+export async function startDashboardTask(taskId: number): Promise<DashboardPayload> {
+  return objectData(await apiRequest<unknown>(`/api/v1/tasks/${taskId}/start`, { method: "POST" })) ?? {};
+}
+
+/**
+ * Complete a task from the React dashboard.
+ */
+export async function completeDashboardTask(
+  taskId: number,
+  payload: DashboardTaskReportPayload
+): Promise<DashboardPayload> {
+  return objectData(
+    await apiRequest<unknown>(`/api/v1/tasks/${taskId}/complete`, {
+      body: payload,
+      method: "POST"
+    })
+  ) ?? {};
+}
+
+/**
+ * Update a task from the React dashboard detail form.
+ */
+export async function updateDashboardTask(
+  taskId: number,
+  payload: DashboardTaskMutation
+): Promise<DashboardPayload> {
+  return objectData(
+    await apiRequest<unknown>(`/api/v1/tasks/${taskId}`, {
+      body: payload,
+      method: "PUT"
+    })
+  ) ?? {};
+}
+
+/**
+ * Create a task from a React dashboard suggestion draft.
+ */
+export async function createDashboardTask(payload: DashboardTaskMutation): Promise<DashboardPayload> {
+  return objectData(
+    await apiRequest<unknown>("/api/v1/tasks", {
+      body: payload,
+      method: "POST"
+    })
+  ) ?? {};
+}
+
+/**
+ * Ask the existing task suggestion API for a dashboard task draft.
+ */
+export async function suggestDashboardTask(text: string): Promise<DashboardPayload> {
+  return objectData(
+    await apiRequest<unknown>("/api/v1/tasks/suggest", {
+      body: { text },
+      method: "POST"
+    })
+  ) ?? {};
+}
+
+/**
+ * Load the shift calendar used by the React dashboard timeline.
+ */
+export async function loadDashboardShiftCalendar(
+  employeeId: string,
+  signal?: AbortSignal
+): Promise<DashboardShiftCalendar> {
+  const params = new URLSearchParams();
+  params.set("days", "14");
+  if (employeeId) {
+    params.set("employee_id", employeeId);
+  }
+
+  return unwrapData<DashboardShiftCalendar>(
+    await apiRequest<unknown>(`/api/v1/shiftplans/calendar?${params.toString()}`, { signal })
+  );
+}
+
+export { EMPTY_DASHBOARD_DATA };

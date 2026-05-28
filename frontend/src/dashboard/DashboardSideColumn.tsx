@@ -1,9 +1,47 @@
 import { type ReactNode } from "react";
 
+import { type DashboardPayload } from "./dashboardApi";
+import { type DashboardViewState } from "./dashboardModel";
+import {
+  activityItems,
+  briefingItems,
+  briefingSummary,
+  inventoryMetrics,
+  inventoryShortages,
+  type BriefingItem
+} from "./dashboardSideModel";
+
+type DashboardSideColumnProps = {
+  readonly dashboardState: DashboardViewState;
+};
+
 /**
- * Render the daily briefing card with the existing dashboard runtime hooks.
+ * Render one briefing or activity item.
  */
-function DailyBriefingCard(): ReactNode {
+function FeedItem({ item }: { readonly item: BriefingItem }): ReactNode {
+  const content = (
+    <>
+      <span>{item.icon}</span>
+      <strong>{item.title}</strong>
+      <small>{item.meta}</small>
+    </>
+  );
+
+  return item.href ? (
+    <a className={`briefing-item ${item.variant}`} href={item.href}>
+      {content}
+    </a>
+  ) : (
+    <div className={`briefing-item ${item.variant}`}>{content}</div>
+  );
+}
+
+/**
+ * Render the daily briefing card from React dashboard state.
+ */
+function DailyBriefingCard({ dashboardState }: DashboardSideColumnProps): ReactNode {
+  const items = briefingItems(dashboardState.data);
+
   return (
     <article className="ops-panel app-card daily-briefing" id="daily-briefing" data-daily-briefing-card="">
       <header className="ops-panel-header">
@@ -15,23 +53,36 @@ function DailyBriefingCard(): ReactNode {
         <span className="ai-label">AI</span>
       </header>
       <p className="briefing-summary" data-daily-briefing-summary="">
-        Kurzlage wird geladen.
+        {briefingSummary(dashboardState.data)}
       </p>
       <div className="briefing-list" data-daily-briefing-list="">
-        <div className="briefing-item is-warning">
-          <span>AI</span>
-          <strong>Kurzlage wird geladen</strong>
-          <small>Bitte kurz warten.</small>
-        </div>
+        {dashboardState.isLoading ? (
+          <div className="briefing-item is-warning">
+            <span>AI</span>
+            <strong>Kurzlage wird geladen</strong>
+            <small>Bitte kurz warten.</small>
+          </div>
+        ) : null}
+        {!dashboardState.isLoading && items.length === 0 ? (
+          <div className="stat-row">
+            <span>Status</span>
+            <strong>Keine Hinweise</strong>
+          </div>
+        ) : null}
+        {items.map((item) => (
+          <FeedItem key={`${item.icon}-${item.title}-${item.meta}`} item={item} />
+        ))}
       </div>
     </article>
   );
 }
 
 /**
- * Render the activity feed card with the existing dashboard runtime hook.
+ * Render the activity feed card from React dashboard state.
  */
-function ActivityFeedCard(): ReactNode {
+function ActivityFeedCard({ dashboardState }: DashboardSideColumnProps): ReactNode {
+  const items = activityItems(dashboardState.data);
+
   return (
     <article className="ops-panel app-card">
       <header className="ops-panel-header">
@@ -42,16 +93,50 @@ function ActivityFeedCard(): ReactNode {
         </div>
       </header>
       <div className="activity-feed" data-dashboard-activity-feed="">
-        <div className="empty-state">Aktivit&auml;ten werden geladen.</div>
+        {dashboardState.isLoading ? <div className="empty-state">Aktivitäten werden geladen.</div> : null}
+        {!dashboardState.isLoading && items.length === 0 ? (
+          <div className="empty-state">Noch keine Aktivitäten im aktuellen Datenfenster.</div>
+        ) : null}
+        {items.map((item) => (
+          <FeedItem key={`${item.icon}-${item.title}-${item.meta}`} item={item} />
+        ))}
       </div>
     </article>
   );
 }
 
 /**
- * Render the inventory hints card with the existing dashboard runtime hooks.
+ * Render one inventory metric.
  */
-function InventoryHintsCard(): ReactNode {
+function InventoryMetric({ metric }: { readonly metric: { readonly detail: string; readonly label: string; readonly value: string } }): ReactNode {
+  return (
+    <div>
+      <strong>{metric.label}</strong>
+      <span>{metric.value}</span>
+      <small>{metric.detail}</small>
+    </div>
+  );
+}
+
+/**
+ * Render one shortage tag.
+ */
+function ShortageTag({ material }: { readonly material: DashboardPayload }): ReactNode {
+  return (
+    <span>
+      {String(material.name || "Material")}
+      <strong>{String(material.quantity || 0)} Stk.</strong>
+    </span>
+  );
+}
+
+/**
+ * Render the inventory hints card from React dashboard state.
+ */
+function InventoryHintsCard({ dashboardState }: DashboardSideColumnProps): ReactNode {
+  const metrics = inventoryMetrics(dashboardState.data);
+  const shortages = inventoryShortages(dashboardState.data);
+
   return (
     <article className="ops-panel app-card">
       <header className="ops-panel-header">
@@ -67,18 +152,16 @@ function InventoryHintsCard(): ReactNode {
         </a>
       </header>
       <div className="inventory-stats" data-dashboard-inventory-stats="">
-        <div>
-          <strong>Kritisch</strong>
-          <span>--</span>
-          <small>Artikel</small>
-        </div>
+        {metrics.map((metric) => (
+          <InventoryMetric key={metric.label} metric={metric} />
+        ))}
       </div>
-      <div
-        className="shortage-tags"
-        aria-label="Top Engp&auml;sse"
-        data-dashboard-inventory-shortages=""
-      >
-        <span>Lagerdaten werden geladen.</span>
+      <div className="shortage-tags" aria-label="Top Engp&auml;sse" data-dashboard-inventory-shortages="">
+        {dashboardState.isLoading ? <span>Lagerdaten werden geladen.</span> : null}
+        {!dashboardState.isLoading && shortages.length === 0 ? <span>Keine Lagerdaten verfügbar.</span> : null}
+        {shortages.map((material) => (
+          <ShortageTag key={String(material.id ?? material.name)} material={material} />
+        ))}
       </div>
     </article>
   );
@@ -87,12 +170,12 @@ function InventoryHintsCard(): ReactNode {
 /**
  * Render the dashboard side column as React-owned markup.
  */
-export function DashboardSideColumn(): ReactNode {
+export function DashboardSideColumn({ dashboardState }: DashboardSideColumnProps): ReactNode {
   return (
     <aside className="control-center-side-column" aria-label="Briefing und Aktivitaet">
-      <DailyBriefingCard />
-      <ActivityFeedCard />
-      <InventoryHintsCard />
+      <DailyBriefingCard dashboardState={dashboardState} />
+      <ActivityFeedCard dashboardState={dashboardState} />
+      <InventoryHintsCard dashboardState={dashboardState} />
     </aside>
   );
 }

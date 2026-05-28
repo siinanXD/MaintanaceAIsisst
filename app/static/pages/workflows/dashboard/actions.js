@@ -7,16 +7,24 @@
   window.MaintenanceDashboardModules["actions"] = function attachDashboardActions(Dashboard) {
     with (Dashboard) {
       async function runDashboardJobs() {
-        dashboardJobs.push(loadDashboardPriorities());
+        const reactOwnsAssets = window.maintenanceDashboardReactAssetsOwned === true;
+        const reactOwnsOperations = window.maintenanceDashboardReactOperationsOwned === true;
+        const reactOwnsPeople = window.maintenanceDashboardReactPeopleOwned === true;
+        const reactOwnsShift = window.maintenanceDashboardReactShiftOwned === true;
+        const reactOwnsSide = window.maintenanceDashboardReactSideOwned === true;
+        const reactOwnsTasks = window.maintenanceDashboardReactTasksOwned === true;
+        if (!reactOwnsTasks) {
+          dashboardJobs.push(loadDashboardPriorities());
 
-      if (taskBoard && canView("tasks")) {
-        dashboardJobs.push(loadDashboardAufgaben());
-      } else if (taskBoard) {
-        taskBoard.innerHTML = "";
-        taskBoard.appendChild(emptyCockpitCard("Keine Berechtigung für Aufgaben."));
-      }
+          if (taskBoard && canView("tasks")) {
+            dashboardJobs.push(loadDashboardAufgaben());
+          } else if (taskBoard) {
+            taskBoard.innerHTML = "";
+            taskBoard.appendChild(emptyCockpitCard("Keine Berechtigung für Aufgaben."));
+          }
+        }
 
-      if (operationsInsights && canView("dashboard")) {
+      if (!reactOwnsOperations && operationsInsights && canView("dashboard")) {
         if (operationsRefresh && operationsRefresh.dataset.bound !== "true") {
           operationsRefresh.addEventListener("click", () => loadOperationsInsights(operationsRefresh));
           operationsRefresh.dataset.bound = "true";
@@ -30,7 +38,7 @@
           operationsRangeFilter.dataset.bound = "true";
         }
         dashboardJobs.push(loadOperationsInsights());
-      } else if (operationsInsights) {
+      } else if (!reactOwnsOperations && operationsInsights) {
         operationsInsights.hidden = true;
       }
 
@@ -38,40 +46,48 @@
         dashboardJobs.push(loadAiOperationsSignals());
       }
 
-      dashboardJobs.push(loadDailyBriefing());
-
-      if (machineCards && canView("machines")) {
-        dashboardJobs.push(loadDashboardMachines());
-      } else if (machineCards) {
-        machineCards.innerHTML = "";
-        machineCards.appendChild(emptyRailMessage("Keine Berechtigung für Maschinenstatus."));
+      if (!reactOwnsSide) {
+        dashboardJobs.push(loadDailyBriefing());
       }
 
-      if (handoverList && canView("shiftplans")) {
-        dashboardJobs.push(loadDashboardHandovers());
-      } else if (handoverList) {
-        handoverList.innerHTML = "";
-        handoverList.appendChild(emptyRailMessage("Keine Berechtigung für Schichtübergaben."));
+      if (!reactOwnsAssets) {
+        if (machineCards && canView("machines")) {
+          dashboardJobs.push(loadDashboardMachines());
+        } else if (machineCards) {
+          machineCards.innerHTML = "";
+          machineCards.appendChild(emptyRailMessage("Keine Berechtigung für Maschinenstatus."));
+        }
       }
 
-      if (peopleHints && canView("employees")) {
+      if (!reactOwnsPeople) {
+        if (handoverList && canView("shiftplans")) {
+          dashboardJobs.push(loadDashboardHandovers());
+        } else if (handoverList) {
+          handoverList.innerHTML = "";
+          handoverList.appendChild(emptyRailMessage("Keine Berechtigung für Schichtübergaben."));
+        }
+      }
+
+      if (!reactOwnsPeople && peopleHints && canView("employees")) {
         dashboardJobs.push(loadDashboardVacations());
       }
 
-      if (errorStats && canView("errors")) {
-        dashboardJobs.push((async () => {
-          const errorPayload = await api("/api/v1/errors?limit=100&active=1");
-          const errors = listData(errorPayload);
-          setText("[data-dashboard-machine-issue-count]", paginationTotal(errorPayload, errors));
-          renderIncidentRows(errors);
-        })());
-      } else if (errorStats) {
-        errorStats.innerHTML = "";
-        errorStats.appendChild(emptyDashboardMessage("Keine Berechtigung für Störungen."));
-        renderFrequentCodes([]);
+      if (!reactOwnsAssets) {
+        if (errorStats && canView("errors")) {
+          dashboardJobs.push((async () => {
+            const errorPayload = await api("/api/v1/errors?limit=100&active=1");
+            const errors = listData(errorPayload);
+            setText("[data-dashboard-machine-issue-count]", paginationTotal(errorPayload, errors));
+            renderIncidentRows(errors);
+          })());
+        } else if (errorStats) {
+          errorStats.innerHTML = "";
+          errorStats.appendChild(emptyDashboardMessage("Keine Berechtigung für Störungen."));
+          renderFrequentCodes([]);
+        }
       }
 
-      if (employeeOverview && canView("employees")) {
+      if (!reactOwnsPeople && employeeOverview && canView("employees")) {
         dashboardJobs.push((async () => {
           try {
             renderEmployeeOverview(listData(await api("/api/v1/employees?limit=200")));
@@ -84,14 +100,14 @@
         })());
       }
 
-      if (inventoryStats && canView("inventory")) {
+      if (!reactOwnsSide && inventoryStats && canView("inventory")) {
         dashboardJobs.push((async () => {
           const summary = await api("/api/v1/inventory/summary?include_materials=0");
           renderInventoryZusammenfassung(summary);
         })());
       }
 
-      if (shiftCalendar && canView("shiftplans")) {
+      if (!reactOwnsShift && shiftCalendar && canView("shiftplans")) {
         dashboardJobs.push((async () => {
           await setupDashboardCalendarFilter();
           await loadShiftCalendar();

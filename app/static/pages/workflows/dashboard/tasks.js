@@ -5,6 +5,21 @@
 (function registerDashboardModule() {
   window.MaintenanceDashboardModules = window.MaintenanceDashboardModules || {};
   window.MaintenanceDashboardModules["tasks"] = function attachDashboardTasks(Dashboard) {
+    if (window.maintenanceDashboardReactTasksOwned === true) {
+      Object.assign(Dashboard, {
+        cockpitAufgabeCard: function cockpitAufgabeCard() {},
+        emptyCockpitCard: function emptyCockpitCard() {},
+        loadDashboardAufgaben: async function loadDashboardAufgaben() {},
+        openAufgabeDetail: async function openAufgabeDetail() {},
+        renderAufgabeDetail: function renderAufgabeDetail() {},
+        runTaskAction: async function runTaskAction() {},
+        updateDashboardAufgabeMetrics: function updateDashboardAufgabeMetrics(tasks) {
+          Dashboard.dashboardState.tasks = Array.isArray(tasks) ? tasks : [];
+        }
+      });
+      return;
+    }
+
     with (Dashboard) {
       function updateDashboardAufgabeMetrics(tasks) {
         dashboardState.tasks = tasks;

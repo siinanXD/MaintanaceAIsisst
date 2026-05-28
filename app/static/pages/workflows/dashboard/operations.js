@@ -122,6 +122,10 @@
       }
 
       function renderOperationsCards(summary) {
+        if (window.maintenanceDashboardReactOperationsOwned === true) {
+          dashboardState.operations = summary || {};
+          return;
+        }
         if (!operationsKpiGrid) return;
         dashboardState.operations = summary || {};
         const tasks = summary.tasks || {};
@@ -164,6 +168,7 @@
       }
 
       function renderOperationsDrilldown(summary) {
+        if (window.maintenanceDashboardReactOperationsOwned === true) return;
         if (!operationsDrilldown) return;
         const inventory = summary.inventory || {};
         const machines = summary.machines || {};
@@ -196,6 +201,7 @@
       }
 
       async function loadOperationsSites() {
+        if (window.maintenanceDashboardReactOperationsOwned === true) return;
         if (!operationsSiteFilter || operationsSiteFilter.dataset.loaded === "true") return;
         try {
           const sites = listData(await api("/api/v1/sites"));
@@ -212,6 +218,7 @@
       }
 
       async function loadOperationsInsights(triggerButton) {
+        if (window.maintenanceDashboardReactOperationsOwned === true) return;
         if (!operationsInsights || !canView("dashboard")) return;
         if (operationsStatus) {
           operationsStatus.textContent = "Kennzahlen werden geladen...";
@@ -245,6 +252,10 @@
       }
 
       function renderDailyBriefing(briefing) {
+        if (window.maintenanceDashboardReactSideOwned === true) {
+          dashboardState.briefing = briefing || {};
+          return;
+        }
         dashboardState.briefing = briefing || {};
         briefing.sections = Array.isArray(briefing.sections) ? briefing.sections : [];
         if (briefingZusammenfassung) briefingZusammenfassung.textContent = briefing.summary;
@@ -265,6 +276,7 @@
       }
 
       async function loadDailyBriefing() {
+        if (window.maintenanceDashboardReactSideOwned === true) return;
         if (!briefingList) return;
         const pendingTimer = window.setTimeout(() => {
           if (briefingZusammenfassung) briefingZusammenfassung.textContent = "Briefing wird aktualisiert.";

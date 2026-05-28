@@ -333,6 +333,7 @@
       }
 
       function renderActivityFeed() {
+        if (window.maintenanceDashboardReactSideOwned === true) return;
         if (!executiveActivityFeed) return;
         const items = [];
         dashboardState.tasks.slice(0, 3).forEach((task) => {

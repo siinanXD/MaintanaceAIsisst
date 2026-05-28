@@ -250,6 +250,7 @@ function renderDashboardShiftTimeline(timeline, calendar) {
 }
 
 async function initDashboardShiftRealtime() {
+  if (window.maintenanceDashboardReactShiftOwned === true) return;
   const timeline = document.querySelector("[data-dashboard-shift-timeline]");
   if (!timeline || !token()) return;
   const calendarContainer = document.querySelector("[data-dashboard-shift-calendar]");

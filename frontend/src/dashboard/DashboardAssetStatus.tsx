@@ -1,9 +1,75 @@
 import { type ReactNode } from "react";
 
+import { type DashboardPayload } from "./dashboardApi";
+import { type DashboardViewState } from "./dashboardModel";
+import {
+  activeDashboardIncidents,
+  assetText,
+  dashboardSignalClass,
+  frequentIncidentCodes,
+  incidentBadgeClass,
+  incidentDateLabel,
+  incidentMachineName,
+  incidentStatusLabel,
+  machineStatusSeverity,
+  machineStatusText,
+  signalBadgeClass
+} from "./dashboardAssetModel";
+
+type DashboardAssetStatusProps = {
+  readonly dashboardState: DashboardViewState;
+};
+
 /**
- * Render the incident overview panel with the existing dashboard runtime hooks.
+ * Render a visible empty state.
  */
-function IncidentStatusPanel(): ReactNode {
+function EmptyState({ children }: { readonly children: ReactNode }): ReactNode {
+  return <div className="empty-state">{children}</div>;
+}
+
+/**
+ * Render one incident row with the existing dashboard classes.
+ */
+function IncidentRow({ entry }: { readonly entry: DashboardPayload }): ReactNode {
+  return (
+    <div className="incident-row">
+      <span className={incidentBadgeClass(entry)}>Aktiv</span>
+      <strong>{assetText(entry, "title", assetText(entry, "error_code", "Störung"))}</strong>
+      <span>{incidentMachineName(entry)}</span>
+      <span>{incidentDateLabel(entry)}</span>
+      <span className="badge badge-status is-progress">{incidentStatusLabel(entry.status)}</span>
+    </div>
+  );
+}
+
+/**
+ * Render the frequent incident code strip.
+ */
+function FrequentCodeStrip({ incidents }: { readonly incidents: readonly DashboardPayload[] }): ReactNode {
+  const codes = frequentIncidentCodes(incidents);
+
+  return (
+    <div className="frequent-code-strip" aria-label="H&auml;ufige Fehlercodes" data-dashboard-frequent-codes="">
+      {codes.length ? (
+        codes.map(([code, count]) => (
+          <span key={code}>
+            {code}
+            <strong>{count}</strong>
+          </span>
+        ))
+      ) : (
+        <span>Keine Fehlercodes im aktuellen Fenster.</span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Render the incident overview panel from React dashboard state.
+ */
+function IncidentStatusPanel({ dashboardState }: DashboardAssetStatusProps): ReactNode {
+  const incidents = activeDashboardIncidents(dashboardState.data.errors);
+
   return (
     <article className="ops-panel app-card">
       <header className="ops-panel-header">
@@ -17,23 +83,74 @@ function IncidentStatusPanel(): ReactNode {
         </a>
       </header>
       <div className="incident-list incident-card-list" data-dashboard-error-stats="">
-        <div className="empty-state">St&ouml;rungen werden geladen.</div>
+        {dashboardState.isLoading ? <EmptyState>Störungen werden geladen.</EmptyState> : null}
+        {!dashboardState.isLoading && incidents.length === 0 ? (
+          <EmptyState>Keine aktiven Störungen im aktuellen Fenster.</EmptyState>
+        ) : null}
+        {incidents.slice(0, 5).map((entry) => (
+          <IncidentRow key={String(entry.id ?? entry.error_code ?? entry.title)} entry={entry} />
+        ))}
       </div>
-      <div
-        className="frequent-code-strip"
-        aria-label="H&auml;ufige Fehlercodes"
-        data-dashboard-frequent-codes=""
-      >
-        <span>Fehlercodes werden geladen.</span>
-      </div>
+      <FrequentCodeStrip incidents={incidents} />
     </article>
   );
 }
 
 /**
- * Render the machine-status panel with the existing dashboard runtime hooks.
+ * Render one machine signal badge.
  */
-function MachineStatusPanel(): ReactNode {
+function MachineBadge({
+  children,
+  signal
+}: {
+  readonly children: ReactNode;
+  readonly signal: ReturnType<typeof machineStatusSeverity>;
+}): ReactNode {
+  return <span className={signalBadgeClass(signal)}>{children}</span>;
+}
+
+/**
+ * Render one machine status card.
+ */
+function MachineStatusCard({ machine }: { readonly machine: DashboardPayload }): ReactNode {
+  const severity = machineStatusSeverity(machine);
+  const criticality = assetText(machine, "criticality", "normal");
+
+  return (
+    <a className={`machine-status-card ${dashboardSignalClass(severity)}`} href="/machines">
+      <strong>{assetText(machine, "name", "Maschine")}</strong>
+      <small>{assetText(machine, "produced_item", "Produktionsdaten offen")}</small>
+      <div>
+        <MachineBadge signal={severity}>{machineStatusText(machine)}</MachineBadge>
+        <MachineBadge signal={criticality === "critical" ? "critical" : "muted"}>{criticality}</MachineBadge>
+      </div>
+    </a>
+  );
+}
+
+/**
+ * Render a compact machine severity strip.
+ */
+function MachineStatusStrip({ machines }: { readonly machines: readonly DashboardPayload[] }): ReactNode {
+  const critical = machines.filter((machine) => machineStatusSeverity(machine) === "critical").length;
+  const warning = machines.filter((machine) => machineStatusSeverity(machine) === "warning").length;
+  const good = machines.filter((machine) => machineStatusSeverity(machine) === "good").length;
+
+  return (
+    <div className="machine-status-strip" data-dashboard-machine-strip="">
+      <span className="badge badge-status is-open">{critical} kritisch</span>
+      <span className="badge badge-status is-progress">{warning} beobachten</span>
+      <span className="badge badge-status is-done">{good} stabil</span>
+    </div>
+  );
+}
+
+/**
+ * Render the machine-status panel from React dashboard state.
+ */
+function MachineStatusPanel({ dashboardState }: DashboardAssetStatusProps): ReactNode {
+  const machines = dashboardState.data.machines;
+
   return (
     <article className="ops-panel app-card">
       <header className="ops-panel-header">
@@ -48,11 +165,20 @@ function MachineStatusPanel(): ReactNode {
           Maschinen
         </a>
       </header>
-      <div className="machine-status-strip" data-dashboard-machine-strip="">
-        <div className="empty-state">Maschinenlage wird geladen.</div>
-      </div>
+      {dashboardState.isLoading && machines.length === 0 ? (
+        <div className="machine-status-strip" data-dashboard-machine-strip="">
+          <EmptyState>Maschinenlage wird geladen.</EmptyState>
+        </div>
+      ) : (
+        <MachineStatusStrip machines={machines} />
+      )}
       <div className="machine-status-card-list" data-dashboard-machine-cards="">
-        <div className="empty-state">Maschinen werden geladen.</div>
+        {!dashboardState.isLoading && machines.length === 0 ? (
+          <EmptyState>Keine Maschinen im aktuellen Zugriff.</EmptyState>
+        ) : null}
+        {machines.slice(0, 6).map((machine) => (
+          <MachineStatusCard key={String(machine.id ?? machine.name)} machine={machine} />
+        ))}
       </div>
     </article>
   );
@@ -61,11 +187,11 @@ function MachineStatusPanel(): ReactNode {
 /**
  * Render dashboard status panels for incidents and machine health.
  */
-export function DashboardAssetStatus(): ReactNode {
+export function DashboardAssetStatus({ dashboardState }: DashboardAssetStatusProps): ReactNode {
   return (
     <>
-      <IncidentStatusPanel />
-      <MachineStatusPanel />
+      <IncidentStatusPanel dashboardState={dashboardState} />
+      <MachineStatusPanel dashboardState={dashboardState} />
     </>
   );
 }

@@ -1387,8 +1387,53 @@ def test_dashboard_react_markup_replaces_fallback_clone():
     dashboard_app = (REPO_ROOT / "frontend" / "src" / "dashboard" / "DashboardApp.tsx").read_text(
         encoding="utf-8"
     )
+    dashboard_api = (REPO_ROOT / "frontend" / "src" / "dashboard" / "dashboardApi.ts").read_text(
+        encoding="utf-8"
+    )
     dashboard_markup = (
         REPO_ROOT / "frontend" / "src" / "dashboard" / "DashboardMarkup.tsx"
+    ).read_text(encoding="utf-8")
+    dashboard_model = (
+        REPO_ROOT / "frontend" / "src" / "dashboard" / "dashboardModel.ts"
+    ).read_text(encoding="utf-8")
+    dashboard_people_model = (
+        REPO_ROOT / "frontend" / "src" / "dashboard" / "dashboardPeopleModel.ts"
+    ).read_text(encoding="utf-8")
+    dashboard_operations_model = (
+        REPO_ROOT / "frontend" / "src" / "dashboard" / "dashboardOperationsModel.ts"
+    ).read_text(encoding="utf-8")
+    dashboard_side_model = (
+        REPO_ROOT / "frontend" / "src" / "dashboard" / "dashboardSideModel.ts"
+    ).read_text(encoding="utf-8")
+    dashboard_shift_model = (
+        REPO_ROOT / "frontend" / "src" / "dashboard" / "dashboardShiftModel.ts"
+    ).read_text(encoding="utf-8")
+    dashboard_asset_model = (
+        REPO_ROOT / "frontend" / "src" / "dashboard" / "dashboardAssetModel.ts"
+    ).read_text(encoding="utf-8")
+    dashboard_task_model = (
+        REPO_ROOT / "frontend" / "src" / "dashboard" / "dashboardTaskModel.ts"
+    ).read_text(encoding="utf-8")
+    dashboard_legacy_actions = (
+        REPO_ROOT / "app" / "static" / "pages" / "workflows" / "dashboard" / "actions.js"
+    ).read_text(encoding="utf-8")
+    dashboard_legacy_tasks = (
+        REPO_ROOT / "app" / "static" / "pages" / "workflows" / "dashboard" / "tasks.js"
+    ).read_text(encoding="utf-8")
+    dashboard_legacy_resources = (
+        REPO_ROOT / "app" / "static" / "pages" / "workflows" / "dashboard" / "resources.js"
+    ).read_text(encoding="utf-8")
+    dashboard_legacy_operations = (
+        REPO_ROOT / "app" / "static" / "pages" / "workflows" / "dashboard" / "operations.js"
+    ).read_text(encoding="utf-8")
+    dashboard_legacy_executive = (
+        REPO_ROOT / "app" / "static" / "pages" / "workflows" / "dashboard" / "executive.js"
+    ).read_text(encoding="utf-8")
+    dashboard_legacy_shift_realtime = (
+        REPO_ROOT / "app" / "static" / "pages" / "workflows" / "dashboard-shifts.js"
+    ).read_text(encoding="utf-8")
+    dashboard_legacy_shift_calendar = (
+        REPO_ROOT / "app" / "static" / "pages" / "workflows" / "dashboard" / "shift-calendar.js"
     ).read_text(encoding="utf-8")
     dashboard_assets = (
         REPO_ROOT / "frontend" / "src" / "dashboard" / "DashboardAssetStatus.tsx"
@@ -1422,7 +1467,15 @@ def test_dashboard_react_markup_replaces_fallback_clone():
     ).read_text(encoding="utf-8")
     dashboard_react_sources = "\n".join(
         (
+            dashboard_api,
             dashboard_markup,
+            dashboard_asset_model,
+            dashboard_model,
+            dashboard_operations_model,
+            dashboard_people_model,
+            dashboard_side_model,
+            dashboard_shift_model,
+            dashboard_task_model,
             dashboard_assets,
             dashboard_hero,
             dashboard_hidden_forms,
@@ -1438,17 +1491,90 @@ def test_dashboard_react_markup_replaces_fallback_clone():
 
     assert "DashboardMarkup" in dashboard_app
     assert "markIslandMounted" in dashboard_app
+    assert "loadDashboardRuntimeData" in dashboard_app
+    assert "loadDashboardTask" in dashboard_app
+    assert "startDashboardTask" in dashboard_app
+    assert "completeDashboardTask" in dashboard_app
+    assert "updateDashboardTask" in dashboard_app
+    assert "dashboardState" in dashboard_app
+    assert "maintenanceDashboardReactAssetsOwned" in dashboard_app
+    assert "maintenanceDashboardReactOperationsOwned" in dashboard_app
+    assert "maintenanceDashboardReactPeopleOwned" in dashboard_app
+    assert "maintenanceDashboardReactShiftOwned" in dashboard_app
+    assert "maintenanceDashboardReactSideOwned" in dashboard_app
+    assert "maintenanceDashboardReactTasksOwned" in dashboard_app
+    assert "maintenanceDashboardReactAssetsOwned" in dashboard_legacy_actions
+    assert "maintenanceDashboardReactAssetsOwned" in dashboard_legacy_resources
+    assert "maintenanceDashboardReactOperationsOwned" in dashboard_legacy_actions
+    assert "maintenanceDashboardReactOperationsOwned" in dashboard_legacy_operations
+    assert "maintenanceDashboardReactPeopleOwned" in dashboard_legacy_actions
+    assert "maintenanceDashboardReactPeopleOwned" in dashboard_legacy_resources
+    assert "maintenanceDashboardReactShiftOwned" in dashboard_legacy_actions
+    assert "maintenanceDashboardReactShiftOwned" in dashboard_legacy_shift_realtime
+    assert "maintenanceDashboardReactShiftOwned" in dashboard_legacy_shift_calendar
+    assert "maintenanceDashboardReactSideOwned" in dashboard_legacy_actions
+    assert "maintenanceDashboardReactSideOwned" in dashboard_legacy_executive
+    assert "maintenanceDashboardReactSideOwned" in dashboard_legacy_operations
+    assert "maintenanceDashboardReactSideOwned" in dashboard_legacy_resources
+    assert "maintenanceDashboardReactTasksOwned" in dashboard_legacy_actions
+    assert "maintenanceDashboardReactTasksOwned" in dashboard_legacy_tasks
+    assert "reactOwnsAssets" in dashboard_legacy_actions
+    assert "reactOwnsOperations" in dashboard_legacy_actions
+    assert "reactOwnsPeople" in dashboard_legacy_actions
+    assert "reactOwnsShift" in dashboard_legacy_actions
+    assert "reactOwnsSide" in dashboard_legacy_actions
+    assert "reactOwnsTasks" in dashboard_legacy_actions
     assert "useFallbackShellIsland" not in dashboard_app
     assert "cloneFallbackShell" not in dashboard_app
     assert "DASHBOARD_REMAINDER_MARKUP" not in dashboard_markup
     assert "dangerouslySetInnerHTML" not in dashboard_react_sources
     assert "data-dashboard-static-shell" in dashboard_markup
+    assert "data-dashboard-react-status" in dashboard_markup
     assert "DashboardHero" in dashboard_markup
     assert "DashboardKpis" in dashboard_markup
+    assert "dashboardKpiCards" in dashboard_markup
+    assert "dashboardLoadMessage" in dashboard_markup
+    assert "dashboardKpisFromState" in dashboard_kpis
+    assert "DashboardRuntimeData" in dashboard_api
+    assert "/api/v1/tasks?limit=100" in dashboard_api
+    assert "/api/v1/tasks/${taskId}" in dashboard_api
+    assert "/api/v1/tasks/${taskId}/start" in dashboard_api
+    assert "/api/v1/tasks/${taskId}/complete" in dashboard_api
+    assert "/api/v1/tasks/suggest" in dashboard_api
+    assert "/api/v1/shiftplans/calendar?" in dashboard_api
+    assert "/api/v1/errors?limit=100&active=1" in dashboard_api
+    assert "/api/v1/machines?limit=100" in dashboard_api
+    assert "/api/v1/employees?limit=200" in dashboard_api
+    assert "/api/v1/vacations?limit=100" in dashboard_api
+    assert "/api/v1/handover?date=" in dashboard_api
+    assert "/api/v1/inventory/summary?include_materials=0" in dashboard_api
+    assert "/api/v1/ai/status" in dashboard_api
+    assert "/api/v1/operations/summary?from=" in dashboard_api
+    assert "/api/v1/ai/daily-briefing" in dashboard_api
+    assert "/api/v1/admin/ai/retrieval-telemetry?days=7&limit=5" in dashboard_api
+    assert "/api/v1/admin/ai/knowledge/status" in dashboard_api
+    assert "/api/v1/admin/ai/knowledge-gaps?status=open&limit=5" in dashboard_api
     assert "DashboardOperations" in dashboard_markup
+    assert "operationCards" in dashboard_react_sources
+    assert "operationDrilldownRows" in dashboard_react_sources
     assert "DashboardShiftPeople" in dashboard_markup
+    assert "handoverTitle" in dashboard_react_sources
+    assert "handoverStatusValue" in dashboard_react_sources
+    assert "peopleStatusValue" in dashboard_react_sources
+    assert "employeeStatus" in dashboard_react_sources
+    assert "employeesToShiftCalendar" in dashboard_react_sources
+    assert "dashboardShiftRows" in dashboard_react_sources
+    assert "shiftCalendarMessage" in dashboard_react_sources
     assert "DashboardSideColumn" in dashboard_markup
+    assert "briefingItems" in dashboard_react_sources
+    assert "activityItems" in dashboard_react_sources
+    assert "inventoryMetrics" in dashboard_react_sources
     assert "DashboardTaskOverview" in dashboard_markup
+    assert "activeDashboardIncidents" in dashboard_react_sources
+    assert "frequentIncidentCodes" in dashboard_react_sources
+    assert "machineStatusSeverity" in dashboard_react_sources
+    assert "dashboardTaskGroups" in dashboard_react_sources
+    assert "dashboardCriticalTasks" in dashboard_react_sources
     assert "DashboardAssetStatus" in dashboard_markup
     assert "DashboardTechnicalDetails" in dashboard_markup
     assert "DashboardHiddenForms" in dashboard_markup
@@ -1496,6 +1622,7 @@ def test_dashboard_react_markup_replaces_fallback_clone():
     assert "data-dashboard-task-count" in dashboard_react_sources
     assert "data-dashboard-briefing-count" in dashboard_react_sources
     assert "data-task-detail-modal" in dashboard_react_sources
+    assert "data-task-edit-form" in dashboard_react_sources
     assert "data-report-options" in dashboard_react_sources
     assert "data-report-field" in dashboard_react_sources
     assert "data-task-start-button" in dashboard_react_sources

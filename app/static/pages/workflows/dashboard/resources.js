@@ -28,6 +28,7 @@
       }
 
       function renderCriticalToday() {
+        if (window.maintenanceDashboardReactTasksOwned === true || window.maintenanceDashboardReactAssetsOwned === true) return;
         if (!criticalTodayPanel) return;
         const activeTasks = dashboardState.tasks.filter((task) => task.status !== "done" && task.status !== "cancelled");
         const criticalTasks = activeTasks.filter((task) => task.priority === "urgent" || isOverdue(task));
@@ -81,6 +82,7 @@
       }
 
       function updateMachineKpis() {
+        if (window.maintenanceDashboardReactAssetsOwned === true) return;
         const operations = dashboardState.operations || {};
         const machineMetrics = operations.machines || {};
         const machines = dashboardState.machines || [];
@@ -97,6 +99,7 @@
       }
 
       function renderMachineCards() {
+        if (window.maintenanceDashboardReactAssetsOwned === true) return;
         if (!machineCards) {
           updateMachineKpis();
           return;
@@ -134,6 +137,10 @@
       }
 
       function renderHandoverList(handovers) {
+        if (window.maintenanceDashboardReactPeopleOwned === true) {
+          dashboardState.handovers = handovers || [];
+          return;
+        }
         if (!handoverList) return;
         dashboardState.handovers = handovers || [];
         handoverList.innerHTML = "";
@@ -165,6 +172,7 @@
       }
 
       function renderPeopleHints() {
+        if (window.maintenanceDashboardReactPeopleOwned === true) return;
         if (!peopleHints) return;
         const vacations = dashboardState.vacations || [];
         const employees = dashboardState.employees || [];
@@ -299,6 +307,10 @@
       }
 
       function renderEmployeeOverview(employees) {
+        if (window.maintenanceDashboardReactPeopleOwned === true) {
+          dashboardState.employees = employees || [];
+          return;
+        }
         if (!employeeOverview) return;
         dashboardState.employees = employees;
         employeeOverview.innerHTML = "";
@@ -323,6 +335,7 @@
       }
 
       function renderFrequentCodes(errors) {
+        if (window.maintenanceDashboardReactAssetsOwned === true) return;
         if (!frequentCodes) return;
         const counts = errors.reduce((items, entry) => {
           const code = entry.error_code || entry.code || "ohne Code";
@@ -348,6 +361,10 @@
       }
 
       function renderIncidentRows(errors) {
+        if (window.maintenanceDashboardReactAssetsOwned === true) {
+          dashboardState.errors = activeDashboardErrors(errors);
+          return;
+        }
         if (!errorStats) return;
         const activeErrors = activeDashboardErrors(errors);
         dashboardState.errors = activeErrors;
@@ -427,6 +444,10 @@
       }
 
       function renderInventoryZusammenfassung(summary) {
+        if (window.maintenanceDashboardReactSideOwned === true) {
+          dashboardState.inventory = summary || {};
+          return;
+        }
         if (!inventoryStats) return;
         dashboardState.inventory = summary || {};
         const materials = Array.isArray(summary.materials) ? summary.materials : [];
@@ -454,6 +475,7 @@
       }
 
       async function loadDashboardMachines() {
+        if (window.maintenanceDashboardReactAssetsOwned === true) return;
         if (!machineCards || !canView("machines")) return;
         try {
           dashboardState.machines = listData(await api("/api/v1/machines?limit=100"));
@@ -467,6 +489,7 @@
       }
 
       async function loadDashboardHandovers() {
+        if (window.maintenanceDashboardReactPeopleOwned === true) return;
         if (!handoverList || !canView("shiftplans")) return;
         try {
           renderHandoverList(listData(await api("/api/v1/handover?date=" + todayIso())));
@@ -481,6 +504,7 @@
       }
 
       async function loadDashboardVacations() {
+        if (window.maintenanceDashboardReactPeopleOwned === true) return;
         if (!peopleHints || !canView("employees")) return;
         try {
           dashboardState.vacations = listData(await api("/api/v1/vacations?limit=100"));

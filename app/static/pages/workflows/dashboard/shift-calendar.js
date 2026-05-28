@@ -112,6 +112,7 @@
       }
 
       async function setupDashboardCalendarFilter() {
+        if (window.maintenanceDashboardReactShiftOwned === true) return;
         if (!shiftCalendarEmployee || !canView("employees")) return;
         try {
           const employees = listData(await api("/api/v1/employees?limit=200"));
@@ -131,6 +132,7 @@
       }
 
       async function loadShiftCalendar() {
+        if (window.maintenanceDashboardReactShiftOwned === true) return;
         if (!shiftCalendar) return;
         const params = new URLSearchParams();
         params.set("days", "14");
@@ -158,6 +160,7 @@
       }
 
       function startDashboardShiftRealtime() {
+        if (window.maintenanceDashboardReactShiftOwned === true) return;
         if (!shiftTimeline) return;
         window.setInterval(loadShiftCalendar, 60 * 1000);
       }

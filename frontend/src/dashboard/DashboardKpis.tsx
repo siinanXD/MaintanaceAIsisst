@@ -1,5 +1,7 @@
 import { type ReactNode } from "react";
 
+import { type DashboardKpiState } from "./dashboardModel";
+
 type DashboardKpi = {
   readonly colorClass: string;
   readonly label: ReactNode;
@@ -101,6 +103,22 @@ function dataHookAttribute(hookName: string): Record<string, string> {
 }
 
 /**
+ * Convert React-owned KPI state into renderable KPI cards.
+ */
+function dashboardKpisFromState(kpis: readonly DashboardKpiState[]): readonly DashboardKpi[] {
+  return kpis.map((kpi) => ({
+    colorClass: kpi.colorClass,
+    label: kpi.label,
+    meta: kpi.meta,
+    metaHook: kpi.metaHook,
+    progressHook: kpi.progressHook,
+    progressWidth: kpi.progressWidth,
+    value: kpi.value,
+    valueHook: kpi.valueHook
+  }));
+}
+
+/**
  * Render one dashboard KPI card while preserving selector hooks.
  */
 function DashboardKpiCard({ kpi }: { readonly kpi: DashboardKpi }): ReactNode {
@@ -119,10 +137,16 @@ function DashboardKpiCard({ kpi }: { readonly kpi: DashboardKpi }): ReactNode {
 /**
  * Render the dashboard KPI strip as React-owned markup.
  */
-export function DashboardKpis(): ReactNode {
+export function DashboardKpis({
+  kpis
+}: {
+  readonly kpis?: readonly DashboardKpiState[];
+}): ReactNode {
+  const visibleKpis = kpis ? dashboardKpisFromState(kpis) : DASHBOARD_KPIS;
+
   return (
     <section className="executive-kpi-grid control-center-kpis" aria-label="Wichtige Kennzahlen">
-      {DASHBOARD_KPIS.map((kpi) => (
+      {visibleKpis.map((kpi) => (
         <DashboardKpiCard key={kpi.valueHook} kpi={kpi} />
       ))}
     </section>
