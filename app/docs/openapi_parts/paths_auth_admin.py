@@ -70,7 +70,7 @@ PATHS_AUTH_ADMIN = {
                     "content": {
                         "application/json": {
                             "example": {
-                                "access_token": "eyJhbGciOiJIUzI1NiIs...",
+                                "access_token": "<jwt-access-token>",
                                 "user": {
                                     "id": 1,
                                     "username": "master.admin",
