@@ -485,6 +485,8 @@ def test_errors_page_contains_similar_errors_ui(client):
     html = response.get_data(as_text=True)
 
     assert response.status_code == 200
+    assert "maintenance-errors-root" in html
+    assert "data-react-errors-fallback" in html
     assert "data-similar-errors-panel" in html
     assert "data-similar-errors-list" in html
     assert "data-error-rag-sources" in html

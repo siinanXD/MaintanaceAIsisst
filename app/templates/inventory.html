@@ -4,6 +4,8 @@
 {% block header_title %}Lager{% endblock %}
 
 {% block content %}
+<div id="maintenance-inventory-root"></div>
+<div data-react-inventory-fallback>
 <section class="page-hero">
   <div>
     <p class="page-kicker">Material</p>
@@ -156,4 +158,5 @@
     </div>
   </article>
 </section>
-{% endblock %}
+</div>
+{{ react_entrypoint("src/inventory/inventoryEntrypoint.tsx") }}{% endblock %}

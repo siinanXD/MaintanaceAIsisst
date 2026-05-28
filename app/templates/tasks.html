@@ -4,6 +4,8 @@
 {% block header_title %}Aufgaben{% endblock %}
 
 {% block content %}
+<div id="maintenance-tasks-root"></div>
+<div data-react-tasks-fallback>
 <section class="page-hero task-workboard-hero">
   <div>
     <h1 class="page-title">Maintenance Workboard</h1>
@@ -272,4 +274,6 @@
   </div>
   <div data-task-list hidden></div>
 </article>
+</div>
+{{ react_entrypoint("src/tasks/taskEntrypoint.tsx") }}
 {% endblock %}

@@ -4,6 +4,8 @@
 {% block header_title %}Cockpit{% endblock %}
 
 {% block content %}
+<div id="maintenance-dashboard-root"></div>
+<div data-react-dashboard-fallback>
 <section class="page-hero control-center-hero app-card" data-ai-ops-cockpit aria-label="Maintenance Control Center">
   <div class="control-center-copy">
     <p class="page-kicker">Maintenance Control Center</p>
@@ -435,4 +437,6 @@
     </div>
   </div>
 </div>
+</div>
+{{ react_entrypoint("src/dashboard/dashboardEntrypoint.tsx") }}
 {% endblock %}

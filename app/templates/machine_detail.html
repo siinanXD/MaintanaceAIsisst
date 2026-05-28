@@ -4,6 +4,8 @@
 {% block header_title %}Maschinenprofil{% endblock %}
 
 {% block content %}
+<div id="maintenance-machine-profile-root" data-machine-id="{{ machine_id }}"></div>
+<div data-react-machine-profile-fallback>
 <section class="machine-profile-page" data-machine-profile-page data-machine-id="{{ machine_id }}">
   <section class="machine-profile-hero app-card">
     <div class="machine-profile-copy">
@@ -159,4 +161,6 @@
     </div>
   </section>
 </section>
+</div>
+{{ react_entrypoint("src/machines/machinesEntrypoint.tsx") }}
 {% endblock %}

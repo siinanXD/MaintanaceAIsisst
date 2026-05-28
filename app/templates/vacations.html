@@ -3,6 +3,8 @@
 {% block header_title %}Urlaubsplanung{% endblock %}
 
 {% block content %}
+<div id="maintenance-vacations-root"></div>
+<div data-react-vacations-fallback>
 <section class="page-hero vacation-hero">
   <div>
     <p class="page-kicker">Personalplanung</p>
@@ -185,4 +187,6 @@
     <p class="empty-state" data-vac-empty hidden>Keine Einträge vorhanden.</p>
   </article>
 </section>
+</div>
+{{ react_entrypoint("src/vacations/vacationsEntrypoint.tsx") }}
 {% endblock %}

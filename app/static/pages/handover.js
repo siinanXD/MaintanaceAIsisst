@@ -25,6 +25,7 @@
     handovers: [],
     machines: []
   };
+  let initialized = false;
 
   function token() {
     return (window.maintenanceAuth && window.maintenanceAuth.token)
@@ -447,15 +448,27 @@
   }
 
   async function init() {
+    if (initialized) return;
+    initialized = true;
     if (byId("ho-date")) byId("ho-date").value = new Date().toISOString().slice(0, 10);
     bindEvents();
     await loadMachines();
     await loadHandovers();
   }
 
+  window.MaintenanceHandoverRuntime = {
+    initHandover: init,
+    loadHandoverMachines: loadMachines,
+    loadHandovers
+  };
+
   window.addEventListener("maintenance-auth-ready", () => {
     loadMachines();
     loadHandovers();
   });
-  document.addEventListener("DOMContentLoaded", init);
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init, { once: true });
+  } else {
+    init();
+  }
 })();

@@ -6,8 +6,8 @@
       label: "Cockpit",
       route: "/",
       group: "Cockpit",
-      module: "workflows",
-      initializers: ["initDashboardShiftRealtime", "initDailyCockpit"],
+      module: "page",
+      moduleUrl: "/static/pages/dashboard-island.js",
     },
     {
       key: "tasks",
@@ -15,8 +15,8 @@
       label: "Aufgaben",
       route: "/tasks",
       group: "Arbeit",
-      module: "workflows",
-      initializers: ["initDepartments", "initTasks"],
+      module: "page",
+      moduleUrl: "/static/pages/tasks-island.js",
     },
     {
       key: "errors",
@@ -24,8 +24,8 @@
       label: "Fehlerliste",
       route: "/errors",
       group: "Arbeit",
-      module: "workflows",
-      initializers: ["initDepartments", "initErrors"],
+      module: "page",
+      moduleUrl: "/static/pages/errors-island.js",
     },
     {
       key: "employees",
@@ -33,8 +33,8 @@
       label: "Mitarbeiter",
       route: "/employees",
       group: "Planung & Personal",
-      module: "workflows",
-      initializers: ["initDepartments", "initEmployees"],
+      module: "page",
+      moduleUrl: "/static/pages/employees-island.js",
     },
     {
       key: "machines",
@@ -43,8 +43,8 @@
       route: "/machines",
       routePrefixes: ["/machines/"],
       group: "Wissen & Anlagen",
-      module: "workflows",
-      initializers: ["initMachines", "initMachineProfile"],
+      module: "page",
+      moduleUrl: "/static/pages/machines-island.js",
     },
     {
       key: "inventory",
@@ -52,8 +52,8 @@
       label: "Lager",
       route: "/inventory",
       group: "Wissen & Anlagen",
-      module: "workflows",
-      initializers: ["initInventory"],
+      module: "page",
+      moduleUrl: "/static/pages/inventory-island.js",
     },
     {
       key: "shiftplans",
@@ -62,7 +62,7 @@
       route: "/shiftplans",
       group: "Planung & Personal",
       module: "page",
-      moduleUrl: "/static/pages/shiftplans.js",
+      moduleUrl: "/static/pages/shiftplans-island.js",
     },
     {
       key: "handover",
@@ -71,7 +71,7 @@
       route: "/handover",
       group: "Arbeit",
       module: "page",
-      moduleUrl: "/static/pages/handover.js",
+      moduleUrl: "/static/pages/handover-island.js",
     },
     {
       key: "vacations",
@@ -79,8 +79,8 @@
       label: "Urlaubsplanung",
       route: "/vacations",
       group: "Planung & Personal",
-      module: "workflows",
-      initializers: ["initVacations"],
+      module: "page",
+      moduleUrl: "/static/pages/vacations-island.js",
     },
     {
       key: "documents",
@@ -88,8 +88,8 @@
       label: "Dokumente",
       route: "/documents",
       group: "Wissen & Anlagen",
-      module: "workflows",
-      initializers: ["initDocuments"],
+      module: "page",
+      moduleUrl: "/static/pages/documents-island.js",
     },
     {
       key: "admin_users",
@@ -97,8 +97,8 @@
       label: "Benutzer",
       route: "/admin/users",
       group: "Administration",
-      module: "workflows",
-      initializers: ["initUsers"],
+      module: "page",
+      moduleUrl: "/static/pages/admin-users-island.js",
     },
     {
       key: "admin_ai",
@@ -125,7 +125,7 @@
       ],
       group: "Administration",
       module: "page",
-      moduleUrl: "/static/pages/admin-ai.js",
+      moduleUrl: "/static/pages/admin-ai-island.js",
     },
   ];
 

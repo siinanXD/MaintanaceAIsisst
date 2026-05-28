@@ -1,0 +1,341 @@
+import { type FormEvent, type ReactNode } from "react";
+
+import {
+  activePromptVersion,
+  promptFaqText,
+  statusTone,
+  suggestionCountText,
+  type AdminAiFaqEntry,
+  type AdminAiPromptFaqState,
+  type AdminAiPromptTemplate,
+  type AdminAiResponseSnippet,
+  type AdminAiFaqSuggestion
+} from "./adminAiPromptFaqModel";
+
+type AdminAiPromptFaqProps = {
+  readonly onApproveFaq: (entry: AdminAiFaqEntry) => void;
+  readonly onFaqSubmit: (form: HTMLFormElement) => void;
+  readonly onPromptVersionSubmit: (form: HTMLFormElement) => void;
+  readonly promptFaqState: AdminAiPromptFaqState;
+};
+
+/**
+ * Render Prompt and FAQ administration hooks with React-owned data and actions.
+ */
+export function AdminAiPromptFaq({
+  onApproveFaq,
+  onFaqSubmit,
+  onPromptVersionSubmit,
+  promptFaqState
+}: AdminAiPromptFaqProps): ReactNode {
+  return (
+    <>
+      <section className="ai-admin-area" id="ai-prompts" data-ai-admin-area="prompts">
+        <div className="ai-admin-area-header">
+          <div>
+            <span className="section-kicker">3. Prompt & FAQ</span>
+            <h3>AI-Calls und Prompt-Versionen steuern</h3>
+            <p className="panel-meta">
+              Master-Admins sehen aktive Prompts, Entwürfe und Rollback-Optionen pro Workflow.
+            </p>
+          </div>
+          <span className={`badge badge-ai ${promptFaqState.prompts.length ? "is-active" : "is-stale"}`} data-ai-section-status="prompts">
+            {promptFaqState.isLoading ? "Prompts werden geladen" : `${promptFaqState.prompts.length} Prompt-Workflows`}
+          </span>
+        </div>
+        <div className="content-grid two-columns">
+          <section className="panel">
+            <div className="panel-header">
+              <h3>Workflows</h3>
+              <span className="panel-meta">Aktive Version, Antwortmodus und Zweck</span>
+            </div>
+            <PromptList prompts={promptFaqState.prompts} />
+          </section>
+          <section className="panel">
+            <div className="panel-header">
+              <h3>Neuer Prompt-Entwurf</h3>
+              <span className="panel-meta">Entwurf speichern, danach gezielt aktivieren</span>
+            </div>
+            <form className="stack" data-ai-prompt-version-form onSubmit={submitForm(onPromptVersionSubmit)}>
+              <select
+                className="input input-bordered"
+                name="template_id"
+                data-ai-prompt-template-select
+                aria-label="Workflow auswählen"
+              >
+                {promptFaqState.prompts.map((prompt) => (
+                  <option key={promptFaqText(prompt.id)} value={promptFaqText(prompt.id, "")}>
+                    {promptFaqText(prompt.name)} ({promptFaqText(prompt.workflow_key)})
+                  </option>
+                ))}
+              </select>
+              <textarea className="input input-bordered" name="system_prompt" rows={9} placeholder="System-Prompt" />
+              <textarea
+                className="input input-bordered"
+                name="user_prompt_template"
+                rows={5}
+                placeholder="User-Prompt-Template, z. B. {question}, {context}, {payload_json}"
+              />
+              <input className="input input-bordered" name="change_note" placeholder="Änderungsnotiz" />
+              <div className="toolbar">
+                <button className="btn btn-primary" disabled={promptFaqState.isSaving} type="submit">
+                  Entwurf speichern
+                </button>
+                <span className="panel-meta" data-ai-prompt-form-status>
+                  {promptFaqState.promptFormStatus}
+                </span>
+              </div>
+            </form>
+          </section>
+        </div>
+      </section>
+
+      <section className="ai-admin-area" id="ai-faq" data-ai-admin-area="faq">
+        <div className="ai-admin-area-header">
+          <div>
+            <span className="section-kicker">2. FAQ & Antworten</span>
+            <h3>Häufige Fragen in freigegebenes Wissen verwandeln</h3>
+            <p className="panel-meta">
+              Vorschläge kommen aus Chatverlauf, Wissenslücken und Feedback. Erst freigegebene FAQ
+              werden RAG-aktiv.
+            </p>
+          </div>
+          <span className={`badge badge-ai ${promptFaqState.faqEntries.length ? "is-active" : "is-stale"}`} data-ai-section-status="faq">
+            {promptFaqState.isLoading ? "FAQ wird geladen" : `${promptFaqState.faqEntries.length} FAQ-Einträge`}
+          </span>
+        </div>
+        <div className="content-grid two-columns">
+          <section className="panel">
+            <div className="panel-header">
+              <h3>Vorschläge</h3>
+              <span className="panel-meta">Top-Fragen, Gaps und negative Signale</span>
+            </div>
+            <div className="content-grid two-columns">
+              <SuggestionList
+                emptyText="Noch keine häufigen Fragen."
+                heading="Häufige Fragen"
+                items={promptFaqState.frequentQuestions}
+                target="frequent"
+              />
+              <SuggestionList
+                emptyText="Noch keine offenen Wissenslücken."
+                heading="Offene Wissenslücken"
+                items={promptFaqState.knowledgeGaps}
+                target="gaps"
+              />
+            </div>
+          </section>
+          <section className="panel">
+            <div className="panel-header">
+              <h3>FAQ erfassen</h3>
+              <span className="panel-meta">Standard ist Entwurf</span>
+            </div>
+            <form className="stack" data-ai-faq-form onSubmit={submitForm(onFaqSubmit)}>
+              <textarea className="input input-bordered" name="question" rows={3} placeholder="Frage" />
+              <textarea className="input input-bordered" name="answer" rows={5} placeholder="Freigegebene Antwort" />
+              <div className="content-grid two-columns">
+                <input className="input input-bordered" name="category" placeholder="Kategorie" />
+                <input className="input input-bordered" name="keywords" placeholder="Keywords" />
+                <input className="input input-bordered" name="machine" placeholder="Maschine optional" />
+                <input className="input input-bordered" name="department" placeholder="Abteilung optional" />
+              </div>
+              <button className="btn btn-primary" disabled={promptFaqState.isSaving} type="submit">
+                FAQ-Entwurf speichern
+              </button>
+            </form>
+          </section>
+        </div>
+        <section className="panel mt-4">
+          <div className="panel-header">
+            <h3>FAQ-Einträge</h3>
+            <span className="panel-meta">Freigabe macht den Eintrag indexierbar</span>
+          </div>
+          <div className="table-wrap">
+            <table className="data-table">
+              <caption>FAQ-Einträge mit Status und Freigabe</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Frage</th>
+                  <th scope="col">Kategorie</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Quelle</th>
+                  <th scope="col">Aktionen</th>
+                </tr>
+              </thead>
+              <FaqRows entries={promptFaqState.faqEntries} isSaving={promptFaqState.isSaving} onApproveFaq={onApproveFaq} />
+            </table>
+          </div>
+        </section>
+        <section className="panel mt-4">
+          <div className="panel-header">
+            <h3>Antwortbausteine</h3>
+            <span className="panel-meta">Fallbacks, Sicherheitswarnungen und Eskalationen</span>
+          </div>
+          <SnippetList snippets={promptFaqState.responseSnippets} />
+        </section>
+      </section>
+    </>
+  );
+}
+
+/**
+ * Wrap a form submit callback with default browser-submit prevention.
+ */
+function submitForm(handler: (form: HTMLFormElement) => void) {
+  return (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault();
+    handler(event.currentTarget);
+  };
+}
+
+/**
+ * Render prompt workflow cards.
+ */
+function PromptList({ prompts }: { readonly prompts: readonly AdminAiPromptTemplate[] }): ReactNode {
+  return (
+    <div className="stack" data-ai-prompts>
+      {prompts.length ? (
+        prompts.map((prompt) => {
+          const activeVersion = activePromptVersion(prompt);
+          return (
+            <article className="training-card" key={promptFaqText(prompt.id)}>
+              <strong>
+                {promptFaqText(prompt.name)} ({promptFaqText(prompt.workflow_key)})
+              </strong>
+              <small>{promptFaqText(prompt.purpose, "Prompt-Workflow")}</small>
+              <div className="training-card-meta">
+                <span className="status-pill is-active">{promptFaqText(prompt.response_mode)}</span>
+                <span className={`status-pill ${activeVersion ? "is-active" : "is-stale"}`}>
+                  {activeVersion ? `v${promptFaqText(activeVersion.version)} aktiv` : "kein aktiver Prompt"}
+                </span>
+              </div>
+            </article>
+          );
+        })
+      ) : (
+        <div className="admin-empty">
+          <strong>Keine Prompt-Workflows geladen.</strong>
+          <span>Nach dem Laden erscheinen hier aktive Prompt-Versionen.</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Render one FAQ suggestion list.
+ */
+function SuggestionList({
+  emptyText,
+  heading,
+  items,
+  target
+}: {
+  readonly emptyText: string;
+  readonly heading: string;
+  readonly items: readonly AdminAiFaqSuggestion[];
+  readonly target: "frequent" | "gaps";
+}): ReactNode {
+  return (
+    <div
+      className="stats-list"
+      data-ai-faq-frequent-questions={target === "frequent" ? true : undefined}
+      data-ai-faq-knowledge-gaps={target === "gaps" ? true : undefined}
+    >
+      <div className="stat-row">
+        <span>{heading}</span>
+        <strong>{items.length}</strong>
+      </div>
+      {items.length ? (
+        items.slice(0, 8).map((item) => (
+          <div className="stat-row" key={`${promptFaqText(item.question)}:${suggestionCountText(item)}`}>
+            <span>{promptFaqText(item.question)}</span>
+            <strong>{suggestionCountText(item)}</strong>
+          </div>
+        ))
+      ) : (
+        <div className="stat-row">
+          <span>{heading}</span>
+          <strong>{emptyText}</strong>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Render FAQ table rows.
+ */
+function FaqRows({
+  entries,
+  isSaving,
+  onApproveFaq
+}: {
+  readonly entries: readonly AdminAiFaqEntry[];
+  readonly isSaving: boolean;
+  readonly onApproveFaq: (entry: AdminAiFaqEntry) => void;
+}): ReactNode {
+  return (
+    <tbody data-ai-faq>
+      {entries.length ? (
+        entries.map((entry) => (
+          <tr key={promptFaqText(entry.id)}>
+            <td>{promptFaqText(entry.question)}</td>
+            <td>{promptFaqText(entry.category)}</td>
+            <td>
+              <span className={`status-pill ${statusTone(entry.status)}`}>{promptFaqText(entry.status)}</span>
+            </td>
+            <td>{promptFaqText(entry.source)}</td>
+            <td>
+              {entry.status !== "approved" ? (
+                <button
+                  className="btn btn-secondary btn-sm"
+                  data-approve-faq={promptFaqText(entry.id)}
+                  disabled={isSaving}
+                  onClick={() => onApproveFaq(entry)}
+                  type="button"
+                >
+                  Freigeben
+                </button>
+              ) : null}
+            </td>
+          </tr>
+        ))
+      ) : (
+        <tr>
+          <td colSpan={5}>
+            <div className="admin-empty">
+              <strong>Noch keine FAQ-Einträge.</strong>
+              <span>Lege einen Entwurf an oder nutze Vorschläge.</span>
+            </div>
+          </td>
+        </tr>
+      )}
+    </tbody>
+  );
+}
+
+/**
+ * Render reusable response snippets.
+ */
+function SnippetList({ snippets }: { readonly snippets: readonly AdminAiResponseSnippet[] }): ReactNode {
+  return (
+    <div className="stack" data-ai-response-snippets>
+      {snippets.length ? (
+        snippets.map((snippet) => (
+          <div className="stat-row" key={`${promptFaqText(snippet.category)}:${promptFaqText(snippet.title)}`}>
+            <span>{promptFaqText(snippet.title)}</span>
+            <strong>
+              {promptFaqText(snippet.category)} / {snippet.is_active ? "aktiv" : "inaktiv"}
+            </strong>
+          </div>
+        ))
+      ) : (
+        <div className="stat-row">
+          <span>Keine Antwortbausteine</span>
+          <strong>Noch nicht gepflegt</strong>
+        </div>
+      )}
+    </div>
+  );
+}

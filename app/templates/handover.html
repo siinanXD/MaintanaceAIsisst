@@ -4,6 +4,8 @@
 {% block header_title %}Schicht&uuml;bergabe{% endblock %}
 
 {% block content %}
+<div id="maintenance-handover-root"></div>
+<div data-react-handover-fallback>
 <section class="page-hero handover-hero">
   <div>
     <h1 class="page-title">Schicht&uuml;bergabe</h1>
@@ -402,4 +404,6 @@
     </div>
   </form>
 </dialog>
+</div>
+{{ react_entrypoint("src/handover/handoverEntrypoint.tsx") }}
 {% endblock %}

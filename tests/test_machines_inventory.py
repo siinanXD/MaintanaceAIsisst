@@ -1004,6 +1004,8 @@ def test_machine_page_contains_history_ui(client):
     html = response.get_data(as_text=True)
 
     assert response.status_code == 200
+    assert "maintenance-machines-root" in html
+    assert "data-react-machines-fallback" in html
     assert "data-machine-history-panel" in html
     assert "data-machine-history-list" in html
     assert "data-machine-assistant-form" in html
@@ -1018,6 +1020,8 @@ def test_machine_detail_page_contains_profile_targets(client):
     html = response.get_data(as_text=True)
 
     assert response.status_code == 200
+    assert "maintenance-machine-profile-root" in html
+    assert "data-react-machine-profile-fallback" in html
     assert "data-machine-profile-page" in html
     assert 'data-machine-id="123"' in html
     assert "data-machine-profile-kpis" in html

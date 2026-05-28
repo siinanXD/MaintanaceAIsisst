@@ -8,6 +8,9 @@
   },
   "scripts": {
     "build:css": "node ./scripts/build_css.mjs",
+    "build:react": "npm --prefix frontend run build",
+    "check:react": "npm --prefix frontend run typecheck",
+    "build:frontend": "npm run build:css && npm run build:react",
     "lint": ".\\.venv\\Scripts\\python.exe -m ruff check app tests",
     "test": "npm run lint && .\\.venv\\Scripts\\python.exe -m pytest"
   },

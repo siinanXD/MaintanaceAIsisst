@@ -4,6 +4,8 @@
 {% block header_title %}Dokumente{% endblock %}
 
 {% block content %}
+<div id="maintenance-documents-root"></div>
+<div data-react-documents-fallback>
 <section class="page-hero">
   <div>
     <p class="page-kicker">Berichte</p>
@@ -249,4 +251,6 @@
     </div>
   </article>
 </section>
+</div>
+{{ react_entrypoint("src/documents/documentsEntrypoint.tsx") }}
 {% endblock %}

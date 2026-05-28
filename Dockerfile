@@ -1,3 +1,13 @@
+FROM node:22-slim AS frontend-build
+
+WORKDIR /build
+
+COPY frontend/package.json frontend/package-lock.json ./frontend/
+RUN npm --prefix frontend ci
+
+COPY frontend ./frontend
+RUN npm --prefix frontend run build
+
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -14,6 +24,7 @@ RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
+COPY --from=frontend-build /build/app/static/react ./app/static/react
 COPY docs ./docs
 COPY migrations ./migrations
 COPY run.py seed.py seed_demo.py seed_production.py seed_test.py ./

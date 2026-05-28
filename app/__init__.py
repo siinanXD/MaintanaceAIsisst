@@ -19,6 +19,7 @@ from app.documents.routes import documents_bp
 from app.employees.routes import employees_bp
 from app.errors.routes import errors_bp
 from app.extensions import db, jwt, migrate
+from app.frontend_assets import register_frontend_asset_helpers
 from app.handover.routes import handover_bp
 from app.health.routes import health_bp, public_health_bp
 from app.inventory.routes import inventory_bp
@@ -73,6 +74,7 @@ def create_app(config_class=Config):
     app.config.from_object(config_class)
     validate_runtime_config(app.config)
     configure_logging(app)
+    register_frontend_asset_helpers(app)
 
     Path(app.instance_path).mkdir(parents=True, exist_ok=True)
     Path("data").mkdir(parents=True, exist_ok=True)

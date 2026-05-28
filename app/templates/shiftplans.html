@@ -3,6 +3,8 @@
 {% block title %}Schichtplan - Maintenance Assistant{% endblock %}
 
 {% block content %}
+<div id="maintenance-shiftplans-root"></div>
+<div data-react-shiftplans-fallback>
 <section class="page-hero no-print">
   <div>
     <p class="page-kicker">KI-Planung</p>
@@ -416,4 +418,6 @@ button.sp-chip:hover { filter: brightness(0.94); }
   .sp-emp { color: #000; }
 }
 </style>
+</div>
+{{ react_entrypoint("src/shiftplans/shiftplansEntrypoint.tsx") }}
 {% endblock %}

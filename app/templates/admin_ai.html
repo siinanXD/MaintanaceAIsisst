@@ -13,6 +13,8 @@
   ('effectiveness', '/admin/ai/effectiveness', 'Kosten & Effektivität', '04', 'Nutzerkosten, Workflowkosten, Feedbackrate und No-Source-Rate.'),
   ('technical', '/admin/ai/technical', 'Technik', '05', 'Retrieval, Reindex, Observability, Debug und SLO-Diagnose.')
 ] %}
+<div id="maintenance-admin-ai-root"></div>
+<div data-react-admin-ai-fallback>
 <section class="page-section ai-admin-page" data-admin-ai-page data-ai-admin-view="{{ ai_admin_view }}">
   <header class="ai-admin-hero">
     <div>
@@ -128,4 +130,6 @@
   {% include "admin_ai/_diagnostics.html" %}
   {% include "admin_ai/_feedback.html" %}
 </section>
+</div>
+{{ react_entrypoint("src/admin-ai/adminAiEntrypoint.tsx") }}
 {% endblock %}

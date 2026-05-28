@@ -3,6 +3,8 @@
 {% block title %}Nutzer - Maintenance Assistant{% endblock %}
 
 {% block content %}
+<div id="maintenance-admin-users-root"></div>
+<div data-react-admin-users-fallback>
 <section class="page-hero">
   <div>
     <p class="page-kicker">Admin</p>
@@ -243,4 +245,6 @@
     </div>
   </article>
 </section>
+</div>
+{{ react_entrypoint("src/admin-users/adminUsersEntrypoint.tsx") }}
 {% endblock %}

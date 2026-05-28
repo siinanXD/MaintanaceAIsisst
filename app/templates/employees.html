@@ -4,6 +4,8 @@
 {% block header_title %}Mitarbeiter{% endblock %}
 
 {% block content %}
+<div id="maintenance-employees-root"></div>
+<div data-react-employees-fallback>
 <section class="page-hero">
   <div>
     <p class="page-kicker">Personalabteilung</p>
@@ -219,4 +221,6 @@
     <p class="panel-meta mt-2" id="empd-msg" role="status" aria-live="polite"></p>
   </div>
 </dialog>
+</div>
+{{ react_entrypoint("src/employees/employeesEntrypoint.tsx") }}
 {% endblock %}

@@ -44,6 +44,7 @@ logs/
 node_modules/
 dist/
 build/
+/app/static/react/
 npm-debug.log*
 yarn-error.log*
 

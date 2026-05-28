@@ -4,6 +4,8 @@
 {% block header_title %}Maschinen{% endblock %}
 
 {% block content %}
+<div id="maintenance-machines-root"></div>
+<div data-react-machines-fallback>
 <section class="page-hero">
   <div>
     <h1 class="page-title">Maschinen</h1>
@@ -175,4 +177,6 @@
     <p class="panel-meta mt-2" id="med-msg" role="status" aria-live="polite"></p>
   </div>
 </dialog>
+</div>
+{{ react_entrypoint("src/machines/machinesEntrypoint.tsx") }}
 {% endblock %}

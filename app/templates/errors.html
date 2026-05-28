@@ -4,6 +4,8 @@
 {% block header_title %}St&ouml;rungen{% endblock %}
 
 {% block content %}
+<div id="maintenance-errors-root"></div>
+<div data-react-errors-fallback>
 <section class="page-hero incident-hub-hero">
   <div>
     <h1 class="page-title">St&ouml;rungszentrale &amp; Fehlerkatalog</h1>
@@ -370,4 +372,6 @@
     </div>
   </form>
 </dialog>
+</div>
+{{ react_entrypoint("src/errors/errorsEntrypoint.tsx") }}
 {% endblock %}
