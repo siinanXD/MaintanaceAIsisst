@@ -11,14 +11,42 @@ import { type AdminAiView } from "./AdminAiTypes";
 import { type AdminAiEffectivenessState } from "./adminAiEffectivenessModel";
 import { type AdminAiOverviewLoadState } from "./adminAiOverviewModel";
 import { type AdminAiFaqEntry, type AdminAiPromptFaqState } from "./adminAiPromptFaqModel";
+import { type AdminAiRagBoardState, type AdminAiTrainingForm } from "./adminAiRagBoardModel";
+import { type AdminAiSourceCheckState } from "./adminAiSourceCheckModel";
+import { type AdminAiTechnicalFilters, type AdminAiTechnicalState } from "./adminAiTechnicalModel";
 
 type AdminAiMarkupProps = {
   readonly effectivenessState: AdminAiEffectivenessState;
+  readonly onDeleteKnowledge: (documentId: number) => void;
+  readonly onDeleteTraining: (entryId: number) => void;
   readonly onApproveFaq: (entry: AdminAiFaqEntry) => void;
+  readonly onCreateSourceFaq: () => void;
   readonly onFaqSubmit: (form: HTMLFormElement) => void;
+  readonly onKnowledgeFilterChange: (key: keyof AdminAiRagBoardState["filters"], value: string) => void;
+  readonly onKnowledgeUpload: (form: HTMLFormElement) => void;
+  readonly onNetworkFilterChange: (key: keyof AdminAiRagBoardState["filters"], value: string) => void;
   readonly onPromptVersionSubmit: (form: HTMLFormElement) => void;
+  readonly onQueueDocument: (documentId: number) => void;
+  readonly onQueueStale: () => void;
+  readonly onReindexAll: () => void;
+  readonly onReindexDocument: (documentId: number) => void;
+  readonly onReindexStale: () => void;
+  readonly onSaveTraining: (form: AdminAiTrainingForm) => void;
+  readonly onSelectTraining: (entry: Record<string, unknown>) => void;
+  readonly onSourceFeedback: (rating: string, comment?: string) => void;
+  readonly onSourceReset: () => void;
+  readonly onSourceTestSubmit: (form: HTMLFormElement, intent?: string) => void;
+  readonly onTrainingFilterChange: (key: keyof AdminAiRagBoardState["filters"], value: string) => void;
+  readonly onTrainingFormChange: (form: AdminAiTrainingForm) => void;
+  readonly onTechnicalFilterChange: (key: keyof AdminAiTechnicalFilters, value: string) => void;
+  readonly onTechnicalRefresh: () => void;
+  readonly onTechnicalRunEvaluation: () => void;
+  readonly onUpdateKnowledgeQuality: (documentId: number, qualityStatus: string) => void;
   readonly overviewState: AdminAiOverviewLoadState;
   readonly promptFaqState: AdminAiPromptFaqState;
+  readonly ragBoardState: AdminAiRagBoardState;
+  readonly sourceCheckState: AdminAiSourceCheckState;
+  readonly technicalState: AdminAiTechnicalState;
   readonly view: AdminAiView;
 };
 
@@ -27,11 +55,36 @@ type AdminAiMarkupProps = {
  */
 export function AdminAiMarkup({
   effectivenessState,
+  onDeleteKnowledge,
+  onDeleteTraining,
   onApproveFaq,
+  onCreateSourceFaq,
   onFaqSubmit,
+  onKnowledgeFilterChange,
+  onKnowledgeUpload,
+  onNetworkFilterChange,
   onPromptVersionSubmit,
+  onQueueDocument,
+  onQueueStale,
+  onReindexAll,
+  onReindexDocument,
+  onReindexStale,
+  onSaveTraining,
+  onSelectTraining,
+  onSourceFeedback,
+  onSourceReset,
+  onSourceTestSubmit,
+  onTrainingFilterChange,
+  onTrainingFormChange,
+  onTechnicalFilterChange,
+  onTechnicalRefresh,
+  onTechnicalRunEvaluation,
+  onUpdateKnowledgeQuality,
   overviewState,
   promptFaqState,
+  ragBoardState,
+  sourceCheckState,
+  technicalState,
   view
 }: AdminAiMarkupProps): ReactNode {
   return (
@@ -39,15 +92,43 @@ export function AdminAiMarkup({
       effectivenessState={effectivenessState}
       overviewState={overviewState}
       promptFaqState={promptFaqState}
+      ragBoardState={ragBoardState}
+      sourceCheckState={sourceCheckState}
+      technicalState={technicalState}
       view={view}
     >
       {adminAiViewContent({
         effectivenessState,
+        onDeleteKnowledge,
+        onDeleteTraining,
         onApproveFaq,
+        onCreateSourceFaq,
         onFaqSubmit,
+        onKnowledgeFilterChange,
+        onKnowledgeUpload,
+        onNetworkFilterChange,
         onPromptVersionSubmit,
+        onQueueDocument,
+        onQueueStale,
+        onReindexAll,
+        onReindexDocument,
+        onReindexStale,
+        onSaveTraining,
+        onSelectTraining,
+        onSourceFeedback,
+        onSourceReset,
+        onSourceTestSubmit,
+        onTrainingFilterChange,
+        onTrainingFormChange,
+        onTechnicalFilterChange,
+        onTechnicalRefresh,
+        onTechnicalRunEvaluation,
+        onUpdateKnowledgeQuality,
         overviewState,
         promptFaqState,
+        ragBoardState,
+        sourceCheckState,
+        technicalState,
         view
       })}
     </AdminAiShell>
@@ -61,18 +142,75 @@ type AdminAiViewContentProps = AdminAiMarkupProps;
  */
 function adminAiViewContent({
   effectivenessState,
+  onDeleteKnowledge,
+  onDeleteTraining,
   onApproveFaq,
+  onCreateSourceFaq,
   onFaqSubmit,
+  onKnowledgeFilterChange,
+  onKnowledgeUpload,
+  onNetworkFilterChange,
   onPromptVersionSubmit,
+  onQueueDocument,
+  onQueueStale,
+  onReindexAll,
+  onReindexDocument,
+  onReindexStale,
+  onSaveTraining,
+  onSelectTraining,
+  onSourceFeedback,
+  onSourceReset,
+  onSourceTestSubmit,
+  onTrainingFilterChange,
+  onTrainingFormChange,
+  onTechnicalFilterChange,
+  onTechnicalRefresh,
+  onTechnicalRunEvaluation,
+  onUpdateKnowledgeQuality,
   overviewState,
   promptFaqState,
+  ragBoardState,
+  sourceCheckState,
+  technicalState,
   view
 }: AdminAiViewContentProps): ReactNode {
   if (view === "rag_board") {
-    return <AdminAiRagBoard />;
+    return (
+      <AdminAiRagBoard
+        onCreateFaq={onCreateSourceFaq}
+        onDeleteKnowledge={onDeleteKnowledge}
+        onDeleteTraining={onDeleteTraining}
+        onFeedback={onSourceFeedback}
+        onKnowledgeFilterChange={onKnowledgeFilterChange}
+        onKnowledgeUpload={onKnowledgeUpload}
+        onNetworkFilterChange={onNetworkFilterChange}
+        onQueueDocument={onQueueDocument}
+        onQueueStale={onQueueStale}
+        onReindexAll={onReindexAll}
+        onReindexDocument={onReindexDocument}
+        onReindexStale={onReindexStale}
+        onReset={onSourceReset}
+        onSaveTraining={onSaveTraining}
+        onSelectTraining={onSelectTraining}
+        onSourceTestSubmit={onSourceTestSubmit}
+        onTrainingFilterChange={onTrainingFilterChange}
+        onTrainingFormChange={onTrainingFormChange}
+        onUpdateKnowledgeQuality={onUpdateKnowledgeQuality}
+        ragBoardState={ragBoardState}
+        sourceCheckState={sourceCheckState}
+      />
+    );
   }
   if (view === "source_check") {
-    return <AdminAiSourceCheck />;
+    return (
+      <AdminAiSourceCheck
+        onCreateFaq={onCreateSourceFaq}
+        onFeedback={onSourceFeedback}
+        onReset={onSourceReset}
+        onSourceTestSubmit={onSourceTestSubmit}
+        sourceCheckState={sourceCheckState}
+      />
+    );
   }
   if (view === "prompt_faq") {
     return (
@@ -88,7 +226,17 @@ function adminAiViewContent({
     return <AdminAiEffectiveness effectivenessState={effectivenessState} />;
   }
   if (view === "technical") {
-    return <AdminAiTechnical />;
+    return (
+      <AdminAiTechnical
+        onFilterChange={onTechnicalFilterChange}
+        onQueueStale={onQueueStale}
+        onRefresh={onTechnicalRefresh}
+        onReindexAll={onReindexAll}
+        onReindexStale={onReindexStale}
+        onRunEvaluation={onTechnicalRunEvaluation}
+        technicalState={technicalState}
+      />
+    );
   }
   return <AdminAiOverview overviewState={overviewState} />;
 }

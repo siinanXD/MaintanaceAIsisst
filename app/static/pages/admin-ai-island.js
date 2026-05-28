@@ -26,6 +26,9 @@
       || pathname === "/admin/ai/"
       || pathname === "/admin/ai/effectiveness"
       || pathname === "/admin/ai/prompt-faq"
+      || pathname === "/admin/ai/source-check"
+      || pathname === "/admin/ai/rag-board"
+      || pathname === "/admin/ai/technical"
     );
   }
 

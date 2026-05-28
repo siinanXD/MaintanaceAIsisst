@@ -4,12 +4,18 @@ import { ADMIN_AI_NAVIGATION, type AdminAiView } from "./AdminAiTypes";
 import { type AdminAiEffectivenessState } from "./adminAiEffectivenessModel";
 import { overviewBadge, type AdminAiOverviewLoadState } from "./adminAiOverviewModel";
 import { type AdminAiPromptFaqState } from "./adminAiPromptFaqModel";
+import { type AdminAiRagBoardState } from "./adminAiRagBoardModel";
+import { type AdminAiSourceCheckState } from "./adminAiSourceCheckModel";
+import { type AdminAiTechnicalState } from "./adminAiTechnicalModel";
 
 type AdminAiShellProps = {
   readonly children: ReactNode;
   readonly effectivenessState: AdminAiEffectivenessState;
   readonly overviewState: AdminAiOverviewLoadState;
   readonly promptFaqState: AdminAiPromptFaqState;
+  readonly ragBoardState: AdminAiRagBoardState;
+  readonly sourceCheckState: AdminAiSourceCheckState;
+  readonly technicalState: AdminAiTechnicalState;
   readonly view: AdminAiView;
 };
 
@@ -21,6 +27,9 @@ export function AdminAiShell({
   effectivenessState,
   overviewState,
   promptFaqState,
+  ragBoardState,
+  sourceCheckState,
+  technicalState,
   view
 }: AdminAiShellProps): ReactNode {
   const badge = overviewBadge(overviewState);
@@ -31,7 +40,13 @@ export function AdminAiShell({
         ? effectivenessState.errorMessage
         : view === "prompt_faq"
           ? promptFaqState.errorMessage || promptFaqState.statusMessage
-        : "";
+          : view === "source_check"
+            ? sourceCheckState.errorMessage || sourceCheckState.statusMessage
+            : view === "rag_board"
+              ? ragBoardState.errorMessage || ragBoardState.statusMessage
+              : view === "technical"
+                ? technicalState.errorMessage || technicalState.statusMessage
+                : "";
 
   return (
     <section className="page-section ai-admin-page" data-admin-ai-page data-ai-admin-view={view}>

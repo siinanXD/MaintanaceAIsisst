@@ -1149,26 +1149,33 @@ def test_admin_ai_react_shell_island_keeps_fallback_and_stays_route_scoped(clien
     """Verify React Admin-AI assets are optional and scoped to Admin-AI pages."""
     home_response = client.get("/")
     admin_response = client.get("/admin/ai")
+    source_check_response = client.get("/admin/ai/source-check")
     technical_response = client.get("/admin/ai/technical")
     registry_response = client.get("/static/core/feature-registry.js")
     home_html = home_response.get_data(as_text=True)
     admin_html = admin_response.get_data(as_text=True)
+    source_check_html = source_check_response.get_data(as_text=True)
     technical_html = technical_response.get_data(as_text=True)
     registry = registry_response.get_data(as_text=True)
     manifest_path = REPO_ROOT / "app" / "static" / "react" / ".vite" / "manifest.json"
 
     assert home_response.status_code == 200
     assert admin_response.status_code == 200
+    assert source_check_response.status_code == 200
     assert technical_response.status_code == 200
     assert registry_response.status_code == 200
     assert "maintenance-admin-ai-root" not in home_html
     assert "maintenance-admin-ai-root" in admin_html
+    assert "maintenance-admin-ai-root" in source_check_html
     assert "maintenance-admin-ai-root" in technical_html
     assert "data-react-admin-ai-fallback" in admin_html
     assert "data-admin-ai-page" in admin_html
     assert 'data-ai-admin-view="overview"' in admin_html
+    assert 'data-ai-admin-view="source_check"' in source_check_html
     assert 'data-ai-admin-view="technical"' in technical_html
     assert "data-ai-admin-message" in admin_html
+    assert 'data-ai-admin-area="source-check"' in source_check_html
+    assert "data-ai-source-test-form" in source_check_html
     assert 'data-ai-admin-area="technical"' in technical_html
     assert 'moduleUrl: "/static/pages/admin-ai-island.js"' in registry
     assert '"/admin/ai/technical"' in registry
@@ -1190,10 +1197,12 @@ def test_admin_ai_react_shell_island_keeps_fallback_and_stays_route_scoped(clien
     ]
 
     assert admin_ai_asset in admin_html
+    assert admin_ai_asset in source_check_html
     assert admin_ai_asset in technical_html
     assert client.get(admin_ai_asset).status_code == 200
     for imported_asset in imported_assets:
         assert f'rel="modulepreload" href="{imported_asset}"' in admin_html
+        assert f'rel="modulepreload" href="{imported_asset}"' in source_check_html
         assert f'rel="modulepreload" href="{imported_asset}"' in technical_html
         assert client.get(imported_asset).status_code == 200
 
@@ -1203,6 +1212,9 @@ def test_admin_ai_react_markup_replaces_fallback_clone():
     admin_ai_dir = REPO_ROOT / "frontend" / "src" / "admin-ai"
     admin_ai_app = (admin_ai_dir / "AdminAiApp.tsx").read_text(encoding="utf-8")
     admin_ai_markup = (admin_ai_dir / "AdminAiMarkup.tsx").read_text(encoding="utf-8")
+    admin_ai_loader = (REPO_ROOT / "app" / "static" / "pages" / "admin-ai-island.js").read_text(
+        encoding="utf-8"
+    )
     admin_ai_sources = "\n".join(
         path.read_text(encoding="utf-8") for path in sorted(admin_ai_dir.glob("AdminAi*.tsx"))
     )
@@ -1223,8 +1235,27 @@ def test_admin_ai_react_markup_replaces_fallback_clone():
     assert "loadFaqEntries" in admin_ai_runtime_sources
     assert "loadFaqSuggestions" in admin_ai_runtime_sources
     assert "loadResponseSnippets" in admin_ai_runtime_sources
+    assert "testPromptDryRun" in admin_ai_runtime_sources
+    assert "runAiChat" in admin_ai_runtime_sources
+    assert "submitAiFeedback" in admin_ai_runtime_sources
     assert "loadOperationsHealth" in admin_ai_runtime_sources
     assert "loadRetrievalTelemetry" in admin_ai_runtime_sources
+    assert "loadRetrievalDebug" in admin_ai_runtime_sources
+    assert "loadAiObservability" in admin_ai_runtime_sources
+    assert "runRetrievalEvaluation" in admin_ai_runtime_sources
+    assert "loadKnowledgeStatus" in admin_ai_runtime_sources
+    assert "loadKnowledgeDocuments" in admin_ai_runtime_sources
+    assert "loadTrainingEntries" in admin_ai_runtime_sources
+    assert "saveTrainingEntry" in admin_ai_runtime_sources
+    assert "deleteTrainingEntry" in admin_ai_runtime_sources
+    assert "loadKnowledgeNetwork" in admin_ai_runtime_sources
+    assert "loadAdminJobs" in admin_ai_runtime_sources
+    assert "queueKnowledgeReindexJob" in admin_ai_runtime_sources
+    assert "runKnowledgeReindex" in admin_ai_runtime_sources
+    assert "reindexKnowledgeDocument" in admin_ai_runtime_sources
+    assert "updateKnowledgeQualityStatus" in admin_ai_runtime_sources
+    assert "deleteKnowledgeDocument" in admin_ai_runtime_sources
+    assert "uploadKnowledgeDocument" in admin_ai_runtime_sources
     assert "/api/v1/ai/status" in admin_ai_runtime_sources
     assert "/api/v1/admin/ai/summary?days=7" in admin_ai_runtime_sources
     assert "/api/v1/admin/ai/users?days=30&limit=50" in admin_ai_runtime_sources
@@ -1233,16 +1264,47 @@ def test_admin_ai_react_markup_replaces_fallback_clone():
     assert "/api/v1/admin/ai/faq?limit=50" in admin_ai_runtime_sources
     assert "/api/v1/admin/ai/faq/suggestions?days=30&limit=10" in admin_ai_runtime_sources
     assert "/api/v1/admin/ai/response-snippets" in admin_ai_runtime_sources
+    assert "/api/v1/admin/ai/prompts/test" in admin_ai_runtime_sources
+    assert "/api/v1/ai/chat" in admin_ai_runtime_sources
+    assert "/api/v1/ai/feedback" in admin_ai_runtime_sources
     assert "/api/v1/health/operations" in admin_ai_runtime_sources
+    assert "/api/v1/admin/ai/knowledge/status" in admin_ai_runtime_sources
+    assert "/api/v1/admin/ai/knowledge?" in admin_ai_runtime_sources
+    assert "/api/v1/admin/ai/training?" in admin_ai_runtime_sources
+    assert "/api/v1/admin/ai/training/${entryId}" in admin_ai_runtime_sources
+    assert "/api/v1/admin/ai/knowledge-network?" in admin_ai_runtime_sources
+    assert "/api/v1/admin/jobs?job_type=rag_reindex&limit=10" in admin_ai_runtime_sources
+    assert "/api/v1/admin/ai/knowledge/reindex/jobs" in admin_ai_runtime_sources
+    assert "/api/v1/admin/ai/knowledge/reindex${queryString}" in admin_ai_runtime_sources
+    assert "/api/v1/admin/ai/knowledge/${documentId}/reindex" in admin_ai_runtime_sources
+    assert "/api/v1/admin/ai/knowledge/${documentId}/quality-status" in admin_ai_runtime_sources
+    assert "/api/v1/admin/ai/knowledge/${documentId}" in admin_ai_runtime_sources
+    assert "/api/v1/admin/ai/knowledge/upload" in admin_ai_runtime_sources
+    assert "/api/v1/admin/ai/retrieval-debug?" in admin_ai_runtime_sources
+    assert "/api/v1/admin/ai/observability?" in admin_ai_runtime_sources
+    assert "/api/v1/admin/ai/retrieval-evaluations/run" in admin_ai_runtime_sources
     assert "maintenanceAdminAiReactRuntime" in admin_ai_runtime_sources
     assert "overviewStatusCards" in admin_ai_runtime_sources
     assert "effectivenessState" in admin_ai_runtime_sources
     assert "data-ai-user-costs-admin" in admin_ai_runtime_sources
     assert "data-ai-effectiveness-risks" in admin_ai_runtime_sources
     assert "promptFaqState" in admin_ai_runtime_sources
+    assert "ragBoardState" in admin_ai_runtime_sources
+    assert "sourceCheckState" in admin_ai_runtime_sources
+    assert "technicalState" in admin_ai_runtime_sources
+    assert 'pathname === "/admin/ai/source-check"' in admin_ai_loader
+    assert 'pathname === "/admin/ai/rag-board"' in admin_ai_loader
+    assert 'pathname === "/admin/ai/technical"' in admin_ai_loader
     assert "data-ai-prompt-version-form" in admin_ai_runtime_sources
     assert "data-ai-faq-form" in admin_ai_runtime_sources
     assert "data-approve-faq" in admin_ai_runtime_sources
+    assert "sourceCheckDryRunState" in admin_ai_runtime_sources
+    assert "sourceCheckLiveState" in admin_ai_runtime_sources
+    assert "knowledgeQueryString" in admin_ai_runtime_sources
+    assert "trainingQueryString" in admin_ai_runtime_sources
+    assert "networkQueryString" in admin_ai_runtime_sources
+    assert "retrievalDebugQueryString" in admin_ai_runtime_sources
+    assert "observabilityQueryString" in admin_ai_runtime_sources
     assert "data-admin-ai-page" in admin_ai_sources
     assert "data-ai-admin-view" in admin_ai_sources
     assert "data-ai-admin-message" in admin_ai_sources
