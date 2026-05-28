@@ -19,6 +19,9 @@ from app.services.langfuse_service import (
     openai_langfuse_kwargs,
 )
 
+LANGFUSE_TEST_PUBLIC_KEY = "test-public-key"
+LANGFUSE_TEST_SECRET_KEY = "test-secret-placeholder"
+
 
 class FakeMessage:
     """Simple OpenAI message test double."""
@@ -140,8 +143,8 @@ def test_langfuse_kwargs_follow_best_practices_when_ready(app, monkeypatch):
 
     with app.app_context():
         app.config["LANGFUSE_ENABLED"] = True
-        app.config["LANGFUSE_PUBLIC_KEY"] = "pk-lf-test"
-        app.config["LANGFUSE_SECRET_KEY"] = "sk-lf-test"
+        app.config["LANGFUSE_PUBLIC_KEY"] = LANGFUSE_TEST_PUBLIC_KEY
+        app.config["LANGFUSE_SECRET_KEY"] = LANGFUSE_TEST_SECRET_KEY
         app.config["GITHUB_REPOSITORY"] = "siinanXD/MaintanaceAIsisst"
         app.config["GITHUB_SHA"] = "046316cf89ca29e0b3f6608b9fbbffede7103782"
         app.config["GITHUB_REF_NAME"] = "master"
@@ -237,8 +240,8 @@ def test_langfuse_propagates_user_before_root_span(app, monkeypatch):
 
     with app.app_context():
         app.config["LANGFUSE_ENABLED"] = True
-        app.config["LANGFUSE_PUBLIC_KEY"] = "pk-lf-test"
-        app.config["LANGFUSE_SECRET_KEY"] = "sk-lf-test"
+        app.config["LANGFUSE_PUBLIC_KEY"] = LANGFUSE_TEST_PUBLIC_KEY
+        app.config["LANGFUSE_SECRET_KEY"] = LANGFUSE_TEST_SECRET_KEY
         profile = workflow_profile("general_chat")
         with langfuse_trace_context("general_chat", user=FakeUser(), session_id="session-123"):
             with langfuse_observation("general_chat", profile) as observation:
@@ -278,7 +281,10 @@ def test_langfuse_metrics_summary_uses_metrics_api_v2(app):
         assert parsed_url.path == "/api/public/v2/metrics"
         assert timeout == 3.0
         assert authorization_header == (
-            "Basic " + base64.b64encode(b"pk-lf-test:sk-lf-test").decode("ascii")
+            "Basic "
+            + base64.b64encode(
+                f"{LANGFUSE_TEST_PUBLIC_KEY}:{LANGFUSE_TEST_SECRET_KEY}".encode("ascii")
+            ).decode("ascii")
         )
         if "providedModelName" in query:
             return {
@@ -317,8 +323,8 @@ def test_langfuse_metrics_summary_uses_metrics_api_v2(app):
 
     with app.app_context():
         app.config["LANGFUSE_ENABLED"] = True
-        app.config["LANGFUSE_PUBLIC_KEY"] = "pk-lf-test"
-        app.config["LANGFUSE_SECRET_KEY"] = "sk-lf-test"
+        app.config["LANGFUSE_PUBLIC_KEY"] = LANGFUSE_TEST_PUBLIC_KEY
+        app.config["LANGFUSE_SECRET_KEY"] = LANGFUSE_TEST_SECRET_KEY
         app.config["LANGFUSE_BASE_URL"] = "https://cloud.langfuse.com"
         metrics = langfuse_metrics_summary(days=7, http_get=fake_http_get)
 

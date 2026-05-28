@@ -190,7 +190,8 @@ SECRET_KEY=                  # set in .env; keep empty in examples
 JWT_SECRET_KEY=              # set in .env; keep empty in examples
 DATABASE_URL=sqlite:///data/maintenance.db
 # Docker/Postgres:
-# DATABASE_URL=postgresql+psycopg://maintenance:maintenance@db:5432/maintenance
+# DATABASE_URL=postgresql+psycopg://maintenance:${POSTGRES_PASSWORD}@db:5432/maintenance
+POSTGRES_PASSWORD=
 AUTO_CREATE_DATABASE=true  # set false in production and run migrations
 AI_PROVIDER=openai          # or "mock" for local-only mode
 OPENAI_API_KEY=             # leave empty to use local fallback

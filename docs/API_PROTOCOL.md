@@ -27,7 +27,7 @@ neuen Prefix wie `/api/v2` eingefuehrt.
 Alle geschuetzten Endpunkte erwarten einen JWT im `Authorization`-Header:
 
 ```http
-Authorization: Bearer eyJhbGciOi...
+Authorization: Bearer <access_token>
 ```
 
 Passwoerter werden nicht im Klartext gespeichert, sondern als Hash. Der Token wird ueber `/api/auth/login` ausgestellt.

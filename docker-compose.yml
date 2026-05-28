@@ -4,7 +4,7 @@ services:
     environment:
       POSTGRES_DB: maintenance
       POSTGRES_USER: maintenance
-      POSTGRES_PASSWORD: maintenance
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -24,7 +24,7 @@ services:
       FLASK_ENV: production
       FLASK_DEBUG: "0"
       AUTO_CREATE_DATABASE: "true"
-      DATABASE_URL: postgresql+psycopg://maintenance:maintenance@db:5432/maintenance
+      DATABASE_URL: postgresql+psycopg://maintenance:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/maintenance
       UPLOAD_FOLDER: /app/data/uploads
       DOCUMENTS_FOLDER: /app/documents
       MANUALS_FOLDER: /app/manuals
@@ -68,7 +68,7 @@ services:
       FLASK_ENV: production
       FLASK_DEBUG: "0"
       AUTO_CREATE_DATABASE: "true"
-      DATABASE_URL: postgresql+psycopg://maintenance:maintenance@db:5432/maintenance
+      DATABASE_URL: postgresql+psycopg://maintenance:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/maintenance
       UPLOAD_FOLDER: /app/data/uploads
       DOCUMENTS_FOLDER: /app/documents
       MANUALS_FOLDER: /app/manuals
