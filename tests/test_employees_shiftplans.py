@@ -2,6 +2,7 @@
 
 from datetime import date
 from io import BytesIO
+from pathlib import Path
 from zipfile import ZipFile
 
 from app.extensions import db
@@ -14,6 +15,8 @@ from app.models import (
     User,
     VacationRequest,
 )
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _add_machine_qualifications(app, employee_ids, machine_ids, level="trained"):
@@ -946,30 +949,21 @@ def test_shiftplan_calendar_admin_can_filter_employee(
     assert payload["entries"][0]["shift"] == "Frei"
 
 
-def test_shiftplan_page_script_renders_warnings(client):
-    """Verify shift plan UI has warning rendering code."""
-    response = client.get("/static/pages/shiftplans.js")
-    script = shiftplans_runtime_source(client)
+def test_shiftplan_react_source_renders_warnings(client):
+    """Verify shift plan React UI has warning rendering code."""
+    script = shiftplans_runtime_source()
     page_html = client.get("/shiftplans").get_data(as_text=True)
 
-    assert response.status_code == 200
     assert "plan.warnings" in script
     assert "Warnungen" in script or "Warnungen" in page_html
-    assert "data-shiftplan-calendar" in page_html
+    assert "data-shiftplan-calendar" in script
 
 
-def shiftplans_runtime_source(client):
-    """Return the shift planning entrypoint and split module source."""
-    asset_paths = (
-        "/static/pages/shiftplans.js",
-        "/static/pages/shiftplans/shared.js",
-        "/static/pages/shiftplans/models.js",
-        "/static/pages/shiftplans/plans.js",
-        "/static/pages/shiftplans/grid.js",
-        "/static/pages/shiftplans/validation.js",
-        "/static/pages/shiftplans/actions.js",
-    )
-    return "\n".join(client.get(path).get_data(as_text=True) for path in asset_paths)
+def shiftplans_runtime_source():
+    """Return the shift planning React source."""
+    source_paths = list((REPO_ROOT / "frontend" / "src" / "shiftplans").rglob("*.ts"))
+    source_paths.extend((REPO_ROOT / "frontend" / "src" / "shiftplans").rglob("*.tsx"))
+    return "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
 
 
 def test_shiftplan_delete_requires_master_admin(

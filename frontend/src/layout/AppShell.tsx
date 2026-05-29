@@ -1,73 +1,68 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+
+import { ShellChatWidget } from "./ShellChatWidget";
+import { ShellIconSprite } from "./ShellIconSprite";
+import { ShellSidebarNavigation } from "./ShellNavigation";
+import { ShellTopbar } from "./ShellTopbar";
+import { readSidebarCollapsedPreference, writeSidebarCollapsedPreference } from "./shellPreferences";
 
 type AppShellProps = {
   readonly children: ReactNode;
+  readonly currentPath?: string;
+  readonly title?: string;
 };
 
-const NAVIGATION_SECTIONS = [
-  {
-    title: "Cockpit",
-    links: [{ href: "/", label: "Cockpit" }]
-  },
-  {
-    title: "Arbeit",
-    links: [
-      { href: "/errors", label: "Störungen" },
-      { href: "/tasks", label: "Aufgaben" },
-      { href: "/handover", label: "Schichtübergabe" }
-    ]
-  },
-  {
-    title: "Wissen & Anlagen",
-    links: [
-      { href: "/machines", label: "Maschinen" },
-      { href: "/inventory", label: "Inventar" },
-      { href: "/documents", label: "Dokumente" }
-    ]
-  },
-  {
-    title: "Administration",
-    links: [
-      { href: "/admin/users", label: "Benutzer" },
-      { href: "/admin/ai", label: "KI-Administration" }
-    ]
-  }
-] as const;
+/**
+ * Resolve the current browser path without making server rendering mandatory.
+ */
+function currentBrowserPath(): string {
+  return typeof window === "undefined" ? "/" : window.location.pathname;
+}
 
 /**
- * Render the future React shell with class names aligned to the current Jinja layout.
+ * Render the future React shell with class names and hooks aligned to base.html.
  */
-export function AppShell({ children }: AppShellProps): ReactNode {
+export function AppShell({
+  children,
+  currentPath = currentBrowserPath(),
+  title = "Maintenance Assistant"
+}: AppShellProps): ReactNode {
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(readSidebarCollapsedPreference);
+  const layoutClassName = [
+    "app-shell-layout min-h-screen lg:grid lg:grid-cols-[var(--sidebar-width)_minmax(0,1fr)]",
+    isSidebarCollapsed ? "is-sidebar-collapsed" : ""
+  ].filter(Boolean).join(" ");
+
+  /**
+   * Toggle and persist the React shell sidebar state.
+   */
+  function toggleSidebarCollapsed(): void {
+    setIsSidebarCollapsed((currentValue) => {
+      const nextValue = !currentValue;
+      writeSidebarCollapsedPreference(nextValue);
+      return nextValue;
+    });
+  }
+
   return (
-    <div className="app-shell-layout min-h-screen lg:grid lg:grid-cols-[var(--sidebar-width)_minmax(0,1fr)]">
-      <aside className="app-sidebar hidden lg:flex lg:min-h-screen lg:flex-col">
-        <a className="sidebar-brand" href="/">
-          <span className="sidebar-brand-mark" aria-hidden="true">
-            MA
-          </span>
-          <span>
-            <span className="sidebar-brand-title">Maintenance</span>
-            <span className="sidebar-brand-title">Assistant</span>
-          </span>
-        </a>
-        <nav aria-label="Hauptnavigation" className="sidebar-nav">
-          {NAVIGATION_SECTIONS.map((section) => (
-            <section className="sidebar-nav-group" data-nav-group key={section.title}>
-              <h2>{section.title}</h2>
-              {section.links.map((link) => (
-                <a className="nav-link" href={link.href} key={link.href}>
-                  <span>{link.label}</span>
-                </a>
-              ))}
-            </section>
-          ))}
-        </nav>
-      </aside>
-      <div className="app-content min-w-0">
-        <main className="app-main" id="main-content" tabIndex={-1}>
-          {children}
-        </main>
+    <>
+      <a className="skip-link" href="#main-content">Zum Hauptinhalt springen</a>
+      <ShellIconSprite />
+      <div className={layoutClassName}>
+        <ShellSidebarNavigation
+          collapsed={isSidebarCollapsed}
+          currentPath={currentPath}
+          onToggleCollapsed={toggleSidebarCollapsed}
+        />
+        <div className="app-content min-w-0">
+          <ShellTopbar currentPath={currentPath} title={title} />
+          <main className="app-main" id="main-content" tabIndex={-1}>
+            <div className="sr-only" aria-live="polite" aria-atomic="true" data-global-live-region />
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+      <ShellChatWidget />
+    </>
   );
 }

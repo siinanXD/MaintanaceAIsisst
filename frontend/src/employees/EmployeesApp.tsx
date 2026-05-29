@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { markIslandMounted } from "../app/islandMount";
 import { canWriteDashboard } from "../auth/permissions";
@@ -12,7 +12,6 @@ import type { Employee, EmployeeDraft, MessageState } from "./employeeTypes";
 import { canManageEmployees, EMPTY_EMPLOYEE_DRAFT, employeeErrorMessage } from "./employeeUtils";
 
 const EMPLOYEES_ISLAND = {
-  fallbackSelector: "[data-react-employees-fallback]",
   mountedFlag: "maintenanceEmployeesReactMounted",
   mountEvent: "maintenance-employees-react-mounted"
 };
@@ -35,7 +34,7 @@ export function EmployeesApp(): ReactNode {
     setEmployees(await loadEmployees());
   }
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     markIslandMounted(EMPLOYEES_ISLAND);
   }, []);
 

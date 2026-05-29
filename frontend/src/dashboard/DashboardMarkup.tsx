@@ -20,17 +20,26 @@ import { dashboardKpiCards, dashboardLoadMessage, type DashboardViewState } from
 
 type DashboardMarkupProps = {
   readonly activeTask: DashboardPayload | null;
+  readonly cockpitMessage: string;
   readonly dashboardState: DashboardViewState;
+  readonly draftTask: DashboardTaskMutation | null;
+  readonly isDraftBusy: boolean;
   readonly isShiftCalendarLoading: boolean;
   readonly isTaskBusy: boolean;
   readonly onCloseTask: () => void;
   readonly onCompleteTask: (payload: DashboardTaskReportPayload) => void;
+  readonly onDraftCancel: () => void;
+  readonly onDraftChange: (payload: DashboardTaskMutation | null) => void;
+  readonly onDraftSubmit: (payload: DashboardTaskMutation) => void;
   readonly onOpenTask: (taskId: number) => void;
   readonly onShiftEmployeeChange: (employeeId: string) => void;
   readonly onStartTask: () => void;
+  readonly onSuggestSubmit: (text: string) => void;
+  readonly onSuggestTextChange: (text: string) => void;
   readonly onUpdateTask: (payload: DashboardTaskMutation) => void;
   readonly selectedShiftEmployeeId: string;
   readonly shiftCalendar: DashboardShiftCalendar | null;
+  readonly suggestText: string;
   readonly taskMessage: string;
 };
 
@@ -39,17 +48,26 @@ type DashboardMarkupProps = {
  */
 export function DashboardMarkup({
   activeTask,
+  cockpitMessage,
   dashboardState,
+  draftTask,
+  isDraftBusy,
   isShiftCalendarLoading,
   isTaskBusy,
   onCloseTask,
   onCompleteTask,
+  onDraftCancel,
+  onDraftChange,
+  onDraftSubmit,
   onOpenTask,
   onShiftEmployeeChange,
   onStartTask,
+  onSuggestSubmit,
+  onSuggestTextChange,
   onUpdateTask,
   selectedShiftEmployeeId,
   shiftCalendar,
+  suggestText,
   taskMessage
 }: DashboardMarkupProps): ReactNode {
   return (
@@ -57,7 +75,7 @@ export function DashboardMarkup({
       <span data-dashboard-react-status="" hidden>
         {dashboardLoadMessage(dashboardState)}
       </span>
-      <DashboardHero />
+      <DashboardHero dashboardState={dashboardState} />
       <DashboardKpis kpis={dashboardKpiCards(dashboardState)} />
       <section className="control-center-grid" aria-label="Maintenance Control Center">
         <DashboardTaskOverview dashboardState={dashboardState} onOpenTask={onOpenTask} />
@@ -71,8 +89,18 @@ export function DashboardMarkup({
         />
         <DashboardOperations dashboardState={dashboardState} />
         <DashboardSideColumn dashboardState={dashboardState} />
-        <DashboardTechnicalDetails />
-        <DashboardHiddenForms />
+        <DashboardTechnicalDetails dashboardState={dashboardState} />
+        <DashboardHiddenForms
+          cockpitMessage={cockpitMessage}
+          draftTask={draftTask}
+          isDraftBusy={isDraftBusy}
+          onDraftCancel={onDraftCancel}
+          onDraftChange={onDraftChange}
+          onDraftSubmit={onDraftSubmit}
+          onSuggestSubmit={onSuggestSubmit}
+          onSuggestTextChange={onSuggestTextChange}
+          suggestText={suggestText}
+        />
         <DashboardTaskDetailModal
           activeTask={activeTask}
           isBusy={isTaskBusy}

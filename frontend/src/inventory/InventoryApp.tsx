@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { markIslandMounted } from "../app/islandMount";
 import { canWriteDashboard } from "../auth/permissions";
@@ -16,7 +16,6 @@ import type { InventoryForecast, InventoryMaterial, Machine } from "./inventoryT
 import { inventoryErrorMessage } from "./inventoryUtils";
 
 const INVENTORY_ISLAND = {
-  fallbackSelector: "[data-react-inventory-fallback]",
   mountedFlag: "maintenanceInventoryReactMounted",
   mountEvent: "maintenance-inventory-react-mounted"
 };
@@ -56,7 +55,7 @@ export function InventoryApp(): ReactNode {
     setForecast(result);
   }
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     markIslandMounted(INVENTORY_ISLAND);
   }, []);
 

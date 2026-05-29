@@ -1,6 +1,7 @@
 import { readStoredSession, type MaintenanceUser } from "./session";
 
 export type MaintenanceAuthRuntime = {
+  readonly clearSession?: (options?: { readonly redirect?: boolean }) => void;
   readonly canManageEmployees?: () => boolean;
   readonly canView?: (dashboard: string) => boolean;
   readonly canWrite?: (dashboard: string) => boolean;
@@ -30,6 +31,22 @@ function storedPermissionFor(dashboard: string): { readonly can_view?: boolean; 
   return typeof permission === "object" && permission !== null && !Array.isArray(permission)
     ? permission
     : {};
+}
+
+/**
+ * Return whether a user may view a dashboard area from stored permissions.
+ */
+export function canViewStoredDashboard(user: MaintenanceUser | null, dashboard: string): boolean {
+  if (user?.role === "master_admin") {
+    return true;
+  }
+  const permission = user?.permissions?.[dashboard];
+  return (
+    typeof permission === "object"
+    && permission !== null
+    && !Array.isArray(permission)
+    && Boolean((permission as { readonly can_view?: boolean }).can_view)
+  );
 }
 
 /**

@@ -577,6 +577,11 @@ function KnowledgeDatabasePanel(props: AdminAiRagBoardProps): ReactNode {
             <button className="btn btn-secondary" disabled={ragBoardState.isSaving} type="submit">Hochladen</button>
           </form>
         </div>
+        <div className="knowledge-origin-legend" data-knowledge-origin-legend aria-label="Herkunft der Wissensquellen">
+          <span className="status-pill is-source-automatic">Automatisch</span>
+          <span className="status-pill is-source-manual">Manuell</span>
+          <span className="status-pill is-source-prebuilt">Vorgefertigt</span>
+        </div>
       </div>
       <div className="table-wrap">
         <table className="data-table">

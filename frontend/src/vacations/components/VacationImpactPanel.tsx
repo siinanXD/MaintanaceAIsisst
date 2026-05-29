@@ -54,7 +54,7 @@ export function VacationImpactPanel(props: VacationImpactPanelProps): ReactNode 
                 `${formatVacationDate(request.start_date)} bis ${formatVacationDate(request.end_date)}`,
                 vacationStatusLabel(request.status),
                 request.impact_summary || "keine Warnung"
-              ].join(" Â· ")}
+              ].join(" · ")}
             </p>
           </article>
         )) : <div className="empty-state">Keine aktiven Urlaubszeiträume im ausgewählten Jahr.</div>}

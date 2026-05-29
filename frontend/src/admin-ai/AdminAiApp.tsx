@@ -9,6 +9,9 @@ import {
   deleteTrainingEntry,
   loadFaqEntries,
   loadFaqSuggestions,
+  loadAdminAiChats,
+  loadAdminAiEvents,
+  loadAdminAiKnowledgeGaps,
   loadAdminAiSummary,
   loadAdminAiUserCosts,
   loadAdminJobs,
@@ -98,7 +101,6 @@ import {
 } from "./adminAiTechnicalModel";
 
 const ADMIN_AI_ISLAND = {
-  fallbackSelector: "[data-react-admin-ai-fallback]",
   mountedFlag: "maintenanceAdminAiReactMounted",
   mountEvent: "maintenance-admin-ai-react-mounted"
 } as const;
@@ -118,6 +120,8 @@ export function AdminAiApp(): ReactNode {
   const [overviewState, setOverviewState] = useState<AdminAiOverviewLoadState>(
     EMPTY_ADMIN_AI_OVERVIEW_STATE
   );
+  const [overviewEventError, setOverviewEventError] = useState("");
+  const [overviewChatQuery, setOverviewChatQuery] = useState("");
   const [effectivenessState, setEffectivenessState] = useState<AdminAiEffectivenessState>(
     EMPTY_ADMIN_AI_EFFECTIVENESS_STATE
   );
@@ -139,15 +143,7 @@ export function AdminAiApp(): ReactNode {
   }, []);
 
   useEffect(() => {
-    (window as AdminAiRuntimeWindow).maintenanceAdminAiReactRuntime =
-      adminAiView === "overview"
-      || adminAiView === "effectiveness"
-      || adminAiView === "prompt_faq"
-      || adminAiView === "source_check"
-      || adminAiView === "rag_board"
-      || adminAiView === "technical"
-        ? adminAiView
-        : "legacy-bridge";
+    (window as AdminAiRuntimeWindow).maintenanceAdminAiReactRuntime = adminAiView;
   }, [adminAiView]);
 
   useEffect(() => {
@@ -160,20 +156,30 @@ export function AdminAiApp(): ReactNode {
      */
     async function loadOverview(): Promise<void> {
       setOverviewState((currentState) => ({ ...currentState, isLoading: true, errorMessage: "" }));
-      const [aiStatusResult, summaryResult, operationsResult] = await Promise.allSettled([
+      const [
+        aiStatusResult,
+        summaryResult,
+        operationsResult,
+        eventsResult,
+        chatsResult
+      ] = await Promise.allSettled([
         loadAiStatus(controller.signal),
         loadAdminAiSummary(controller.signal),
-        loadOperationsHealth(controller.signal)
+        loadOperationsHealth(controller.signal),
+        loadAdminAiEvents(overviewEventError, controller.signal),
+        loadAdminAiChats(overviewChatQuery, controller.signal)
       ]);
 
       if (controller.signal.aborted) return;
 
-      const failedResult = [aiStatusResult, summaryResult, operationsResult].find(
+      const failedResult = [aiStatusResult, summaryResult, operationsResult, eventsResult, chatsResult].find(
         (result) => result.status === "rejected"
       );
 
-      setOverviewState({
+      setOverviewState((currentState) => ({
         aiStatus: aiStatusResult.status === "fulfilled" ? aiStatusResult.value : null,
+        chats: chatsResult.status === "fulfilled" ? payloadItems(chatsResult.value) : currentState.chats,
+        events: eventsResult.status === "fulfilled" ? payloadItems(eventsResult.value) : currentState.events,
         summary: summaryResult.status === "fulfilled" ? summaryResult.value : null,
         operations: operationsResult.status === "fulfilled" ? operationsResult.value : null,
         errorMessage:
@@ -181,7 +187,7 @@ export function AdminAiApp(): ReactNode {
             ? failedOverviewState(failedResult.reason).errorMessage
             : "",
         isLoading: false
-      });
+      }));
     }
 
     void loadOverview();
@@ -189,7 +195,7 @@ export function AdminAiApp(): ReactNode {
     return () => {
       controller.abort();
     };
-  }, [adminAiView]);
+  }, [adminAiView, overviewChatQuery, overviewEventError]);
 
   useEffect(() => {
     if (adminAiView !== "effectiveness") return undefined;
@@ -512,11 +518,19 @@ export function AdminAiApp(): ReactNode {
   async function refreshTechnical(signal?: AbortSignal): Promise<void> {
     const filters = technicalState.filters;
     setTechnicalState((currentState) => ({ ...currentState, errorMessage: "", isLoading: true }));
-    const [telemetryResult, debugResult, observabilityResult, jobsResult, operationsResult] =
+    const [
+      telemetryResult,
+      debugResult,
+      observabilityResult,
+      gapsResult,
+      jobsResult,
+      operationsResult
+    ] =
       await Promise.allSettled([
         loadRetrievalTelemetry(signal),
         loadRetrievalDebug(retrievalDebugQueryString(filters), signal),
         loadAiObservability(observabilityQueryString(), signal),
+        loadAdminAiKnowledgeGaps(signal),
         loadAdminJobs(signal),
         loadOperationsHealth(signal)
       ]);
@@ -527,9 +541,18 @@ export function AdminAiApp(): ReactNode {
       telemetryResult,
       debugResult,
       observabilityResult,
+      gapsResult,
       jobsResult,
       operationsResult
     ].find((result) => result.status === "rejected");
+    const observability =
+      observabilityResult.status === "fulfilled"
+        ? observabilityResult.value
+        : technicalState.observability || {};
+    const gaps =
+      gapsResult.status === "fulfilled"
+        ? technicalItems(gapsResult.value)
+        : technicalItems(observability.knowledge_gaps);
 
     setTechnicalState((currentState) => ({
       ...currentState,
@@ -539,10 +562,7 @@ export function AdminAiApp(): ReactNode {
           : "",
       isLoading: false,
       jobs: jobsResult.status === "fulfilled" ? technicalItems(jobsResult.value) : currentState.jobs,
-      observability:
-        observabilityResult.status === "fulfilled"
-          ? observabilityResult.value
-          : currentState.observability,
+      observability: { ...observability, knowledge_gaps: gaps },
       operations:
         operationsResult.status === "fulfilled" ? operationsResult.value : currentState.operations,
       retrievalDebug:
@@ -737,6 +757,8 @@ export function AdminAiApp(): ReactNode {
           void handleKnowledgeUpload(form);
         }}
         onNetworkFilterChange={updateRagBoardFilter}
+        onOverviewChatQueryChange={setOverviewChatQuery}
+        onOverviewEventErrorChange={setOverviewEventError}
         onPromptVersionSubmit={(form) => {
           void handlePromptVersionSubmit(form);
         }}
@@ -800,6 +822,8 @@ export function AdminAiApp(): ReactNode {
           );
         }}
         overviewState={overviewState}
+        overviewChatQuery={overviewChatQuery}
+        overviewEventError={overviewEventError}
         promptFaqState={promptFaqState}
         ragBoardState={ragBoardState}
         sourceCheckState={sourceCheckState}
@@ -808,4 +832,13 @@ export function AdminAiApp(): ReactNode {
       />
     </div>
   );
+}
+
+/**
+ * Return payload list items from a collection response.
+ */
+function payloadItems(payload: unknown): AdminAiPayload[] {
+  const root = typeof payload === "object" && payload !== null ? payload as AdminAiPayload : {};
+  const items = Array.isArray(root.items) ? root.items : Array.isArray(root.data) ? root.data : [];
+  return items.filter((item): item is AdminAiPayload => typeof item === "object" && item !== null);
 }

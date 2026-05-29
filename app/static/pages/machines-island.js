@@ -3,25 +3,21 @@
 
   const STATIC_VERSION = window.maintenanceStaticVersion || "dev";
   await import("/static/pages/react-island-loader.js?v=" + STATIC_VERSION);
-  const { initializeReactIslandFallback } = window.MaintenanceReactIslandLoader;
+  const { waitForReactIsland } = window.MaintenanceReactIslandLoader;
 
   /**
-   * Return true on the machine profile route.
-   *
-   * @returns {boolean} Whether the profile fallback should initialize.
+   * Report a machines React mount failure without starting deleted legacy code.
    */
-  function isMachineProfileRoute() {
-    return Boolean(document.querySelector("[data-machine-profile-page]"));
+  function reportMachinesMountFailure() {
+    console.error("Machines React island did not mount.");
   }
 
-  await initializeReactIslandFallback({
+  const mounted = await waitForReactIsland({
     mountedFlag: "maintenanceMachinesReactMounted",
-    mountEvent: "maintenance-machines-react-mounted",
-    fallbackSelector: isMachineProfileRoute()
-      ? "[data-react-machine-profile-fallback]"
-      : "[data-react-machines-fallback]",
-    workflowModules: () => (isMachineProfileRoute() ? ["machine-profile.js"] : ["machines.js"]),
-    initializerNames: () => (isMachineProfileRoute() ? ["initMachineProfile"] : ["initMachines"]),
-    missingMessage: "Machines fallback initializer is missing."
+    mountEvent: "maintenance-machines-react-mounted"
   });
+
+  if (!mounted) {
+    reportMachinesMountFailure();
+  }
 })();

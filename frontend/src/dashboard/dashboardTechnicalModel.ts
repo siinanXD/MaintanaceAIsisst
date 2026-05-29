@@ -19,6 +19,13 @@ export type DashboardStatusRow = {
   readonly value: string;
 };
 
+export type DashboardHeroStatus = {
+  readonly className: string;
+  readonly label: string;
+  readonly meta: string;
+  readonly updated: string;
+};
+
 /**
  * Return a nested object payload.
  */
@@ -77,6 +84,37 @@ export function dashboardStatusLabel(signals: readonly DashboardSignalItem[]): s
   if (signals.some((signal) => signal.severity === "warning")) return "Prüfen";
   if (signals.length) return "Stabil";
   return "Noch keine Daten";
+}
+
+/**
+ * Build the hero status text from React-owned dashboard data.
+ */
+export function dashboardHeroStatus(data: DashboardRuntimeData, isLoading: boolean, errorMessage: string): DashboardHeroStatus {
+  if (isLoading) {
+    return {
+      className: "is-loading",
+      label: "Daten werden geladen",
+      meta: "Schicht- und Systemdaten werden geladen",
+      updated: "Aktualisierung läuft"
+    };
+  }
+
+  if (errorMessage) {
+    return {
+      className: "is-warning",
+      label: "Teilweise geladen",
+      meta: errorMessage,
+      updated: new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
+    };
+  }
+
+  const signals = prioritySignals(data);
+  return {
+    className: dashboardSignalClass(signals[0]?.severity ?? "good"),
+    label: dashboardStatusLabel(signals),
+    meta: signals.length ? `${signals.length} aktive Hinweise` : "Keine kritischen Signale",
+    updated: `Aktualisiert ${new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}`
+  };
 }
 
 /**

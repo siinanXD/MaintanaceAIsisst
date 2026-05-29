@@ -6,26 +6,24 @@
   const { waitForReactIsland } = window.MaintenanceReactIslandLoader;
 
   /**
-   * Load and run the existing handover runtime against the active page shell.
+   * Report a failed handover React mount without loading the removed legacy runtime.
    *
-   * @returns {Promise<void>} Resolves after the handover runtime has initialized.
+   * @returns {void}
    */
-  async function initializeHandoverRuntime() {
-    await import("/static/pages/handover.js?v=" + STATIC_VERSION);
-    if (
-      window.MaintenanceHandoverRuntime
-      && typeof window.MaintenanceHandoverRuntime.initHandover === "function"
-    ) {
-      await window.MaintenanceHandoverRuntime.initHandover();
+  function reportHandoverMountFailure() {
+    if (window.maintenanceFrontend && window.maintenanceFrontend.setWorkflowStatus) {
+      window.maintenanceFrontend.setWorkflowStatus(
+        "Schichtübergabe konnte nicht als React-Seite geladen werden. Bitte Seite neu laden.",
+        "error"
+      );
     }
   }
 
   const reactMounted = await waitForReactIsland({
     mountedFlag: "maintenanceHandoverReactMounted",
     mountEvent: "maintenance-handover-react-mounted",
-    fallbackSelector: "[data-react-handover-fallback]",
     timeoutMs: 900
   });
-  if (reactMounted) return;
-  await initializeHandoverRuntime();
+
+  if (!reactMounted) reportHandoverMountFailure();
 })();

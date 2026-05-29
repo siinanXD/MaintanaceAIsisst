@@ -3,14 +3,21 @@
 
   const STATIC_VERSION = window.maintenanceStaticVersion || "dev";
   await import("/static/pages/react-island-loader.js?v=" + STATIC_VERSION);
-  const { initializeReactIslandFallback } = window.MaintenanceReactIslandLoader;
+  const { waitForReactIsland } = window.MaintenanceReactIslandLoader;
 
-  await initializeReactIslandFallback({
+  /**
+   * Report a tasks React mount failure without starting deleted legacy code.
+   */
+  function reportTasksMountFailure() {
+    console.error("Tasks React island did not mount.");
+  }
+
+  const mounted = await waitForReactIsland({
     mountedFlag: "maintenanceTasksReactMounted",
-    mountEvent: "maintenance-tasks-react-mounted",
-    fallbackSelector: "[data-react-tasks-fallback]",
-    workflowModules: ["tasks.js"],
-    initializerNames: ["initDepartments", "initTasks"],
-    missingMessage: "Tasks fallback initializer is missing."
+    mountEvent: "maintenance-tasks-react-mounted"
   });
+
+  if (!mounted) {
+    reportTasksMountFailure();
+  }
 })();

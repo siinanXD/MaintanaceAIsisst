@@ -3,6 +3,8 @@ import { type AdminAiPayload } from "./adminAiApi";
 
 export type AdminAiOverviewLoadState = {
   readonly aiStatus: AdminAiPayload | null;
+  readonly chats: readonly AdminAiPayload[];
+  readonly events: readonly AdminAiPayload[];
   readonly summary: AdminAiPayload | null;
   readonly operations: AdminAiPayload | null;
   readonly errorMessage: string;
@@ -38,6 +40,8 @@ export type AdminAiStatRow = {
 
 export const EMPTY_ADMIN_AI_OVERVIEW_STATE: AdminAiOverviewLoadState = {
   aiStatus: null,
+  chats: [],
+  events: [],
   summary: null,
   operations: null,
   errorMessage: "",

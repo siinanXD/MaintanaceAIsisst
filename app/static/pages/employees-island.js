@@ -3,14 +3,27 @@
 
   const STATIC_VERSION = window.maintenanceStaticVersion || "dev";
   await import("/static/pages/react-island-loader.js?v=" + STATIC_VERSION);
-  const { initializeReactIslandFallback } = window.MaintenanceReactIslandLoader;
+  const { waitForReactIsland } = window.MaintenanceReactIslandLoader;
 
-  await initializeReactIslandFallback({
+  /**
+   * Report a failed employees React mount without loading the removed legacy runtime.
+   *
+   * @returns {void}
+   */
+  function reportEmployeesMountFailure() {
+    if (window.maintenanceFrontend && window.maintenanceFrontend.setWorkflowStatus) {
+      window.maintenanceFrontend.setWorkflowStatus(
+        "Mitarbeiterseite konnte nicht als React-Seite geladen werden. Bitte Seite neu laden.",
+        "error"
+      );
+    }
+  }
+
+  const reactMounted = await waitForReactIsland({
     mountedFlag: "maintenanceEmployeesReactMounted",
     mountEvent: "maintenance-employees-react-mounted",
-    fallbackSelector: "[data-react-employees-fallback]",
-    workflowModules: ["employees.js"],
-    initializerNames: ["initDepartments", "initEmployees"],
-    missingMessage: "Employees fallback initializer is missing."
+    timeoutMs: 900
   });
+
+  if (!reactMounted) reportEmployeesMountFailure();
 })();

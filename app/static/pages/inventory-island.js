@@ -3,14 +3,27 @@
 
   const STATIC_VERSION = window.maintenanceStaticVersion || "dev";
   await import("/static/pages/react-island-loader.js?v=" + STATIC_VERSION);
-  const { initializeReactIslandFallback } = window.MaintenanceReactIslandLoader;
+  const { waitForReactIsland } = window.MaintenanceReactIslandLoader;
 
-  await initializeReactIslandFallback({
+  /**
+   * Report a failed inventory React mount without loading the removed legacy runtime.
+   *
+   * @returns {void}
+   */
+  function reportInventoryMountFailure() {
+    if (window.maintenanceFrontend && window.maintenanceFrontend.setWorkflowStatus) {
+      window.maintenanceFrontend.setWorkflowStatus(
+        "Lager konnte nicht als React-Seite geladen werden. Bitte Seite neu laden.",
+        "error"
+      );
+    }
+  }
+
+  const reactMounted = await waitForReactIsland({
     mountedFlag: "maintenanceInventoryReactMounted",
     mountEvent: "maintenance-inventory-react-mounted",
-    fallbackSelector: "[data-react-inventory-fallback]",
-    workflowModules: ["inventory.js"],
-    initializerNames: ["initInventory"],
-    missingMessage: "Inventory fallback initializer is missing."
+    timeoutMs: 900
   });
+
+  if (!reactMounted) reportInventoryMountFailure();
 })();

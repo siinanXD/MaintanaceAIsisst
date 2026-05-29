@@ -1,6 +1,5 @@
 import {
   useEffect,
-  useLayoutEffect,
   useMemo,
   useState,
   type ReactNode
@@ -31,7 +30,6 @@ import {
 } from "./errorUtils";
 
 const ERRORS_ISLAND = {
-  fallbackSelector: "[data-react-errors-fallback]",
   mountedFlag: "maintenanceErrorsReactMounted",
   mountEvent: "maintenance-errors-react-mounted"
 };
@@ -105,7 +103,7 @@ export function ErrorsApp(): ReactNode {
     document.querySelector("[data-error-form]")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     markIslandMounted(ERRORS_ISLAND);
   }, []);
 

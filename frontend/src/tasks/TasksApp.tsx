@@ -1,6 +1,5 @@
 import {
   useEffect,
-  useLayoutEffect,
   useMemo,
   useState,
   type ReactNode
@@ -34,7 +33,6 @@ import {
 } from "./taskUtils";
 
 const TASKS_ISLAND = {
-  fallbackSelector: "[data-react-tasks-fallback]",
   mountedFlag: "maintenanceTasksReactMounted",
   mountEvent: "maintenance-tasks-react-mounted"
 };
@@ -172,7 +170,7 @@ export function TasksApp(): ReactNode {
     markPrioritiesStale();
   }
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     markIslandMounted(TASKS_ISLAND);
   }, []);
 

@@ -20,7 +20,6 @@ import {
 import type { HandoverFilters, HandoverMessage, HandoverPayload, HandoverRecord, Machine } from "./HandoverTypes";
 
 const HANDOVER_ISLAND = {
-  fallbackSelector: "[data-react-handover-fallback]",
   mountedFlag: "maintenanceHandoverReactMounted",
   mountEvent: "maintenance-handover-react-mounted",
 } as const;

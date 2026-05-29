@@ -26,13 +26,23 @@ const KPI_ITEMS = [
 ] as const;
 
 type AdminAiOverviewProps = {
+  readonly onChatQueryChange: (value: string) => void;
+  readonly onEventErrorChange: (value: string) => void;
+  readonly overviewChatQuery: string;
+  readonly overviewEventError: string;
   readonly overviewState: AdminAiOverviewLoadState;
 };
 
 /**
  * Render the Admin-AI overview cockpit markup.
  */
-export function AdminAiOverview({ overviewState }: AdminAiOverviewProps): ReactNode {
+export function AdminAiOverview({
+  onChatQueryChange,
+  onEventErrorChange,
+  overviewChatQuery,
+  overviewEventError,
+  overviewState
+}: AdminAiOverviewProps): ReactNode {
   const statusBadge = overviewBadge(overviewState);
   const healthCards = overviewHealthCards(overviewState);
   const modelCard = modelHealthCard(overviewState);
@@ -190,7 +200,7 @@ export function AdminAiOverview({ overviewState }: AdminAiOverviewProps): ReactN
                   Timeout-Problemen.
                 </p>
               </div>
-              <select className="input input-bordered" data-ai-event-error>
+              <select className="input input-bordered" data-ai-event-error value={overviewEventError} onChange={(event) => onEventErrorChange(event.target.value)}>
                 <option value="">Alle Fehler</option>
                 <option value="rate_limit">Rate Limit</option>
                 <option value="model_not_allowed">Modell nicht erlaubt</option>
@@ -211,7 +221,23 @@ export function AdminAiOverview({ overviewState }: AdminAiOverviewProps): ReactN
                     <th scope="col">Tokens</th>
                   </tr>
                 </thead>
-                <tbody data-ai-events />
+                <tbody data-ai-events>
+                  {overviewState.events.length ? overviewState.events.map((eventItem) => (
+                    <tr key={displayText(eventItem.id || `${eventItem.created_at}-${eventItem.workflow}`)}>
+                      <td>{displayText(eventItem.created_at)}</td>
+                      <td>{displayText(eventItem.workflow)}</td>
+                      <td>{displayText(eventItem.status)}</td>
+                      <td>{displayText(eventItem.error_category)}</td>
+                      <td>{numberText(eventItem.total_tokens)}</td>
+                    </tr>
+                  )) : (
+                    <tr>
+                      <td colSpan={5}>
+                        <span className="empty-state">Keine AI-Fehler für diesen Filter.</span>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
               </table>
             </div>
           </section>
@@ -224,9 +250,23 @@ export function AdminAiOverview({ overviewState }: AdminAiOverviewProps): ReactN
                   Schneller Blick auf reale Chat-Nutzung und betroffene Workflows.
                 </p>
               </div>
-              <input className="input input-bordered" data-ai-chat-search placeholder="Chats durchsuchen" />
+              <input className="input input-bordered" data-ai-chat-search placeholder="Chats durchsuchen" value={overviewChatQuery} onChange={(event) => onChatQueryChange(event.target.value)} />
             </div>
-            <div className="stack" data-ai-chats />
+            <div className="stack" data-ai-chats>
+              {overviewState.chats.length ? overviewState.chats.map((chat) => (
+                <article className="list-card" key={displayText(chat.id)}>
+                  <strong>{recordReference("Chat", chat.id)}</strong>
+                  <p>{displayText(chat.message, "Frage und Antwort sind in dieser Übersicht ausgeblendet.")}</p>
+                  <small>
+                    {[
+                      `Typ ${displayText(chat.response_type)}`,
+                      `Quellen ${numberText(chat.source_count)}`,
+                      `Workflow ${displayText(chat.workflow)}`
+                    ].join(" / ")}
+                  </small>
+                </article>
+              )) : <p className="empty-state">Keine AI-Anfragen für diese Suche.</p>}
+            </div>
           </section>
         </div>
 
@@ -262,6 +302,31 @@ export function AdminAiOverview({ overviewState }: AdminAiOverviewProps): ReactN
       </section>
     </>
   );
+}
+
+/**
+ * Return a safe display string for Admin-AI overview cells.
+ */
+function displayText(value: unknown, fallback = "-"): string {
+  if (typeof value === "string" && value.trim()) return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return fallback;
+}
+
+/**
+ * Format numeric Admin-AI overview values.
+ */
+function numberText(value: unknown): string {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed.toLocaleString("de-DE") : displayText(value);
+}
+
+/**
+ * Return a prompt-safe record reference label.
+ */
+function recordReference(prefix: string, id: unknown): string {
+  const value = displayText(id, "");
+  return value ? `${prefix} #${value}` : prefix;
 }
 
 /**

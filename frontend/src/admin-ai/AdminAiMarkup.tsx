@@ -25,6 +25,8 @@ type AdminAiMarkupProps = {
   readonly onKnowledgeFilterChange: (key: keyof AdminAiRagBoardState["filters"], value: string) => void;
   readonly onKnowledgeUpload: (form: HTMLFormElement) => void;
   readonly onNetworkFilterChange: (key: keyof AdminAiRagBoardState["filters"], value: string) => void;
+  readonly onOverviewChatQueryChange: (value: string) => void;
+  readonly onOverviewEventErrorChange: (value: string) => void;
   readonly onPromptVersionSubmit: (form: HTMLFormElement) => void;
   readonly onQueueDocument: (documentId: number) => void;
   readonly onQueueStale: () => void;
@@ -43,6 +45,8 @@ type AdminAiMarkupProps = {
   readonly onTechnicalRunEvaluation: () => void;
   readonly onUpdateKnowledgeQuality: (documentId: number, qualityStatus: string) => void;
   readonly overviewState: AdminAiOverviewLoadState;
+  readonly overviewChatQuery: string;
+  readonly overviewEventError: string;
   readonly promptFaqState: AdminAiPromptFaqState;
   readonly ragBoardState: AdminAiRagBoardState;
   readonly sourceCheckState: AdminAiSourceCheckState;
@@ -63,6 +67,8 @@ export function AdminAiMarkup({
   onKnowledgeFilterChange,
   onKnowledgeUpload,
   onNetworkFilterChange,
+  onOverviewChatQueryChange,
+  onOverviewEventErrorChange,
   onPromptVersionSubmit,
   onQueueDocument,
   onQueueStale,
@@ -81,6 +87,8 @@ export function AdminAiMarkup({
   onTechnicalRunEvaluation,
   onUpdateKnowledgeQuality,
   overviewState,
+  overviewChatQuery,
+  overviewEventError,
   promptFaqState,
   ragBoardState,
   sourceCheckState,
@@ -107,6 +115,8 @@ export function AdminAiMarkup({
         onKnowledgeFilterChange,
         onKnowledgeUpload,
         onNetworkFilterChange,
+        onOverviewChatQueryChange,
+        onOverviewEventErrorChange,
         onPromptVersionSubmit,
         onQueueDocument,
         onQueueStale,
@@ -125,6 +135,8 @@ export function AdminAiMarkup({
         onTechnicalRunEvaluation,
         onUpdateKnowledgeQuality,
         overviewState,
+        overviewChatQuery,
+        overviewEventError,
         promptFaqState,
         ragBoardState,
         sourceCheckState,
@@ -150,6 +162,8 @@ function adminAiViewContent({
   onKnowledgeFilterChange,
   onKnowledgeUpload,
   onNetworkFilterChange,
+  onOverviewChatQueryChange,
+  onOverviewEventErrorChange,
   onPromptVersionSubmit,
   onQueueDocument,
   onQueueStale,
@@ -168,6 +182,8 @@ function adminAiViewContent({
   onTechnicalRunEvaluation,
   onUpdateKnowledgeQuality,
   overviewState,
+  overviewChatQuery,
+  overviewEventError,
   promptFaqState,
   ragBoardState,
   sourceCheckState,
@@ -238,5 +254,13 @@ function adminAiViewContent({
       />
     );
   }
-  return <AdminAiOverview overviewState={overviewState} />;
+  return (
+    <AdminAiOverview
+      onChatQueryChange={onOverviewChatQueryChange}
+      onEventErrorChange={onOverviewEventErrorChange}
+      overviewChatQuery={overviewChatQuery}
+      overviewEventError={overviewEventError}
+      overviewState={overviewState}
+    />
+  );
 }

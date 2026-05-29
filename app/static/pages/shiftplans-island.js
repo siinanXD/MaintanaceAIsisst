@@ -6,20 +6,24 @@
   const { waitForReactIsland } = window.MaintenanceReactIslandLoader;
 
   /**
-   * Load the existing shift planning runtime against the active page shell.
+   * Report a failed shiftplans React mount without loading the removed legacy runtime.
    *
-   * @returns {Promise<void>} Resolves after the shift planning runtime has loaded.
+   * @returns {void}
    */
-  async function initializeShiftplansRuntime() {
-    await import("/static/pages/shiftplans.js?v=" + STATIC_VERSION);
+  function reportShiftplansMountFailure() {
+    if (window.maintenanceFrontend && window.maintenanceFrontend.setWorkflowStatus) {
+      window.maintenanceFrontend.setWorkflowStatus(
+        "Schichtplan konnte nicht als React-Seite geladen werden. Bitte Seite neu laden.",
+        "error"
+      );
+    }
   }
 
   const reactMounted = await waitForReactIsland({
     mountedFlag: "maintenanceShiftplansReactMounted",
     mountEvent: "maintenance-shiftplans-react-mounted",
-    fallbackSelector: "[data-react-shiftplans-fallback]",
     timeoutMs: 900
   });
-  if (reactMounted) return;
-  await initializeShiftplansRuntime();
+
+  if (!reactMounted) reportShiftplansMountFailure();
 })();

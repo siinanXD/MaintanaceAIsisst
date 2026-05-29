@@ -4,10 +4,12 @@ import { markIslandMounted } from "../app/islandMount";
 import { safeErrorMessage } from "../utils/errors";
 import {
   completeDashboardTask,
+  createDashboardTask,
   loadDashboardRuntimeData,
   loadDashboardShiftCalendar,
   loadDashboardTask,
   startDashboardTask,
+  suggestDashboardTask,
   updateDashboardTask,
   type DashboardPayload,
   type DashboardShiftCalendar,
@@ -19,7 +21,6 @@ import { EMPTY_DASHBOARD_VIEW_STATE, type DashboardViewState } from "./dashboard
 import { employeesToShiftCalendar } from "./dashboardShiftModel";
 
 const DASHBOARD_ISLAND = {
-  fallbackSelector: "[data-react-dashboard-fallback]",
   mountedFlag: "maintenanceDashboardReactMounted",
   mountEvent: "maintenance-dashboard-react-mounted"
 } as const;
@@ -32,6 +33,8 @@ declare global {
     maintenanceDashboardReactShiftOwned?: boolean;
     maintenanceDashboardReactSideOwned?: boolean;
     maintenanceDashboardReactTasksOwned?: boolean;
+    maintenanceDashboardReactTechnicalOwned?: boolean;
+    maintenanceDashboardReactDraftOwned?: boolean;
   }
 }
 
@@ -46,6 +49,10 @@ export function DashboardApp(): ReactNode {
   const [selectedShiftEmployeeId, setSelectedShiftEmployeeId] = useState("");
   const [shiftCalendar, setShiftCalendar] = useState<DashboardShiftCalendar | null>(null);
   const [taskMessage, setTaskMessage] = useState("");
+  const [cockpitMessage, setCockpitMessage] = useState("");
+  const [draftTask, setDraftTask] = useState<DashboardTaskMutation | null>(null);
+  const [isDraftBusy, setIsDraftBusy] = useState(false);
+  const [suggestText, setSuggestText] = useState("");
 
   const refreshDashboardData = useCallback(async (signal?: AbortSignal): Promise<void> => {
     setDashboardState((currentState) => ({ ...currentState, errorMessage: "", isLoading: true }));
@@ -64,6 +71,8 @@ export function DashboardApp(): ReactNode {
     window.maintenanceDashboardReactShiftOwned = true;
     window.maintenanceDashboardReactSideOwned = true;
     window.maintenanceDashboardReactTasksOwned = true;
+    window.maintenanceDashboardReactTechnicalOwned = true;
+    window.maintenanceDashboardReactDraftOwned = true;
     markIslandMounted(DASHBOARD_ISLAND);
   }, []);
 
@@ -191,6 +200,80 @@ export function DashboardApp(): ReactNode {
     );
   }
 
+  /**
+   * Convert a task suggestion API response into the hidden cockpit draft shape.
+   */
+  function taskDraftFromSuggestion(suggestion: DashboardPayload): DashboardTaskMutation {
+    const descriptionParts = [
+      typeof suggestion.description === "string" ? suggestion.description : "",
+      typeof suggestion.possible_cause === "string" ? `Mögliche Ursache: ${suggestion.possible_cause}` : "",
+      typeof suggestion.recommended_action === "string" ? `Nächste Aktion: ${suggestion.recommended_action}` : ""
+    ].filter(Boolean);
+
+    return {
+      department: typeof suggestion.department === "string" ? suggestion.department : "",
+      description: descriptionParts.join("\n\n"),
+      priority: typeof suggestion.priority === "string" ? suggestion.priority : "normal",
+      status: typeof suggestion.status === "string" ? suggestion.status : "open",
+      title: typeof suggestion.title === "string" ? suggestion.title : ""
+    };
+  }
+
+  /**
+   * Request a React-owned task draft from the existing suggestion API.
+   */
+  async function handleSuggestSubmit(text: string): Promise<void> {
+    const trimmedText = text.trim();
+    if (!trimmedText) {
+      setCockpitMessage("Bitte Aufgabenbeschreibung eingeben.");
+      return;
+    }
+
+    setIsDraftBusy(true);
+    setCockpitMessage("KI erstellt Vorschlag...");
+    try {
+      const suggestion = await suggestDashboardTask(trimmedText);
+      setDraftTask(taskDraftFromSuggestion(suggestion));
+      setCockpitMessage("Vorschlag erstellt. Bitte prüfen und speichern.");
+    } catch (error) {
+      setCockpitMessage(safeErrorMessage(error, "Vorschlag konnte nicht erstellt werden."));
+    } finally {
+      setIsDraftBusy(false);
+    }
+  }
+
+  /**
+   * Persist the hidden cockpit draft through the existing task API.
+   */
+  async function handleDraftSubmit(payload: DashboardTaskMutation): Promise<void> {
+    if (!payload.title?.trim()) {
+      setCockpitMessage("Bitte Titel eingeben.");
+      return;
+    }
+
+    setIsDraftBusy(true);
+    setCockpitMessage("Speichert...");
+    try {
+      await createDashboardTask(payload);
+      setDraftTask(null);
+      setSuggestText("");
+      setCockpitMessage("Aufgabe gespeichert.");
+      await refreshDashboardData();
+    } catch (error) {
+      setCockpitMessage(safeErrorMessage(error, "Aufgabe konnte nicht gespeichert werden."));
+    } finally {
+      setIsDraftBusy(false);
+    }
+  }
+
+  /**
+   * Reset the hidden cockpit draft without touching loaded dashboard data.
+   */
+  function handleDraftCancel(): void {
+    setDraftTask(null);
+    setCockpitMessage("Vorschlag verworfen.");
+  }
+
   return (
     <div data-dashboard-react-shell data-dashboard-react-runtime={dashboardState.isLoading ? "loading" : "ready"}>
       <DashboardMarkup
@@ -204,8 +287,17 @@ export function DashboardApp(): ReactNode {
         onStartTask={handleStartTask}
         onShiftEmployeeChange={setSelectedShiftEmployeeId}
         onUpdateTask={handleUpdateTask}
+        cockpitMessage={cockpitMessage}
+        draftTask={draftTask}
+        isDraftBusy={isDraftBusy}
+        onDraftCancel={handleDraftCancel}
+        onDraftChange={setDraftTask}
+        onDraftSubmit={(payload) => void handleDraftSubmit(payload)}
+        onSuggestSubmit={(text) => void handleSuggestSubmit(text)}
+        onSuggestTextChange={setSuggestText}
         selectedShiftEmployeeId={selectedShiftEmployeeId}
         shiftCalendar={shiftCalendar}
+        suggestText={suggestText}
         taskMessage={taskMessage}
       />
     </div>

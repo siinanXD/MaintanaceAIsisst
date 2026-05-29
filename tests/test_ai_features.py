@@ -3,6 +3,7 @@
 import json
 from datetime import date, timedelta
 from io import BytesIO
+from pathlib import Path
 
 import pytest
 
@@ -40,6 +41,8 @@ from app.services.vector_sync_status_service import (
     clear_vector_sync_observability,
     record_vector_sync_failure,
 )
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_ai_chat_returns_today_tasks_without_openai(
@@ -3377,157 +3380,123 @@ def test_daily_briefing_returns_no_sections_without_permissions(
 def test_dashboard_contains_daily_briefing_and_priority_ui(client):
     """Verify dashboard exposes briefing and task priority UI hooks."""
     response = client.get("/")
-    script_response = client.get("/static/pages/workflows/dashboard.js")
-    shared_response = client.get("/static/pages/workflows/shared.js")
-    chat_response = client.get("/static/chat.js")
+    script_response = client.get("/static/pages/dashboard-island.js")
     css_response = client.get("/static/css/output.css")
     html = response.get_data(as_text=True)
     script = dashboard_runtime_source(client)
-    chat_script = chat_runtime_source(client)
+    source = html + script
+    chat_script = chat_runtime_source()
     css = css_response.get_data(as_text=True)
 
     assert response.status_code == 200
     assert script_response.status_code == 200
-    assert shared_response.status_code == 200
-    assert chat_response.status_code == 200
     assert css_response.status_code == 200
-    assert "data-daily-briefing-list" in html
-    assert "data-dashboard-priority-list" in html
-    assert "data-ai-ops-priority-rail" in html
-    assert "data-ai-system-rail" in html
-    assert "data-ai-risk-radar" in html
-    assert "data-ai-knowledge-health" in html
-    assert "data-dashboard-low-confidence-count" in html
-    assert "data-dashboard-frequent-codes" in html
-    assert "data-chat-suggestions" in html
-    assert "data-chat-history-panel hidden" in html
-    assert "data-chat-history-search" in html
+    assert "maintenance-dashboard-root" in html
+    assert "data-react-dashboard-fallback" not in html
+    assert "data-ai-ops-cockpit" not in html
+    assert "data-daily-briefing-list" in source
+    assert "data-dashboard-priority-list" in source
+    assert "data-ai-ops-priority-rail" in source
+    assert "data-ai-system-rail" in source
+    assert "data-ai-risk-radar" in source
+    assert "data-ai-knowledge-health" in source
+    assert "data-dashboard-low-confidence-count" in source
+    assert "data-dashboard-frequent-codes" in source
+    assert "maintenance-shell-chat-root" in html
+    assert "data-react-shell-chat-fallback" not in html
+    assert "data-chat-suggestions" in chat_script
+    assert "data-chat-history-panel" in chat_script
+    assert "data-chat-history-search" in chat_script
     assert ".chat-history-item" in css
-    assert "briefingItem(section, item)" in script
-    assert "Briefing konnte nicht geladen werden." in script
-    assert "KI-Priorisierung" in script
-    assert "renderPriorityRail" in script
+    assert "briefingItems" in script
+    assert "prioritySignals" in script
     assert "/api/v1/admin/ai/retrieval-telemetry" in script
     assert "/api/v1/admin/ai/knowledge/status" in script
     assert "/api/v1/admin/ai/knowledge-gaps" in script
     assert "/api/v1/ai/status" in script
-    assert "maintenance_ai_action_preview" in script
-    assert "responseData && responseData.answer" in chat_script
-    assert 'data.type === "general_chat"' in chat_script
-    assert '!isGeneralChat && diagnostics.status === "api_key_missing"' in chat_script
-    assert "!isGeneralChat && diagnostics.fallback_used" in chat_script
-    assert "openAIErrorLabel" in chat_script
-    assert "model_not_found" in chat_script
-    assert "OpenAI-Rate-Limit erreicht" in chat_script
-    assert "model_not_allowed" in chat_script
-    assert "/api/v1/ai/chat/history" in chat_script
-    assert "/api/v1/ai/chat/templates" in chat_script
-    assert "historyMetaText(item)" in chat_script
-    assert "chatSuggestionsForUser" in chat_script
-    assert "setChatFormBusy" in chat_script
-    assert "suggestions.hidden = true" in chat_script
-    assert "partially_helpful" in chat_script
-    assert "chat_message_id" in chat_script
-    assert "/api/v1/ai/feedback" in chat_script
+    assert "/api/v1/ai/chat" in chat_script
     assert "maintenance_ai_chat_session_id" in chat_script
     assert "session_id: chatSessionId()" in chat_script
     assert "resetChatSession()" in chat_script
-    assert "renderAssistantEvidence" in chat_script
-    assert "confidencePayload" in chat_script
-    assert "confidenceMeter" in chat_script
-    assert "renderAnswerBasis" in chat_script
-    assert "renderExplainability" in chat_script
-    assert "sourceKindLabel" in chat_script
-    assert "sourceRelevanceLabel" in chat_script
-    assert "Warum diese Antwort?" in chat_script
-    assert "chat-answer-card" in css
-    assert "chat-answer-badge" in css
-    assert "chat-confidence-meter" in css
-    assert "chat-answer-basis" in css
-    assert "chat-answer-alert-title" in css
-    assert "chat-source-chip" in css
-    assert "chat-source-kind" in css
-    assert "chat-source-facts" in css
-    assert "chat-explainability" in css
+    assert "answerFromPayload" in chat_script
+    assert "fallback_used" in chat_script
+    assert "api_key_missing" in chat_script
+    assert "openai_error" in chat_script
 
 
 def test_admin_users_page_contains_ai_analytics_ui(client):
-    """Verify Admin Users exposes AI analytics UI hooks."""
+    """Verify Admin Users exposes React AI analytics UI hooks."""
     page_response = client.get("/admin/users")
-    script_response = client.get("/static/pages/workflows/admin-users.js")
     html = page_response.get_data(as_text=True)
-    script = script_response.get_data(as_text=True)
+    runtime = admin_users_runtime_source()
 
     assert page_response.status_code == 200
-    assert script_response.status_code == 200
-    assert "data-ai-analytics-card" in html
-    assert "data-ai-latency" in html
-    assert "data-ai-tokens" in html
-    assert "data-ai-cost" in html
-    assert "data-ai-cost-status" in html
-    assert "data-ai-user-costs" in html
-    assert "data-ai-workflows" in html
-    assert "data-ai-error-categories" in html
-    assert "data-audit-log-list" in html
-    assert "data-backup-list" in html
-    assert "data-permission-defaults" in html
-    assert "/api/v1/admin/ai/summary" in script
-    assert "renderAiUserCosts" in script
-    assert "/api/v1/admin/audit-log" in script
-    assert "/api/v1/admin/backups" in script
-    assert "/api/v1/admin/permissions/schema" in script
+    assert "maintenance-admin-users-root" in html
+    assert "data-react-admin-users-fallback" not in html
+    assert "data-ai-analytics-card" in runtime
+    assert "data-ai-latency" in runtime
+    assert "data-ai-tokens" in runtime
+    assert "data-ai-cost" in runtime
+    assert "data-ai-cost-status" in runtime
+    assert "data-ai-user-costs" in runtime
+    assert "data-ai-workflows" in runtime
+    assert "data-ai-error-categories" in runtime
+    assert "data-audit-log-list" in runtime
+    assert "data-backup-list" in runtime
+    assert "data-permission-defaults" in runtime
+    assert "/api/v1/admin/ai/summary" in runtime
+    assert "AiAnalyticsPanel" in runtime
+    assert "props.userMetrics.map" in runtime
+    assert "/api/v1/admin/audit-log" in runtime
+    assert "/api/v1/admin/backups" in runtime
+    assert "/api/v1/admin/permissions/schema" in runtime
 
 
-def chat_runtime_source(client):
-    """Return the chat entrypoint and split module source."""
-    asset_paths = (
-        "/static/chat.js",
-        "/static/chat/session.js",
-        "/static/chat/evidence.js",
-        "/static/chat/rendering.js",
-        "/static/chat/history.js",
-        "/static/chat/actions.js",
+def chat_runtime_source():
+    """Return the React shell chat source."""
+    return (REPO_ROOT / "frontend" / "src" / "layout" / "ShellChatWidget.tsx").read_text(
+        encoding="utf-8"
     )
-    return "\n".join(client.get(path).get_data(as_text=True) for path in asset_paths)
 
 
 def dashboard_runtime_source(client):
-    """Return the dashboard entrypoint and split module source."""
-    asset_paths = (
-        "/static/pages/workflows/dashboard.js",
-        "/static/pages/workflows/shared.js",
-        "/static/pages/workflows/dashboard/state.js",
-        "/static/pages/workflows/dashboard/resources.js",
-        "/static/pages/workflows/dashboard/executive.js",
-        "/static/pages/workflows/dashboard/tasks.js",
-        "/static/pages/workflows/dashboard/operations.js",
-        "/static/pages/workflows/dashboard/shift-calendar.js",
-        "/static/pages/workflows/dashboard/actions.js",
-    )
-    return "\n".join(client.get(path).get_data(as_text=True) for path in asset_paths)
+    """Return the React dashboard runtime and route loader source."""
+    source_paths = list((REPO_ROOT / "frontend" / "src" / "dashboard").rglob("*.ts"))
+    source_paths.extend((REPO_ROOT / "frontend" / "src" / "dashboard").rglob("*.tsx"))
+    source_paths.append(REPO_ROOT / "app" / "static" / "pages" / "dashboard-island.js")
+    return "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
 
 
 def admin_ai_runtime_source(client):
-    """Return the AI admin entrypoint and split module source."""
-    asset_paths = (
-        "/static/pages/admin-ai.js",
-        "/static/pages/admin-ai/shared.js",
-        "/static/pages/admin-ai/overview.js",
-        "/static/pages/admin-ai/knowledge.js",
-        "/static/pages/admin-ai/retrieval.js",
-        "/static/pages/admin-ai/observability.js",
-        "/static/pages/admin-ai/operations.js",
-        "/static/pages/admin-ai/actions.js",
-    )
-    return "\n".join(client.get(path).get_data(as_text=True) for path in asset_paths)
+    """Return the React AI admin runtime and route loader source."""
+    source_paths = list((REPO_ROOT / "frontend" / "src" / "admin-ai").rglob("*.ts"))
+    source_paths.extend((REPO_ROOT / "frontend" / "src" / "admin-ai").rglob("*.tsx"))
+    source_paths.append(REPO_ROOT / "app" / "static" / "pages" / "admin-ai-island.js")
+    return "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
+
+
+def admin_users_runtime_source():
+    """Return the React admin users runtime and route loader source."""
+    source_paths = list((REPO_ROOT / "frontend" / "src" / "admin-users").rglob("*.ts"))
+    source_paths.extend((REPO_ROOT / "frontend" / "src" / "admin-users").rglob("*.tsx"))
+    source_paths.append(REPO_ROOT / "app" / "static" / "pages" / "admin-users-island.js")
+    return "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
+
+
+def document_runtime_source():
+    """Return the React document runtime and route loader source."""
+    source_paths = list((REPO_ROOT / "frontend" / "src" / "documents").rglob("*.ts"))
+    source_paths.extend((REPO_ROOT / "frontend" / "src" / "documents").rglob("*.tsx"))
+    source_paths.append(REPO_ROOT / "app" / "static" / "pages" / "documents-island.js")
+    return "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
 
 
 def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
     """Verify AI admin pages expose route-specific management UI hooks."""
-    script_response = client.get("/static/pages/admin-ai.js")
+    script_response = client.get("/static/pages/admin-ai-island.js")
     script = admin_ai_runtime_source(client)
     routes = {
-        "/admin/ai": ("overview", "AI-Admin als RAG-Spielbrett"),
+        "/admin/ai": ("overview", 'id="ai-models"'),
         "/admin/ai/rag-board": ("rag_board", 'id="ai-rag-board"'),
         "/admin/ai/source-check": ("source_check", 'id="ai-source-check"'),
         "/admin/ai/prompt-faq": ("prompt_faq", 'id="ai-prompts"'),
@@ -3540,11 +3509,11 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
         page_html = response.get_data(as_text=True)
         pages[route] = page_html
         assert response.status_code == 200
-        assert "data-admin-ai-page" in page_html
-        assert f'data-ai-admin-view="{view_name}"' in page_html
-        assert marker in page_html
-        assert f'href="{route}" class="is-active"' in page_html
-        assert 'aria-current="page"' in page_html
+        assert "maintenance-admin-ai-root" in page_html
+        assert "data-react-admin-ai-fallback" not in page_html
+        assert "data-admin-ai-page" not in page_html
+        assert view_name in script
+        assert marker in script
 
     legacy_routes = {
         "/admin/ai/prompts": "/admin/ai/prompt-faq",
@@ -3564,13 +3533,12 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
         assert response.status_code == 302
         assert response.headers["Location"] == target
 
-    overview_html = pages["/admin/ai"]
     html = "\n".join(pages.values())
     source = html + script
 
     assert script_response.status_code == 200
     for route in routes:
-        assert f'href="{route}"' in overview_html
+        assert f'href: "{route}"' in script or f'href="{route}"' in script
     for section_id in (
         "ai-rag-board",
         "ai-source-check",
@@ -3586,118 +3554,120 @@ def test_admin_ai_page_contains_ai_and_knowledge_ui(client):
         "ai-feedback",
         "ai-indexing-status",
     ):
-        assert f'id="{section_id}"' in html
-    assert "data-ai-failed-queries" in html
-    assert "ai-setting-flow" in html
-    assert "indexed" in html
-    assert "rejected" in html
-    assert "active" in html
-    assert "disabled" in html
-    assert "low quality" in html
-    assert "duplicate" in html
+        assert f'id="{section_id}"' in source
+    assert "data-ai-failed-queries" in source
+    assert "indexed" in source
+    assert "rejected" in source
+    assert "active" in source
+    assert "disabled" in source
+    assert "Low Quality" in source
+    assert "duplicate" in source
     assert "low_quality" in script
-    assert "data-ai-health-panel" in html
-    assert "data-retrieval-slo-panel" in html
-    assert 'data-retrieval-slo-kpi="retrieval_p95_ms"' in html
-    assert "data-retrieval-slo-trends" in html
-    assert "data-retrieval-slo-warnings" in html
-    assert "data-retrieval-evaluation-history-panel" in html
-    assert 'data-retrieval-evaluation-kpi="recall_at_k"' in html
-    assert "data-retrieval-evaluation-run" in html
-    assert "data-retrieval-evaluation-regression" in html
-    assert "data-retrieval-evaluation-runs" in html
-    assert "data-ai-workflows" in html
-    assert "data-ai-top-errors" in html
-    assert "data-ai-chat-search" in html
-    assert "data-ai-training-form" in html
-    assert "data-ai-training-search" in html
-    assert "data-ai-knowledge-upload" in html
-    assert "data-ai-knowledge-search" in html
-    assert "data-ai-knowledge-source" in html
-    assert "data-ai-knowledge-quality" in html
-    assert "data-knowledge-origin-legend" in html
-    assert "is-source-automatic" in html
-    assert "is-source-manual" in html
-    assert "is-source-prebuilt" in html
-    assert "data-knowledge-lifecycle-panel" in html
-    assert 'data-lifecycle-kpi="drafts"' in html
-    assert 'data-lifecycle-kpi="non_approved_indexed_documents"' in html
-    assert "data-knowledge-lifecycle-review" in html
-    assert "data-knowledge-lifecycle-gate" in html
-    assert "data-knowledge-lifecycle-actions" in html
-    assert "data-knowledge-lifecycle-steps" in html
-    assert "data-knowledge-network-panel" in html
-    assert "data-knowledge-network-canvas" in html
-    assert "data-knowledge-network-detail" in html
-    assert "data-knowledge-network-legend" in html
-    assert "data-knowledge-network-search" in html
-    assert "data-knowledge-network-focus-type" in html
-    assert "data-knowledge-network-groups" in html
-    assert "data-knowledge-network-relations" in html
-    assert "data-retrieval-debug-panel" in html
-    assert "data-retrieval-debug-rows" in html
-    assert "data-retrieval-debug-type" in html
-    assert "data-retrieval-flow-panel" in html
-    assert "data-retrieval-flow-timeline" in html
-    assert "data-retrieval-flow-source-map" in html
-    assert "data-retrieval-flow-answer" in html
-    assert "Qualität" in html
-    assert "data-ai-knowledge-gaps" in html
-    assert "data-ai-knowledge-gap-count" in html
-    assert "data-rag-source-status" in html
-    assert "data-rag-diagnostics" in html
-    assert "data-rag-readiness-score" in html
-    assert "data-rag-readiness-reasons" in html
-    assert "data-rag-problem-documents" in html
-    assert 'data-rag-kpi="searchable_documents"' in html
-    assert 'data-rag-kpi="stale"' in html
-    assert "data-rag-vector-sync" in html
-    assert "data-rag-vector-issues" in html
-    assert "data-ai-reindex-stale" in html
-    assert "data-ai-queue-stale" in html
-    assert "data-ai-jobs" in html
-    assert "data-ai-job-status" in html
+    assert "data-ai-health-panel" in source
+    assert "data-retrieval-slo-panel" in source
+    assert "data-retrieval-slo-kpi={key}" in source
+    assert "data-retrieval-slo-trends" in source
+    assert "data-retrieval-slo-warnings" in source
+    assert "data-retrieval-evaluation-history-panel" in source
+    assert "data-retrieval-evaluation-kpi={key}" in source
+    assert "data-retrieval-evaluation-run" in source
+    assert "data-retrieval-evaluation-regression" in source
+    assert "data-retrieval-evaluation-runs" in source
+    assert "data-ai-workflows" in source
+    assert "data-ai-top-errors" in source
+    assert "data-ai-chat-search" in source
+    assert "data-ai-training-form" in source
+    assert "data-ai-training-search" in source
+    assert "data-ai-knowledge-upload" in source
+    assert "data-ai-knowledge-search" in source
+    assert "data-ai-knowledge-source" in source
+    assert "data-ai-knowledge-quality" in source
+    assert "data-knowledge-origin-legend" in source
+    assert "is-source-automatic" in source
+    assert "is-source-manual" in source
+    assert "is-source-prebuilt" in source
+    assert "data-knowledge-lifecycle-panel" in source
+    assert "data-lifecycle-kpi={key}" in source
+    assert '"drafts"' in source
+    assert '"non_approved_indexed_documents"' in source
+    assert "data-knowledge-lifecycle-review" in source
+    assert "data-knowledge-lifecycle-gate" in source
+    assert "data-knowledge-lifecycle-actions" in source
+    assert "data-knowledge-lifecycle-steps" in source
+    assert "data-knowledge-network-panel" in source
+    assert "data-knowledge-network-canvas" in source
+    assert "data-knowledge-network-detail" in source
+    assert "data-knowledge-network-legend" in source
+    assert "data-knowledge-network-search" in source
+    assert "data-knowledge-network-focus-type" in source
+    assert "data-knowledge-network-groups" in source
+    assert "data-knowledge-network-relations" in source
+    assert "data-retrieval-debug-panel" in source
+    assert "data-retrieval-debug-rows" in source
+    assert "data-retrieval-debug-type" in source
+    assert "data-retrieval-flow-panel" in source
+    assert "data-retrieval-flow-timeline" in source
+    assert "data-retrieval-flow-source-map" in source
+    assert "data-retrieval-flow-answer" in source
+    assert "Qualität" in source
+    assert "data-ai-knowledge-gaps" in source
+    assert "data-ai-knowledge-gap-count" in source
+    assert "data-rag-source-status" in source
+    assert "data-rag-diagnostics" in source
+    assert "data-rag-readiness-score" in source
+    assert "data-rag-readiness-reasons" in source
+    assert "data-rag-problem-documents" in source
+    assert "data-rag-kpi={key}" in source
+    assert '"searchable_documents"' in source
+    assert '"stale"' in source
+    assert "data-rag-vector-sync" in source
+    assert "data-rag-vector-issues" in source
+    assert "data-ai-reindex-stale" in source
+    assert "data-ai-queue-stale" in source
+    assert "data-ai-jobs" in source
+    assert "data-ai-job-status" in source
     assert "data-queue-knowledge" in script
-    assert "adminLoadersForView" in script
-    assert "root.dataset.aiAdminView" in script
+    assert "resolveAdminAiViewFromPathname" in script
+    assert "maintenanceAdminAiReactRuntime" in script
     assert "/api/v1/admin/ai/events" in source
     assert "/api/v1/admin/ai/chats" in source
     assert "/api/v1/admin/ai/knowledge-gaps" in source
     assert "/api/v1/admin/jobs" in source
     assert "/api/v1/admin/ai/knowledge/upload" in source
     assert "/api/v1/admin/ai/knowledge/status" in source
-    assert "renderVectorStoreStatus" in source
-    assert "renderRetrievalSlo" in script
-    assert "renderRetrievalEvaluationHistory" in script
+    assert "vectorStatus" in source
+    assert "retrievalSloValues" in script
+    assert "retrievalSloValue" in script
+    assert "evaluationHistory" in script
     assert "loadRetrievalTelemetry" in script
     assert "/api/v1/admin/ai/knowledge-network" in source
     assert "/api/v1/admin/ai/retrieval-telemetry" in source
     assert "/api/v1/admin/ai/retrieval-evaluations/run" in source
     assert "/api/v1/admin/ai/retrieval-debug" in source
     assert "/api/v1/admin/ai/knowledge/reindex/jobs" in source
-    assert "/api/v1/admin/ai/knowledge/reindex?mode=stale" in source
+    assert "/api/v1/admin/ai/knowledge/reindex" in source
+    assert "?mode=stale" in source
     assert "/api/v1/admin/ai/training" in source
     assert "manual_training" in source
-    assert "knowledgeOriginKind" in script
-    assert "knowledgeOriginClass" in script
-    assert "knowledgeSourceCell" in script
-    assert "data-knowledge-origin" in script
-    assert "knowledgeQualityStatus" in script
+    assert "sourceTypeLabel" in script
+    assert "qualityStatusClass" in script
+    assert "knowledge-source-cell" in script
+    assert "data-knowledge-quality-status" in script
     assert "qualityStatusLabel" in script
-    assert "renderKnowledgeNetwork" in script
-    assert "renderKnowledgeNetworkGroups" in script
-    assert "renderKnowledgeNetworkRelations" in script
-    assert "renderKnowledgeNetworkEdgeDetail" in script
-    assert "networkPositions" in script
+    assert "KnowledgeNetworkPanel" in script
+    assert "data-knowledge-network-groups" in script
+    assert "data-knowledge-network-relations" in script
+    assert "data-network-relation" in script
+    assert "networkTypeLabel" in script
     assert "focus_type" in script
-    assert "task_context" in script
+    assert "task_question" in script
     assert "loadRetrievalDebug" in script
-    assert "renderFailedQueries" in script
-    assert "renderRetrievalFlow" in script
-    assert "data-retrieval-flow-select" in script
-    assert "flow_steps" in script
-    assert "queryTypeLabel" in script
-    assert "knowledgeQualitySelect" in script
+    assert "data-ai-failed-queries" in script
+    assert "selectedRetrievalDebugItem" in script
+    assert "data-retrieval-flow-summary" in script
+    assert "decision_trace" in script
+    assert "query_type" in script
+    assert "data-knowledge-quality-select" in script
     assert "data-update-knowledge-quality" in script
     assert "/quality-status" in source
     assert "/reindex" in source
@@ -4057,22 +4027,22 @@ def test_uploaded_document_check_validates_and_reviews_file(
 
 
 def test_documents_page_contains_review_ui(client):
-    """Verify the documents page and static script expose review UI hooks."""
+    """Verify the documents page and React runtime expose review UI hooks."""
     page_response = client.get("/documents")
-    script_response = client.get("/static/pages/workflows/documents.js")
     html = page_response.get_data(as_text=True)
-    script = script_response.get_data(as_text=True)
+    runtime = document_runtime_source()
 
     assert page_response.status_code == 200
-    assert "data-document-review-panel" in html
-    assert "data-document-review-findings" in html
-    assert "data-document-upload-check-form" in html
-    assert 'actionButton("Prüfen"' in script
-    assert '"/api/v1/documents/check"' in script
-    assert "validateUploadCheckFile" in script
-    assert "reviewFindingItem" in script
-    assert "runAction({" in script
-    assert "renderTableMessage(list, 8" in script
+    assert "maintenance-documents-root" in html
+    assert "data-react-documents-fallback" not in html
+    assert "data-document-review-panel" in runtime
+    assert "data-document-review-findings" in runtime
+    assert "data-document-upload-check-form" in runtime
+    assert '"/api/v1/documents/check"' in runtime
+    assert "checkUploadedDocument" in runtime
+    assert "ReviewFindingItem" in runtime
+    assert "waitForReactIsland" in runtime
+    assert "initializeReactIslandFallback" not in runtime
 
 
 def test_complete_task_can_generate_maintenance_report(

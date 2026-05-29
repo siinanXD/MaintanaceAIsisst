@@ -1,10 +1,20 @@
 """Tests for error catalog workflows."""
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from app.extensions import db
 from app.models import ErrorEntry, Machine, Role, User
 from app.services.recurring_issue_service import analyze_recurring_issues
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def error_react_source():
+    """Return the combined React error island source."""
+    source_paths = list((REPO_ROOT / "frontend" / "src" / "errors").rglob("*.ts"))
+    source_paths.extend((REPO_ROOT / "frontend" / "src" / "errors").rglob("*.tsx"))
+    return "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
 
 
 def test_error_entry_create_search_update_and_delete(client, make_user, auth_headers):
@@ -483,11 +493,12 @@ def test_errors_page_contains_similar_errors_ui(client):
     """Verify the errors page contains similar-error UI hooks."""
     response = client.get("/errors")
     html = response.get_data(as_text=True)
+    react_source = error_react_source()
 
     assert response.status_code == 200
     assert "maintenance-errors-root" in html
-    assert "data-react-errors-fallback" in html
-    assert "data-similar-errors-panel" in html
-    assert "data-similar-errors-list" in html
-    assert "data-error-rag-sources" in html
-    assert "data-error-action-preview" in html
+    assert "data-react-errors-fallback" not in html
+    assert "data-similar-errors-panel" in react_source
+    assert "data-similar-errors-list" in react_source
+    assert "data-error-rag-sources" in react_source
+    assert "data-error-action-preview" in react_source

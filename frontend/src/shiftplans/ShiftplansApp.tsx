@@ -39,7 +39,6 @@ import {
 } from "./shiftplansUtils";
 
 const SHIFTPLANS_ISLAND = {
-  fallbackSelector: "[data-react-shiftplans-fallback]",
   mountedFlag: "maintenanceShiftplansReactMounted",
   mountEvent: "maintenance-shiftplans-react-mounted",
 } as const;

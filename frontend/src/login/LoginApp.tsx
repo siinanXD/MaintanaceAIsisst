@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { markIslandMounted } from "../app/islandMount";
 import { readStoredSession } from "../auth/session";
@@ -6,7 +6,6 @@ import { LoginForm } from "./LoginForm";
 import type { LoginData } from "./loginTypes";
 
 const LOGIN_ISLAND = {
-  fallbackSelector: "[data-react-login-fallback]",
   mountedFlag: "maintenanceLoginReactMounted",
   mountEvent: "maintenance-login-react-mounted"
 };
@@ -60,7 +59,7 @@ export function LoginApp(): ReactNode {
   const [session, setSession] = useState(() => readStoredSession());
   const loggedIn = Boolean(session.token && session.user);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     markIslandMounted(LOGIN_ISLAND);
   }, []);
 

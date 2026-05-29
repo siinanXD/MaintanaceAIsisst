@@ -1,6 +1,5 @@
 import {
   useEffect,
-  useLayoutEffect,
   useState,
   type ReactNode
 } from "react";
@@ -12,18 +11,16 @@ import type { MachineProfile } from "./machineTypes";
 import { machineErrorMessage } from "./machineUtils";
 
 const MACHINE_PROFILE_ISLAND = {
-  fallbackSelector: "[data-react-machine-profile-fallback]",
   mountedFlag: "maintenanceMachinesReactMounted",
   mountEvent: "maintenance-machines-react-mounted"
 };
 
 /**
- * Read the machine id from the legacy profile fallback.
+ * Read the machine id from the React profile root.
  */
 function readMachineId(): number | null {
   const reactRoot = document.getElementById("maintenance-machine-profile-root");
-  const fallbackRoot = document.querySelector<HTMLElement>("[data-machine-profile-page]");
-  const rawValue = reactRoot?.dataset.machineId || fallbackRoot?.dataset.machineId || "";
+  const rawValue = reactRoot?.dataset.machineId || "";
   const machineId = Number(rawValue);
   return Number.isFinite(machineId) && machineId > 0 ? machineId : null;
 }
@@ -35,7 +32,7 @@ export function MachineProfileApp(): ReactNode {
   const [message, setMessage] = useState("Maschinenprofil wird geladen...");
   const [profile, setProfile] = useState<MachineProfile | null>(null);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     markIslandMounted(MACHINE_PROFILE_ISLAND);
   }, []);
 

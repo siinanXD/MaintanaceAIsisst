@@ -1,6 +1,5 @@
 import {
   useEffect,
-  useLayoutEffect,
   useState,
   type ReactNode
 } from "react";
@@ -30,7 +29,6 @@ import type {
 import { documentErrorMessage, emptyDocumentFilters } from "./documentUtils";
 
 const DOCUMENTS_ISLAND = {
-  fallbackSelector: "[data-react-documents-fallback]",
   mountedFlag: "maintenanceDocumentsReactMounted",
   mountEvent: "maintenance-documents-react-mounted"
 };
@@ -80,7 +78,7 @@ export function DocumentsApp(): ReactNode {
     }
   }
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     markIslandMounted(DOCUMENTS_ISLAND);
   }, []);
 

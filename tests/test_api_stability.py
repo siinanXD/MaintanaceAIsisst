@@ -46,103 +46,62 @@ def frontend_source_text():
     return "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
 
 
-DASHBOARD_SPLIT_ASSETS = (
-    "/static/pages/workflows/dashboard/state.js",
-    "/static/pages/workflows/dashboard/resources.js",
-    "/static/pages/workflows/dashboard/executive.js",
-    "/static/pages/workflows/dashboard/tasks.js",
-    "/static/pages/workflows/dashboard/operations.js",
-    "/static/pages/workflows/dashboard/shift-calendar.js",
-    "/static/pages/workflows/dashboard/actions.js",
-)
-
-
-SHIFTPLAN_SPLIT_ASSETS = (
-    "/static/pages/shiftplans/shared.js",
-    "/static/pages/shiftplans/models.js",
-    "/static/pages/shiftplans/plans.js",
-    "/static/pages/shiftplans/grid.js",
-    "/static/pages/shiftplans/validation.js",
-    "/static/pages/shiftplans/actions.js",
-)
-
-
 def served_asset_text(client, paths):
     """Return combined text for served static asset paths."""
     return "\n".join(client.get(path).get_data(as_text=True) for path in paths)
 
 
-def shiftplans_runtime_text(client):
-    """Return the shift planning entrypoint and split module source."""
-    return served_asset_text(client, ("/static/pages/shiftplans.js", *SHIFTPLAN_SPLIT_ASSETS))
+def manifest_entry(manifest, entrypoint):
+    """Return a Vite manifest entry by exact key or normalized path suffix."""
+    if entrypoint in manifest:
+        return manifest[entrypoint]
+    matches = [
+        entry for key, entry in manifest.items() if key.replace("\\", "/").endswith(entrypoint)
+    ]
+    if len(matches) != 1:
+        raise KeyError(entrypoint)
+    return matches[0]
 
 
 def frontend_runtime_text(client):
     """Return JavaScript served by the core and lazy frontend entrypoints."""
     asset_paths = (
         "/static/app.js",
-        "/static/chat-loader.js",
-        "/static/chat.js",
-        "/static/chat/session.js",
-        "/static/chat/evidence.js",
-        "/static/chat/rendering.js",
-        "/static/chat/history.js",
-        "/static/chat/actions.js",
-        "/static/pages/workflows.js",
-        "/static/pages/login.js",
         "/static/pages/admin-ai-island.js",
-        "/static/pages/admin-ai.js",
-        "/static/pages/admin-ai/shared.js",
-        "/static/pages/admin-ai/overview.js",
-        "/static/pages/admin-ai/knowledge.js",
-        "/static/pages/admin-ai/retrieval.js",
-        "/static/pages/admin-ai/observability.js",
-        "/static/pages/admin-ai/operations.js",
-        "/static/pages/admin-ai/actions.js",
-        "/static/pages/handover.js",
         "/static/pages/handover-island.js",
-        "/static/pages/shiftplans.js",
         "/static/pages/shiftplans-island.js",
-        "/static/pages/workflows/shared.js",
-        "/static/pages/workflows/dashboard-shifts.js",
-        "/static/pages/workflows/dashboard.js",
         "/static/pages/dashboard-island.js",
-        *DASHBOARD_SPLIT_ASSETS,
-        "/static/pages/workflows/tasks.js",
         "/static/pages/react-island-loader.js",
         "/static/pages/tasks-island.js",
-        "/static/pages/workflows/errors.js",
         "/static/pages/errors-island.js",
-        "/static/pages/workflows/machines.js",
-        "/static/pages/workflows/machine-profile.js",
         "/static/pages/machines-island.js",
-        "/static/pages/workflows/documents.js",
         "/static/pages/documents-island.js",
-        "/static/pages/workflows/admin-users.js",
         "/static/pages/admin-users-island.js",
-        "/static/pages/workflows/employees.js",
         "/static/pages/employees-island.js",
-        "/static/pages/workflows/vacations.js",
         "/static/pages/vacations-island.js",
-        "/static/pages/workflows/inventory.js",
         "/static/pages/inventory-island.js",
-        "/static/pages/workflows/legacy-shiftplans.js",
-        *SHIFTPLAN_SPLIT_ASSETS,
     )
     return served_asset_text(client, asset_paths)
-
-
-def task_workflow_source():
-    """Return the task workflow initializer source."""
-    return (REPO_ROOT / "app" / "static" / "pages" / "workflows" / "tasks.js").read_text(
-        encoding="utf-8",
-    )
 
 
 def task_react_source():
     """Return the combined React task island source."""
     source_paths = list((REPO_ROOT / "frontend" / "src" / "tasks").rglob("*.ts"))
     source_paths.extend((REPO_ROOT / "frontend" / "src" / "tasks").rglob("*.tsx"))
+    return "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
+
+
+def dashboard_react_source():
+    """Return the combined React dashboard island source."""
+    source_paths = list((REPO_ROOT / "frontend" / "src" / "dashboard").rglob("*.ts"))
+    source_paths.extend((REPO_ROOT / "frontend" / "src" / "dashboard").rglob("*.tsx"))
+    return "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
+
+
+def inventory_react_source():
+    """Return the combined React inventory island source."""
+    source_paths = list((REPO_ROOT / "frontend" / "src" / "inventory").rglob("*.ts"))
+    source_paths.extend((REPO_ROOT / "frontend" / "src" / "inventory").rglob("*.tsx"))
     return "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
 
 
@@ -181,6 +140,34 @@ def vacation_react_source():
     return "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
 
 
+def shiftplans_react_source():
+    """Return the combined React shiftplans island source."""
+    source_paths = list((REPO_ROOT / "frontend" / "src" / "shiftplans").rglob("*.ts"))
+    source_paths.extend((REPO_ROOT / "frontend" / "src" / "shiftplans").rglob("*.tsx"))
+    return "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
+
+
+def handover_react_source():
+    """Return the combined React handover island source."""
+    source_paths = list((REPO_ROOT / "frontend" / "src" / "handover").rglob("*.ts"))
+    source_paths.extend((REPO_ROOT / "frontend" / "src" / "handover").rglob("*.tsx"))
+    return "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
+
+
+def admin_users_react_source():
+    """Return the combined React admin users island source."""
+    source_paths = list((REPO_ROOT / "frontend" / "src" / "admin-users").rglob("*.ts"))
+    source_paths.extend((REPO_ROOT / "frontend" / "src" / "admin-users").rglob("*.tsx"))
+    return "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
+
+
+def admin_ai_react_source():
+    """Return the combined React Admin-AI island source."""
+    source_paths = list((REPO_ROOT / "frontend" / "src" / "admin-ai").rglob("*.ts"))
+    source_paths.extend((REPO_ROOT / "frontend" / "src" / "admin-ai").rglob("*.tsx"))
+    return "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
+
+
 def frontend_ui_source_files():
     """Return frontend source files that contain user-visible UI copy."""
     source_paths = list((REPO_ROOT / "app" / "templates").rglob("*.html"))
@@ -208,20 +195,17 @@ def test_frontend_task_workflow_routes_exist(app, client):
 
 
 def test_task_prioritization_is_manual_refresh_only():
-    """Verify the task page does not trigger AI prioritization on initial load."""
-    source = task_workflow_source()
+    """Verify the React task page does not trigger AI prioritization on initial load."""
     react_source = task_react_source()
 
-    assert "/api/v1/tasks/prioritize" in source
     assert "/api/v1/tasks/prioritize" in react_source
-    assert "priorityRefreshButtons.forEach" in source
-    assert "Bei Bedarf aktualisieren" in source
     assert "Bei Bedarf aktualisieren" in react_source
-    assert "Prioritätslage nicht neu berechnet" in source
     assert "Prioritätslage nicht neu berechnet" in react_source
-    assert "await load();\n    await loadPriorities();" not in source
-    assert source.count("await loadPriorities();") == 1
+    assert "priorityRefreshButtons.forEach" not in react_source
+    assert "await loadPriorities();" not in react_source
     assert "await refreshTaskData();\n    await refreshPriorities();" not in react_source
+    assert "onClick={onRefresh}" in react_source
+    assert "onRefresh={refreshPriorities}" in react_source
 
 
 def test_new_ai_frontend_routes_exist(app, client):
@@ -229,6 +213,12 @@ def test_new_ai_frontend_routes_exist(app, client):
     routes = public_route_methods(app)
     script = (
         frontend_runtime_text(client)
+        + "\n"
+        + task_react_source()
+        + "\n"
+        + dashboard_react_source()
+        + "\n"
+        + inventory_react_source()
         + "\n"
         + machine_react_source()
         + "\n"
@@ -239,6 +229,12 @@ def test_new_ai_frontend_routes_exist(app, client):
         + employee_react_source()
         + "\n"
         + vacation_react_source()
+        + "\n"
+        + shiftplans_react_source()
+        + "\n"
+        + handover_react_source()
+        + "\n"
+        + admin_ai_react_source()
     )
 
     expected_routes = {
@@ -296,15 +292,15 @@ def test_new_ai_frontend_routes_exist(app, client):
     }
     assert expected_routes <= routes
     assert "/api/v1/tasks/prioritize" in script
-    assert 'mode: "local"' in script
-    assert 'listData(await api("/api/v1/tasks/prioritize"' in script
+    assert "prioritizeTasks" in script
+    assert 'body: { status: "open", limit: 10 }' in script
     assert "/api/v1/errors/similar" in script
     assert "/api/v1/errors/analyze" in script
     assert "`/api/v1/errors/${errorId}`" in script
     assert "`/api/v1/errors/${errorId}/close`" in script
     assert "/api/v1/inventory/forecast" in script
     assert "/api/v1/shiftplans/calendar" in script
-    assert 'BASE + "/models"' in script
+    assert "`${SHIFTPLANS_BASE}/models`" in script
     assert "/api/v1/ai/daily-briefing" in script
     assert "/api/v1/ai/error-assistant" in script
     assert "/api/v1/admin/ai/knowledge-network" in script
@@ -325,7 +321,8 @@ def test_new_ai_frontend_routes_exist(app, client):
     assert "`/api/v1/documents/manuals/${manualId}`" in script
     assert "/api/v1/machines/maintenance-recommendations" in script
     assert "`/api/v1/machines/${machineId}/profile`" in script
-    assert '"/api/v1/machines/" + machineId + "/profile"' in script
+    assert "`/api/v1/machines/${machineId}/history`" in script
+    assert "`/api/v1/machines/${machineId}/assistant`" in script
     assert "/api/v1/employees?limit=200" in script
     assert "`/api/v1/employees/${employeeId}`" in script
     assert "`/api/v1/employees/${employeeId}/documents`" in script
@@ -366,7 +363,6 @@ def test_feature_registry_covers_permissions_and_frontend_assets(client):
     registry_response = client.get("/static/core/feature-registry.js")
     auth_response = client.get("/static/auth.js")
     app_js_response = client.get("/static/app.js")
-    workflows_response = client.get("/static/pages/workflows.js")
     base_response = client.get("/")
     registry = registry_response.get_data(as_text=True)
     auth_js = auth_response.get_data(as_text=True)
@@ -377,20 +373,24 @@ def test_feature_registry_covers_permissions_and_frontend_assets(client):
     assert registry_response.status_code == 200
     assert auth_response.status_code == 200
     assert app_js_response.status_code == 200
-    assert workflows_response.status_code == 200
     assert "window.maintenanceFeatures" in registry
     assert "core/feature-registry.js" in html
     assert 'module: "page"' in registry
     assert 'moduleUrl: "/static/pages/dashboard-island.js"' in registry
     assert 'moduleUrl: "/static/pages/tasks-island.js"' in registry
     assert "WORKFLOW_FEATURE_KEYS" not in app_js
-    assert 'feature.module === "workflows"' in app_js
+    assert 'feature.module === "workflows"' not in app_js
+    assert "WORKFLOW_MODULE_URL" not in app_js
+    assert "workflow_module_load_failed" not in app_js
+    assert "loadWorkflowModule" not in app_js
+    assert not (REPO_ROOT / "app" / "static" / "pages" / "workflow-loader.js").exists()
+    assert not (REPO_ROOT / "app" / "static" / "pages" / "workflows.js").exists()
     assert "runAction" in app_js
     assert "setFormBusy" in app_js
     assert "setWorkflowStatus" in app_js
     assert "initAccessibleTables" in app_js
-    assert "PAGE_MODULE_URLS" in app_js
-    assert "feature.initializers" in workflows
+    assert "PAGE_MODULE_URLS" not in app_js
+    assert "feature.initializers" not in workflows
     registry_initializer_blocks = re.findall(
         r"initializers:\s*\[([^\]]+)\]",
         registry,
@@ -442,51 +442,105 @@ def test_feature_registry_covers_permissions_and_frontend_assets(client):
     assert 'permissionKey: "employees"' in registry
 
 
-def test_react_foundation_is_configured_but_not_globally_loaded(client):
-    """Verify the React foundation exists without changing the current Jinja shell."""
+def test_react_foundation_and_shell_chrome_are_configured(client):
+    """Verify the React foundation exists and only shell chrome is globally scoped."""
     api_docs_response = client.get("/api-docs")
     api_docs_html = api_docs_response.get_data(as_text=True)
+    manifest_path = REPO_ROOT / "app" / "static" / "react" / ".vite" / "manifest.json"
     frontend_package = json.loads(
         (REPO_ROOT / "frontend" / "package.json").read_text(encoding="utf-8"),
     )
     vite_config = (REPO_ROOT / "frontend" / "vite.config.ts").read_text(encoding="utf-8")
     react_entrypoint = (REPO_ROOT / "frontend" / "src" / "main.tsx").read_text(encoding="utf-8")
+    shell_entrypoint = (
+        REPO_ROOT / "frontend" / "src" / "layout" / "shellChromeEntrypoint.tsx"
+    ).read_text(encoding="utf-8")
+    app_js = (REPO_ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+    shell_chat = (REPO_ROOT / "frontend" / "src" / "layout" / "ShellChatWidget.tsx").read_text(
+        encoding="utf-8"
+    )
     root_package = json.loads((REPO_ROOT / "package.json").read_text(encoding="utf-8"))
 
     assert api_docs_response.status_code == 200
     assert "maintenance-react-root" not in api_docs_html
-    assert "/static/react/" not in api_docs_html
+    assert "maintenance-shell-icons-root" in api_docs_html
+    assert "maintenance-shell-sidebar-root" in api_docs_html
+    assert "maintenance-shell-topbar-root" in api_docs_html
+    assert "maintenance-shell-chat-root" in api_docs_html
+    assert "data-react-shell-sidebar-fallback" not in api_docs_html
+    assert "data-react-shell-topbar-fallback" not in api_docs_html
+    assert "data-react-shell-chat-fallback" not in api_docs_html
+    assert "app-sidebar hidden lg:flex" not in api_docs_html
+    assert "chat-widget" not in api_docs_html
     assert frontend_package["dependencies"]["react"].startswith("^19.")
     assert frontend_package["scripts"]["typecheck"] == "tsc --noEmit"
     assert 'outDir: "../app/static/react"' in vite_config
+    assert "shellChrome" in vite_config
+    assert "src/layout/shellChromeEntrypoint.tsx" in vite_config
+    assert "ShellIconSprite" in shell_entrypoint
+    assert "maintenanceShellReactMounted" in shell_entrypoint
+    assert "maintenanceShellReactMountedRoots" in shell_entrypoint
+    assert "maintenance-shell-react-mounted" in shell_entrypoint
+    assert "reactShellTopbarMounted" not in app_js
+    assert "reactShellSidebarMounted" not in app_js
+    assert "reactShellTopbarRootPresent" not in app_js
+    assert "reactShellSidebarRootPresent" not in app_js
+    assert "maintenanceShellReactMounted" not in app_js
+    assert "initTopbarClock" not in app_js
+    assert "initAppShellPreferences" not in app_js
+    assert "initGlobalSearch" not in app_js
+    assert "initTopbarActions" not in app_js
+    assert "refreshShellCounters" not in app_js
+    assert "/api/v1/ai/chat" in shell_chat
+    assert "data-chat-form" in shell_chat
+    assert "data-chat-messages" in shell_chat
+    assert not (REPO_ROOT / "app" / "static" / "chat-loader.js").exists()
+    assert not (REPO_ROOT / "app" / "static" / "chat.js").exists()
     assert "document.getElementById(REACT_ROOT_ID)" in react_entrypoint
     assert root_package["scripts"]["build:react"] == "npm --prefix frontend run build"
     assert root_package["scripts"]["check:react"] == "npm --prefix frontend run typecheck"
+    if not manifest_path.exists():
+        assert "/static/react/" not in api_docs_html
+        return
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    shell_entry = manifest_entry(manifest, "src/layout/shellChromeEntrypoint.tsx")
+    shell_asset = f"/static/react/{shell_entry['file']}"
+    assert shell_asset in api_docs_html
+    login_entry = manifest_entry(manifest, "src/login/loginEntrypoint.tsx")
+    assert f"/static/react/{login_entry['file']}" not in api_docs_html
 
 
-def test_login_react_island_keeps_fallback_and_stays_route_scoped(client):
-    """Verify React login assets are optional and scoped to the login page."""
+def test_login_react_island_is_root_only_and_stays_route_scoped(client):
+    """Verify React login assets are scoped and no legacy fallback markup remains."""
     api_docs_response = client.get("/api-docs")
     login_response = client.get("/login")
     api_docs_html = api_docs_response.get_data(as_text=True)
     login_html = login_response.get_data(as_text=True)
+    login_source = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (REPO_ROOT / "frontend" / "src" / "login").rglob("*.tsx")
+    )
     manifest_path = REPO_ROOT / "app" / "static" / "react" / ".vite" / "manifest.json"
 
     assert api_docs_response.status_code == 200
     assert login_response.status_code == 200
     assert "maintenance-login-root" not in api_docs_html
-    assert "/static/react/" not in api_docs_html
     assert "maintenance-login-root" in login_html
-    assert "data-react-login-fallback" in login_html
-    assert "data-login-form" in login_html
-    assert "data-login-message" in login_html
+    assert "data-react-login-fallback" not in login_html
+    assert "data-login-form" not in login_html
+    assert "data-login-message" not in login_html
+    assert "data-login-form" in login_source
+    assert "data-login-message" in login_source
+    assert "LoginForm" in login_source
+    assert not (REPO_ROOT / "app" / "static" / "pages" / "login.js").exists()
 
     if not manifest_path.exists():
         assert "/static/react/" not in login_html
         return
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    login_entry = manifest["src/login/loginEntrypoint.tsx"]
+    login_entry = manifest_entry(manifest, "src/login/loginEntrypoint.tsx")
     login_asset = f"/static/react/{login_entry['file']}"
     imported_assets = [
         f"/static/react/{manifest[import_name]['file']}"
@@ -500,8 +554,8 @@ def test_login_react_island_keeps_fallback_and_stays_route_scoped(client):
         assert client.get(imported_asset).status_code == 200
 
 
-def test_dashboard_react_shell_island_keeps_fallback_and_stays_route_scoped(client):
-    """Verify React dashboard assets are optional and scoped to the cockpit page."""
+def test_dashboard_react_shell_island_stays_route_scoped(client):
+    """Verify React dashboard assets are scoped to the cockpit page."""
     dashboard_response = client.get("/")
     tasks_response = client.get("/tasks")
     registry_response = client.get("/static/core/feature-registry.js")
@@ -515,11 +569,11 @@ def test_dashboard_react_shell_island_keeps_fallback_and_stays_route_scoped(clie
     assert registry_response.status_code == 200
     assert "maintenance-dashboard-root" in dashboard_html
     assert "maintenance-dashboard-root" not in tasks_html
-    assert "data-react-dashboard-fallback" in dashboard_html
-    assert "data-ai-ops-cockpit" in dashboard_html
-    assert "data-dashboard-priority-list" in dashboard_html
-    assert "data-dashboard-shift-timeline" in dashboard_html
-    assert "data-task-detail-modal" in dashboard_html
+    assert "data-react-dashboard-fallback" not in dashboard_html
+    assert "data-ai-ops-cockpit" not in dashboard_html
+    assert "data-dashboard-priority-list" not in dashboard_html
+    assert "data-dashboard-shift-timeline" not in dashboard_html
+    assert "data-task-detail-modal" not in dashboard_html
     assert 'moduleUrl: "/static/pages/dashboard-island.js"' in registry
 
     if not manifest_path.exists():
@@ -527,11 +581,7 @@ def test_dashboard_react_shell_island_keeps_fallback_and_stays_route_scoped(clie
         return
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    dashboard_entry = manifest.get("src/dashboard/dashboardEntrypoint.tsx")
-    if dashboard_entry is None:
-        assert "/static/react/" not in dashboard_html
-        return
-
+    dashboard_entry = manifest_entry(manifest, "src/dashboard/dashboardEntrypoint.tsx")
     dashboard_asset = f"/static/react/{dashboard_entry['file']}"
     imported_assets = [
         f"/static/react/{manifest[import_name]['file']}"
@@ -545,14 +595,21 @@ def test_dashboard_react_shell_island_keeps_fallback_and_stays_route_scoped(clie
         assert client.get(imported_asset).status_code == 200
 
 
-def test_inventory_react_island_keeps_fallback_and_stays_route_scoped(client):
-    """Verify React inventory assets are optional and scoped to the inventory page."""
+def test_inventory_react_island_stays_route_scoped(client):
+    """Verify React inventory assets are scoped to the inventory page."""
     home_response = client.get("/")
     inventory_response = client.get("/inventory")
     registry_response = client.get("/static/core/feature-registry.js")
     home_html = home_response.get_data(as_text=True)
     inventory_html = inventory_response.get_data(as_text=True)
     registry = registry_response.get_data(as_text=True)
+    inventory_source = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (REPO_ROOT / "frontend" / "src" / "inventory").rglob("*.tsx")
+    )
+    inventory_loader = (REPO_ROOT / "app" / "static" / "pages" / "inventory-island.js").read_text(
+        encoding="utf-8"
+    )
     manifest_path = REPO_ROOT / "app" / "static" / "react" / ".vite" / "manifest.json"
 
     assert home_response.status_code == 200
@@ -560,20 +617,24 @@ def test_inventory_react_island_keeps_fallback_and_stays_route_scoped(client):
     assert registry_response.status_code == 200
     assert "maintenance-inventory-root" not in home_html
     assert "maintenance-inventory-root" in inventory_html
-    assert "data-react-inventory-fallback" in inventory_html
-    assert "data-inventory-form" in inventory_html
-    assert "data-inventory-list" in inventory_html
-    assert "data-inventory-forecast-form" in inventory_html
-    assert "data-inventory-forecast-list" in inventory_html
-    assert "data-inventory-forecast-unmatched" in inventory_html
+    assert "data-react-inventory-fallback" not in inventory_html
+    assert "data-inventory-form" in inventory_source
+    assert "data-inventory-list" in inventory_source
+    assert "data-inventory-forecast-form" in inventory_source
+    assert "data-inventory-forecast-list" in inventory_source
+    assert "data-inventory-forecast-unmatched" in inventory_source
     assert 'moduleUrl: "/static/pages/inventory-island.js"' in registry
+    assert "waitForReactIsland" in inventory_loader
+    assert "initializeReactIslandFallback" not in inventory_loader
+    assert "workflowModules" not in inventory_loader
+    assert not (REPO_ROOT / "app" / "static" / "pages" / "workflows" / "inventory.js").exists()
 
     if not manifest_path.exists():
         assert "/static/react/" not in inventory_html
         return
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    inventory_entry = manifest["src/inventory/inventoryEntrypoint.tsx"]
+    inventory_entry = manifest_entry(manifest, "src/inventory/inventoryEntrypoint.tsx")
     inventory_asset = f"/static/react/{inventory_entry['file']}"
     imported_assets = [
         f"/static/react/{manifest[import_name]['file']}"
@@ -587,14 +648,18 @@ def test_inventory_react_island_keeps_fallback_and_stays_route_scoped(client):
         assert client.get(imported_asset).status_code == 200
 
 
-def test_tasks_react_island_keeps_fallback_and_stays_route_scoped(client):
-    """Verify React task assets are optional and scoped to the task page."""
+def test_tasks_react_island_stays_route_scoped(client):
+    """Verify React task assets and hooks are scoped to the task page."""
     home_response = client.get("/")
     tasks_response = client.get("/tasks")
     registry_response = client.get("/static/core/feature-registry.js")
     home_html = home_response.get_data(as_text=True)
     tasks_html = tasks_response.get_data(as_text=True)
     registry = registry_response.get_data(as_text=True)
+    tasks_source = task_react_source()
+    tasks_loader = (REPO_ROOT / "app" / "static" / "pages" / "tasks-island.js").read_text(
+        encoding="utf-8",
+    )
     manifest_path = REPO_ROOT / "app" / "static" / "react" / ".vite" / "manifest.json"
 
     assert home_response.status_code == 200
@@ -602,20 +667,26 @@ def test_tasks_react_island_keeps_fallback_and_stays_route_scoped(client):
     assert registry_response.status_code == 200
     assert "maintenance-tasks-root" not in home_html
     assert "maintenance-tasks-root" in tasks_html
-    assert "data-react-tasks-fallback" in tasks_html
-    assert "data-task-form" in tasks_html
-    assert "data-task-message" in tasks_html
-    assert "data-task-suggest-form" in tasks_html
-    assert "data-task-priority-list" in tasks_html
-    assert "data-task-kanban-board" in tasks_html
+    assert "data-react-tasks-fallback" not in tasks_html
+    assert "data-task-form" in tasks_source
+    assert "data-task-message" in tasks_source
+    assert "data-task-suggest-form" in tasks_source
+    assert "data-task-priority-list" in tasks_source
+    assert "data-task-kanban-board" in tasks_source
+    assert "data-task-edit-cancel" in tasks_source
+    assert "data-kanban-list" in tasks_source
+    assert "waitForReactIsland" in tasks_loader
+    assert "initializeReactIslandFallback" not in tasks_loader
+    assert "workflowModules" not in tasks_loader
     assert 'moduleUrl: "/static/pages/tasks-island.js"' in registry
+    assert not (REPO_ROOT / "app" / "static" / "pages" / "workflows" / "tasks.js").exists()
 
     if not manifest_path.exists():
         assert "/static/react/" not in tasks_html
         return
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    tasks_entry = manifest["src/tasks/taskEntrypoint.tsx"]
+    tasks_entry = manifest_entry(manifest, "src/tasks/taskEntrypoint.tsx")
     tasks_asset = f"/static/react/{tasks_entry['file']}"
     imported_assets = [
         f"/static/react/{manifest[import_name]['file']}"
@@ -629,14 +700,18 @@ def test_tasks_react_island_keeps_fallback_and_stays_route_scoped(client):
         assert client.get(imported_asset).status_code == 200
 
 
-def test_errors_react_island_keeps_fallback_and_stays_route_scoped(client):
-    """Verify React error assets are optional and scoped to the errors page."""
+def test_errors_react_island_stays_route_scoped(client):
+    """Verify React error assets and hooks are scoped to the errors page."""
     home_response = client.get("/")
     errors_response = client.get("/errors")
     registry_response = client.get("/static/core/feature-registry.js")
     home_html = home_response.get_data(as_text=True)
     errors_html = errors_response.get_data(as_text=True)
     registry = registry_response.get_data(as_text=True)
+    errors_source = error_react_source()
+    errors_loader = (REPO_ROOT / "app" / "static" / "pages" / "errors-island.js").read_text(
+        encoding="utf-8",
+    )
     manifest_path = REPO_ROOT / "app" / "static" / "react" / ".vite" / "manifest.json"
 
     assert home_response.status_code == 200
@@ -644,21 +719,25 @@ def test_errors_react_island_keeps_fallback_and_stays_route_scoped(client):
     assert registry_response.status_code == 200
     assert "maintenance-errors-root" not in home_html
     assert "maintenance-errors-root" in errors_html
-    assert "data-react-errors-fallback" in errors_html
-    assert "data-error-form" in errors_html
-    assert "data-error-analyze-form" in errors_html
-    assert "data-similar-errors-panel" in errors_html
-    assert "data-error-list" in errors_html
-    assert "data-error-search" in errors_html
-    assert "data-error-action-preview" in errors_html
+    assert "data-react-errors-fallback" not in errors_html
+    assert "data-error-form" in errors_source
+    assert "data-error-analyze-form" in errors_source
+    assert "data-similar-errors-panel" in errors_source
+    assert "data-error-list" in errors_source
+    assert "data-error-search" in errors_source
+    assert "data-error-action-preview" in errors_source
+    assert "waitForReactIsland" in errors_loader
+    assert "initializeReactIslandFallback" not in errors_loader
+    assert "workflowModules" not in errors_loader
     assert 'moduleUrl: "/static/pages/errors-island.js"' in registry
+    assert not (REPO_ROOT / "app" / "static" / "pages" / "workflows" / "errors.js").exists()
 
     if not manifest_path.exists():
         assert "/static/react/" not in errors_html
         return
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    errors_entry = manifest["src/errors/errorsEntrypoint.tsx"]
+    errors_entry = manifest_entry(manifest, "src/errors/errorsEntrypoint.tsx")
     errors_asset = f"/static/react/{errors_entry['file']}"
     imported_assets = [
         f"/static/react/{manifest[import_name]['file']}"
@@ -672,8 +751,8 @@ def test_errors_react_island_keeps_fallback_and_stays_route_scoped(client):
         assert client.get(imported_asset).status_code == 200
 
 
-def test_machines_react_island_keeps_fallback_and_stays_route_scoped(client):
-    """Verify React machine assets are optional and scoped to machine routes."""
+def test_machines_react_island_stays_route_scoped(client):
+    """Verify React machine assets and hooks are scoped to machine routes."""
     home_response = client.get("/")
     machines_response = client.get("/machines")
     profile_response = client.get("/machines/123")
@@ -682,6 +761,10 @@ def test_machines_react_island_keeps_fallback_and_stays_route_scoped(client):
     machines_html = machines_response.get_data(as_text=True)
     profile_html = profile_response.get_data(as_text=True)
     registry = registry_response.get_data(as_text=True)
+    machines_source = machine_react_source()
+    machines_loader = (REPO_ROOT / "app" / "static" / "pages" / "machines-island.js").read_text(
+        encoding="utf-8",
+    )
     manifest_path = REPO_ROOT / "app" / "static" / "react" / ".vite" / "manifest.json"
 
     assert home_response.status_code == 200
@@ -691,16 +774,28 @@ def test_machines_react_island_keeps_fallback_and_stays_route_scoped(client):
     assert "maintenance-machines-root" not in home_html
     assert "maintenance-machine-profile-root" not in home_html
     assert "maintenance-machines-root" in machines_html
-    assert "data-react-machines-fallback" in machines_html
-    assert "data-machine-form" in machines_html
-    assert "data-machine-list" in machines_html
-    assert "data-machine-history-panel" in machines_html
+    assert "data-react-machines-fallback" not in machines_html
+    assert "data-machine-form" in machines_source
+    assert "data-machine-list" in machines_source
+    assert "data-machine-history-panel" in machines_source
     assert "maintenance-machine-profile-root" in profile_html
-    assert "data-react-machine-profile-fallback" in profile_html
-    assert "data-machine-profile-page" in profile_html
+    assert "data-react-machine-profile-fallback" not in profile_html
+    assert "data-machine-profile-page" in machines_source
     assert 'data-machine-id="123"' in profile_html
+    assert "data-machine-profile-kpis" in machines_source
+    assert "data-machine-profile-tasks" in machines_source
+    assert "data-machine-profile-errors" in machines_source
+    assert "data-machine-profile-documents" in machines_source
+    assert "data-machine-profile-handovers" in machines_source
+    assert "waitForReactIsland" in machines_loader
+    assert "initializeReactIslandFallback" not in machines_loader
+    assert "workflowModules" not in machines_loader
     assert 'moduleUrl: "/static/pages/machines-island.js"' in registry
     assert 'routePrefixes: ["/machines/"]' in registry
+    assert not (REPO_ROOT / "app" / "static" / "pages" / "workflows" / "machines.js").exists()
+    assert not (
+        REPO_ROOT / "app" / "static" / "pages" / "workflows" / "machine-profile.js"
+    ).exists()
 
     if not manifest_path.exists():
         assert "/static/react/" not in machines_html
@@ -708,7 +803,7 @@ def test_machines_react_island_keeps_fallback_and_stays_route_scoped(client):
         return
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    machines_entry = manifest["src/machines/machinesEntrypoint.tsx"]
+    machines_entry = manifest_entry(manifest, "src/machines/machinesEntrypoint.tsx")
     machines_asset = f"/static/react/{machines_entry['file']}"
     imported_assets = [
         f"/static/react/{manifest[import_name]['file']}"
@@ -724,14 +819,18 @@ def test_machines_react_island_keeps_fallback_and_stays_route_scoped(client):
         assert client.get(imported_asset).status_code == 200
 
 
-def test_documents_react_island_keeps_fallback_and_stays_route_scoped(client):
-    """Verify React document assets are optional and scoped to the documents page."""
+def test_documents_react_island_stays_route_scoped(client):
+    """Verify React document assets and hooks are scoped to the documents page."""
     home_response = client.get("/")
     documents_response = client.get("/documents")
     registry_response = client.get("/static/core/feature-registry.js")
     home_html = home_response.get_data(as_text=True)
     documents_html = documents_response.get_data(as_text=True)
     registry = registry_response.get_data(as_text=True)
+    documents_source = document_react_source()
+    documents_loader = (REPO_ROOT / "app" / "static" / "pages" / "documents-island.js").read_text(
+        encoding="utf-8"
+    )
     manifest_path = REPO_ROOT / "app" / "static" / "react" / ".vite" / "manifest.json"
 
     assert home_response.status_code == 200
@@ -739,22 +838,26 @@ def test_documents_react_island_keeps_fallback_and_stays_route_scoped(client):
     assert registry_response.status_code == 200
     assert "maintenance-documents-root" not in home_html
     assert "maintenance-documents-root" in documents_html
-    assert "data-react-documents-fallback" in documents_html
-    assert "data-document-filter-form" in documents_html
-    assert "data-document-upload-check-form" in documents_html
-    assert "data-manual-upload-form" in documents_html
-    assert "data-document-list" in documents_html
-    assert "data-manual-list" in documents_html
-    assert "data-document-review-panel" in documents_html
-    assert "data-document-summary-panel" in documents_html
+    assert "data-react-documents-fallback" not in documents_html
+    assert "data-document-filter-form" in documents_source
+    assert "data-document-upload-check-form" in documents_source
+    assert "data-manual-upload-form" in documents_source
+    assert "data-document-list" in documents_source
+    assert "data-manual-list" in documents_source
+    assert "data-document-review-panel" in documents_source
+    assert "data-document-summary-panel" in documents_source
+    assert "waitForReactIsland" in documents_loader
+    assert "initializeReactIslandFallback" not in documents_loader
+    assert "workflowModules" not in documents_loader
     assert 'moduleUrl: "/static/pages/documents-island.js"' in registry
+    assert not (REPO_ROOT / "app" / "static" / "pages" / "workflows" / "documents.js").exists()
 
     if not manifest_path.exists():
         assert "/static/react/" not in documents_html
         return
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    documents_entry = manifest["src/documents/documentsEntrypoint.tsx"]
+    documents_entry = manifest_entry(manifest, "src/documents/documentsEntrypoint.tsx")
     documents_asset = f"/static/react/{documents_entry['file']}"
     imported_assets = [
         f"/static/react/{manifest[import_name]['file']}"
@@ -768,14 +871,18 @@ def test_documents_react_island_keeps_fallback_and_stays_route_scoped(client):
         assert client.get(imported_asset).status_code == 200
 
 
-def test_admin_users_react_island_keeps_fallback_and_stays_route_scoped(client):
-    """Verify React admin-user assets are optional and scoped to the admin users page."""
+def test_admin_users_react_island_stays_route_scoped(client):
+    """Verify React admin-user assets and hooks are scoped to the admin users page."""
     home_response = client.get("/")
     admin_response = client.get("/admin/users")
     registry_response = client.get("/static/core/feature-registry.js")
     home_html = home_response.get_data(as_text=True)
     admin_html = admin_response.get_data(as_text=True)
     registry = registry_response.get_data(as_text=True)
+    admin_source = admin_users_react_source()
+    admin_loader = (REPO_ROOT / "app" / "static" / "pages" / "admin-users-island.js").read_text(
+        encoding="utf-8"
+    )
     manifest_path = REPO_ROOT / "app" / "static" / "react" / ".vite" / "manifest.json"
 
     assert home_response.status_code == 200
@@ -783,20 +890,24 @@ def test_admin_users_react_island_keeps_fallback_and_stays_route_scoped(client):
     assert registry_response.status_code == 200
     assert "maintenance-admin-users-root" not in home_html
     assert "maintenance-admin-users-root" in admin_html
-    assert "data-react-admin-users-fallback" in admin_html
-    assert "data-user-list" in admin_html
-    assert "data-permission-list" in admin_html
-    assert "data-audit-log-list" in admin_html
-    assert "data-backup-list" in admin_html
-    assert "data-ai-analytics-card" in admin_html
+    assert "data-react-admin-users-fallback" not in admin_html
+    assert "data-user-list" in admin_source
+    assert "data-permission-list" in admin_source
+    assert "data-audit-log-list" in admin_source
+    assert "data-backup-list" in admin_source
+    assert "data-ai-analytics-card" in admin_source
+    assert "waitForReactIsland" in admin_loader
+    assert "initializeReactIslandFallback" not in admin_loader
+    assert "workflowModules" not in admin_loader
     assert 'moduleUrl: "/static/pages/admin-users-island.js"' in registry
+    assert not (REPO_ROOT / "app" / "static" / "pages" / "workflows" / "admin-users.js").exists()
 
     if not manifest_path.exists():
         assert "/static/react/" not in admin_html
         return
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    admin_entry = manifest["src/admin-users/adminUsersEntrypoint.tsx"]
+    admin_entry = manifest_entry(manifest, "src/admin-users/adminUsersEntrypoint.tsx")
     admin_asset = f"/static/react/{admin_entry['file']}"
     imported_assets = [
         f"/static/react/{manifest[import_name]['file']}"
@@ -810,14 +921,18 @@ def test_admin_users_react_island_keeps_fallback_and_stays_route_scoped(client):
         assert client.get(imported_asset).status_code == 200
 
 
-def test_employees_react_island_keeps_fallback_and_stays_route_scoped(client):
-    """Verify React employee assets are optional and scoped to the employees page."""
+def test_employees_react_island_stays_route_scoped(client):
+    """Verify React employee assets are scoped to the employees page."""
     home_response = client.get("/")
     employees_response = client.get("/employees")
     registry_response = client.get("/static/core/feature-registry.js")
     home_html = home_response.get_data(as_text=True)
     employees_html = employees_response.get_data(as_text=True)
     registry = registry_response.get_data(as_text=True)
+    employees_source = employee_react_source()
+    employees_loader = (REPO_ROOT / "app" / "static" / "pages" / "employees-island.js").read_text(
+        encoding="utf-8"
+    )
     manifest_path = REPO_ROOT / "app" / "static" / "react" / ".vite" / "manifest.json"
 
     assert home_response.status_code == 200
@@ -825,22 +940,26 @@ def test_employees_react_island_keeps_fallback_and_stays_route_scoped(client):
     assert registry_response.status_code == 200
     assert "maintenance-employees-root" not in home_html
     assert "maintenance-employees-root" in employees_html
-    assert "data-react-employees-fallback" in employees_html
-    assert "data-employee-form" in employees_html
-    assert "data-employee-message" in employees_html
-    assert "data-employee-list" in employees_html
-    assert "data-employee-count" in employees_html
-    assert "emp-edit-dialog" in employees_html
-    assert "empd-save" in employees_html
-    assert "empd-cancel" in employees_html
+    assert "data-react-employees-fallback" not in employees_html
+    assert "data-employee-form" in employees_source
+    assert "data-employee-message" in employees_source
+    assert "data-employee-list" in employees_source
+    assert "data-employee-count" in employees_source
+    assert "emp-edit-dialog" in employees_source
+    assert "empd-save" in employees_source
+    assert "empd-cancel" in employees_source
     assert 'moduleUrl: "/static/pages/employees-island.js"' in registry
+    assert "waitForReactIsland" in employees_loader
+    assert "initializeReactIslandFallback" not in employees_loader
+    assert "workflowModules" not in employees_loader
+    assert not (REPO_ROOT / "app" / "static" / "pages" / "workflows" / "employees.js").exists()
 
     if not manifest_path.exists():
         assert "/static/react/" not in employees_html
         return
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    employees_entry = manifest["src/employees/employeesEntrypoint.tsx"]
+    employees_entry = manifest_entry(manifest, "src/employees/employeesEntrypoint.tsx")
     employees_asset = f"/static/react/{employees_entry['file']}"
     imported_assets = [
         f"/static/react/{manifest[import_name]['file']}"
@@ -854,14 +973,18 @@ def test_employees_react_island_keeps_fallback_and_stays_route_scoped(client):
         assert client.get(imported_asset).status_code == 200
 
 
-def test_vacations_react_island_keeps_fallback_and_stays_route_scoped(client):
-    """Verify React vacation assets are optional and scoped to the vacations page."""
+def test_vacations_react_island_stays_route_scoped(client):
+    """Verify React vacation assets and hooks are scoped to the vacations page."""
     home_response = client.get("/")
     vacations_response = client.get("/vacations")
     registry_response = client.get("/static/core/feature-registry.js")
     home_html = home_response.get_data(as_text=True)
     vacations_html = vacations_response.get_data(as_text=True)
     registry = registry_response.get_data(as_text=True)
+    vacations_source = vacation_react_source()
+    vacations_loader = (REPO_ROOT / "app" / "static" / "pages" / "vacations-island.js").read_text(
+        encoding="utf-8",
+    )
     manifest_path = REPO_ROOT / "app" / "static" / "react" / ".vite" / "manifest.json"
 
     assert home_response.status_code == 200
@@ -869,22 +992,26 @@ def test_vacations_react_island_keeps_fallback_and_stays_route_scoped(client):
     assert registry_response.status_code == 200
     assert "maintenance-vacations-root" not in home_html
     assert "maintenance-vacations-root" in vacations_html
-    assert "data-react-vacations-fallback" in vacations_html
-    assert "data-vac-form" in vacations_html
-    assert "data-vac-submit" in vacations_html
-    assert "data-vac-pending-list" in vacations_html
-    assert "data-vac-summary-list" in vacations_html
-    assert "data-vac-history-list" in vacations_html
-    assert "data-vac-calendar-list" in vacations_html
-    assert "data-vac-filter-status" in vacations_html
+    assert "data-react-vacations-fallback" not in vacations_html
+    assert "data-vac-form" in vacations_source
+    assert "data-vac-submit" in vacations_source
+    assert "data-vac-pending-list" in vacations_source
+    assert "data-vac-summary-list" in vacations_source
+    assert "data-vac-history-list" in vacations_source
+    assert "data-vac-calendar-list" in vacations_source
+    assert "data-vac-filter-status" in vacations_source
+    assert "waitForReactIsland" in vacations_loader
+    assert "initializeReactIslandFallback" not in vacations_loader
+    assert "workflowModules" not in vacations_loader
     assert 'moduleUrl: "/static/pages/vacations-island.js"' in registry
+    assert not (REPO_ROOT / "app" / "static" / "pages" / "workflows" / "vacations.js").exists()
 
     if not manifest_path.exists():
         assert "/static/react/" not in vacations_html
         return
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    vacations_entry = manifest["src/vacations/vacationsEntrypoint.tsx"]
+    vacations_entry = manifest_entry(manifest, "src/vacations/vacationsEntrypoint.tsx")
     vacations_asset = f"/static/react/{vacations_entry['file']}"
     imported_assets = [
         f"/static/react/{manifest[import_name]['file']}"
@@ -898,8 +1025,8 @@ def test_vacations_react_island_keeps_fallback_and_stays_route_scoped(client):
         assert client.get(imported_asset).status_code == 200
 
 
-def test_shiftplans_react_shell_island_keeps_fallback_and_stays_route_scoped(client):
-    """Verify React shift planning assets are optional and scoped to the shiftplan page."""
+def test_shiftplans_react_island_is_root_only_and_stays_route_scoped(client):
+    """Verify React shift planning assets are scoped and no legacy fallback markup remains."""
     home_response = client.get("/")
     shiftplans_response = client.get("/shiftplans")
     registry_response = client.get("/static/core/feature-registry.js")
@@ -913,23 +1040,19 @@ def test_shiftplans_react_shell_island_keeps_fallback_and_stays_route_scoped(cli
     assert registry_response.status_code == 200
     assert "maintenance-shiftplans-root" not in home_html
     assert "maintenance-shiftplans-root" in shiftplans_html
-    assert "data-react-shiftplans-fallback" in shiftplans_html
-    assert 'id="sp-form"' in shiftplans_html
-    assert 'id="sp-machine-picker"' in shiftplans_html
-    assert "data-shiftplan-calendar" in shiftplans_html
-    assert 'id="sp-dialog"' in shiftplans_html
+    assert "data-react-shiftplans-fallback" not in shiftplans_html
+    assert 'id="sp-form"' not in shiftplans_html
+    assert "data-shiftplan-calendar" not in shiftplans_html
     assert 'moduleUrl: "/static/pages/shiftplans-island.js"' in registry
+    assert not (REPO_ROOT / "app" / "static" / "pages" / "shiftplans.js").exists()
+    assert not (REPO_ROOT / "app" / "static" / "pages" / "shiftplans").exists()
 
     if not manifest_path.exists():
         assert "/static/react/" not in shiftplans_html
         return
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    shiftplans_entry = manifest.get("src/shiftplans/shiftplansEntrypoint.tsx")
-    if shiftplans_entry is None:
-        assert "/static/react/" not in shiftplans_html
-        return
-
+    shiftplans_entry = manifest_entry(manifest, "src/shiftplans/shiftplansEntrypoint.tsx")
     shiftplans_asset = f"/static/react/{shiftplans_entry['file']}"
     imported_assets = [
         f"/static/react/{manifest[import_name]['file']}"
@@ -998,7 +1121,7 @@ def test_shiftplans_react_markup_replaces_fallback_clone():
 
 
 def test_shiftplans_react_runtime_replaces_legacy_loader():
-    """Verify shiftplans uses legacy JavaScript only when React fails to mount."""
+    """Verify shiftplans uses React behavior without the removed legacy loader."""
     island_loader = (REPO_ROOT / "app" / "static" / "pages" / "shiftplans-island.js").read_text(
         encoding="utf-8"
     )
@@ -1010,9 +1133,10 @@ def test_shiftplans_react_runtime_replaces_legacy_loader():
     ).read_text(encoding="utf-8")
 
     assert "waitForReactIsland" in island_loader
+    assert "initializePageRuntimeFallback" not in island_loader
     assert "initializeReactShellRuntime" not in island_loader
-    assert "if (reactMounted) return" in island_loader
-    assert 'await import("/static/pages/shiftplans.js' in island_loader
+    assert 'scriptPath: "/static/pages/shiftplans.js"' not in island_loader
+    assert "reportShiftplansMountFailure" in island_loader
     assert "/api/v1/shiftplans" in shiftplans_api
     assert "`${SHIFTPLANS_BASE}/models`" in shiftplans_api
     assert "/api/v1/machines?limit=200" in shiftplans_api
@@ -1021,8 +1145,8 @@ def test_shiftplans_react_runtime_replaces_legacy_loader():
     assert 'id="sp-warn-list"' in shiftplans_plan_view
 
 
-def test_handover_react_shell_island_keeps_fallback_and_stays_route_scoped(client):
-    """Verify React handover assets are optional and scoped to the handover page."""
+def test_handover_react_island_is_root_only_and_stays_route_scoped(client):
+    """Verify React handover assets are scoped and no legacy fallback markup remains."""
     home_response = client.get("/")
     handover_response = client.get("/handover")
     registry_response = client.get("/static/core/feature-registry.js")
@@ -1036,24 +1160,19 @@ def test_handover_react_shell_island_keeps_fallback_and_stays_route_scoped(clien
     assert registry_response.status_code == 200
     assert "maintenance-handover-root" not in home_html
     assert "maintenance-handover-root" in handover_html
-    assert "data-react-handover-fallback" in handover_html
-    assert "data-handover-form" in handover_html
-    assert "data-ho-machine-select" in handover_html
-    assert "data-ho-filter-machine" in handover_html
-    assert "data-handover-search" in handover_html
-    assert 'id="ho-dialog"' in handover_html
+    assert "data-react-handover-fallback" not in handover_html
+    assert "data-handover-form" not in handover_html
+    assert "data-ho-machine-select" not in handover_html
+    assert 'id="ho-dialog"' not in handover_html
     assert 'moduleUrl: "/static/pages/handover-island.js"' in registry
+    assert not (REPO_ROOT / "app" / "static" / "pages" / "handover.js").exists()
 
     if not manifest_path.exists():
         assert "/static/react/" not in handover_html
         return
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    handover_entry = manifest.get("src/handover/handoverEntrypoint.tsx")
-    if handover_entry is None:
-        assert "/static/react/" not in handover_html
-        return
-
+    handover_entry = manifest_entry(manifest, "src/handover/handoverEntrypoint.tsx")
     handover_asset = f"/static/react/{handover_entry['file']}"
     imported_assets = [
         f"/static/react/{manifest[import_name]['file']}"
@@ -1120,7 +1239,7 @@ def test_handover_react_markup_replaces_fallback_clone():
 
 
 def test_handover_react_runtime_replaces_legacy_loader():
-    """Verify Handover uses React behavior and loads handover.js only as fallback."""
+    """Verify Handover uses React behavior without the removed legacy loader."""
     handover_dir = REPO_ROOT / "frontend" / "src" / "handover"
     handover_app = (handover_dir / "HandoverApp.tsx").read_text(encoding="utf-8")
     handover_api = (handover_dir / "handoverApi.ts").read_text(encoding="utf-8")
@@ -1132,8 +1251,10 @@ def test_handover_react_runtime_replaces_legacy_loader():
 
     assert "initializeReactShellRuntime" not in island_loader
     assert "waitForReactIsland" in island_loader
-    assert "if (reactMounted) return" in island_loader
-    assert 'import("/static/pages/handover.js?v="' in island_loader
+    assert "initializePageRuntimeFallback" not in island_loader
+    assert "afterImport: initializeImportedHandoverRuntime" not in island_loader
+    assert 'scriptPath: "/static/pages/handover.js"' not in island_loader
+    assert "reportHandoverMountFailure" in island_loader
     assert "loadHandoverMachines" in handover_app
     assert "payloadFromForm" in handover_app
     assert '"/api/v1/handover"' in handover_api
@@ -1145,8 +1266,8 @@ def test_handover_react_runtime_replaces_legacy_loader():
     assert "showModal" in handover_dialog
 
 
-def test_admin_ai_react_shell_island_keeps_fallback_and_stays_route_scoped(client):
-    """Verify React Admin-AI assets are optional and scoped to Admin-AI pages."""
+def test_admin_ai_react_shell_island_stays_route_scoped(client):
+    """Verify React Admin-AI assets are scoped to Admin-AI pages."""
     home_response = client.get("/")
     admin_response = client.get("/admin/ai")
     source_check_response = client.get("/admin/ai/source-check")
@@ -1168,15 +1289,10 @@ def test_admin_ai_react_shell_island_keeps_fallback_and_stays_route_scoped(clien
     assert "maintenance-admin-ai-root" in admin_html
     assert "maintenance-admin-ai-root" in source_check_html
     assert "maintenance-admin-ai-root" in technical_html
-    assert "data-react-admin-ai-fallback" in admin_html
-    assert "data-admin-ai-page" in admin_html
-    assert 'data-ai-admin-view="overview"' in admin_html
-    assert 'data-ai-admin-view="source_check"' in source_check_html
-    assert 'data-ai-admin-view="technical"' in technical_html
-    assert "data-ai-admin-message" in admin_html
-    assert 'data-ai-admin-area="source-check"' in source_check_html
-    assert "data-ai-source-test-form" in source_check_html
-    assert 'data-ai-admin-area="technical"' in technical_html
+    assert "data-react-admin-ai-fallback" not in admin_html
+    assert "data-admin-ai-page" not in admin_html
+    assert 'data-ai-admin-view="overview"' not in admin_html
+    assert "data-ai-source-test-form" not in source_check_html
     assert 'moduleUrl: "/static/pages/admin-ai-island.js"' in registry
     assert '"/admin/ai/technical"' in registry
 
@@ -1185,11 +1301,7 @@ def test_admin_ai_react_shell_island_keeps_fallback_and_stays_route_scoped(clien
         return
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    admin_ai_entry = manifest.get("src/admin-ai/adminAiEntrypoint.tsx")
-    if admin_ai_entry is None:
-        assert "/static/react/" not in admin_html
-        return
-
+    admin_ai_entry = manifest_entry(manifest, "src/admin-ai/adminAiEntrypoint.tsx")
     admin_ai_asset = f"/static/react/{admin_ai_entry['file']}"
     imported_assets = [
         f"/static/react/{manifest[import_name]['file']}"
@@ -1284,6 +1396,7 @@ def test_admin_ai_react_markup_replaces_fallback_clone():
     assert "/api/v1/admin/ai/observability?" in admin_ai_runtime_sources
     assert "/api/v1/admin/ai/retrieval-evaluations/run" in admin_ai_runtime_sources
     assert "maintenanceAdminAiReactRuntime" in admin_ai_runtime_sources
+    assert "legacy-bridge" not in admin_ai_runtime_sources
     assert "overviewStatusCards" in admin_ai_runtime_sources
     assert "effectivenessState" in admin_ai_runtime_sources
     assert "data-ai-user-costs-admin" in admin_ai_runtime_sources
@@ -1292,9 +1405,14 @@ def test_admin_ai_react_markup_replaces_fallback_clone():
     assert "ragBoardState" in admin_ai_runtime_sources
     assert "sourceCheckState" in admin_ai_runtime_sources
     assert "technicalState" in admin_ai_runtime_sources
-    assert 'pathname === "/admin/ai/source-check"' in admin_ai_loader
-    assert 'pathname === "/admin/ai/rag-board"' in admin_ai_loader
-    assert 'pathname === "/admin/ai/technical"' in admin_ai_loader
+    assert "waitForReactIsland" in admin_ai_loader
+    assert 'mountedFlag: "maintenanceAdminAiReactMounted"' in admin_ai_loader
+    assert 'mountEvent: "maintenance-admin-ai-react-mounted"' in admin_ai_loader
+    assert 'fallbackSelector: "[data-react-admin-ai-fallback]"' not in admin_ai_loader
+    assert "initializePageRuntimeFallback" not in admin_ai_loader
+    assert "reactOwnsRuntimeRoute" not in admin_ai_loader
+    assert 'scriptPath: "/static/pages/admin-ai.js"' not in admin_ai_loader
+    assert "reportAdminAiMountFailure" in admin_ai_loader
     assert "data-ai-prompt-version-form" in admin_ai_runtime_sources
     assert "data-ai-faq-form" in admin_ai_runtime_sources
     assert "data-approve-faq" in admin_ai_runtime_sources
@@ -1331,8 +1449,8 @@ def test_admin_ai_react_markup_replaces_fallback_clone():
 
 def test_react_shell_islands_share_mount_and_runtime_helpers():
     """Verify shell islands use mount events without legacy fallback cloning."""
-    shell_loaders = (REPO_ROOT / "app" / "static" / "pages" / "dashboard-island.js",)
     behavior_loaders = (
+        REPO_ROOT / "app" / "static" / "pages" / "dashboard-island.js",
         REPO_ROOT / "app" / "static" / "pages" / "admin-ai-island.js",
         REPO_ROOT / "app" / "static" / "pages" / "handover-island.js",
         REPO_ROOT / "app" / "static" / "pages" / "shiftplans-island.js",
@@ -1350,8 +1468,13 @@ def test_react_shell_islands_share_mount_and_runtime_helpers():
     assert not legacy_shell_clone.exists()
     assert "useFallbackShellIsland" not in frontend_sources
     assert "cloneFallbackShell" not in frontend_sources
-    assert "function initializeReactShellRuntime" in loader_source
-    assert "initializeReactShellRuntime" in loader_source
+    assert "function waitForReactIsland" in loader_source
+    assert "function initializeReactIslandFallback" not in loader_source
+    assert "function initializeReactRuntimeFallback" not in loader_source
+    assert "function initializePageRuntimeFallback" not in loader_source
+    assert "function importVersionedPageScript" not in loader_source
+    assert "initializeReactShellRuntime" not in loader_source
+    assert "/static/pages/workflows/shared.js" not in loader_source
 
     shiftplans_source = (
         REPO_ROOT / "frontend" / "src" / "shiftplans" / "ShiftplansApp.tsx"
@@ -1371,15 +1494,142 @@ def test_react_shell_islands_share_mount_and_runtime_helpers():
     assert "markIslandMounted" in admin_ai_source
     assert "useFallbackShellIsland" not in admin_ai_source
 
-    for shell_loader in shell_loaders:
-        source = shell_loader.read_text(encoding="utf-8")
-        assert "initializeReactShellRuntime" in source
-        assert "waitForReactIsland" not in source
-
     for behavior_loader in behavior_loaders:
         source = behavior_loader.read_text(encoding="utf-8")
         assert "initializeReactShellRuntime" not in source
         assert "waitForReactIsland" in source
+
+
+def test_react_app_shell_preserves_global_shell_hooks():
+    """Verify the future React shell mirrors navigation, search, auth, and chat hooks."""
+    layout_dir = REPO_ROOT / "frontend" / "src" / "layout"
+    app_shell = (layout_dir / "AppShell.tsx").read_text(encoding="utf-8")
+    icon_sprite = (layout_dir / "ShellIconSprite.tsx").read_text(encoding="utf-8")
+    global_search = (layout_dir / "ShellGlobalSearch.tsx").read_text(encoding="utf-8")
+    navigation = (layout_dir / "ShellNavigation.tsx").read_text(encoding="utf-8")
+    topbar = (layout_dir / "ShellTopbar.tsx").read_text(encoding="utf-8")
+    chat_widget = (layout_dir / "ShellChatWidget.tsx").read_text(encoding="utf-8")
+    shell_preferences = (layout_dir / "shellPreferences.ts").read_text(encoding="utf-8")
+    auth_session = (REPO_ROOT / "frontend" / "src" / "auth" / "session.ts").read_text(
+        encoding="utf-8"
+    )
+    auth_session_hook = (REPO_ROOT / "frontend" / "src" / "auth" / "useAuthSession.ts").read_text(
+        encoding="utf-8"
+    )
+    shell_sources = "\n".join(
+        (
+            app_shell,
+            icon_sprite,
+            global_search,
+            navigation,
+            topbar,
+            chat_widget,
+            shell_preferences,
+            auth_session,
+            auth_session_hook,
+        )
+    )
+
+    assert "ShellSidebarNavigation" in app_shell
+    assert "ShellTopbar" in app_shell
+    assert "ShellChatWidget" in app_shell
+    assert "ShellIconSprite" in app_shell
+    assert "maintenance_sidebar_collapsed" in shell_sources
+    assert "readSidebarCollapsedPreference" in app_shell
+    assert "toggleSidebarCollapsed" in app_shell
+    assert "is-sidebar-collapsed" in app_shell
+    assert "SHELL_ICON_PATHS" in icon_sprite
+    assert "icon-sprite" in icon_sprite
+    assert "icon-dashboard" in icon_sprite
+    assert "icon-ai" in icon_sprite
+    assert "data-global-live-region" in app_shell
+    assert "SHELL_NAVIGATION_SECTIONS" in navigation
+    assert "canViewStoredDashboard" in navigation
+    assert "canViewNavigationLink" in navigation
+    assert "canViewNavigationSection" in navigation
+    assert "permissionKey" in navigation
+    assert "navigationDataAttributes" in navigation
+    assert "data-dashboard-nav" in navigation
+    assert "data-feature-key" in navigation
+    assert "data-sidebar-toggle" in navigation
+    assert "data-sidebar-toggle-label" in navigation
+    assert "data-dashboard-machine-issue-count" in navigation
+    assert "data-dashboard-task-count" in navigation
+    assert "useShellNavigationCounts" in navigation
+    assert "totalFromPayload" in navigation
+    assert '"/api/v1/tasks?limit=1"' in navigation
+    assert '"/api/v1/errors?limit=1&active=1"' in navigation
+    assert "data-nav-root" in navigation
+    assert "ShellGlobalSearch" in navigation
+    assert "ShellGlobalSearch" in topbar
+    assert "apiRequest" in global_search
+    assert "hasStoredToken" in global_search
+    assert "/api/v1/search?q=" in global_search
+    assert "SEARCH_DEBOUNCE_MS" in global_search
+    assert "globalSearchFallbackUrl" in global_search
+    assert "globalSearchTypeLabel" in global_search
+    assert "groupedSearchResults" in global_search
+    assert "ShellGlobalSearchResults" in global_search
+    assert "data-global-search-form" in shell_sources
+    assert "data-global-search-input" in shell_sources
+    assert "data-global-search-panel" in shell_sources
+    assert "data-global-search-results" in shell_sources
+    assert "useShellShiftState" in topbar
+    assert "currentShiftFor" in topbar
+    assert "shellShiftState" in topbar
+    assert "Frühschicht" in topbar
+    assert "Spätschicht" in topbar
+    assert "data-topbar-work" in topbar
+    assert "data-topbar-date" in topbar
+    assert "handleWorksiteClick" in topbar
+    assert "handleShiftplansClick" in topbar
+    assert "data-current-date" in topbar
+    assert "data-current-shift" in topbar
+    assert "data-current-shift-label" in topbar
+    assert "data-current-shift-time" in topbar
+    assert "data-topbar-notifications" in topbar
+    assert "data-notification-badge" in topbar
+    assert "useNotificationBadge" in topbar
+    assert '"/api/v1/notifications?limit=5"' in topbar
+    assert '"/api/v1/notifications/read-all"' in topbar
+    assert "handleNotificationClick" in topbar
+    assert "markNotificationsRead" in topbar
+    assert "showInterfaceToast" in topbar
+    assert "data-auth-session" in topbar
+    assert "data-session-name" in topbar
+    assert "data-contrast-toggle" in topbar
+    assert "data-logout-button" in topbar
+    assert "data-auth-login-link" in topbar
+    assert "useAuthSession" in topbar
+    assert "displayStoredUserName" in topbar
+    assert "loginUrlForPath" in topbar
+    assert "maintenance-auth-ready" in auth_session_hook
+    assert "maintenance-auth-changed" in auth_session_hook
+    assert "storage" in auth_session_hook
+    assert "maintenance_high_contrast" in shell_preferences
+    assert "readHighContrastPreference" in topbar
+    assert "writeHighContrastPreference" in topbar
+    assert "applyHighContrastPreference" in topbar
+    assert "stopPropagation" in topbar
+    assert "data-chat-messages" in chat_widget
+    assert "data-chat-history-panel" in chat_widget
+    assert "data-chat-history-summary" in chat_widget
+    assert "data-chat-history-count" in chat_widget
+    assert "data-chat-history-search" in chat_widget
+    assert "data-chat-history-list" in chat_widget
+    assert "data-chat-suggestions" in chat_widget
+    assert "data-chat-form" in chat_widget
+    assert "apiRequest" in chat_widget
+    assert "hasStoredToken" in chat_widget
+    assert "/api/v1/ai/chat" in chat_widget
+    assert "maintenance_chat_open" in chat_widget
+    assert "maintenance_ai_chat_session_id" in chat_widget
+    assert "chatSessionId" in chat_widget
+    assert "resetChatSession" in chat_widget
+    assert "response_mode" in chat_widget
+    assert "answer_only" in chat_widget
+    assert "handleSubmit" in chat_widget
+    assert "Analysiere..." in chat_widget
 
 
 def test_dashboard_react_markup_replaces_fallback_clone():
@@ -1414,27 +1664,12 @@ def test_dashboard_react_markup_replaces_fallback_clone():
     dashboard_task_model = (
         REPO_ROOT / "frontend" / "src" / "dashboard" / "dashboardTaskModel.ts"
     ).read_text(encoding="utf-8")
-    dashboard_legacy_actions = (
-        REPO_ROOT / "app" / "static" / "pages" / "workflows" / "dashboard" / "actions.js"
+    dashboard_technical_model = (
+        REPO_ROOT / "frontend" / "src" / "dashboard" / "dashboardTechnicalModel.ts"
     ).read_text(encoding="utf-8")
-    dashboard_legacy_tasks = (
-        REPO_ROOT / "app" / "static" / "pages" / "workflows" / "dashboard" / "tasks.js"
-    ).read_text(encoding="utf-8")
-    dashboard_legacy_resources = (
-        REPO_ROOT / "app" / "static" / "pages" / "workflows" / "dashboard" / "resources.js"
-    ).read_text(encoding="utf-8")
-    dashboard_legacy_operations = (
-        REPO_ROOT / "app" / "static" / "pages" / "workflows" / "dashboard" / "operations.js"
-    ).read_text(encoding="utf-8")
-    dashboard_legacy_executive = (
-        REPO_ROOT / "app" / "static" / "pages" / "workflows" / "dashboard" / "executive.js"
-    ).read_text(encoding="utf-8")
-    dashboard_legacy_shift_realtime = (
-        REPO_ROOT / "app" / "static" / "pages" / "workflows" / "dashboard-shifts.js"
-    ).read_text(encoding="utf-8")
-    dashboard_legacy_shift_calendar = (
-        REPO_ROOT / "app" / "static" / "pages" / "workflows" / "dashboard" / "shift-calendar.js"
-    ).read_text(encoding="utf-8")
+    dashboard_island = (REPO_ROOT / "app" / "static" / "pages" / "dashboard-island.js").read_text(
+        encoding="utf-8"
+    )
     dashboard_assets = (
         REPO_ROOT / "frontend" / "src" / "dashboard" / "DashboardAssetStatus.tsx"
     ).read_text(encoding="utf-8")
@@ -1476,6 +1711,7 @@ def test_dashboard_react_markup_replaces_fallback_clone():
             dashboard_side_model,
             dashboard_shift_model,
             dashboard_task_model,
+            dashboard_technical_model,
             dashboard_assets,
             dashboard_hero,
             dashboard_hidden_forms,
@@ -1496,6 +1732,8 @@ def test_dashboard_react_markup_replaces_fallback_clone():
     assert "startDashboardTask" in dashboard_app
     assert "completeDashboardTask" in dashboard_app
     assert "updateDashboardTask" in dashboard_app
+    assert "createDashboardTask" in dashboard_app
+    assert "suggestDashboardTask" in dashboard_app
     assert "dashboardState" in dashboard_app
     assert "maintenanceDashboardReactAssetsOwned" in dashboard_app
     assert "maintenanceDashboardReactOperationsOwned" in dashboard_app
@@ -1503,27 +1741,20 @@ def test_dashboard_react_markup_replaces_fallback_clone():
     assert "maintenanceDashboardReactShiftOwned" in dashboard_app
     assert "maintenanceDashboardReactSideOwned" in dashboard_app
     assert "maintenanceDashboardReactTasksOwned" in dashboard_app
-    assert "maintenanceDashboardReactAssetsOwned" in dashboard_legacy_actions
-    assert "maintenanceDashboardReactAssetsOwned" in dashboard_legacy_resources
-    assert "maintenanceDashboardReactOperationsOwned" in dashboard_legacy_actions
-    assert "maintenanceDashboardReactOperationsOwned" in dashboard_legacy_operations
-    assert "maintenanceDashboardReactPeopleOwned" in dashboard_legacy_actions
-    assert "maintenanceDashboardReactPeopleOwned" in dashboard_legacy_resources
-    assert "maintenanceDashboardReactShiftOwned" in dashboard_legacy_actions
-    assert "maintenanceDashboardReactShiftOwned" in dashboard_legacy_shift_realtime
-    assert "maintenanceDashboardReactShiftOwned" in dashboard_legacy_shift_calendar
-    assert "maintenanceDashboardReactSideOwned" in dashboard_legacy_actions
-    assert "maintenanceDashboardReactSideOwned" in dashboard_legacy_executive
-    assert "maintenanceDashboardReactSideOwned" in dashboard_legacy_operations
-    assert "maintenanceDashboardReactSideOwned" in dashboard_legacy_resources
-    assert "maintenanceDashboardReactTasksOwned" in dashboard_legacy_actions
-    assert "maintenanceDashboardReactTasksOwned" in dashboard_legacy_tasks
-    assert "reactOwnsAssets" in dashboard_legacy_actions
-    assert "reactOwnsOperations" in dashboard_legacy_actions
-    assert "reactOwnsPeople" in dashboard_legacy_actions
-    assert "reactOwnsShift" in dashboard_legacy_actions
-    assert "reactOwnsSide" in dashboard_legacy_actions
-    assert "reactOwnsTasks" in dashboard_legacy_actions
+    assert "maintenanceDashboardReactTechnicalOwned" in dashboard_app
+    assert "maintenanceDashboardReactDraftOwned" in dashboard_app
+    assert "waitForReactIsland" in dashboard_island
+    assert 'mountedFlag: "maintenanceDashboardReactMounted"' in dashboard_island
+    assert 'mountEvent: "maintenance-dashboard-react-mounted"' in dashboard_island
+    assert "initializeReactIslandFallback" not in dashboard_island
+    assert "workflowModules" not in dashboard_island
+    assert "initDailyCockpit" not in dashboard_island
+    assert "data-react-dashboard-fallback" not in dashboard_island
+    assert not (REPO_ROOT / "app" / "static" / "pages" / "workflows" / "dashboard.js").exists()
+    assert not (
+        REPO_ROOT / "app" / "static" / "pages" / "workflows" / "dashboard-shifts.js"
+    ).exists()
+    assert not (REPO_ROOT / "app" / "static" / "pages" / "workflows" / "dashboard").exists()
     assert "useFallbackShellIsland" not in dashboard_app
     assert "cloneFallbackShell" not in dashboard_app
     assert "DASHBOARD_REMAINDER_MARKUP" not in dashboard_markup
@@ -1577,7 +1808,17 @@ def test_dashboard_react_markup_replaces_fallback_clone():
     assert "dashboardCriticalTasks" in dashboard_react_sources
     assert "DashboardAssetStatus" in dashboard_markup
     assert "DashboardTechnicalDetails" in dashboard_markup
+    assert "dashboardHeroStatus" in dashboard_react_sources
+    assert "prioritySignals" in dashboard_react_sources
+    assert "aiSystemRows" in dashboard_react_sources
+    assert "riskRows" in dashboard_react_sources
+    assert "knowledgeRows" in dashboard_react_sources
+    assert "technicalIndexRows" in dashboard_react_sources
+    assert "warningSignals" in dashboard_react_sources
     assert "DashboardHiddenForms" in dashboard_markup
+    assert "handleSuggestSubmit" in dashboard_app
+    assert "handleDraftSubmit" in dashboard_app
+    assert "taskDraftFromSuggestion" in dashboard_app
     assert "DashboardTaskDetailModal" in dashboard_markup
     assert "data-ai-ops-cockpit" in dashboard_react_sources
     assert "data-dashboard-critical-count" in dashboard_react_sources
@@ -1633,11 +1874,15 @@ def test_ci_and_docker_build_react_assets():
     """Verify automated builds create React assets instead of committing them."""
     ci_workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
+    frontend_package = json.loads(
+        (REPO_ROOT / "frontend" / "package.json").read_text(encoding="utf-8")
+    )
     gitignore = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
 
     assert "npm --prefix frontend ci" in ci_workflow
     assert "npm run check:react" in ci_workflow
     assert "npm run build:react" in ci_workflow
+    assert frontend_package["scripts"]["build"] == "vite build --configLoader runner"
     assert "FROM node:22-slim AS frontend-build" in dockerfile
     assert "COPY --from=frontend-build /build/app/static/react ./app/static/react" in dockerfile
     assert "/app/static/react/" in gitignore
@@ -1653,7 +1898,6 @@ def test_loaded_static_assets_exist(client):
         "/static/core/api-client.js",
         "/static/auth.js",
         "/static/app.js",
-        "/static/chat-loader.js",
     )
 
     for asset in expected_assets:
@@ -1661,52 +1905,19 @@ def test_loaded_static_assets_exist(client):
         assert client.get(asset).status_code == 200
 
     for lazy_asset in (
-        "/static/chat.js",
-        "/static/chat/session.js",
-        "/static/chat/evidence.js",
-        "/static/chat/rendering.js",
-        "/static/chat/history.js",
-        "/static/chat/actions.js",
-        "/static/pages/workflows.js",
-        "/static/pages/workflows/shared.js",
-        "/static/pages/workflows/dashboard-shifts.js",
-        "/static/pages/workflows/dashboard.js",
         "/static/pages/dashboard-island.js",
-        *DASHBOARD_SPLIT_ASSETS,
-        "/static/pages/workflows/tasks.js",
         "/static/pages/react-island-loader.js",
         "/static/pages/tasks-island.js",
-        "/static/pages/workflows/errors.js",
         "/static/pages/errors-island.js",
-        "/static/pages/workflows/machines.js",
-        "/static/pages/workflows/machine-profile.js",
         "/static/pages/machines-island.js",
-        "/static/pages/workflows/documents.js",
         "/static/pages/documents-island.js",
-        "/static/pages/workflows/admin-users.js",
         "/static/pages/admin-users-island.js",
-        "/static/pages/workflows/employees.js",
         "/static/pages/employees-island.js",
-        "/static/pages/workflows/vacations.js",
         "/static/pages/vacations-island.js",
-        "/static/pages/workflows/inventory.js",
         "/static/pages/inventory-island.js",
-        "/static/pages/workflows/legacy-shiftplans.js",
-        "/static/pages/login.js",
         "/static/pages/admin-ai-island.js",
-        "/static/pages/admin-ai.js",
-        "/static/pages/admin-ai/shared.js",
-        "/static/pages/admin-ai/overview.js",
-        "/static/pages/admin-ai/knowledge.js",
-        "/static/pages/admin-ai/retrieval.js",
-        "/static/pages/admin-ai/observability.js",
-        "/static/pages/admin-ai/operations.js",
-        "/static/pages/admin-ai/actions.js",
-        "/static/pages/handover.js",
         "/static/pages/handover-island.js",
-        "/static/pages/shiftplans.js",
         "/static/pages/shiftplans-island.js",
-        *SHIFTPLAN_SPLIT_ASSETS,
     ):
         assert client.get(lazy_asset).status_code == 200
 
@@ -1796,54 +2007,104 @@ def test_web_routes_use_shared_design_shell(client):
         html = response.get_data(as_text=True)
         assert response.status_code == 200
         assert "app-shell-layout" in html
-        assert "app-sidebar" in html
+        assert "maintenance-shell-sidebar-root" in html
+        assert "maintenance-shell-topbar-root" in html
+        assert "maintenance-shell-chat-root" in html
+        assert "data-react-shell-sidebar-fallback" not in html
+        assert "data-react-shell-topbar-fallback" not in html
+        assert "data-react-shell-chat-fallback" not in html
         assert "app-main" in html
-        assert "page-hero" in html
-        assert "app-card" in html
+        if route == "/":
+            assert "maintenance-dashboard-root" in html
+            assert "data-react-dashboard-fallback" not in html
+        elif route == "/errors":
+            assert "maintenance-errors-root" in html
+            assert "data-react-errors-fallback" not in html
+        elif route == "/tasks":
+            assert "maintenance-tasks-root" in html
+            assert "data-react-tasks-fallback" not in html
+        elif route == "/machines":
+            assert "maintenance-machines-root" in html
+            assert "data-react-machines-fallback" not in html
+        elif route == "/employees":
+            assert "maintenance-employees-root" in html
+            assert "data-react-employees-fallback" not in html
+        elif route == "/inventory":
+            assert "maintenance-inventory-root" in html
+            assert "data-react-inventory-fallback" not in html
+        elif route == "/documents":
+            assert "maintenance-documents-root" in html
+            assert "data-react-documents-fallback" not in html
+        elif route == "/vacations":
+            assert "maintenance-vacations-root" in html
+            assert "data-react-vacations-fallback" not in html
+        elif route == "/admin/users":
+            assert "maintenance-admin-users-root" in html
+            assert "data-react-admin-users-fallback" not in html
+        elif route == "/shiftplans":
+            assert "maintenance-shiftplans-root" in html
+            assert "data-react-shiftplans-fallback" not in html
+        elif route == "/handover":
+            assert "maintenance-handover-root" in html
+            assert "data-react-handover-fallback" not in html
+        elif route == "/login":
+            assert "maintenance-login-root" in html
+            assert "data-react-login-fallback" not in html
+        else:
+            assert "page-hero" in html
+            assert "app-card" in html
 
 
-def test_shiftplans_page_prerenders_shift_model_options(client):
-    """Verify the shift model dropdown is usable before async API refresh."""
+def test_shiftplans_page_uses_react_model_loading(client):
+    """Verify the shift model dropdown is now provided by the React island."""
     html = client.get("/shiftplans").get_data(as_text=True)
+    source = shiftplans_react_source()
 
-    assert 'id="sp-shift-model"' in html
-    assert "Schichtmodelle werden geladen" not in html
-    assert 'value="one_shift"' in html
-    assert 'value="vollkonti_5"' in html
-    assert "data-shifts-summary" in html
-
-
-def test_shiftplans_script_uses_selected_option_as_model_fallback(client):
-    """Verify selected model lookup does not depend only on async cache state."""
-    script = shiftplans_runtime_text(client)
-
-    assert "if (!shiftModels.length) shiftModels = readShiftModelsFromSelect();" in script
-    assert "selectedOption.dataset.displayName" in script
-    assert "key: selectedOption.value" in script
+    assert "maintenance-shiftplans-root" in html
+    assert 'id="sp-shift-model"' not in html
+    assert "loadShiftModels" in source
+    assert "models.map" in source
+    assert "beginnerModelLabel(model)" in source
 
 
-def test_shiftplans_script_renders_generated_plan_before_list_refresh(client):
+def test_shiftplans_react_uses_selected_model_for_generation():
+    """Verify selected model lookup drives the React generation payload."""
+    source = shiftplans_react_source()
+
+    assert "models.find" in source
+    assert "draft.shiftModelKey" in source
+    assert "selectedModel.key" in source
+    assert "rhythm: selectedModel.display_name" in source
+
+
+def test_shiftplans_react_renders_generated_plan_before_list_refresh():
     """Verify a generated draft remains visible even if list reload is stale."""
-    script = shiftplans_runtime_text(client)
+    source = shiftplans_react_source()
 
-    assert "async function loadPlans(selectId, fallbackPlan)" in script
-    assert "allPlans.unshift(fallbackPlan)" in script
-    assert "function selectedPlanIndex(selectId)" in script
-    assert "renderPlan(result)" in script
+    assert "function plansWithFallback" in source
+    assert "fallbackPlan" in source
+    assert "refreshInitialData(plan.id, plan)" in source
+    assert "selectedPlanIndexFor" in source
 
 
 def test_core_german_ui_labels_are_not_mojibake(client):
     """Verify important German UI labels render as UTF-8, not mojibake."""
     html = client.get("/").get_data(as_text=True)
+    dashboard_source = dashboard_react_source()
+    shell_source = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (REPO_ROOT / "frontend" / "src" / "layout").rglob("*.tsx")
+    )
+    source = html + dashboard_source + shell_source
 
-    assert "Schicht\u00fcbergabe" in html
-    assert "Men\u00fc" in html
-    assert "Heute f\u00e4llig" in html
-    assert "\u00fcberf\u00e4llig" in html
-    assert '<svg class="nav-icon"' in html
+    assert "Schicht\u00fcbergabe" in shell_source
+    assert "Men\u00fc" in shell_source
+    assert "Heute f&auml;llig" in dashboard_source
+    assert "\u00fcberf\u00e4llig" in dashboard_source or "&uuml;berf&auml;llig" in dashboard_source
+    assert "nav-icon" in shell_source
     assert 'data-icon="DB"' not in html
-    assert "Schicht\u00c3\u00bcbergabe" not in html
-    assert "faellig" not in html
+    assert "Schicht\u00c3\u00bcbergabe" not in source
+    assert "faellig" not in source
 
 
 def test_api_not_found_returns_consistent_json(client, make_user, auth_headers):

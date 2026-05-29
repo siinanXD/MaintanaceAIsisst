@@ -23,7 +23,7 @@ def render_react_entrypoint(entry_name):
         return Markup("")
 
     manifest = load_react_manifest()
-    entry = manifest.get(entry_name)
+    entry = react_manifest_entry(manifest, entry_name)
     if not isinstance(entry, dict):
         current_app.logger.info("React entrypoint missing from manifest: %s", entry_name)
         return Markup("")
@@ -90,6 +90,30 @@ def imported_react_files(manifest, entry):
 
     collect_imports(entry)
     return imported_files
+
+
+def react_manifest_entry(manifest, entry_name):
+    """Return a manifest entry by exact key or normalized path suffix."""
+    entry = manifest.get(entry_name)
+    if isinstance(entry, dict):
+        return entry
+
+    normalized_entry_name = entry_name.replace("\\", "/")
+    matches = [
+        candidate
+        for manifest_key, candidate in manifest.items()
+        if isinstance(manifest_key, str)
+        and manifest_key.replace("\\", "/").endswith(normalized_entry_name)
+        and isinstance(candidate, dict)
+    ]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        current_app.logger.warning(
+            "React entrypoint is ambiguous in manifest: %s",
+            entry_name,
+        )
+    return None
 
 
 def load_react_manifest():

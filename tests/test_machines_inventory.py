@@ -1,6 +1,7 @@
 """Tests for machine and inventory workflows."""
 
 from datetime import date, timedelta
+from pathlib import Path
 
 from app.extensions import db
 from app.models import (
@@ -17,6 +18,22 @@ from app.models import (
     Task,
 )
 from app.services.ai_service import AIServiceError
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def inventory_react_source():
+    """Return the combined React inventory island source."""
+    source_paths = list((REPO_ROOT / "frontend" / "src" / "inventory").rglob("*.ts"))
+    source_paths.extend((REPO_ROOT / "frontend" / "src" / "inventory").rglob("*.tsx"))
+    return "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
+
+
+def machine_react_source():
+    """Return the combined React machine island source."""
+    source_paths = list((REPO_ROOT / "frontend" / "src" / "machines").rglob("*.ts"))
+    source_paths.extend((REPO_ROOT / "frontend" / "src" / "machines").rglob("*.tsx"))
+    return "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
 
 
 def test_machine_create_rejects_duplicates_and_invalid_staffing(
@@ -703,11 +720,14 @@ def test_inventory_page_contains_forecast_ui(client):
     """Verify the inventory page exposes the forecast controls."""
     response = client.get("/inventory")
     html = response.get_data(as_text=True)
+    source = inventory_react_source()
 
     assert response.status_code == 200
-    assert "data-inventory-forecast-form" in html
-    assert "data-inventory-forecast-list" in html
-    assert "Ersatzteil-Prognose" in html
+    assert "maintenance-inventory-root" in html
+    assert "data-react-inventory-fallback" not in html
+    assert "data-inventory-forecast-form" in source
+    assert "data-inventory-forecast-list" in source
+    assert "Ersatzteil-Prognose" in source
 
 
 def test_machine_history_only_uses_permitted_sources(
@@ -1002,33 +1022,35 @@ def test_machine_page_contains_history_ui(client):
     """Verify the machine page exposes the history target container."""
     response = client.get("/machines")
     html = response.get_data(as_text=True)
+    source = machine_react_source()
 
     assert response.status_code == 200
     assert "maintenance-machines-root" in html
-    assert "data-react-machines-fallback" in html
-    assert "data-machine-history-panel" in html
-    assert "data-machine-history-list" in html
-    assert "data-machine-assistant-form" in html
-    assert "data-machine-assistant-sources" in html
-    assert "data-maintenance-recommendations-list" in html
-    assert "Anlagenakte" in html
+    assert "data-react-machines-fallback" not in html
+    assert "data-machine-history-panel" in source
+    assert "data-machine-history-list" in source
+    assert "data-machine-assistant-form" in source
+    assert "data-machine-assistant-sources" in source
+    assert "data-maintenance-recommendations-list" in source
+    assert "Anlagenakte" in source
 
 
 def test_machine_detail_page_contains_profile_targets(client):
     """Verify the machine detail page exposes the profile UI hooks."""
     response = client.get("/machines/123")
     html = response.get_data(as_text=True)
+    source = machine_react_source()
 
     assert response.status_code == 200
     assert "maintenance-machine-profile-root" in html
-    assert "data-react-machine-profile-fallback" in html
-    assert "data-machine-profile-page" in html
+    assert "data-react-machine-profile-fallback" not in html
+    assert "data-machine-profile-page" in source
     assert 'data-machine-id="123"' in html
-    assert "data-machine-profile-kpis" in html
-    assert "data-machine-profile-tasks" in html
-    assert "data-machine-profile-errors" in html
-    assert "data-machine-profile-documents" in html
-    assert "data-machine-profile-handovers" in html
+    assert "data-machine-profile-kpis" in source
+    assert "data-machine-profile-tasks" in source
+    assert "data-machine-profile-errors" in source
+    assert "data-machine-profile-documents" in source
+    assert "data-machine-profile-handovers" in source
 
 
 def test_machine_assistant_uses_local_context_and_requires_question(

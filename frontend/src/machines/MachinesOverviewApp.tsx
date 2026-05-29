@@ -1,6 +1,5 @@
 import {
   useEffect,
-  useLayoutEffect,
   useState,
   type ReactNode
 } from "react";
@@ -28,7 +27,6 @@ import type {
 import { machineErrorMessage } from "./machineUtils";
 
 const MACHINES_OVERVIEW_ISLAND = {
-  fallbackSelector: "[data-react-machines-fallback]",
   mountedFlag: "maintenanceMachinesReactMounted",
   mountEvent: "maintenance-machines-react-mounted"
 };
@@ -94,7 +92,7 @@ export function MachinesOverviewApp(): ReactNode {
     document.querySelector<HTMLInputElement>("[data-machine-assistant-form] input")?.focus();
   }
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     markIslandMounted(MACHINES_OVERVIEW_ISLAND);
   }, []);
 

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { markIslandMounted } from "../app/islandMount";
 import {
@@ -31,7 +31,6 @@ import {
 } from "./vacationUtils";
 
 const VACATIONS_ISLAND = {
-  fallbackSelector: "[data-react-vacations-fallback]",
   mountedFlag: "maintenanceVacationsReactMounted",
   mountEvent: "maintenance-vacations-react-mounted"
 };
@@ -104,7 +103,7 @@ export function VacationsApp(): ReactNode {
     }
   }
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     markIslandMounted(VACATIONS_ISLAND);
   }, []);
 

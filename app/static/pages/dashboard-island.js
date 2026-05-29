@@ -3,36 +3,27 @@
 
   const STATIC_VERSION = window.maintenanceStaticVersion || "dev";
   await import("/static/pages/react-island-loader.js?v=" + STATIC_VERSION);
-  const { initializeReactShellRuntime } = window.MaintenanceReactIslandLoader;
+  const { waitForReactIsland } = window.MaintenanceReactIslandLoader;
 
   /**
-   * Load and run the existing dashboard runtime against the active dashboard DOM.
+   * Report a failed dashboard React mount without loading the removed legacy runtime.
    *
-   * @returns {Promise<void>} Resolves after the dashboard initializers have run.
+   * @returns {void}
    */
-  async function initializeDashboardRuntime() {
-    const shared = await import("/static/pages/workflows/shared.js?v=" + STATIC_VERSION);
-    await shared.loadWorkflowShared();
-    await import("/static/pages/workflows/dashboard-shifts.js?v=" + STATIC_VERSION);
-    await import("/static/pages/workflows/dashboard.js?v=" + STATIC_VERSION);
-
-    const initializers = [
-      shared.resolveWorkflowInitializer("initDashboardShiftRealtime"),
-      shared.resolveWorkflowInitializer("initDailyCockpit")
-    ];
-    if (initializers.some((initializer) => typeof initializer !== "function")) {
-      throw new Error("Dashboard runtime initializer is missing.");
-    }
-    for (const initializer of initializers) {
-      await initializer();
+  function reportDashboardMountFailure() {
+    if (window.maintenanceFrontend && window.maintenanceFrontend.setWorkflowStatus) {
+      window.maintenanceFrontend.setWorkflowStatus(
+        "Dashboard konnte nicht als React-Seite geladen werden. Bitte Seite neu laden.",
+        "error"
+      );
     }
   }
 
-  await initializeReactShellRuntime({
+  const reactMounted = await waitForReactIsland({
     mountedFlag: "maintenanceDashboardReactMounted",
     mountEvent: "maintenance-dashboard-react-mounted",
-    fallbackSelector: "[data-react-dashboard-fallback]",
-    timeoutMs: 900,
-    initializeRuntime: initializeDashboardRuntime
+    timeoutMs: 900
   });
+
+  if (!reactMounted) reportDashboardMountFailure();
 })();

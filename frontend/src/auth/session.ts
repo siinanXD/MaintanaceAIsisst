@@ -1,4 +1,5 @@
 export type MaintenanceUser = {
+  readonly email?: string;
   readonly id?: number;
   readonly username?: string;
   readonly name?: string;
@@ -63,4 +64,29 @@ export function readStoredSession(): StoredSession {
  */
 export function hasStoredToken(): boolean {
   return Boolean(window.localStorage.getItem(TOKEN_KEY));
+}
+
+/**
+ * Return the current browser path plus query string for auth redirects.
+ */
+export function currentPathWithSearch(): string {
+  return window.location.pathname + window.location.search;
+}
+
+/**
+ * Build the same login URL shape as the existing auth runtime.
+ */
+export function loginUrlForPath(path: string): string {
+  const params = new URLSearchParams();
+  params.set("next", path || currentPathWithSearch());
+  return `/login?${params.toString()}`;
+}
+
+/**
+ * Return the user label used by the legacy auth shell.
+ */
+export function displayStoredUserName(user: MaintenanceUser | null): string {
+  if (!user) return "Benutzer";
+  const source = user.username || user.email || "Eingeloggt";
+  return source.includes("@") ? source.split("@")[0] : source;
 }

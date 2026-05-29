@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { markIslandMounted } from "../app/islandMount";
 import { readStoredSession } from "../auth/session";
@@ -48,7 +48,6 @@ import {
 } from "./adminUserUtils";
 
 const ADMIN_USERS_ISLAND = {
-  fallbackSelector: "[data-react-admin-users-fallback]",
   mountedFlag: "maintenanceAdminUsersReactMounted",
   mountEvent: "maintenance-admin-users-react-mounted"
 };
@@ -309,7 +308,7 @@ export function AdminUsersApp(): ReactNode {
     }
   }
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     markIslandMounted(ADMIN_USERS_ISLAND);
   }, []);
 

@@ -20,6 +20,30 @@ export async function loadAdminAiSummary(signal?: AbortSignal): Promise<AdminAiP
 }
 
 /**
+ * Load prompt-safe AI audit events for the Admin-AI overview table.
+ */
+export async function loadAdminAiEvents(
+  errorFilter: string,
+  signal?: AbortSignal
+): Promise<AdminAiPayload> {
+  return unwrapData<AdminAiPayload>(
+    await apiRequest(`/api/v1/admin/ai/events?limit=20&error=${encodeURIComponent(errorFilter)}`, { signal })
+  );
+}
+
+/**
+ * Load prompt-safe AI chat references for the Admin-AI overview list.
+ */
+export async function loadAdminAiChats(
+  query: string,
+  signal?: AbortSignal
+): Promise<AdminAiPayload> {
+  return unwrapData<AdminAiPayload>(
+    await apiRequest(`/api/v1/admin/ai/chats?limit=20&q=${encodeURIComponent(query)}`, { signal })
+  );
+}
+
+/**
  * Load prompt templates and versions for the Prompt & FAQ view.
  */
 export async function loadPromptTemplates(signal?: AbortSignal): Promise<AdminAiPayload> {
@@ -168,6 +192,15 @@ export async function loadAiObservability(
 ): Promise<AdminAiPayload> {
   return unwrapData<AdminAiPayload>(
     await apiRequest(`/api/v1/admin/ai/observability?${queryString}`, { signal })
+  );
+}
+
+/**
+ * Load open AI knowledge gaps for the Technical view.
+ */
+export async function loadAdminAiKnowledgeGaps(signal?: AbortSignal): Promise<AdminAiPayload> {
+  return unwrapData<AdminAiPayload>(
+    await apiRequest("/api/v1/admin/ai/knowledge-gaps?status=open&limit=5", { signal })
   );
 }
 

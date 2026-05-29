@@ -1,9 +1,19 @@
 """Tests for task workflows."""
 
 from datetime import date, timedelta
+from pathlib import Path
 
 from app.models import OperationalEvent, Priority, Role, TaskStatus
 from app.services.ai_service import AIServiceError
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def task_react_source():
+    """Return the combined React task island source."""
+    source_paths = list((REPO_ROOT / "frontend" / "src" / "tasks").rglob("*.ts"))
+    source_paths.extend((REPO_ROOT / "frontend" / "src" / "tasks").rglob("*.tsx"))
+    return "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
 
 
 def test_task_create_list_filter_and_update(client, make_user, auth_headers):
@@ -587,12 +597,12 @@ def test_task_suggestion_includes_rag_sources_after_reindex(
 def test_task_page_contains_priority_ui(client):
     """Verify task prioritization is exposed on the task page."""
     response = client.get("/tasks")
-    script_response = client.get("/static/pages/workflows/tasks.js")
     html = response.get_data(as_text=True)
-    script = script_response.get_data(as_text=True)
+    react_source = task_react_source()
 
     assert response.status_code == 200
-    assert script_response.status_code == 200
-    assert "data-task-priority-list" in html
-    assert "data-task-priority-refresh" in html
-    assert "Priorisierung konnte nicht geladen werden." in script
+    assert "maintenance-tasks-root" in html
+    assert "data-react-tasks-fallback" not in html
+    assert "data-task-priority-list" in react_source
+    assert "data-task-priority-refresh" in react_source
+    assert "Priorisierung konnte nicht geladen werden." in react_source

@@ -189,8 +189,7 @@
     margin-top: 1rem;
   }
 
-  .control-center-grid > .operations-status-card,
-  .control-center-grid [data-dashboard-remainder] > .operations-status-card {
+  .control-center-grid > .operations-status-card {
     grid-column: span 2;
   }
 
@@ -445,8 +444,7 @@
     }
 
     .control-center-side-column,
-    .control-center-grid > .operations-status-card,
-    .control-center-grid [data-dashboard-remainder] > .operations-status-card {
+    .control-center-grid > .operations-status-card {
       grid-column: 1 / -1;
     }
   }

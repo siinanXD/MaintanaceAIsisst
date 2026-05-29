@@ -1,9 +1,22 @@
 import { type ReactNode } from "react";
 
+import { type DashboardViewState } from "./dashboardModel";
+import { dashboardHeroStatus } from "./dashboardTechnicalModel";
+
+type DashboardHeroProps = {
+  readonly dashboardState: DashboardViewState;
+};
+
 /**
  * Render the dashboard control-center hero with the existing runtime hooks.
  */
-export function DashboardHero(): ReactNode {
+export function DashboardHero({ dashboardState }: DashboardHeroProps): ReactNode {
+  const status = dashboardHeroStatus(
+    dashboardState.data,
+    dashboardState.isLoading,
+    dashboardState.errorMessage
+  );
+
   return (
     <section
       className="page-hero control-center-hero app-card"
@@ -19,11 +32,11 @@ export function DashboardHero(): ReactNode {
         </p>
       </div>
       <div className="control-center-status" aria-label="Aktueller Betriebsstatus">
-        <span className="ops-status-pill is-loading" data-ai-ops-status="">
-          Daten werden geladen
+        <span className={`ops-status-pill ${status.className}`} data-ai-ops-status="">
+          {status.label}
         </span>
-        <span data-ai-ops-updated="">Aktualisierung ausstehend</span>
-        <span data-dashboard-system-meta="">Schicht- und Systemdaten werden geladen</span>
+        <span data-ai-ops-updated="">{status.updated}</span>
+        <span data-dashboard-system-meta="">{status.meta}</span>
       </div>
       <div className="control-center-actions" aria-label="Schnellzugriff">
         <a className="btn btn-primary btn-sm" data-dashboard-nav="tasks" hidden href="/tasks">

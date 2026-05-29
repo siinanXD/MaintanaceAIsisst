@@ -1,91 +1,54 @@
 import { type ReactNode } from "react";
 
+import { type DashboardViewState } from "./dashboardModel";
+import {
+  aiSystemRows,
+  dashboardSignalClass,
+  knowledgeRows,
+  prioritySignals,
+  riskRows,
+  technicalIndexRows,
+  type DashboardSignalItem,
+  type DashboardStatusRow,
+  warningSignals
+} from "./dashboardTechnicalModel";
+
+type DashboardTechnicalDetailsProps = {
+  readonly dashboardState: DashboardViewState;
+};
+
 type TechnicalSignalCardProps = {
+  readonly action?: ReactNode;
   readonly className: string;
   readonly contentClassName: string;
   readonly description: string;
   readonly emptyText: string;
   readonly hookName: string;
   readonly title: string;
-  readonly action?: ReactNode;
+  readonly children: ReactNode;
 };
 
-type IndexStatusRowProps = {
-  readonly label: string;
-  readonly value: string;
-  readonly meta: string;
-  readonly valueHook: string;
+type IndexHookConfig = {
   readonly metaHook?: string;
+  readonly valueHook: string;
 };
 
-const AI_SIGNAL_CARDS: readonly TechnicalSignalCardProps[] = [
+const INDEX_ROW_HOOKS: readonly IndexHookConfig[] = [
   {
-    className: "ai-priority-panel",
-    contentClassName: "ai-priority-rail",
-    description: "Kritische Fehler, Sicherheit, Gaps und Quellenrisiken.",
-    emptyText: "AI Operations Signale werden geladen.",
-    hookName: "data-ai-ops-priority-rail",
-    title: "Prioritätslage",
-  },
-  {
-    className: "ai-system-panel",
-    contentClassName: "ai-system-rail",
-    description: "Nur-Lese Betriebszustand ohne Promptinhalte.",
-    emptyText: "Systemstatus wird geladen.",
-    hookName: "data-ai-system-rail",
-    title: "AI Systemstatus",
-    action: (
-      <a data-dashboard-nav="admin_users" hidden href="/admin/ai">
-        Details
-      </a>
-    ),
-  },
-  {
-    className: "ai-risk-panel",
-    contentClassName: "ai-risk-grid",
-    description: "Sicherheit, Fallbacks und Feedback.",
-    emptyText: "Risk Radar wird geladen.",
-    hookName: "data-ai-risk-radar",
-    title: "AI Risk Radar",
-  },
-  {
-    className: "ai-knowledge-panel",
-    contentClassName: "ai-knowledge-health",
-    description: "Index, Quellen und Wissenslücken.",
-    emptyText: "Wissensstatus wird geladen.",
-    hookName: "data-ai-knowledge-health",
-    title: "Quellen & Wissensstatus",
-  },
-];
-
-const INDEX_STATUS_ROWS: readonly IndexStatusRowProps[] = [
-  {
-    label: "Dokument-/Index-Status",
-    value: "--",
-    meta: "Index-Sync",
     valueHook: "data-dashboard-index-status",
-    metaHook: "data-dashboard-index-status-meta",
+    metaHook: "data-dashboard-index-status-meta"
   },
   {
-    label: "Wissenslücken",
-    value: "0",
-    meta: "Offene Lücken",
     valueHook: "data-dashboard-knowledge-gap-count",
-    metaHook: "data-dashboard-knowledge-gap-meta",
+    metaHook: "data-dashboard-knowledge-gap-meta"
   },
   {
-    label: "Suchzeit P95",
-    value: "--",
-    meta: "P95 und Quellenrate",
     valueHook: "data-dashboard-retrieval-health",
-    metaHook: "data-dashboard-retrieval-health-meta",
+    metaHook: "data-dashboard-retrieval-health-meta"
   },
   {
-    label: "Niedrige Sicherheit",
-    value: "0%",
-    meta: "Antwortqualität",
-    valueHook: "data-dashboard-low-confidence-count",
-  },
+    valueHook: "data-dashboard-low-confidence-count"
+  }
 ];
 
 /**
@@ -96,16 +59,103 @@ function createDataHook(hookName: string): Record<string, string> {
 }
 
 /**
+ * Render one signal card item with the existing dashboard classes.
+ */
+function SignalItem({ item }: { readonly item: DashboardSignalItem }): ReactNode {
+  const className = `ai-signal-card ${dashboardSignalClass(item.severity)}`;
+  const marker = item.severity === "critical" || item.severity === "warning" ? "!" : "OK";
+  const content = (
+    <>
+      <span className="ai-signal-marker">{marker}</span>
+      <div>
+        <strong>{item.label}</strong>
+        <small>{item.detail}</small>
+      </div>
+      <span>{item.value}</span>
+    </>
+  );
+
+  if (item.href) {
+    return (
+      <a className={className} href={item.href}>
+        {content}
+      </a>
+    );
+  }
+
+  return <article className={className}>{content}</article>;
+}
+
+/**
+ * Render one status row with the legacy row styling.
+ */
+function StatusRow({ row }: { readonly row: DashboardStatusRow }): ReactNode {
+  return (
+    <div className={`ai-system-row ${dashboardSignalClass(row.severity)}`}>
+      <span>{row.label}</span>
+      <strong>{row.value}</strong>
+      <small>{row.detail}</small>
+    </div>
+  );
+}
+
+/**
+ * Render one document and retrieval health row with its runtime hook.
+ */
+function IndexStatusRow({ hooks, row }: { readonly hooks: IndexHookConfig; readonly row: DashboardStatusRow }): ReactNode {
+  return (
+    <div className={`ai-system-row ${dashboardSignalClass(row.severity)}`}>
+      <span>{row.label}</span>
+      <strong {...createDataHook(hooks.valueHook)}>{row.value}</strong>
+      {hooks.metaHook ? <small {...createDataHook(hooks.metaHook)}>{row.detail}</small> : <small>{row.detail}</small>}
+    </div>
+  );
+}
+
+/**
+ * Render one warning feed item.
+ */
+function WarningItem({ item }: { readonly item: DashboardSignalItem }): ReactNode {
+  const marker = item.label.slice(0, 2).toUpperCase();
+  const content = (
+    <>
+      <span className="activity-feed-marker">{marker}</span>
+      <div>
+        <strong>{item.label}</strong>
+        <small>{item.detail}</small>
+      </div>
+    </>
+  );
+
+  if (item.href) {
+    return (
+      <a className={`activity-feed-item ${dashboardSignalClass(item.severity)}`} href={item.href}>
+        {content}
+      </a>
+    );
+  }
+
+  return <div className={`activity-feed-item ${dashboardSignalClass(item.severity)}`}>{content}</div>;
+}
+
+/**
+ * Render an empty state when a technical section has no active rows.
+ */
+function EmptyState({ children }: { readonly children: ReactNode }): ReactNode {
+  return <div className="empty-state">{children}</div>;
+}
+
+/**
  * Render one AI signal panel while preserving the legacy data hook.
  */
 function TechnicalSignalCard({
   action,
+  children,
   className,
   contentClassName,
   description,
-  emptyText,
   hookName,
-  title,
+  title
 }: TechnicalSignalCardProps): ReactNode {
   return (
     <article className={`ops-panel app-card ${className}`}>
@@ -117,29 +167,46 @@ function TechnicalSignalCard({
         {action}
       </header>
       <div className={contentClassName} {...createDataHook(hookName)}>
-        <div className="empty-state">{emptyText}</div>
+        {children}
       </div>
     </article>
   );
 }
 
 /**
- * Render one document and retrieval health row with its runtime hook.
+ * Render signal items or an empty state.
  */
-function IndexStatusRow({ label, meta, metaHook, value, valueHook }: IndexStatusRowProps): ReactNode {
-  return (
-    <div className="ai-system-row is-muted">
-      <span>{label}</span>
-      <strong {...createDataHook(valueHook)}>{value}</strong>
-      {metaHook ? <small {...createDataHook(metaHook)}>{meta}</small> : <small>{meta}</small>}
-    </div>
-  );
+function SignalList({ emptyText, signals }: { readonly emptyText: string; readonly signals: readonly DashboardSignalItem[] }): ReactNode {
+  if (!signals.length) {
+    return <EmptyState>{emptyText}</EmptyState>;
+  }
+
+  return signals.map((item) => <SignalItem item={item} key={`${item.label}-${item.value}`} />);
+}
+
+/**
+ * Render status rows or an empty state.
+ */
+function StatusRows({ emptyText, rows }: { readonly emptyText: string; readonly rows: readonly DashboardStatusRow[] }): ReactNode {
+  if (!rows.length) {
+    return <EmptyState>{emptyText}</EmptyState>;
+  }
+
+  return rows.map((row) => <StatusRow key={row.label} row={row} />);
 }
 
 /**
  * Render the collapsible technical dashboard status area.
  */
-export function DashboardTechnicalDetails(): ReactNode {
+export function DashboardTechnicalDetails({ dashboardState }: DashboardTechnicalDetailsProps): ReactNode {
+  const { data } = dashboardState;
+  const priorityItems = prioritySignals(data);
+  const aiRows = aiSystemRows(data);
+  const riskItems = riskRows(data);
+  const knowledgeItems = knowledgeRows(data);
+  const warnings = warningSignals(data);
+  const indexRows = technicalIndexRows(data);
+
   return (
     <details className="section-disclosure control-center-technical">
       <summary>
@@ -149,9 +216,51 @@ export function DashboardTechnicalDetails(): ReactNode {
         </span>
       </summary>
       <section className="ai-ops-command-grid" aria-label="AI Operations Signale">
-        {AI_SIGNAL_CARDS.map((card) => (
-          <TechnicalSignalCard key={card.hookName} {...card} />
-        ))}
+        <TechnicalSignalCard
+          className="ai-priority-panel"
+          contentClassName="ai-priority-rail"
+          description="Kritische Fehler, Sicherheit, Gaps und Quellenrisiken."
+          emptyText="Keine kritischen Operations-Signale im aktuellen Datenfenster."
+          hookName="data-ai-ops-priority-rail"
+          title="Prioritätslage"
+        >
+          <SignalList emptyText="Keine kritischen Operations-Signale im aktuellen Datenfenster." signals={priorityItems} />
+        </TechnicalSignalCard>
+        <TechnicalSignalCard
+          action={(
+            <a data-dashboard-nav="admin_users" hidden href="/admin/ai">
+              Details
+            </a>
+          )}
+          className="ai-system-panel"
+          contentClassName="ai-system-rail"
+          description="Nur-Lese Betriebszustand ohne Promptinhalte."
+          emptyText="Systemstatus wird geladen."
+          hookName="data-ai-system-rail"
+          title="AI Systemstatus"
+        >
+          <StatusRows emptyText="Systemstatus wird geladen." rows={aiRows} />
+        </TechnicalSignalCard>
+        <TechnicalSignalCard
+          className="ai-risk-panel"
+          contentClassName="ai-risk-grid"
+          description="Sicherheit, Fallbacks und Feedback."
+          emptyText="Risk Radar wird geladen."
+          hookName="data-ai-risk-radar"
+          title="AI Risk Radar"
+        >
+          <StatusRows emptyText="Risk Radar wird geladen." rows={riskItems} />
+        </TechnicalSignalCard>
+        <TechnicalSignalCard
+          className="ai-knowledge-panel"
+          contentClassName="ai-knowledge-health"
+          description="Index, Quellen und Wissenslücken."
+          emptyText="Wissensstatus wird geladen."
+          hookName="data-ai-knowledge-health"
+          title="Quellen & Wissensstatus"
+        >
+          <StatusRows emptyText="Wissensstatus wird geladen." rows={knowledgeItems} />
+        </TechnicalSignalCard>
       </section>
 
       <section className="ops-dashboard-grid" aria-label="Weitere Statusdetails">
@@ -163,7 +272,9 @@ export function DashboardTechnicalDetails(): ReactNode {
             </a>
           </header>
           <div className="activity-feed is-warning-feed" data-dashboard-warning-feed="">
-            <div className="empty-state">Warnsignale werden geladen.</div>
+            {warnings.length ? warnings.map((item) => <WarningItem item={item} key={`${item.label}-${item.value}`} />) : (
+              <EmptyState>Keine kritischen Warnungen im aktuellen Datenfenster.</EmptyState>
+            )}
           </div>
         </article>
         <article className="ops-panel app-card">
@@ -174,8 +285,8 @@ export function DashboardTechnicalDetails(): ReactNode {
             </a>
           </header>
           <div className="ai-knowledge-health">
-            {INDEX_STATUS_ROWS.map((row) => (
-              <IndexStatusRow key={row.valueHook} {...row} />
+            {indexRows.map((row, index) => (
+              <IndexStatusRow hooks={INDEX_ROW_HOOKS[index] ?? INDEX_ROW_HOOKS[0]} key={row.label} row={row} />
             ))}
           </div>
         </article>
