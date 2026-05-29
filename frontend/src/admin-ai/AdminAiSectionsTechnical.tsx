@@ -1,6 +1,5 @@
-import { type ChangeEvent, type ReactNode } from "react";
+import { type ReactNode } from "react";
 
-import { type AdminAiPayload } from "./adminAiApi";
 import {
   type AdminAiTechnicalFilters,
   type AdminAiTechnicalState,
@@ -18,6 +17,17 @@ import {
 } from "./adminAiTechnicalModel";
 import { numberText, percentText } from "./adminAiEffectivenessModel";
 import { ragText } from "./adminAiRagBoardModel";
+import {
+  DataTable,
+  debugRequests,
+  debugSteps,
+  filterChange,
+  isPayload,
+  MetricCard,
+  MetricRow,
+  StatsList,
+  topList
+} from "./AdminAiTechnicalShared";
 
 const RETRIEVAL_SLO_KPIS = [
   ["retrieval_p95_ms", "P95 Suchzeit", "0 ms"],
@@ -283,75 +293,4 @@ function IndexingSection({
       </div><div className="content-grid two-columns mt-4"><StatsList dataAttr="data-ai-job-status" rows={[["Queued", statusCounts.queued || 0], ["Running", statusCounts.running || 0], ["Failed", statusCounts.failed || 0], ["Done", statusCounts.done || 0]]} /><StatsList dataAttr="data-ops-slow-endpoints" rows={slowEndpoints.map((item) => [item.endpoint, `${ragText(item.avg_duration_ms)} ms avg / ${ragText(item.slow_count)} slow`] as const)} empty={["Slow Endpoints", "noch keine Messwerte"]} /></div></section>
     </section>
   );
-}
-
-/**
- * Render one operations metric card.
- */
-function MetricCard({ hook, label, value }: { readonly hook: string; readonly label: string; readonly value: unknown }): ReactNode {
-  return <article className="metric-card"><span>{label}</span><strong data-ops-kpi={hook}>{ragText(value)}</strong></article>;
-}
-
-/**
- * Render a compact metric row.
- */
-function MetricRow({ label, value }: { readonly label: unknown; readonly value: unknown }): ReactNode {
-  return <div className="stat-row"><span>{ragText(label)}</span><strong>{ragText(value)}</strong></div>;
-}
-
-/**
- * Render a stats list with an existing data hook.
- */
-function StatsList({ dataAttr, empty, rows }: { readonly dataAttr: string; readonly empty?: readonly [unknown, unknown]; readonly rows: readonly (readonly [unknown, unknown])[] }): ReactNode {
-  const visibleRows = rows.length ? rows : empty ? [empty] : [];
-  return <div className="stats-list" {...{ [dataAttr]: true }}>{visibleRows.map(([label, value], index) => <MetricRow key={`${ragText(label)}-${index}`} label={label} value={value} />)}</div>;
-}
-
-/**
- * Render a data table with an existing tbody data hook.
- */
-function DataTable({ caption, dataAttr, headers, rows }: { readonly caption: string; readonly dataAttr: string; readonly headers: readonly string[]; readonly rows: readonly (readonly unknown[])[] }): ReactNode {
-  return <div className="table-wrap"><table className="data-table"><caption>{caption}</caption><thead><tr>{headers.map((header) => <th key={header} scope="col">{header}</th>)}</tr></thead><tbody {...{ [dataAttr]: true }}>{rows.length ? rows.map((row, index) => <tr key={index}>{row.map((value, cellIndex) => <td key={cellIndex}>{ragText(value)}</td>)}</tr>) : <tr><td colSpan={headers.length}>Keine Daten vorhanden.</td></tr>}</tbody></table></div>;
-}
-
-/**
- * Return input handlers for Technical filters.
- */
-function filterChange(onChange: (key: keyof AdminAiTechnicalFilters, value: string) => void, key: keyof AdminAiTechnicalFilters) {
-  return (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => onChange(key, event.target.value);
-}
-
-/**
- * Return true when an unknown value is an object.
- */
-function isPayload(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/**
- * Return prompt-safe debug steps.
- */
-function debugSteps(item: AdminAiPayload | null): AdminAiPayload[] {
-  const debug = objectPayload(item?.retrieval_debug || item?.debug);
-  const steps = debug.decision_trace || item?.decision_trace || [];
-  return Array.isArray(steps) ? steps.filter(isPayload) : [];
-}
-
-/**
- * Convert common list payloads into label/value rows.
- */
-function topList(value: unknown): readonly (readonly [unknown, unknown])[] {
-  const items = Array.isArray(value) ? value.filter(isPayload) : [];
-  return items.slice(0, 8).map((item) => [
-    item.label || item.question || item.title || item.source || item.key || item.id,
-    item.count || item.value || item.total || item.score || "-"
-  ] as const);
-}
-
-/**
- * Return selectable debug requests.
- */
-function debugRequests(debugTools: AdminAiPayload): AdminAiPayload[] {
-  const requests = debugTools.available_requests;
-  return Array.isArray(requests) ? requests.filter(isPayload) : [];
 }

@@ -3403,7 +3403,7 @@ def test_dashboard_contains_daily_briefing_and_priority_ui(client):
     assert "data-dashboard-low-confidence-count" in source
     assert "data-dashboard-frequent-codes" in source
     assert "maintenance-shell-chat-root" in html
-    assert "data-react-shell-chat-fallback" not in html
+    assert "data-react-shell-chat-fallback" in html
     assert "data-chat-suggestions" in chat_script
     assert "data-chat-history-panel" in chat_script
     assert "data-chat-history-search" in chat_script

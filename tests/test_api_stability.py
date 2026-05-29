@@ -455,6 +455,21 @@ def test_react_foundation_and_shell_chrome_are_configured(client):
     shell_entrypoint = (
         REPO_ROOT / "frontend" / "src" / "layout" / "shellChromeEntrypoint.tsx"
     ).read_text(encoding="utf-8")
+    runtime_bridge = (REPO_ROOT / "frontend" / "src" / "app" / "runtimeBridge.ts").read_text(
+        encoding="utf-8"
+    )
+    auth_provider = (REPO_ROOT / "frontend" / "src" / "auth" / "AuthProvider.tsx").read_text(
+        encoding="utf-8"
+    )
+    permission_provider = (
+        REPO_ROOT / "frontend" / "src" / "auth" / "PermissionProvider.tsx"
+    ).read_text(encoding="utf-8")
+    shell_provider = (
+        REPO_ROOT / "frontend" / "src" / "layout" / "ShellRuntimeProvider.tsx"
+    ).read_text(encoding="utf-8")
+    shell_provider_alias = (
+        REPO_ROOT / "frontend" / "src" / "layout" / "ShellProvider.tsx"
+    ).read_text(encoding="utf-8")
     app_js = (REPO_ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
     shell_chat = (REPO_ROOT / "frontend" / "src" / "layout" / "ShellChatWidget.tsx").read_text(
         encoding="utf-8"
@@ -464,23 +479,41 @@ def test_react_foundation_and_shell_chrome_are_configured(client):
     assert api_docs_response.status_code == 200
     assert "maintenance-react-root" not in api_docs_html
     assert "maintenance-shell-icons-root" in api_docs_html
+    assert "maintenance-shell-runtime-root" in api_docs_html
     assert "maintenance-shell-sidebar-root" in api_docs_html
     assert "maintenance-shell-topbar-root" in api_docs_html
     assert "maintenance-shell-chat-root" in api_docs_html
-    assert "data-react-shell-sidebar-fallback" not in api_docs_html
-    assert "data-react-shell-topbar-fallback" not in api_docs_html
-    assert "data-react-shell-chat-fallback" not in api_docs_html
-    assert "app-sidebar hidden lg:flex" not in api_docs_html
-    assert "chat-widget" not in api_docs_html
+    assert "data-react-shell-sidebar-fallback" in api_docs_html
+    assert "data-react-shell-topbar-fallback" in api_docs_html
+    assert "data-react-shell-chat-fallback" in api_docs_html
+    assert "app-sidebar hidden lg:flex" in api_docs_html
+    assert "chat-widget" in api_docs_html
     assert frontend_package["dependencies"]["react"].startswith("^19.")
     assert frontend_package["scripts"]["typecheck"] == "tsc --noEmit"
     assert 'outDir: "../app/static/react"' in vite_config
     assert "shellChrome" in vite_config
     assert "src/layout/shellChromeEntrypoint.tsx" in vite_config
     assert "ShellIconSprite" in shell_entrypoint
+    assert "ShellProvider" in shell_entrypoint
+    assert "createPortal" in shell_entrypoint
+    assert "data-react-shell-sidebar-fallback" in shell_entrypoint
+    assert "data-react-shell-topbar-fallback" in shell_entrypoint
+    assert "data-react-shell-chat-fallback" in shell_entrypoint
     assert "maintenanceShellReactMounted" in shell_entrypoint
     assert "maintenanceShellReactMountedRoots" in shell_entrypoint
     assert "maintenance-shell-react-mounted" in shell_entrypoint
+    assert "AuthProvider" in shell_provider
+    assert "PermissionProvider" in shell_provider
+    assert "FeatureRegistryProvider" in shell_provider
+    assert "ToastProvider" in shell_provider
+    assert "DialogProvider" in shell_provider
+    assert "ShellRuntimeProvider" in shell_provider_alias
+    assert "maintenanceAuth" in runtime_bridge
+    assert "maintenanceFrontend" in runtime_bridge
+    assert "maintenanceDialogs" in runtime_bridge
+    assert "maintenanceFeatures" in runtime_bridge
+    assert "useAuthContext" in auth_provider
+    assert "legacyPermissionKeyFor" in permission_provider
     assert "reactShellTopbarMounted" not in app_js
     assert "reactShellSidebarMounted" not in app_js
     assert "reactShellTopbarRootPresent" not in app_js
@@ -509,6 +542,7 @@ def test_react_foundation_and_shell_chrome_are_configured(client):
     assert shell_asset in api_docs_html
     login_entry = manifest_entry(manifest, "src/login/loginEntrypoint.tsx")
     assert f"/static/react/{login_entry['file']}" not in api_docs_html
+    assert f"/static/react/{shell_entry['file']}" in api_docs_html
 
 
 def test_login_react_island_is_root_only_and_stays_route_scoped(client):
@@ -527,6 +561,9 @@ def test_login_react_island_is_root_only_and_stays_route_scoped(client):
     assert login_response.status_code == 200
     assert "maintenance-login-root" not in api_docs_html
     assert "maintenance-login-root" in login_html
+    assert "maintenance-shell-runtime-root" not in login_html
+    assert "maintenance-shell-sidebar-root" not in login_html
+    assert "data-react-shell-sidebar-fallback" not in login_html
     assert "data-react-login-fallback" not in login_html
     assert "data-login-form" not in login_html
     assert "data-login-message" not in login_html
@@ -542,12 +579,15 @@ def test_login_react_island_is_root_only_and_stays_route_scoped(client):
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     login_entry = manifest_entry(manifest, "src/login/loginEntrypoint.tsx")
     login_asset = f"/static/react/{login_entry['file']}"
+    shell_entry = manifest_entry(manifest, "src/layout/shellChromeEntrypoint.tsx")
+    shell_asset = f"/static/react/{shell_entry['file']}"
     imported_assets = [
         f"/static/react/{manifest[import_name]['file']}"
         for import_name in login_entry.get("imports", [])
     ]
 
     assert login_asset in login_html
+    assert shell_asset not in login_html
     assert client.get(login_asset).status_code == 200
     for imported_asset in imported_assets:
         assert f'rel="modulepreload" href="{imported_asset}"' in login_html
@@ -1077,24 +1117,30 @@ def test_shiftplans_react_markup_replaces_fallback_clone():
     shiftplans_generation_form = (
         REPO_ROOT / "frontend" / "src" / "shiftplans" / "ShiftplansGenerationForm.tsx"
     ).read_text(encoding="utf-8")
-    shiftplans_plan_view = (
-        REPO_ROOT / "frontend" / "src" / "shiftplans" / "ShiftplansPlanView.tsx"
-    ).read_text(encoding="utf-8")
     shiftplans_dialog = (
         REPO_ROOT / "frontend" / "src" / "shiftplans" / "ShiftplansEditDialog.tsx"
     ).read_text(encoding="utf-8")
+    shiftplans_plan_sources = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((REPO_ROOT / "frontend" / "src" / "shiftplans").glob("Shiftplans*.tsx"))
+    )
+    shiftplans_runtime_sources = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((REPO_ROOT / "frontend" / "src" / "shiftplans").glob("*.ts*"))
+    )
     shiftplans_react_sources = "\n".join(
         (
             shiftplans_app,
             shiftplans_markup,
             shiftplans_generation_form,
-            shiftplans_plan_view,
+            shiftplans_plan_sources,
+            shiftplans_runtime_sources,
             shiftplans_dialog,
         )
     )
 
-    assert "ShiftplansMarkup" in shiftplans_app
-    assert "markIslandMounted" in shiftplans_app
+    assert "ShiftplansMarkup" in shiftplans_react_sources
+    assert "markIslandMounted" in shiftplans_react_sources
     assert "useFallbackShellIsland" not in shiftplans_app
     assert "cloneFallbackShell" not in shiftplans_app
     assert "useLayoutEffect" not in shiftplans_app
@@ -1128,9 +1174,10 @@ def test_shiftplans_react_runtime_replaces_legacy_loader():
     shiftplans_api = (REPO_ROOT / "frontend" / "src" / "shiftplans" / "shiftplansApi.ts").read_text(
         encoding="utf-8"
     )
-    shiftplans_plan_view = (
-        REPO_ROOT / "frontend" / "src" / "shiftplans" / "ShiftplansPlanView.tsx"
-    ).read_text(encoding="utf-8")
+    shiftplans_plan_sources = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((REPO_ROOT / "frontend" / "src" / "shiftplans").glob("Shiftplans*.tsx"))
+    )
 
     assert "waitForReactIsland" in island_loader
     assert "initializePageRuntimeFallback" not in island_loader
@@ -1140,9 +1187,9 @@ def test_shiftplans_react_runtime_replaces_legacy_loader():
     assert "/api/v1/shiftplans" in shiftplans_api
     assert "`${SHIFTPLANS_BASE}/models`" in shiftplans_api
     assert "/api/v1/machines?limit=200" in shiftplans_api
-    assert 'id="sp-thead"' in shiftplans_plan_view
-    assert 'id="sp-tbody"' in shiftplans_plan_view
-    assert 'id="sp-warn-list"' in shiftplans_plan_view
+    assert 'id="sp-thead"' in shiftplans_plan_sources
+    assert 'id="sp-tbody"' in shiftplans_plan_sources
+    assert 'id="sp-warn-list"' in shiftplans_plan_sources
 
 
 def test_handover_react_island_is_root_only_and_stays_route_scoped(client):
@@ -1194,11 +1241,9 @@ def test_handover_react_markup_replaces_fallback_clone():
     handover_markup = (
         REPO_ROOT / "frontend" / "src" / "handover" / "HandoverMarkup.tsx"
     ).read_text(encoding="utf-8")
-    handover_form = (REPO_ROOT / "frontend" / "src" / "handover" / "HandoverForm.tsx").read_text(
-        encoding="utf-8"
-    )
-    handover_list = (REPO_ROOT / "frontend" / "src" / "handover" / "HandoverList.tsx").read_text(
-        encoding="utf-8"
+    handover_component_sources = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((REPO_ROOT / "frontend" / "src" / "handover").glob("Handover*.tsx"))
     )
     handover_dialog = (
         REPO_ROOT / "frontend" / "src" / "handover" / "HandoverDialog.tsx"
@@ -1210,8 +1255,7 @@ def test_handover_react_markup_replaces_fallback_clone():
         (
             handover_app,
             handover_markup,
-            handover_form,
-            handover_list,
+            handover_component_sources,
             handover_dialog,
             handover_stats,
         )
@@ -1243,7 +1287,9 @@ def test_handover_react_runtime_replaces_legacy_loader():
     handover_dir = REPO_ROOT / "frontend" / "src" / "handover"
     handover_app = (handover_dir / "HandoverApp.tsx").read_text(encoding="utf-8")
     handover_api = (handover_dir / "handoverApi.ts").read_text(encoding="utf-8")
-    handover_list = (handover_dir / "HandoverList.tsx").read_text(encoding="utf-8")
+    handover_components = "\n".join(
+        path.read_text(encoding="utf-8") for path in sorted(handover_dir.glob("Handover*.tsx"))
+    )
     handover_dialog = (handover_dir / "HandoverDialog.tsx").read_text(encoding="utf-8")
     island_loader = (REPO_ROOT / "app" / "static" / "pages" / "handover-island.js").read_text(
         encoding="utf-8"
@@ -1259,9 +1305,9 @@ def test_handover_react_runtime_replaces_legacy_loader():
     assert "payloadFromForm" in handover_app
     assert '"/api/v1/handover"' in handover_api
     assert '"/api/v1/machines?limit=100"' in handover_api
-    assert "data-handover-card" in handover_list
-    assert "data-complete" in handover_list
-    assert "data-edit" in handover_list
+    assert "data-handover-card" in handover_components
+    assert "data-complete" in handover_components
+    assert "data-edit" in handover_components
     assert "onSave" in handover_dialog
     assert "showModal" in handover_dialog
 
@@ -1482,9 +1528,10 @@ def test_react_shell_islands_share_mount_and_runtime_helpers():
     assert "initializeReactShellRuntime" not in loader_source
     assert "/static/pages/workflows/shared.js" not in loader_source
 
-    shiftplans_source = (
-        REPO_ROOT / "frontend" / "src" / "shiftplans" / "ShiftplansApp.tsx"
-    ).read_text(encoding="utf-8")
+    shiftplans_source = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((REPO_ROOT / "frontend" / "src" / "shiftplans").glob("*.ts*"))
+    )
     assert "markIslandMounted" in shiftplans_source
     assert "useFallbackShellIsland" not in shiftplans_source
 
@@ -1514,6 +1561,18 @@ def test_react_app_shell_preserves_global_shell_hooks():
     global_search = (layout_dir / "ShellGlobalSearch.tsx").read_text(encoding="utf-8")
     navigation = (layout_dir / "ShellNavigation.tsx").read_text(encoding="utf-8")
     topbar = (layout_dir / "ShellTopbar.tsx").read_text(encoding="utf-8")
+    navigation_sources = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted(
+            [
+                *layout_dir.glob("ShellNavigation*.ts*"),
+                layout_dir / "useShellNavigationCounts.ts",
+            ]
+        )
+    )
+    topbar_sources = "\n".join(
+        path.read_text(encoding="utf-8") for path in sorted(layout_dir.glob("ShellTopbar*.ts*"))
+    )
     chat_widget = (layout_dir / "ShellChatWidget.tsx").read_text(encoding="utf-8")
     shell_preferences = (layout_dir / "shellPreferences.ts").read_text(encoding="utf-8")
     auth_session = (REPO_ROOT / "frontend" / "src" / "auth" / "session.ts").read_text(
@@ -1549,22 +1608,22 @@ def test_react_app_shell_preserves_global_shell_hooks():
     assert "icon-dashboard" in icon_sprite
     assert "icon-ai" in icon_sprite
     assert "data-global-live-region" in app_shell
-    assert "SHELL_NAVIGATION_SECTIONS" in navigation
-    assert "canViewStoredDashboard" in navigation
-    assert "canViewNavigationLink" in navigation
-    assert "canViewNavigationSection" in navigation
-    assert "permissionKey" in navigation
-    assert "navigationDataAttributes" in navigation
-    assert "data-dashboard-nav" in navigation
-    assert "data-feature-key" in navigation
+    assert "SHELL_NAVIGATION_SECTIONS" in navigation_sources
+    assert "canViewStoredDashboard" in navigation_sources
+    assert "canViewNavigationLink" in navigation_sources
+    assert "canViewNavigationSection" in navigation_sources
+    assert "permissionKey" in navigation_sources
+    assert "navigationDataAttributes" in navigation_sources
+    assert "data-dashboard-nav" in navigation_sources
+    assert "data-feature-key" in navigation_sources
     assert "data-sidebar-toggle" in navigation
     assert "data-sidebar-toggle-label" in navigation
     assert "data-dashboard-machine-issue-count" in navigation
     assert "data-dashboard-task-count" in navigation
-    assert "useShellNavigationCounts" in navigation
-    assert "totalFromPayload" in navigation
-    assert '"/api/v1/tasks?limit=1"' in navigation
-    assert '"/api/v1/errors?limit=1&active=1"' in navigation
+    assert "useShellNavigationCounts" in navigation_sources
+    assert "totalFromPayload" in navigation_sources
+    assert '"/api/v1/tasks?limit=1"' in navigation_sources
+    assert '"/api/v1/errors?limit=1&active=1"' in navigation_sources
     assert "data-nav-root" in navigation
     assert "ShellGlobalSearch" in navigation
     assert "ShellGlobalSearch" in topbar
@@ -1580,11 +1639,11 @@ def test_react_app_shell_preserves_global_shell_hooks():
     assert "data-global-search-input" in shell_sources
     assert "data-global-search-panel" in shell_sources
     assert "data-global-search-results" in shell_sources
-    assert "useShellShiftState" in topbar
-    assert "currentShiftFor" in topbar
-    assert "shellShiftState" in topbar
-    assert "Frühschicht" in topbar
-    assert "Spätschicht" in topbar
+    assert "useShellShiftState" in topbar_sources
+    assert "currentShiftFor" in topbar_sources
+    assert "shellShiftState" in topbar_sources
+    assert "Frühschicht" in topbar_sources
+    assert "Spätschicht" in topbar_sources
     assert "data-topbar-work" in topbar
     assert "data-topbar-date" in topbar
     assert "handleWorksiteClick" in topbar
@@ -1595,27 +1654,27 @@ def test_react_app_shell_preserves_global_shell_hooks():
     assert "data-current-shift-time" in topbar
     assert "data-topbar-notifications" in topbar
     assert "data-notification-badge" in topbar
-    assert "useNotificationBadge" in topbar
-    assert '"/api/v1/notifications?limit=5"' in topbar
-    assert '"/api/v1/notifications/read-all"' in topbar
+    assert "useNotificationBadge" in topbar_sources
+    assert '"/api/v1/notifications?limit=5"' in topbar_sources
+    assert '"/api/v1/notifications/read-all"' in topbar_sources
     assert "handleNotificationClick" in topbar
     assert "markNotificationsRead" in topbar
-    assert "showInterfaceToast" in topbar
+    assert "showLegacyToast" in topbar
     assert "data-auth-session" in topbar
     assert "data-session-name" in topbar
     assert "data-contrast-toggle" in topbar
     assert "data-logout-button" in topbar
     assert "data-auth-login-link" in topbar
-    assert "useAuthSession" in topbar
+    assert "useAuthContext" in topbar
     assert "displayStoredUserName" in topbar
     assert "loginUrlForPath" in topbar
     assert "maintenance-auth-ready" in auth_session_hook
     assert "maintenance-auth-changed" in auth_session_hook
     assert "storage" in auth_session_hook
     assert "maintenance_high_contrast" in shell_preferences
-    assert "readHighContrastPreference" in topbar
-    assert "writeHighContrastPreference" in topbar
-    assert "applyHighContrastPreference" in topbar
+    assert "readHighContrastPreference" in topbar_sources
+    assert "writeHighContrastPreference" in topbar_sources
+    assert "applyHighContrastPreference" in topbar_sources
     assert "stopPropagation" in topbar
     assert "data-chat-messages" in chat_widget
     assert "data-chat-history-panel" in chat_widget
@@ -1694,6 +1753,12 @@ def test_dashboard_react_markup_replaces_fallback_clone():
     dashboard_shift_people = (
         REPO_ROOT / "frontend" / "src" / "dashboard" / "DashboardShiftPeople.tsx"
     ).read_text(encoding="utf-8")
+    dashboard_shift_panel = (
+        REPO_ROOT / "frontend" / "src" / "dashboard" / "DashboardShiftPanel.tsx"
+    ).read_text(encoding="utf-8")
+    dashboard_people_panel = (
+        REPO_ROOT / "frontend" / "src" / "dashboard" / "DashboardPeoplePanel.tsx"
+    ).read_text(encoding="utf-8")
     dashboard_side_column = (
         REPO_ROOT / "frontend" / "src" / "dashboard" / "DashboardSideColumn.tsx"
     ).read_text(encoding="utf-8")
@@ -1702,6 +1767,9 @@ def test_dashboard_react_markup_replaces_fallback_clone():
     ).read_text(encoding="utf-8")
     dashboard_task_modal = (
         REPO_ROOT / "frontend" / "src" / "dashboard" / "DashboardTaskDetailModal.tsx"
+    ).read_text(encoding="utf-8")
+    dashboard_task_modal_fields = (
+        REPO_ROOT / "frontend" / "src" / "dashboard" / "DashboardTaskDetailFields.tsx"
     ).read_text(encoding="utf-8")
     dashboard_technical = (
         REPO_ROOT / "frontend" / "src" / "dashboard" / "DashboardTechnicalDetails.tsx"
@@ -1724,9 +1792,12 @@ def test_dashboard_react_markup_replaces_fallback_clone():
             dashboard_kpis,
             dashboard_operations,
             dashboard_shift_people,
+            dashboard_shift_panel,
+            dashboard_people_panel,
             dashboard_side_column,
             dashboard_tasks,
             dashboard_task_modal,
+            dashboard_task_modal_fields,
             dashboard_technical,
         )
     )
@@ -1962,7 +2033,7 @@ def test_migrated_pages_use_static_modules_without_inline_scripts():
 def test_frontend_ui_copy_has_no_encoding_artifacts():
     """Verify UI source does not reintroduce mojibake or ASCII fallback labels."""
     blocked_fragments = (
-        "Ã",
+        "Ãƒ",
         "Laeuft",
         "Bestaetigen",
         "bestaetigen",
@@ -2012,14 +2083,23 @@ def test_web_routes_use_shared_design_shell(client):
         response = client.get(route)
         html = response.get_data(as_text=True)
         assert response.status_code == 200
+        assert "app-main" in html
+        if route == "/login":
+            assert "app-shell-layout" not in html
+            assert "maintenance-shell-runtime-root" not in html
+            assert "maintenance-shell-sidebar-root" not in html
+            assert "maintenance-login-root" in html
+            assert "data-react-login-fallback" not in html
+            continue
+
         assert "app-shell-layout" in html
+        assert "maintenance-shell-runtime-root" in html
         assert "maintenance-shell-sidebar-root" in html
         assert "maintenance-shell-topbar-root" in html
         assert "maintenance-shell-chat-root" in html
-        assert "data-react-shell-sidebar-fallback" not in html
-        assert "data-react-shell-topbar-fallback" not in html
-        assert "data-react-shell-chat-fallback" not in html
-        assert "app-main" in html
+        assert "data-react-shell-sidebar-fallback" in html
+        assert "data-react-shell-topbar-fallback" in html
+        assert "data-react-shell-chat-fallback" in html
         if route == "/":
             assert "maintenance-dashboard-root" in html
             assert "data-react-dashboard-fallback" not in html
@@ -2053,9 +2133,6 @@ def test_web_routes_use_shared_design_shell(client):
         elif route == "/handover":
             assert "maintenance-handover-root" in html
             assert "data-react-handover-fallback" not in html
-        elif route == "/login":
-            assert "maintenance-login-root" in html
-            assert "data-react-login-fallback" not in html
         else:
             assert "page-hero" in html
             assert "app-card" in html
@@ -2099,7 +2176,7 @@ def test_core_german_ui_labels_are_not_mojibake(client):
     dashboard_source = dashboard_react_source()
     shell_source = "\n".join(
         path.read_text(encoding="utf-8")
-        for path in (REPO_ROOT / "frontend" / "src" / "layout").rglob("*.tsx")
+        for path in (REPO_ROOT / "frontend" / "src" / "layout").rglob("*.ts*")
     )
     source = html + dashboard_source + shell_source
 

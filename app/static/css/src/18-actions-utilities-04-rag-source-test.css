@@ -1,0 +1,216 @@
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+  }
+
+  .rag-index-track-panel {
+    border-top: 1px solid #dbe4ee;
+    padding-top: 0.9rem;
+  }
+
+  .rag-index-track article {
+    position: relative;
+    min-height: 6.9rem;
+  }
+
+  .rag-index-track article:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: -0.55rem;
+    width: 0.4rem;
+    height: 2px;
+    background: #9fb1c5;
+  }
+
+  .rag-index-track b {
+    position: absolute;
+    right: 0.7rem;
+    bottom: 0.65rem;
+    display: grid;
+    place-items: center;
+    width: 1.1rem;
+    height: 1.1rem;
+    border-radius: 999px;
+    background: #16a34a;
+    color: #ffffff;
+    font-size: 0.48rem;
+    font-weight: 950;
+  }
+
+  .rag-board-support {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.75rem;
+    margin-top: 0.9rem;
+  }
+
+  .rag-board-support .stats-list:empty {
+    display: none;
+  }
+
+  .rag-test-arena .source-test-form {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .source-test-form label,
+  .source-test-form label span {
+    display: grid;
+    gap: 0.35rem;
+  }
+
+  .source-test-answer {
+    min-height: 7rem;
+    margin-top: 0.8rem;
+    white-space: pre-wrap;
+    border: 1px solid #e2eaf4;
+    border-radius: 0.5rem;
+    background: #f8fbfd;
+    padding: 0.85rem;
+    color: var(--ui-text);
+    font-size: 0.88rem;
+    line-height: 1.5;
+  }
+
+  .rag-mode-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.55rem;
+  }
+
+  .rag-test-arena .source-test-score-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-top: 0.9rem;
+  }
+
+  .rag-test-arena .source-test-score-grid article {
+    min-height: 5.8rem;
+  }
+
+  .rag-test-arena .source-test-score-grid small {
+    color: var(--ui-muted);
+    font-size: 0.68rem;
+    font-weight: 780;
+  }
+
+  .rag-hidden-preview {
+    max-height: 8rem;
+    overflow: auto;
+  }
+
+  .rag-effectiveness-strip {
+    grid-column: 1 / -1;
+    border-top: 1px solid #dbe4ee;
+    background: #ffffff;
+    padding: 1rem 1.25rem 1.25rem;
+  }
+
+  .rag-effectiveness-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.85rem;
+  }
+
+  .rag-effectiveness-grid article {
+    min-width: 0;
+    min-height: 7.5rem;
+    border: 1px solid #dbe4ee;
+    border-radius: 0.55rem;
+    background: #ffffff;
+    padding: 0.95rem;
+  }
+
+  .rag-effectiveness-grid span,
+  .rag-effectiveness-grid small {
+    display: block;
+    color: var(--ui-muted);
+    font-size: 0.72rem;
+    font-weight: 780;
+  }
+
+  .rag-effectiveness-grid strong {
+    display: block;
+    margin: 0.35rem 0;
+    color: var(--ui-text);
+    font-size: 1.35rem;
+    font-weight: 950;
+  }
+
+  .source-test-sources {
+    display: grid;
+    gap: 0.55rem;
+    margin-top: 0.8rem;
+  }
+
+  .source-test-source {
+    display: grid;
+    gap: 0.2rem;
+    border: 1px solid #e2eaf4;
+    border-left: 4px solid var(--ui-teal);
+    border-radius: 0.5rem;
+    background: #fff;
+    padding: 0.65rem;
+  }
+
+  .source-test-source small {
+    color: var(--ui-muted);
+    font-size: 0.72rem;
+    font-weight: 740;
+  }
+
+  .source-test-actions {
+    margin-top: 0.8rem;
+  }
+
+  .mini-bar-list {
+    display: grid;
+    gap: 0.55rem;
+    margin-top: 0.75rem;
+  }
+
+  .mini-bar-row {
+    display: grid;
+    grid-template-columns: minmax(5rem, 0.8fr) minmax(5rem, 1fr) auto;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .mini-bar-row i {
+    display: block;
+    height: 0.55rem;
+    border-radius: 999px;
+    background: var(--ui-teal);
+  }
+
+  .mini-bar-row span,
+  .mini-bar-row strong {
+    overflow-wrap: anywhere;
+    font-size: 0.76rem;
+    font-weight: 820;
+  }
+
+  .quality-donut {
+    --quality-value: 0%;
+    display: grid;
+    place-items: center;
+    aspect-ratio: 1;
+    max-width: 12rem;
+    margin: 0.75rem auto 0;
+    border-radius: 999px;
+    background:
+      radial-gradient(circle at center, #fff 0 54%, transparent 55%),
+      conic-gradient(var(--ui-green) var(--quality-value), #e2eaf4 0);
+  }
+
+  .quality-donut strong {
+    color: var(--ui-text);
+    font-size: 1.5rem;
+    font-weight: 950;
+  }
+
+  .quality-donut small {
+    color: var(--ui-muted);
+    font-size: 0.72rem;
+    font-weight: 820;
+  }

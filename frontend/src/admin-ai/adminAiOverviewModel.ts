@@ -1,5 +1,14 @@
 import { safeErrorMessage } from "../utils/errors";
 import { type AdminAiPayload } from "./adminAiApi";
+import {
+  moneyText,
+  numberField,
+  numberText,
+  percentText,
+  recordField,
+  stringField,
+  toneForStatus
+} from "./adminAiOverviewHelpers";
 
 export type AdminAiOverviewLoadState = {
   readonly aiStatus: AdminAiPayload | null;
@@ -47,79 +56,6 @@ export const EMPTY_ADMIN_AI_OVERVIEW_STATE: AdminAiOverviewLoadState = {
   errorMessage: "",
   isLoading: true
 };
-
-/**
- * Return true when a value is a non-array object.
- */
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/**
- * Read a nested object field safely.
- */
-function recordField(source: AdminAiPayload | null, key: string): AdminAiPayload {
-  const value = source?.[key];
-  return isRecord(value) ? value : {};
-}
-
-/**
- * Read a string-like field with a fallback.
- */
-function stringField(source: AdminAiPayload | null, key: string, fallback = "-"): string {
-  const value = source?.[key];
-  if (typeof value === "string" && value.trim()) return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  return fallback;
-}
-
-/**
- * Read a numeric field with a fallback.
- */
-function numberField(source: AdminAiPayload | null, key: string, fallback = 0): number {
-  const value = source?.[key];
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-/**
- * Format a number with the German frontend locale.
- */
-function numberText(value: unknown): string {
-  const parsed = Number(value ?? 0);
-  if (!Number.isFinite(parsed)) return String(value ?? "-");
-  return parsed.toLocaleString("de-DE");
-}
-
-/**
- * Format a ratio as whole percent.
- */
-function percentText(value: unknown): string {
-  const parsed = Number(value ?? 0);
-  return `${Math.round((Number.isFinite(parsed) ? parsed : 0) * 100)}%`;
-}
-
-/**
- * Format a USD cost value like the legacy Admin-AI runtime.
- */
-function moneyText(value: unknown): string {
-  const parsed = Number(value ?? 0);
-  return `$${(Number.isFinite(parsed) ? parsed : 0).toLocaleString("de-DE", {
-    maximumFractionDigits: 6,
-    minimumFractionDigits: 0
-  })}`;
-}
-
-/**
- * Map Admin-AI health status values to existing CSS tone classes.
- */
-function toneForStatus(status: unknown): AdminAiStatusCard["tone"] {
-  const value = String(status ?? "").toLowerCase();
-  if (["ok", "ready", "healthy", "active", "success"].includes(value)) return "is-active";
-  if (["critical", "error", "failed", "unhealthy"].includes(value)) return "is-error";
-  if (["warning", "stale", "degraded", "pending"].includes(value)) return "is-stale";
-  return "is-muted";
-}
 
 /**
  * Build the main overview status badge text from partial API payloads.

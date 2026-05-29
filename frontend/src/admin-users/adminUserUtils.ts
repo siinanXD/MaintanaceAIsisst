@@ -1,3 +1,8 @@
+import {
+  confirmLegacyAction,
+  legacyAuthRuntime,
+  requestLegacyText
+} from "../app/runtimeBridge";
 import { formatGermanDateTime } from "../utils/date";
 import { triggerBrowserDownload } from "../utils/download";
 import { safeErrorMessage } from "../utils/errors";
@@ -11,17 +16,6 @@ export const ROLE_OPTIONS = [
   ["produktion", "Produktion"],
   ["personalabteilung", "Personalabteilung"]
 ] as const;
-
-type MaintenanceDialogs = {
-  readonly confirmAction?: (options: Record<string, unknown>) => Promise<boolean>;
-  readonly requestText?: (options: Record<string, unknown>) => Promise<string | null>;
-};
-
-declare global {
-  interface Window {
-    readonly maintenanceDialogs?: MaintenanceDialogs;
-  }
-}
 
 /**
  * Return a safe user-facing admin error message.
@@ -147,20 +141,14 @@ export function permissionChangeSummary(
  * Request confirmation through the shared app dialog.
  */
 export async function confirmAdminAction(title: string, message: string, confirmText = "Bestätigen"): Promise<boolean> {
-  if (window.maintenanceDialogs?.confirmAction) {
-    return window.maintenanceDialogs.confirmAction({ title, message, confirmText });
-  }
-  return window.confirm(message);
+  return confirmLegacyAction({ title, message, confirmText });
 }
 
 /**
  * Request password text through the shared app dialog.
  */
 export async function requestPassword(title: string, message: string): Promise<string | null> {
-  if (!window.maintenanceDialogs?.requestText) {
-    throw new Error("Eingabedialog ist nicht verfügbar.");
-  }
-  return window.maintenanceDialogs.requestText({
+  return requestLegacyText({
     title,
     message,
     label: "Neues Passwort",
@@ -181,7 +169,7 @@ export function downloadBackup(downloadUrl: string | undefined, filename: string
  * Refresh the existing auth runtime when the current user changes.
  */
 export async function refreshCurrentUserIfNeeded(updatedUserId: number, currentUserId: number | undefined): Promise<void> {
-  const runtime = window.maintenanceAuth as { readonly refreshUser?: () => Promise<void> } | undefined;
+  const runtime = legacyAuthRuntime();
   if (updatedUserId === currentUserId && runtime?.refreshUser) {
     await runtime.refreshUser();
   }

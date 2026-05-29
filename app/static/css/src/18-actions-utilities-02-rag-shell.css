@@ -1,0 +1,187 @@
+  .inventory-card-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .inventory-card {
+    min-height: 14rem;
+  }
+
+  .ai-admin-page[data-ai-admin-view="rag_board"] {
+    max-width: none;
+  }
+
+  .ai-admin-page[data-ai-admin-view="rag_board"] .ai-admin-hero,
+  .ai-admin-page[data-ai-admin-view="rag_board"] .ai-admin-area-header {
+    display: none;
+  }
+
+  .ai-admin-page[data-ai-admin-view="rag_board"] .ai-admin-nav {
+    margin-bottom: 0;
+    border-radius: 0.75rem 0.75rem 0 0;
+    background: #ffffff;
+  }
+
+  .rag-game-shell {
+    display: grid;
+    grid-template-columns: 14.5rem minmax(33rem, 1fr) 22rem;
+    gap: 0;
+    overflow: hidden;
+    border: 1px solid #dbe4ee;
+    border-top: 0;
+    border-radius: 0 0 var(--ui-radius) var(--ui-radius);
+    background: #ffffff;
+    box-shadow: var(--ui-shadow-sm);
+  }
+
+  .rag-health-rail,
+  .rag-test-arena {
+    min-width: 0;
+    background: #fbfdff;
+    padding: 1rem;
+  }
+
+  .rag-health-rail {
+    border-right: 1px solid #dbe4ee;
+  }
+
+  .rag-test-arena {
+    border-left: 1px solid #dbe4ee;
+  }
+
+  .rag-game-main {
+    min-width: 0;
+    padding: 1rem 1.25rem;
+  }
+
+  .rag-health-brand,
+  .rag-game-heading,
+  .rag-system-link {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .rag-health-brand {
+    justify-content: flex-start;
+    padding-bottom: 1rem;
+  }
+
+  .rag-health-brand strong,
+  .rag-game-heading h3 {
+    color: var(--ui-text);
+    font-size: 1.05rem;
+    font-weight: 950;
+    line-height: 1.2;
+  }
+
+  .rag-health-brand small,
+  .rag-health-item em,
+  .rag-system-link span {
+    color: var(--ui-muted);
+    font-size: 0.72rem;
+    font-style: normal;
+    font-weight: 780;
+  }
+
+  .rag-brand-mark,
+  .rag-health-icon {
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    width: 2.2rem;
+    height: 2.2rem;
+    border: 2px solid #0f766e;
+    border-radius: 0.65rem;
+    color: #0f766e;
+    font-size: 0.78rem;
+    font-weight: 950;
+  }
+
+  .rag-health-rail > h3 {
+    margin-bottom: 0.65rem;
+    color: var(--ui-muted);
+    font-size: 0.72rem;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  .rag-health-list {
+    display: grid;
+    overflow: hidden;
+    border: 1px solid #dbe4ee;
+    border-radius: 0.55rem;
+    background: #ffffff;
+  }
+
+  .rag-health-item {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.65rem;
+    min-height: 4.7rem;
+    padding: 0.8rem;
+    border-bottom: 1px solid #e5edf5;
+  }
+
+  .rag-health-item:last-child {
+    border-bottom: 0;
+  }
+
+  .rag-health-item strong {
+    display: block;
+    color: #0f766e;
+    font-size: 1.05rem;
+    font-weight: 950;
+    line-height: 1.05;
+    overflow-wrap: anywhere;
+  }
+
+  .rag-health-item small {
+    display: block;
+    color: var(--ui-muted);
+    font-size: 0.7rem;
+    font-weight: 820;
+  }
+
+  .rag-health-item em {
+    display: -webkit-box;
+    max-height: 2.65rem;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .rag-health-item.is-watch strong,
+  .rag-health-item.is-watch .rag-health-icon {
+    color: #d97706;
+    border-color: #d97706;
+  }
+
+  .rag-system-link {
+    margin-top: 1rem;
+    align-items: center;
+    border: 1px solid #dbe4ee;
+    border-radius: 0.55rem;
+    background: #ffffff;
+    padding: 0.75rem;
+  }
+
+  .rag-system-link strong {
+    display: grid;
+    place-items: center;
+    min-width: 2rem;
+    height: 2rem;
+    border-radius: 999px;
+    background: #0f766e;
+    color: #ffffff;
+    font-size: 0.72rem;
+    font-weight: 950;
+  }
+
+  .rag-game-heading {
+    margin-bottom: 1rem;
+  }
+
+  .rag-game-heading h3 {
+    margin: 0;
+  }

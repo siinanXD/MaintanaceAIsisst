@@ -2,7 +2,16 @@
 
 {% block title %}Anmelden - Maintenance Assistant{% endblock %}
 
+{% block app_shell %}
+<main class="app-main" id="main-content" tabindex="-1">
+  <div class="sr-only" aria-live="polite" aria-atomic="true" data-global-live-region></div>
+  {{ self.content() }}
+</main>
+{% endblock %}
+
 {% block content %}
 <div id="maintenance-login-root"></div>
 {{ react_entrypoint("src/login/loginEntrypoint.tsx") }}
 {% endblock %}
+
+{% block shell_react_entrypoint %}{% endblock %}

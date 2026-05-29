@@ -19,6 +19,7 @@ import {
 import { DashboardMarkup } from "./DashboardMarkup";
 import { EMPTY_DASHBOARD_VIEW_STATE, type DashboardViewState } from "./dashboardModel";
 import { employeesToShiftCalendar } from "./dashboardShiftModel";
+import { taskDraftFromSuggestion } from "./dashboardTaskDraftModel";
 
 const DASHBOARD_ISLAND = {
   mountedFlag: "maintenanceDashboardReactMounted",
@@ -198,25 +199,6 @@ export function DashboardApp(): ReactNode {
     void runTaskMutation("Aufgabe aktualisiert.", () =>
       updateDashboardTask(Number(activeTask?.id || 0), payload)
     );
-  }
-
-  /**
-   * Convert a task suggestion API response into the hidden cockpit draft shape.
-   */
-  function taskDraftFromSuggestion(suggestion: DashboardPayload): DashboardTaskMutation {
-    const descriptionParts = [
-      typeof suggestion.description === "string" ? suggestion.description : "",
-      typeof suggestion.possible_cause === "string" ? `Mögliche Ursache: ${suggestion.possible_cause}` : "",
-      typeof suggestion.recommended_action === "string" ? `Nächste Aktion: ${suggestion.recommended_action}` : ""
-    ].filter(Boolean);
-
-    return {
-      department: typeof suggestion.department === "string" ? suggestion.department : "",
-      description: descriptionParts.join("\n\n"),
-      priority: typeof suggestion.priority === "string" ? suggestion.priority : "normal",
-      status: typeof suggestion.status === "string" ? suggestion.status : "open",
-      title: typeof suggestion.title === "string" ? suggestion.title : ""
-    };
   }
 
   /**

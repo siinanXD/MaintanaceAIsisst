@@ -1,3 +1,4 @@
+import { legacyAuthRuntime } from "../app/runtimeBridge";
 import { readStoredSession } from "../auth/session";
 import { triggerBrowserDownload } from "../utils/download";
 import { safeErrorMessage } from "../utils/errors";
@@ -52,7 +53,7 @@ export function employeeErrorMessage(error: unknown): string {
  * Return the current employee access level from the existing auth runtime or storage.
  */
 export function currentEmployeeAccessLevel(): string {
-  const runtimeLevel = window.maintenanceAuth?.employeeAccessLevel?.();
+  const runtimeLevel = legacyAuthRuntime()?.employeeAccessLevel?.();
   if (runtimeLevel) return runtimeLevel;
 
   const user = readStoredSession().user;
@@ -70,7 +71,7 @@ export function currentEmployeeAccessLevel(): string {
  * Return whether a user may manage confidential employee records.
  */
 export function canManageEmployees(writable: boolean): boolean {
-  const runtimeCanManage = window.maintenanceAuth?.canManageEmployees?.();
+  const runtimeCanManage = legacyAuthRuntime()?.canManageEmployees?.();
   if (typeof runtimeCanManage === "boolean") return runtimeCanManage;
   return writable && currentEmployeeAccessLevel() === "confidential";
 }

@@ -1,18 +1,39 @@
 import { StrictMode, useEffect, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
+import { createPortal } from "react-dom";
 
 import { ShellChatWidget } from "./ShellChatWidget";
 import { ShellIconSprite } from "./ShellIconSprite";
 import { ShellSidebarNavigation } from "./ShellNavigation";
+import { ShellProvider } from "./ShellProvider";
 import { ShellTopbar } from "./ShellTopbar";
 import { readSidebarCollapsedPreference, writeSidebarCollapsedPreference } from "./shellPreferences";
 
 const SHELL_MOUNTED_EVENT = "maintenance-shell-react-mounted";
+const SHELL_RUNTIME_ROOT_ID = "maintenance-shell-runtime-root";
 
-type ShellRootConfig = {
+type ShellPortalTarget = {
+  readonly fallbackSelector?: string;
   readonly rootId: string;
-  readonly render: () => ReactNode;
 };
+
+const SHELL_TARGETS: readonly ShellPortalTarget[] = [
+  {
+    fallbackSelector: "[data-react-shell-sidebar-fallback]",
+    rootId: "maintenance-shell-sidebar-root"
+  },
+  {
+    fallbackSelector: "[data-react-shell-topbar-fallback]",
+    rootId: "maintenance-shell-topbar-root"
+  },
+  {
+    fallbackSelector: "[data-react-shell-chat-fallback]",
+    rootId: "maintenance-shell-chat-root"
+  },
+  {
+    rootId: "maintenance-shell-icons-root"
+  }
+] as const;
 
 declare global {
   interface Window {
@@ -37,11 +58,37 @@ function currentHeaderTitle(): string {
 }
 
 /**
- * Show one React root after a successful mount.
+ * Return a shell portal target by element id.
  */
-function revealReactRoot(rootElement: HTMLElement): void {
+function targetElement(rootId: string): HTMLElement | null {
+  return document.getElementById(rootId);
+}
+
+/**
+ * Reveal one React shell target and hide its matching Jinja fallback.
+ */
+function revealShellTarget(target: ShellPortalTarget): void {
+  const rootElement = targetElement(target.rootId);
+  if (!rootElement) return;
+
   rootElement.hidden = false;
   rootElement.dataset.reactMounted = "true";
+  if (target.fallbackSelector) {
+    document.querySelectorAll<HTMLElement>(target.fallbackSelector).forEach((element) => {
+      element.hidden = true;
+      element.dataset.reactFallbackHidden = "true";
+    });
+  }
+}
+
+/**
+ * Mark the central shell runtime as mounted after portal content commits.
+ */
+function markShellMounted(): void {
+  const mountedCount = SHELL_TARGETS.filter((target) => targetElement(target.rootId)).length;
+  window.maintenanceShellReactMounted = true;
+  window.maintenanceShellReactMountedRoots = mountedCount;
+  window.dispatchEvent(new CustomEvent(SHELL_MOUNTED_EVENT, { detail: { mountedCount } }));
 }
 
 /**
@@ -77,64 +124,43 @@ function ShellSidebarChrome(): ReactNode {
   );
 }
 
-const SHELL_ROOTS: readonly ShellRootConfig[] = [
-  {
-    rootId: "maintenance-shell-sidebar-root",
-    render: () => <ShellSidebarChrome />
-  },
-  {
-    rootId: "maintenance-shell-topbar-root",
-    render: () => <ShellTopbar currentPath={currentPath()} title={currentHeaderTitle()} />
-  },
-  {
-    rootId: "maintenance-shell-chat-root",
-    render: () => <ShellChatWidget />
-  }
-] as const;
-
 /**
- * Mount one global shell root if its placeholder exists.
+ * Render all shell pieces through one provider tree and portal them into base.html placeholders.
  */
-function mountShellRoot(config: ShellRootConfig): boolean {
-  const rootElement = document.getElementById(config.rootId);
-  if (!rootElement) return false;
+function ShellChromeRuntime(): ReactNode {
+  const iconsRoot = targetElement("maintenance-shell-icons-root");
+  const sidebarRoot = targetElement("maintenance-shell-sidebar-root");
+  const topbarRoot = targetElement("maintenance-shell-topbar-root");
+  const chatRoot = targetElement("maintenance-shell-chat-root");
 
-  createRoot(rootElement).render(
-    <StrictMode>
-      {config.render()}
-    </StrictMode>
+  useEffect(() => {
+    SHELL_TARGETS.forEach(revealShellTarget);
+    markShellMounted();
+  }, []);
+
+  return (
+    <ShellProvider>
+      {iconsRoot ? createPortal(<ShellIconSprite />, iconsRoot) : null}
+      {sidebarRoot ? createPortal(<ShellSidebarChrome />, sidebarRoot) : null}
+      {topbarRoot ? createPortal(<ShellTopbar currentPath={currentPath()} title={currentHeaderTitle()} />, topbarRoot) : null}
+      {chatRoot ? createPortal(<ShellChatWidget />, chatRoot) : null}
+    </ShellProvider>
   );
-  revealReactRoot(rootElement);
-  return true;
 }
 
 /**
- * Mount the shared SVG icon sprite for React shell navigation.
+ * Mount the central React shell runtime once per page.
  */
-function mountShellIconSprite(): boolean {
-  const rootElement = document.getElementById("maintenance-shell-icons-root");
-  if (!rootElement) return false;
+function bootstrapShellChrome(): void {
+  const rootElement = document.getElementById(SHELL_RUNTIME_ROOT_ID);
+  if (!rootElement || rootElement.dataset.reactMounted === "true") return;
 
   createRoot(rootElement).render(
     <StrictMode>
-      <ShellIconSprite />
+      <ShellChromeRuntime />
     </StrictMode>
   );
   rootElement.dataset.reactMounted = "true";
-  return true;
-}
-
-/**
- * Mount all global React shell chrome roots.
- */
-function bootstrapShellChrome(): void {
-  mountShellIconSprite();
-  const mountedCount = SHELL_ROOTS.filter(mountShellRoot).length;
-  if (mountedCount > 0) {
-    window.maintenanceShellReactMounted = true;
-    window.maintenanceShellReactMountedRoots = mountedCount;
-    window.dispatchEvent(new CustomEvent(SHELL_MOUNTED_EVENT, { detail: { mountedCount } }));
-  }
 }
 
 bootstrapShellChrome();

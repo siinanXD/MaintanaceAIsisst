@@ -1,7 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 
 import { apiRequest } from "../api/client";
-import type { MaintenanceAuthRuntime } from "../auth/permissions";
+import { legacyAuthRuntime } from "../app/runtimeBridge";
 import { safeErrorMessage } from "../utils/errors";
 import { normalizeLoginResponse, type LoginData, type LoginFormValues, type LoginResponse } from "./loginTypes";
 
@@ -14,19 +14,13 @@ type MessageState = {
   readonly variant: "success" | "error" | "info" | null;
 };
 
-declare global {
-  interface Window {
-    readonly maintenanceAuth?: MaintenanceAuthRuntime;
-  }
-}
-
 const EMPTY_MESSAGE: MessageState = { text: "", variant: null };
 
 /**
  * Return a login destination that is compatible with the existing auth runtime.
  */
 function loginDestination(user: LoginData["user"], nextPath: string | null): string {
-  const maintenanceAuth = window.maintenanceAuth;
+  const maintenanceAuth = legacyAuthRuntime();
 
   if (maintenanceAuth && typeof maintenanceAuth.destinationForUserOrNext === "function") {
     return maintenanceAuth.destinationForUserOrNext(user, nextPath);

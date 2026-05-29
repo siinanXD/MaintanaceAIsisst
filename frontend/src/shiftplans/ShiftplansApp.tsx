@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { markIslandMounted } from "../app/islandMount";
 import { canWriteDashboard } from "../auth/permissions";
-import { readStoredSession } from "../auth/session";
-import { triggerBrowserDownload } from "../utils/download";
 import {
   deleteShiftPlan,
   deleteShiftplanEntry,
@@ -17,10 +14,9 @@ import {
   moveEntryToSlot,
   previewShiftPlan,
   publishShiftPlan,
-  shiftplanExportUrl,
   updateShiftplanEntry,
 } from "./shiftplansApi";
-import { ShiftplansMarkup } from "./ShiftplansMarkup";
+import { ShiftplansAppShell } from "./ShiftplansAppShell";
 import type {
   Machine,
   ShiftModel,
@@ -37,44 +33,12 @@ import {
   buildGenerationPayload,
   shiftplansErrorMessage,
 } from "./shiftplansUtils";
-
-const SHIFTPLANS_ISLAND = {
-  mountedFlag: "maintenanceShiftplansReactMounted",
-  mountEvent: "maintenance-shiftplans-react-mounted",
-} as const;
-
-const SHIFTPLANS_ROOT_SELECTOR = "#maintenance-shiftplans-root";
-const SHIFTPLANS_SHELL_SELECTOR = "[data-shiftplans-react-shell]";
-
-/**
- * Return whether the current stored user is a master admin.
- */
-function currentUserIsAdmin(): boolean {
-  const user = readStoredSession().user;
-  return user?.role === "master_admin";
-}
-
-/**
- * Return the best selected plan index for a plan list.
- */
-function selectedPlanIndexFor(plans: readonly ShiftPlan[], selectId?: number): number {
-  if (selectId !== undefined) {
-    const exactIndex = plans.findIndex((plan) => plan.id === selectId);
-    if (exactIndex >= 0) return exactIndex;
-  }
-  const firstFilledIndex = plans.findIndex((plan) => Array.isArray(plan.entries) && plan.entries.length > 0);
-  return firstFilledIndex >= 0 ? firstFilledIndex : 0;
-}
-
-/**
- * Replace or prepend a plan in the list while preserving current visibility.
- */
-function plansWithFallback(plans: readonly ShiftPlan[], fallbackPlan: ShiftPlan | null): ShiftPlan[] {
-  if (!fallbackPlan || fallbackPlan.id === undefined || plans.some((plan) => plan.id === fallbackPlan.id)) {
-    return [...plans];
-  }
-  return [fallbackPlan, ...plans];
-}
+import {
+  currentUserIsAdmin,
+  plansWithFallback,
+  selectedPlanIndexFor,
+} from "./ShiftplansAppModel";
+import { useShiftplansAuthReload, useShiftplansMountMarker } from "./useShiftplansLifecycle";
 
 /**
  * Render the shift planning page with React-owned behavior and legacy fallback hooks.
@@ -103,18 +67,7 @@ export function ShiftplansApp(): ReactNode {
     [draft.shiftModelKey, models]
   );
 
-  /**
-   * Mark the island mounted only after its shell exists.
-   */
-  useEffect(() => {
-    const frameId = window.requestAnimationFrame(() => {
-      const rootElement = document.querySelector(SHIFTPLANS_ROOT_SELECTOR);
-      if (rootElement?.querySelector(SHIFTPLANS_SHELL_SELECTOR)) {
-        markIslandMounted(SHIFTPLANS_ISLAND);
-      }
-    });
-    return () => window.cancelAnimationFrame(frameId);
-  }, []);
+  useShiftplansMountMarker();
 
   /**
    * Load initial data for models, machines, and plans.
@@ -165,23 +118,11 @@ export function ShiftplansApp(): ReactNode {
     refreshPlanDetails(currentPlan).catch(() => undefined);
   }, [currentPlan?.id, currentPlan?.status, selectedPlanIndex]);
 
-  useEffect(() => {
-    /**
-     * Reload shiftplan data after login state changes.
-     */
-    function handleAuthChange(): void {
-      refreshInitialData().catch((error: unknown) => {
-        setFormMessage({ text: shiftplansErrorMessage(error, "Schichtplanung konnte nicht geladen werden."), isError: true });
-      });
-    }
-
-    window.addEventListener("maintenance-auth-ready", handleAuthChange);
-    window.addEventListener("maintenance-auth-changed", handleAuthChange);
-    return () => {
-      window.removeEventListener("maintenance-auth-ready", handleAuthChange);
-      window.removeEventListener("maintenance-auth-changed", handleAuthChange);
-    };
-  }, []);
+  useShiftplansAuthReload(() => {
+    refreshInitialData().catch((error: unknown) => {
+      setFormMessage({ text: shiftplansErrorMessage(error, "Schichtplanung konnte nicht geladen werden."), isError: true });
+    });
+  });
 
   /**
    * Toggle one selected machine.
@@ -312,48 +253,42 @@ export function ShiftplansApp(): ReactNode {
   }
 
   return (
-    <div data-shiftplans-react-shell>
-      <ShiftplansMarkup
-        busyAction={busyAction}
-        changelog={changelog}
-        currentPlan={currentPlan}
-        deletingEntry={deletingEntry}
-        dialogEntry={dialogEntry}
-        dialogMessage={dialogMessage}
-        draft={draft}
-        formMessage={formMessage}
-        isAdmin={isAdmin}
-        machines={machines}
-        models={models}
-        onDeleteEntry={deleteEntry}
-        onDeletePlan={removeCurrentPlan}
-        onDialogClose={() => setDialogEntry(null)}
-        onDialogSave={saveDialog}
-        onDownload={() => currentPlan?.id && triggerBrowserDownload(shiftplanExportUrl(currentPlan.id), `${currentPlan.title || "schichtplan"}.xlsx`)}
-        onDraftChange={setDraft}
-        onEditEntry={(entry) => {
-          setDialogMessage({ text: "" });
-          setDialogEntry(entry);
-        }}
-        onGenerate={() => submitPlan("generate")}
-        onMachineToggle={toggleMachine}
-        onMoveEntryToEntry={moveToEntry}
-        onMoveEntryToSlot={moveToSlot}
-        onPlanSelect={setSelectedPlanIndex}
-        onPreview={() => submitPlan("preview")}
-        onPrint={() => window.print()}
-        onPublish={() => {
-          togglePublish().catch((error: unknown) => {
-            setFormMessage({ text: shiftplansErrorMessage(error), isError: true });
-          });
-        }}
-        plans={plans}
-        savingEntry={savingEntry}
-        selectedMachineIds={selectedMachineIds}
-        selectedPlanIndex={selectedPlanIndex}
-        warnings={warnings}
-        writable={writable}
-      />
-    </div>
+    <ShiftplansAppShell
+      busyAction={busyAction}
+      changelog={changelog}
+      currentPlan={currentPlan}
+      deletingEntry={deletingEntry}
+      dialogEntry={dialogEntry}
+      dialogMessage={dialogMessage}
+      draft={draft}
+      formMessage={formMessage}
+      isAdmin={isAdmin}
+      machines={machines}
+      models={models}
+      onDeleteEntry={deleteEntry}
+      onDeletePlan={removeCurrentPlan}
+      onDialogSave={saveDialog}
+      onDraftChange={setDraft}
+      onEditEntry={setDialogEntry}
+      onGenerate={() => submitPlan("generate")}
+      onMachineToggle={toggleMachine}
+      onMoveEntryToEntry={moveToEntry}
+      onMoveEntryToSlot={moveToSlot}
+      onPlanSelect={setSelectedPlanIndex}
+      onPreview={() => submitPlan("preview")}
+      onPublish={() => {
+        togglePublish().catch((error: unknown) => {
+          setFormMessage({ text: shiftplansErrorMessage(error), isError: true });
+        });
+      }}
+      plans={plans}
+      savingEntry={savingEntry}
+      selectedMachineIds={selectedMachineIds}
+      selectedPlanIndex={selectedPlanIndex}
+      setDialogEntry={setDialogEntry}
+      setDialogMessage={setDialogMessage}
+      warnings={warnings}
+      writable={writable}
+    />
   );
 }
