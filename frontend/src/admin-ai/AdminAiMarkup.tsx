@@ -15,7 +15,7 @@ import { type AdminAiRagBoardState, type AdminAiTrainingForm } from "./adminAiRa
 import { type AdminAiSourceCheckState } from "./adminAiSourceCheckModel";
 import { type AdminAiTechnicalFilters, type AdminAiTechnicalState } from "./adminAiTechnicalModel";
 
-type AdminAiMarkupProps = {
+export type AdminAiMarkupProps = {
   readonly effectivenessState: AdminAiEffectivenessState;
   readonly onDeleteKnowledge: (documentId: number) => void;
   readonly onDeleteTraining: (entryId: number) => void;

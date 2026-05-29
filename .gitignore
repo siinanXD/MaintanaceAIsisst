@@ -59,6 +59,8 @@ Thumbs.db
 # Misc
 .claude/
 .codex/
+.codex_tmp/
+.codex_pytest_tmp/
 .codex_deps/
 .cursor/
 .continue/
@@ -67,6 +69,7 @@ Thumbs.db
 .gemini/
 .roo/
 .kilocode/
+backend/.pytest_tmp*/
 .tmp/
 tmp/
 temp/

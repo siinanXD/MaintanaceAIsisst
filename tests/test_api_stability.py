@@ -1328,13 +1328,19 @@ def test_admin_ai_react_markup_replaces_fallback_clone():
         encoding="utf-8"
     )
     admin_ai_sources = "\n".join(
-        path.read_text(encoding="utf-8") for path in sorted(admin_ai_dir.glob("AdminAi*.tsx"))
+        path.read_text(encoding="utf-8") for path in sorted(admin_ai_dir.glob("*.tsx"))
     )
     admin_ai_runtime_sources = "\n".join(
         path.read_text(encoding="utf-8") for path in sorted(admin_ai_dir.glob("*.ts*"))
     )
 
-    assert "AdminAiMarkup" in admin_ai_app
+    assert "AdminAiViewRouter" in admin_ai_app
+    assert "AdminAiMarkup" in admin_ai_runtime_sources
+    assert "KnowledgeStatusPanel" in admin_ai_runtime_sources
+    assert "KnowledgeDocumentsPanel" in admin_ai_runtime_sources
+    assert "TrainingEntriesPanel" in admin_ai_runtime_sources
+    assert "KnowledgeNetworkPanel" in admin_ai_runtime_sources
+    assert "ReindexJobsPanel" in admin_ai_runtime_sources
     assert "markIslandMounted" in admin_ai_app
     assert "useFallbackShellIsland" not in admin_ai_app
     assert "cloneFallbackShell" not in admin_ai_app

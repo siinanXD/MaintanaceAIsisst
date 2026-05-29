@@ -5,6 +5,7 @@ module.exports = {
     "./app/static/**/*.js",
     "./frontend/src/**/*.{ts,tsx}"
   ],
+  safelist: ["chat-history-item"],
   theme: {
     extend: {},
   },
