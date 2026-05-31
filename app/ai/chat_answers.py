@@ -25,6 +25,9 @@ from app.security import employee_access_level, has_dashboard_permission
 from app.services.ai_audit_service import ai_analytics_summary, create_ai_audit_event
 from app.services.ai_confidence_service import attach_confidence_to_result
 from app.services.ai_history_service import save_chat_exchange
+from app.services.ai_machine_structured_answer_service import (
+    answer_machine_structured_question,
+)
 from app.services.ai_prompting import (
     permission_denied_answer,
     permission_denied_context,
@@ -340,6 +343,23 @@ def answer_chat(message, user, session_id=""):
             requested_scopes or {"tasks"},
             allowed_scopes,
             message=message,
+        )
+
+    machine_structured_result = answer_machine_structured_question(message, user)
+    if machine_structured_result:
+        status = (
+            "permission_denied"
+            if machine_structured_result.get("type") == "permission_denied"
+            else "local_answer"
+        )
+        machine_structured_result["diagnostics"] = ai_diagnostics(status)
+        return attach_audit_metadata(
+            user,
+            machine_structured_result,
+            set(requested_scopes or set()) | {"machines", "errors"},
+            allowed_scopes,
+            message=message,
+            conversation_context=conversation_context,
         )
 
     structured_scope_result = answer_structured_scope_question(

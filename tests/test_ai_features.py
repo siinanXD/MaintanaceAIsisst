@@ -83,6 +83,26 @@ AGGREGATE_SOURCE_FIELDS = {
     "type",
     "url",
 }
+MACHINE_SOURCE_FIELDS = {
+    "created_at",
+    "criticality",
+    "id",
+    "last_downtime_at",
+    "machine",
+    "machine_id",
+    "module",
+    "produced_item",
+    "role_visibility",
+    "site_id",
+    "source_id",
+    "source_kind",
+    "source_record_id",
+    "source_type",
+    "status",
+    "title",
+    "type",
+    "url",
+}
 
 
 def _assert_no_forbidden_source_fields(source, forbidden_fields):
@@ -110,6 +130,24 @@ def _assert_aggregate_count_source(
     assert source["source_kind"] == "structured_aggregate"
     assert source["created_at"]
     assert source["count"] == count
+
+
+def _assert_machine_source(source, machine_id, machine_name):
+    """Verify one compact safe machine source card."""
+    assert set(source) == MACHINE_SOURCE_FIELDS
+    assert source["type"] == "machine"
+    assert source["id"] == machine_id
+    assert source["title"] == machine_name
+    assert source["module"] == "machines"
+    assert source["url"] == "/machines"
+    assert source["source_type"] == "machine"
+    assert source["source_id"] == machine_id
+    assert source["source_record_id"] == machine_id
+    assert source["source_kind"] == "structured"
+    assert source["machine_id"] == machine_id
+    assert source["machine"] == machine_name
+    assert source["role_visibility"] == "public"
+    assert source["created_at"]
 
 
 def test_ai_chat_returns_today_tasks_without_openai(
@@ -678,6 +716,217 @@ def test_ai_chat_aggregates_incidents_by_visible_machine(
     assert all(source["machine"] == "Presse Top" for source in payload["sources"])
     assert "TOP-3" not in json.dumps(payload["sources"], ensure_ascii=True)
     assert "TOP-4" not in json.dumps(payload, ensure_ascii=True)
+
+
+def test_ai_chat_machine_downtime_uses_only_visible_incidents(
+    app,
+    client,
+    make_user,
+    make_machine,
+    make_error_entry,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify machine downtime aggregation sums only visible error downtime."""
+    user = make_user(username="ai_machine_downtime_user")
+    top_machine_id = make_machine(name="Presse Downtime Top", produced_item="Deckel")
+    other_machine_id = make_machine(name="Presse Downtime Other", produced_item="Rahmen")
+    top_error_a = make_error_entry(
+        "Presse Downtime Top",
+        "DOWN-1",
+        "Sichtbare Ausfallzeit A",
+        department_name="Produktion",
+    )
+    top_error_b = make_error_entry(
+        "Presse Downtime Top",
+        "DOWN-2",
+        "Sichtbare Ausfallzeit B",
+        department_name="Produktion",
+    )
+    other_error = make_error_entry(
+        "Presse Downtime Other",
+        "DOWN-3",
+        "Andere Ausfallzeit",
+        department_name="Produktion",
+    )
+    foreign_error = make_error_entry(
+        "Presse Downtime Other",
+        "DOWN-4",
+        "Fremde Ausfallzeit",
+        department_name="IT",
+    )
+    set_dashboard_permission(user["username"], "machines", can_view=True)
+    set_dashboard_permission(user["username"], "errors", can_view=True)
+    with app.app_context():
+        db.session.get(ErrorEntry, top_error_a).machine_id = top_machine_id
+        db.session.get(ErrorEntry, top_error_a).downtime_minutes = 30
+        db.session.get(ErrorEntry, top_error_b).machine_id = top_machine_id
+        db.session.get(ErrorEntry, top_error_b).downtime_minutes = 25
+        db.session.get(ErrorEntry, other_error).machine_id = other_machine_id
+        db.session.get(ErrorEntry, other_error).downtime_minutes = 50
+        db.session.get(ErrorEntry, foreign_error).machine_id = other_machine_id
+        db.session.get(ErrorEntry, foreign_error).downtime_minutes = 999
+        db.session.commit()
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Maschine verursacht die meiste Ausfallzeit?"},
+    )
+
+    payload = response.get_json()
+    top = payload["data"]["aggregation"]["top"]
+    machine_source = next(source for source in payload["sources"] if source["type"] == "machine")
+    incident_sources = [source for source in payload["sources"] if source["type"] == "error"]
+    serialized_payload = json.dumps(payload, ensure_ascii=True)
+    assert response.status_code == 200
+    assert payload["type"] == "machine_downtime"
+    assert top["machine_id"] == top_machine_id
+    assert top["machine"] == "Presse Downtime Top"
+    assert top["total_downtime_minutes"] == 55
+    assert top["incident_count"] == 2
+    _assert_machine_source(machine_source, top_machine_id, "Presse Downtime Top")
+    assert {source["error_code"] for source in incident_sources} == {"DOWN-1", "DOWN-2"}
+    assert all(source["machine_id"] == top_machine_id for source in incident_sources)
+    assert "DOWN-4" not in serialized_payload
+    assert payload["diagnostics"]["source_count"] == len(payload["sources"])
+    assert payload["answer_quality"]["source_count"] == len(payload["sources"])
+
+
+def test_ai_chat_lists_visible_machine_incidents_with_safe_sources(
+    app,
+    client,
+    make_user,
+    make_machine,
+    make_error_entry,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify machine incident questions return visible rows and safe sources."""
+    user = make_user(username="ai_machine_incident_list_user")
+    machine_id = make_machine(name="Presse Liste", produced_item="Deckel")
+    other_machine_id = make_machine(name="Presse Andere", produced_item="Rahmen")
+    linked_error = make_error_entry(
+        "Presse Liste",
+        "MLIST-1",
+        "Verknuepfte Stoerung",
+        department_name="Produktion",
+    )
+    make_error_entry(
+        "Presse Liste",
+        "MLIST-2",
+        "Text Stoerung",
+        department_name="Produktion",
+    )
+    other_error = make_error_entry(
+        "Presse Andere",
+        "MLIST-3",
+        "Andere Stoerung",
+        department_name="Produktion",
+    )
+    foreign_error = make_error_entry(
+        "Presse Liste",
+        "MLIST-4",
+        "Fremde Stoerung",
+        department_name="IT",
+    )
+    set_dashboard_permission(user["username"], "machines", can_view=True)
+    set_dashboard_permission(user["username"], "errors", can_view=True)
+    with app.app_context():
+        db.session.get(ErrorEntry, linked_error).machine_id = machine_id
+        db.session.get(ErrorEntry, other_error).machine_id = other_machine_id
+        db.session.get(ErrorEntry, foreign_error).machine_id = machine_id
+        db.session.commit()
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Stoerungen gibt es an Maschine Presse Liste?"},
+    )
+
+    payload = response.get_json()
+    machine_source = next(source for source in payload["sources"] if source["type"] == "machine")
+    incident_sources = [source for source in payload["sources"] if source["type"] == "error"]
+    serialized_payload = json.dumps(payload, ensure_ascii=True)
+    assert response.status_code == 200
+    assert payload["type"] == "machine_incidents"
+    assert payload["data"]["machine"]["id"] == machine_id
+    assert payload["data"]["count"] == 2
+    assert {item["error_code"] for item in payload["data"]["items"]} == {"MLIST-1", "MLIST-2"}
+    _assert_machine_source(machine_source, machine_id, "Presse Liste")
+    assert {source["error_code"] for source in incident_sources} == {"MLIST-1", "MLIST-2"}
+    for source in incident_sources:
+        _assert_no_forbidden_source_fields(source, FORBIDDEN_INCIDENT_SOURCE_FIELDS)
+    assert "MLIST-3" not in serialized_payload
+    assert "MLIST-4" not in serialized_payload
+
+
+def test_ai_chat_machine_structured_answer_requires_machine_and_error_permissions(
+    client,
+    make_user,
+    make_machine,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify machine incident answers require both machines:view and errors:view."""
+    user = make_user(username="ai_machine_permission_denied_user")
+    make_machine(name="Presse Permission", produced_item="Deckel")
+    set_dashboard_permission(user["username"], "machines", can_view=True)
+    set_dashboard_permission(user["username"], "errors", can_view=False)
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Maschine hat die meiste Downtime?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "permission_denied"
+    assert payload["sources"] == []
+
+
+def test_ai_chat_machine_structured_answer_only_redacts_evidence(
+    app,
+    client,
+    make_user,
+    make_machine,
+    make_error_entry,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify answer-only mode redacts structured machine evidence for normal users."""
+    user = make_user(username="ai_machine_answer_only_user")
+    machine_id = make_machine(name="Presse Redacted", produced_item="Deckel")
+    error_id = make_error_entry(
+        "Presse Redacted",
+        "MRED-1",
+        "Redacted Stoerung",
+        department_name="Produktion",
+    )
+    set_dashboard_permission(user["username"], "machines", can_view=True)
+    set_dashboard_permission(user["username"], "errors", can_view=True)
+    with app.app_context():
+        db.session.get(ErrorEntry, error_id).machine_id = machine_id
+        db.session.commit()
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={
+            "message": "Welche Fehler gibt es an Maschine Presse Redacted?",
+            "response_mode": "answer_only",
+        },
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "machine_incidents"
+    assert payload["sources"] == []
+    assert payload["data"] == {}
+    assert payload["evidence_visible"] is False
+    assert payload["diagnostics"]["evidence_visible"] is False
+    assert payload["answer_quality"]["evidence_visible"] is False
 
 
 def test_ai_chat_lists_incidents_in_my_area_without_foreign_department(

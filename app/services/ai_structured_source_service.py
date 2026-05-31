@@ -68,6 +68,16 @@ def incident_source_cards_from_payloads(incidents, limit=SOURCE_CARD_LIMIT):
     ]
 
 
+def machine_source_cards(machines, limit=SOURCE_CARD_LIMIT):
+    """Return compact source cards for already-visible machine rows."""
+    return [_machine_source_card(machine) for machine in list(machines or [])[:limit]]
+
+
+def machine_source_card(machine):
+    """Return one compact source card for an already-visible machine row."""
+    return _machine_source_card(machine) if machine else None
+
+
 def module_count_source_card(scope, count, user):
     """Return one compact aggregate source card for a visible module count."""
     if not count:
@@ -164,6 +174,30 @@ def _incident_source_card_from_payload(incident):
         "status": incident.get("status") or "",
         "severity": incident.get("severity") or "",
         "error_code": incident.get("error_code") or "",
+    }
+
+
+def _machine_source_card(machine):
+    """Return one prompt-safe machine source card."""
+    return {
+        "type": "machine",
+        "id": machine.id,
+        "title": machine.name,
+        "module": "machines",
+        "url": "/machines",
+        "source_type": "machine",
+        "source_id": machine.id,
+        "source_record_id": machine.id,
+        "source_kind": "structured",
+        "machine_id": machine.id,
+        "machine": machine.name,
+        "role_visibility": "public",
+        "created_at": _isoformat(machine.created_at),
+        "status": machine.status,
+        "criticality": machine.criticality,
+        "produced_item": machine.produced_item,
+        "site_id": machine.site_id,
+        "last_downtime_at": _isoformat(machine.last_downtime_at),
     }
 
 
