@@ -125,6 +125,40 @@ VACATION_SOURCE_FIELDS = {
     "type",
     "url",
 }
+EMPLOYEE_SOURCE_FIELDS = {
+    "created_at",
+    "department",
+    "employee_access_level",
+    "employee_id",
+    "employee_name",
+    "id",
+    "module",
+    "personnel_number",
+    "role_visibility",
+    "source_id",
+    "source_kind",
+    "source_record_id",
+    "source_type",
+    "team",
+    "title",
+    "type",
+    "url",
+}
+FORBIDDEN_EMPLOYEE_SOURCE_FIELDS = {
+    "birth_date",
+    "city",
+    "current_shift",
+    "documents",
+    "favorite_machine",
+    "last_shift",
+    "machine_qualifications",
+    "next_shift",
+    "postal_code",
+    "qualifications",
+    "salary_group",
+    "shift_model",
+    "street",
+}
 FORBIDDEN_VACATION_SOURCE_FIELDS = {
     "approved_by",
     "cancelled_by",
@@ -196,6 +230,23 @@ def _assert_vacation_source(source, employee_id, employee_name):
     assert source["employee_name"] == employee_name
     assert source["created_at"]
     _assert_no_forbidden_source_fields(source, FORBIDDEN_VACATION_SOURCE_FIELDS)
+
+
+def _assert_employee_source(source, employee_id, employee_name):
+    """Verify one compact safe employee source card."""
+    assert set(source) == EMPLOYEE_SOURCE_FIELDS
+    assert source["type"] == "employee"
+    assert source["module"] == "employees"
+    assert source["url"] == "/employees"
+    assert source["source_type"] == "employee"
+    assert source["source_id"] == employee_id
+    assert source["source_record_id"] == employee_id
+    assert source["source_kind"] == "structured"
+    assert source["employee_id"] == employee_id
+    assert source["employee_name"] == employee_name
+    assert source["title"] == employee_name
+    assert source["created_at"]
+    _assert_no_forbidden_source_fields(source, FORBIDDEN_EMPLOYEE_SOURCE_FIELDS)
 
 
 def _create_vacation_request(
@@ -1667,6 +1718,270 @@ def test_ai_chat_employee_context_is_department_scoped(
     assert response.status_code == 200
     assert "Anna Scope Produktion" in names
     assert "Bernd Scope IT" not in serialized_payload
+
+
+def test_ai_chat_employee_department_list_uses_visible_department_scope(
+    client,
+    make_user,
+    make_employee,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify structured employee lists only include visible department employees."""
+    user = make_user(username="ai_employee_list_scope_user")
+    prod_id = make_employee(
+        personnel_number="P-AI-EMPL-LIST-1",
+        name="Anna Liste Produktion",
+        department="Produktion",
+    )
+    make_employee(
+        personnel_number="P-AI-EMPL-LIST-2",
+        name="Bernd Liste IT",
+        department="IT",
+    )
+    set_dashboard_permission(
+        user["username"],
+        "employees",
+        can_view=True,
+        employee_access_level="basic",
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Wer arbeitet in der Produktion?"},
+    )
+
+    payload = response.get_json()
+    serialized_payload = json.dumps(payload, ensure_ascii=True)
+    assert response.status_code == 200
+    assert payload["type"] == "employee_department_list"
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["items"][0]["name"] == "Anna Liste Produktion"
+    assert "Bernd Liste IT" not in serialized_payload
+    assert len(payload["sources"]) == 1
+    _assert_employee_source(payload["sources"][0], prod_id, "Anna Liste Produktion")
+    assert payload["sources"][0]["employee_access_level"] == "basic"
+    assert payload["sources"][0]["role_visibility"] == "department:Produktion"
+
+
+def test_ai_chat_employee_master_admin_sees_all_available_employees(
+    client,
+    make_user,
+    make_employee,
+    auth_headers,
+):
+    """Verify master admins can see available employees across departments."""
+    admin = make_user(
+        username="ai_employee_available_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    make_employee(
+        personnel_number="P-AI-EMPL-ADMIN-1",
+        name="Carla Verfuegbar Produktion",
+        department="Produktion",
+    )
+    make_employee(
+        personnel_number="P-AI-EMPL-ADMIN-2",
+        name="Dirk Verfuegbar IT",
+        department="IT",
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(admin["username"]),
+        json={"message": "Welche Mitarbeiter sind heute verfuegbar?"},
+    )
+
+    payload = response.get_json()
+    serialized_payload = json.dumps(payload, ensure_ascii=True)
+    assert response.status_code == 200
+    assert payload["type"] == "employee_available"
+    assert payload["data"]["count"] == 2
+    assert "Carla Verfuegbar Produktion" in serialized_payload
+    assert "Dirk Verfuegbar IT" in serialized_payload
+
+
+def test_ai_chat_employee_department_count_respects_visibility(
+    client,
+    make_user,
+    make_employee,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify structured employee department counts use visible employees only."""
+    user = make_user(username="ai_employee_count_department_user")
+    make_employee(
+        personnel_number="P-AI-EMPL-COUNT-1",
+        name="Eva Count Produktion",
+        department="Produktion",
+    )
+    make_employee(
+        personnel_number="P-AI-EMPL-COUNT-2",
+        name="Frank Count Instandhaltung",
+        department="Instandhaltung",
+    )
+    set_dashboard_permission(
+        user["username"],
+        "employees",
+        can_view=True,
+        employee_access_level="basic",
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Wie viele Mitarbeiter hat die Produktion?"},
+    )
+    hidden_response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Wie viele Mitarbeiter hat die Instandhaltung?"},
+    )
+
+    payload = response.get_json()
+    hidden_payload = hidden_response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "employee_department_count"
+    assert payload["data"]["department"] == "Produktion"
+    assert payload["data"]["count"] == 1
+    assert hidden_response.status_code == 200
+    assert hidden_payload["type"] == "employee_department_count"
+    assert hidden_payload["data"]["department"] == "Instandhaltung"
+    assert hidden_payload["data"]["count"] == 0
+
+
+def test_ai_chat_employee_absences_use_approved_visible_vacations_only(
+    app,
+    client,
+    make_user,
+    make_employee,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify employee absence answers use approved visible vacation rows only."""
+    manager = make_user(username="ai_employee_absence_manager")
+    set_dashboard_permission(
+        manager["username"],
+        "employees",
+        can_view=True,
+        can_write=True,
+        employee_access_level="basic",
+    )
+    approved_id = make_employee(
+        personnel_number="P-AI-EMPL-ABS-1",
+        name="Gina Fehlt Produktion",
+        department="Produktion",
+    )
+    pending_id = make_employee(
+        personnel_number="P-AI-EMPL-ABS-2",
+        name="Hugo Pending Produktion",
+        department="Produktion",
+    )
+    hidden_id = make_employee(
+        personnel_number="P-AI-EMPL-ABS-3",
+        name="Ida Fehlt IT",
+        department="IT",
+    )
+    tomorrow = date.today() + timedelta(days=1)
+    _create_vacation_request(app, approved_id, tomorrow, tomorrow, status="approved")
+    _create_vacation_request(app, pending_id, tomorrow, tomorrow, status="pending")
+    _create_vacation_request(app, hidden_id, tomorrow, tomorrow, status="approved")
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(manager["username"]),
+        json={"message": "Welche Mitarbeiter fehlen morgen?"},
+    )
+
+    payload = response.get_json()
+    serialized_payload = json.dumps(payload, ensure_ascii=True)
+    assert response.status_code == 200
+    assert payload["type"] == "employee_absences"
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["items"][0]["name"] == "Gina Fehlt Produktion"
+    assert payload["data"]["items"][0]["absence_source"] == "approved_vacation"
+    assert "Hugo Pending Produktion" not in serialized_payload
+    assert "Ida Fehlt IT" not in serialized_payload
+    assert len(payload["sources"]) == 1
+    _assert_employee_source(payload["sources"][0], approved_id, "Gina Fehlt Produktion")
+
+
+def test_ai_chat_employee_team_lead_question_does_not_guess(
+    client,
+    make_user,
+    make_employee,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify team lead questions return a grounded no-data answer."""
+    user = make_user(username="ai_employee_teamlead_user")
+    make_employee(
+        personnel_number="P-AI-EMPL-LEAD-1",
+        name="Julia Produktion",
+        department="Produktion",
+    )
+    set_dashboard_permission(
+        user["username"],
+        "employees",
+        can_view=True,
+        employee_access_level="basic",
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Wer ist Teamleiter der Produktion?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "employee_team_lead_unavailable"
+    assert payload["data"]["reason"] == "team_lead_field_missing"
+    assert payload["data"]["items"] == []
+    assert payload["sources"] == []
+    assert "Julia Produktion" not in json.dumps(payload, ensure_ascii=True)
+
+
+def test_ai_chat_employee_answer_only_redacts_sources_and_data(
+    client,
+    make_user,
+    make_employee,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify answer-only mode redacts structured employee evidence."""
+    user = make_user(username="ai_employee_answer_only_user")
+    make_employee(
+        personnel_number="P-AI-EMPL-ANSWER-1",
+        name="Klara Answer Produktion",
+        department="Produktion",
+    )
+    set_dashboard_permission(
+        user["username"],
+        "employees",
+        can_view=True,
+        employee_access_level="basic",
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={
+            "message": "Wer arbeitet in der Produktion?",
+            "response_mode": "answer_only",
+        },
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "employee_department_list"
+    assert payload["sources"] == []
+    assert payload["data"] == {}
+    assert payload["evidence_visible"] is False
+    assert payload["diagnostics"]["evidence_visible"] is False
+    assert payload["answer_quality"]["evidence_visible"] is False
 
 
 def test_ai_chat_dashboard_permission_override_controls_machine_counts(

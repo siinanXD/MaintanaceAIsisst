@@ -78,6 +78,29 @@ def machine_source_card(machine):
     return _machine_source_card(machine) if machine else None
 
 
+def employee_source_cards(employees, user, limit=SOURCE_CARD_LIMIT):
+    """Return compact source cards for already-visible employee rows."""
+    access_level = employee_access_level(user)
+    return [
+        _employee_source_card(employee, access_level)
+        for employee in list(employees or [])[:limit]
+    ]
+
+
+def employee_count_source_card(count, user, department=""):
+    """Return one compact aggregate source card for an employee count answer."""
+    if count is None:
+        return None
+    source = module_count_source_card("employees", count, user)
+    if not source:
+        return None
+    safe_department = str(department or "")[:120]
+    if safe_department:
+        source["department"] = safe_department
+        source["role_visibility"] = _role_visibility(safe_department)
+    return source
+
+
 def vacation_source_cards(vacations, limit=SOURCE_CARD_LIMIT, role_visibility=""):
     """Return compact source cards for already-visible vacation rows."""
     return [
@@ -206,6 +229,31 @@ def _machine_source_card(machine):
         "produced_item": machine.produced_item,
         "site_id": machine.site_id,
         "last_downtime_at": _isoformat(machine.last_downtime_at),
+    }
+
+
+def _employee_source_card(employee, access_level):
+    """Return one prompt-safe employee source card."""
+    department = str(getattr(employee, "department", "") or "")[:120]
+    employee_name = str(getattr(employee, "name", "") or "")[:160]
+    return {
+        "type": "employee",
+        "id": employee.id,
+        "title": employee_name,
+        "module": "employees",
+        "url": "/employees",
+        "source_type": "employee",
+        "source_id": employee.id,
+        "source_record_id": employee.id,
+        "source_kind": "structured",
+        "role_visibility": _role_visibility(department),
+        "created_at": _isoformat(employee.created_at),
+        "employee_access_level": str(access_level or "none"),
+        "employee_id": employee.id,
+        "employee_name": employee_name,
+        "personnel_number": str(getattr(employee, "personnel_number", "") or "")[:80],
+        "department": department,
+        "team": getattr(employee, "team", None),
     }
 
 
