@@ -49,8 +49,6 @@ def answer_structured_scope_question(message, user, conversation_context=None):
         return None
     if _should_defer_task_status_answer(text, explicit_entity, follow_up):
         return None
-    if _should_defer_incident_retrieval_answer(text, explicit_entity, follow_up):
-        return None
 
     filters = _merged_filters(inherited_context if follow_up else {}, text, entity_type)
     if entity_type == "tasks":
@@ -388,27 +386,6 @@ def _should_defer_task_status_answer(text, explicit_entity, follow_up):
             _machine_from_text(text),
         )
     )
-
-
-def _should_defer_incident_retrieval_answer(text, explicit_entity, follow_up):
-    """Return whether incident explanation questions should use the RAG pipeline."""
-    if explicit_entity != "incidents" or follow_up:
-        return False
-    if _is_count_question(text) or detect_status(text) or detect_department(text):
-        return False
-    if _mentions_incident_machine_aggregation(text):
-        return False
-    retrieval_terms = (
-        "bedeutet",
-        "beheben",
-        "behebe",
-        "loesung",
-        "loesungen",
-        "ursache",
-        "ursachen",
-        "warum",
-    )
-    return any(term in text for term in retrieval_terms)
 
 
 def _entity_type_from_text(text):
