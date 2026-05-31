@@ -121,7 +121,9 @@ def visible_vacation_query(user):
     if user.role == Role.MASTER_ADMIN:
         return query
     if can_manage_department_vacations(user):
-        return query.join(Employee).filter(Employee.department == user.department.name)
+        return query.join(Employee, VacationRequest.employee_id == Employee.id).filter(
+            Employee.department == user.department.name,
+        )
     if user.employee_id:
         return query.filter(VacationRequest.employee_id == user.employee_id)
     return query.filter(false())

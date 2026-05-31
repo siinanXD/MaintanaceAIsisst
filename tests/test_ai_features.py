@@ -28,6 +28,7 @@ from app.models import (
     Task,
     TaskStatus,
     User,
+    VacationRequest,
 )
 from app.services.ai_audit_service import (
     ai_analytics_summary,
@@ -103,6 +104,37 @@ MACHINE_SOURCE_FIELDS = {
     "type",
     "url",
 }
+VACATION_SOURCE_FIELDS = {
+    "created_at",
+    "days_used",
+    "department",
+    "employee_id",
+    "employee_name",
+    "end_date",
+    "id",
+    "module",
+    "role_visibility",
+    "shift_type",
+    "source_id",
+    "source_kind",
+    "source_record_id",
+    "source_type",
+    "start_date",
+    "status",
+    "title",
+    "type",
+    "url",
+}
+FORBIDDEN_VACATION_SOURCE_FIELDS = {
+    "approved_by",
+    "cancelled_by",
+    "impact_summary",
+    "notes",
+    "reason",
+    "representative",
+    "representative_employee_id",
+    "requested_by",
+}
 
 
 def _assert_no_forbidden_source_fields(source, forbidden_fields):
@@ -148,6 +180,63 @@ def _assert_machine_source(source, machine_id, machine_name):
     assert source["machine"] == machine_name
     assert source["role_visibility"] == "public"
     assert source["created_at"]
+
+
+def _assert_vacation_source(source, employee_id, employee_name):
+    """Verify one compact safe vacation source card."""
+    assert set(source) == VACATION_SOURCE_FIELDS
+    assert source["type"] == "vacation_request"
+    assert source["module"] == "vacations"
+    assert source["url"] == "/vacations"
+    assert source["source_type"] == "vacation_request"
+    assert source["source_id"] == source["id"]
+    assert source["source_record_id"] == source["id"]
+    assert source["source_kind"] == "structured"
+    assert source["employee_id"] == employee_id
+    assert source["employee_name"] == employee_name
+    assert source["created_at"]
+    _assert_no_forbidden_source_fields(source, FORBIDDEN_VACATION_SOURCE_FIELDS)
+
+
+def _create_vacation_request(
+    app,
+    employee_id,
+    start_date,
+    end_date,
+    status="pending",
+    shift_type="",
+):
+    """Create one vacation request directly for AI feature tests."""
+    with app.app_context():
+        vacation = VacationRequest(
+            employee_id=employee_id,
+            start_date=start_date,
+            end_date=end_date,
+            days_used=max(1, (end_date - start_date).days + 1),
+            status=status,
+            shift_type=shift_type,
+            reason="Interner Grund darf nicht in AI Sources stehen",
+            impact_summary="Interne Auswirkungsnotiz darf nicht leaken",
+            notes="Interne Notiz darf nicht leaken",
+        )
+        db.session.add(vacation)
+        db.session.commit()
+        return vacation.id
+
+
+def _link_user_employee(app, user_data, employee_id):
+    """Attach a test user to an employee record."""
+    with app.app_context():
+        user = db.session.get(User, user_data["id"])
+        user.employee_id = employee_id
+        db.session.commit()
+
+
+def _next_week_test_bounds():
+    """Return the next calendar week used by vacation AI tests."""
+    today = date.today()
+    next_monday = today + timedelta(days=7 - today.weekday())
+    return next_monday, next_monday + timedelta(days=6)
 
 
 def test_ai_chat_returns_today_tasks_without_openai(
@@ -922,6 +1011,368 @@ def test_ai_chat_machine_structured_answer_only_redacts_evidence(
     payload = response.get_json()
     assert response.status_code == 200
     assert payload["type"] == "machine_incidents"
+    assert payload["sources"] == []
+    assert payload["data"] == {}
+    assert payload["evidence_visible"] is False
+    assert payload["diagnostics"]["evidence_visible"] is False
+    assert payload["answer_quality"]["evidence_visible"] is False
+
+
+def test_ai_chat_vacation_own_pending_only_returns_own_request(
+    app,
+    client,
+    make_user,
+    make_employee,
+    auth_headers,
+):
+    """Verify own pending vacation answers never include other employees."""
+    user = make_user(username="ai_vacation_own_pending_user")
+    own_employee_id = make_employee(
+        personnel_number="P-AI-VAC-OWN-1",
+        name="Anna Urlaub Eigen",
+        department="Produktion",
+    )
+    other_employee_id = make_employee(
+        personnel_number="P-AI-VAC-OWN-2",
+        name="Bernd Urlaub Fremd",
+        department="Produktion",
+    )
+    _link_user_employee(app, user, own_employee_id)
+    _create_vacation_request(
+        app,
+        own_employee_id,
+        date.today() + timedelta(days=10),
+        date.today() + timedelta(days=12),
+        status="pending",
+    )
+    _create_vacation_request(
+        app,
+        other_employee_id,
+        date.today() + timedelta(days=11),
+        date.today() + timedelta(days=11),
+        status="pending",
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Habe ich Urlaub offen?"},
+    )
+
+    payload = response.get_json()
+    serialized_payload = json.dumps(payload, ensure_ascii=True)
+    assert response.status_code == 200
+    assert payload["type"] == "vacation_own_pending"
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["items"][0]["employee_id"] == own_employee_id
+    assert len(payload["sources"]) == 1
+    _assert_vacation_source(payload["sources"][0], own_employee_id, "Anna Urlaub Eigen")
+    assert payload["sources"][0]["role_visibility"] == f"employee:{own_employee_id}"
+    assert "Bernd Urlaub Fremd" not in serialized_payload
+    assert payload["diagnostics"]["source_count"] == 1
+    assert payload["answer_quality"]["source_count"] == 1
+
+
+def test_ai_chat_vacation_own_latest_status_excludes_other_employees(
+    app,
+    client,
+    make_user,
+    make_employee,
+    auth_headers,
+):
+    """Verify own vacation status answers use only the current user's requests."""
+    user = make_user(username="ai_vacation_own_status_user")
+    own_employee_id = make_employee(
+        personnel_number="P-AI-VAC-STATUS-1",
+        name="Clara Urlaub Status",
+        department="Produktion",
+    )
+    other_employee_id = make_employee(
+        personnel_number="P-AI-VAC-STATUS-2",
+        name="Dirk Urlaub Status Fremd",
+        department="Produktion",
+    )
+    _link_user_employee(app, user, own_employee_id)
+    _create_vacation_request(
+        app,
+        own_employee_id,
+        date.today() + timedelta(days=20),
+        date.today() + timedelta(days=21),
+        status="approved",
+    )
+    _create_vacation_request(
+        app,
+        other_employee_id,
+        date.today() + timedelta(days=22),
+        date.today() + timedelta(days=23),
+        status="rejected",
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welchen Status hat mein Urlaubsantrag?"},
+    )
+
+    payload = response.get_json()
+    serialized_payload = json.dumps(payload, ensure_ascii=True)
+    assert response.status_code == 200
+    assert payload["type"] == "vacation_own_status"
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["items"][0]["status"] == "approved"
+    assert payload["data"]["items"][0]["employee_id"] == own_employee_id
+    assert len(payload["sources"]) == 1
+    _assert_vacation_source(payload["sources"][0], own_employee_id, "Clara Urlaub Status")
+    assert "Dirk Urlaub Status Fremd" not in serialized_payload
+    for source in payload["sources"]:
+        _assert_no_forbidden_source_fields(source, FORBIDDEN_VACATION_SOURCE_FIELDS)
+    for item in payload["data"]["items"]:
+        _assert_no_forbidden_source_fields(item, FORBIDDEN_VACATION_SOURCE_FIELDS)
+
+
+def test_ai_chat_vacation_department_manager_sees_own_department_absences(
+    app,
+    client,
+    make_user,
+    make_employee,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify department vacation visibility for tomorrow and next week."""
+    manager = make_user(username="ai_vacation_department_manager")
+    set_dashboard_permission(
+        manager["username"],
+        "employees",
+        can_view=True,
+        can_write=True,
+        employee_access_level="basic",
+    )
+    prod_employee_id = make_employee(
+        personnel_number="P-AI-VAC-DEPT-1",
+        name="Eva Urlaub Produktion",
+        department="Produktion",
+    )
+    prod_pending_id = make_employee(
+        personnel_number="P-AI-VAC-DEPT-2",
+        name="Frank Urlaub Pending",
+        department="Produktion",
+    )
+    it_employee_id = make_employee(
+        personnel_number="P-AI-VAC-DEPT-3",
+        name="Gina Urlaub IT",
+        department="IT",
+    )
+    tomorrow = date.today() + timedelta(days=1)
+    next_week_start, _next_week_end = _next_week_test_bounds()
+    next_week_day = next_week_start + timedelta(days=2)
+    _create_vacation_request(app, prod_employee_id, tomorrow, tomorrow, status="approved")
+    _create_vacation_request(app, prod_pending_id, tomorrow, tomorrow, status="pending")
+    _create_vacation_request(app, it_employee_id, tomorrow, tomorrow, status="approved")
+    _create_vacation_request(app, prod_employee_id, next_week_day, next_week_day, status="approved")
+    _create_vacation_request(app, it_employee_id, next_week_day, next_week_day, status="approved")
+
+    tomorrow_response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(manager["username"]),
+        json={"message": "Wer hat morgen Urlaub?"},
+    )
+    next_week_response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(manager["username"]),
+        json={"message": "Wer hat naechste Woche Urlaub?"},
+    )
+
+    tomorrow_payload = tomorrow_response.get_json()
+    next_week_payload = next_week_response.get_json()
+    tomorrow_serialized = json.dumps(tomorrow_payload, ensure_ascii=True)
+    next_week_serialized = json.dumps(next_week_payload, ensure_ascii=True)
+    assert tomorrow_response.status_code == 200
+    assert tomorrow_payload["type"] == "vacation_absences"
+    assert "Eva Urlaub Produktion" in tomorrow_serialized
+    assert "Frank Urlaub Pending" not in tomorrow_serialized
+    assert "Gina Urlaub IT" not in tomorrow_serialized
+    assert next_week_response.status_code == 200
+    assert next_week_payload["type"] == "vacation_absences"
+    assert "Eva Urlaub Produktion" in next_week_serialized
+    assert "Gina Urlaub IT" not in next_week_serialized
+    assert all(item["status"] == "approved" for item in tomorrow_payload["data"]["items"])
+    for source in tomorrow_payload["sources"]:
+        _assert_no_forbidden_source_fields(source, FORBIDDEN_VACATION_SOURCE_FIELDS)
+
+
+def test_ai_chat_vacation_master_admin_sees_all_department_absences(
+    app,
+    client,
+    make_user,
+    make_employee,
+    auth_headers,
+):
+    """Verify master admins can see approved vacation absences across departments."""
+    admin = make_user(
+        username="ai_vacation_master_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    prod_employee_id = make_employee(
+        personnel_number="P-AI-VAC-ADMIN-1",
+        name="Hanna Urlaub Produktion",
+        department="Produktion",
+    )
+    it_employee_id = make_employee(
+        personnel_number="P-AI-VAC-ADMIN-2",
+        name="Ivan Urlaub IT",
+        department="IT",
+    )
+    tomorrow = date.today() + timedelta(days=1)
+    _create_vacation_request(app, prod_employee_id, tomorrow, tomorrow, status="approved")
+    _create_vacation_request(app, it_employee_id, tomorrow, tomorrow, status="approved")
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(admin["username"]),
+        json={"message": "Wer fehlt morgen?"},
+    )
+
+    payload = response.get_json()
+    serialized_payload = json.dumps(payload, ensure_ascii=True)
+    assert response.status_code == 200
+    assert payload["type"] == "vacation_absences"
+    assert payload["data"]["count"] == 2
+    assert "Hanna Urlaub Produktion" in serialized_payload
+    assert "Ivan Urlaub IT" in serialized_payload
+
+
+def test_ai_chat_vacation_user_without_employee_gets_safe_no_result(
+    app,
+    client,
+    make_user,
+    make_employee,
+    auth_headers,
+):
+    """Verify users without own employee mapping do not see vacation data."""
+    user = make_user(username="ai_vacation_no_employee_user")
+    employee_id = make_employee(
+        personnel_number="P-AI-VAC-NOEMP-1",
+        name="Julia Urlaub Unsichtbar",
+        department="Produktion",
+    )
+    _create_vacation_request(
+        app,
+        employee_id,
+        date.today() + timedelta(days=5),
+        date.today() + timedelta(days=5),
+        status="pending",
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Habe ich Urlaub offen?"},
+    )
+
+    payload = response.get_json()
+    serialized_payload = json.dumps(payload, ensure_ascii=True)
+    assert response.status_code == 200
+    assert payload["type"] == "vacation_own_pending"
+    assert payload["data"]["count"] == 0
+    assert payload["sources"] == []
+    assert "Julia Urlaub Unsichtbar" not in serialized_payload
+
+
+def test_ai_chat_vacation_pending_count_uses_only_visible_requests(
+    app,
+    client,
+    make_user,
+    make_employee,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify pending vacation counts are scoped by visible_vacation_query."""
+    manager = make_user(username="ai_vacation_pending_count_manager")
+    set_dashboard_permission(
+        manager["username"],
+        "employees",
+        can_view=True,
+        can_write=True,
+        employee_access_level="basic",
+    )
+    prod_employee_id = make_employee(
+        personnel_number="P-AI-VAC-COUNT-1",
+        name="Kai Urlaub Count",
+        department="Produktion",
+    )
+    it_employee_id = make_employee(
+        personnel_number="P-AI-VAC-COUNT-2",
+        name="Lena Urlaub Count IT",
+        department="IT",
+    )
+    _create_vacation_request(
+        app,
+        prod_employee_id,
+        date.today() + timedelta(days=8),
+        date.today() + timedelta(days=8),
+        status="pending",
+    )
+    _create_vacation_request(
+        app,
+        it_employee_id,
+        date.today() + timedelta(days=8),
+        date.today() + timedelta(days=8),
+        status="pending",
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(manager["username"]),
+        json={"message": "Wie viele Urlaubsantraege sind offen?"},
+    )
+
+    payload = response.get_json()
+    serialized_payload = json.dumps(payload, ensure_ascii=True)
+    assert response.status_code == 200
+    assert payload["type"] == "vacation_pending_count"
+    assert payload["data"]["count"] == 1
+    assert "Kai Urlaub Count" in serialized_payload
+    assert "Lena Urlaub Count IT" not in serialized_payload
+    assert len(payload["sources"]) == 1
+    _assert_vacation_source(payload["sources"][0], prod_employee_id, "Kai Urlaub Count")
+
+
+def test_ai_chat_vacation_answer_only_redacts_sources_and_data(
+    app,
+    client,
+    make_user,
+    make_employee,
+    auth_headers,
+):
+    """Verify answer-only mode redacts structured vacation evidence."""
+    user = make_user(username="ai_vacation_answer_only_user")
+    employee_id = make_employee(
+        personnel_number="P-AI-VAC-ANSWER-1",
+        name="Mia Urlaub Answer Only",
+        department="Produktion",
+    )
+    _link_user_employee(app, user, employee_id)
+    _create_vacation_request(
+        app,
+        employee_id,
+        date.today() + timedelta(days=9),
+        date.today() + timedelta(days=9),
+        status="pending",
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={
+            "message": "Habe ich Urlaub offen?",
+            "response_mode": "answer_only",
+        },
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "vacation_own_pending"
     assert payload["sources"] == []
     assert payload["data"] == {}
     assert payload["evidence_visible"] is False

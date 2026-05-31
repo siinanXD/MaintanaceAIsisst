@@ -44,6 +44,9 @@ from app.services.ai_safety_service import (
 from app.services.ai_service import AIServiceError, MockAIProvider, get_ai_provider
 from app.services.ai_structured_scope_answer_service import answer_structured_scope_question
 from app.services.ai_task_status_answer_service import answer_task_status_question
+from app.services.ai_vacation_structured_answer_service import (
+    answer_vacation_structured_question,
+)
 from app.services.conversation_context_service import conversation_context_for_chat
 from app.services.document_service import visible_documents_query
 from app.services.empty_retrieval_response_service import build_empty_retrieval_answer
@@ -266,6 +269,24 @@ def answer_chat(message, user, session_id=""):
     if conversation_context.applied:
         requested_scopes |= set(conversation_context.suggested_scopes)
     allowed_scopes = allowed_ai_scopes(user)
+
+    vacation_structured_result = answer_vacation_structured_question(message, user)
+    if vacation_structured_result:
+        status = (
+            "permission_denied"
+            if vacation_structured_result.get("type") == "permission_denied"
+            else "local_answer"
+        )
+        vacation_structured_result["diagnostics"] = ai_diagnostics(status)
+        return attach_audit_metadata(
+            user,
+            vacation_structured_result,
+            set(requested_scopes or set()) | {"employees"},
+            allowed_scopes,
+            message=message,
+            conversation_context=conversation_context,
+        )
+
     if should_use_general_hybrid_mode(message, requested_scopes):
         knowledge_context, knowledge_sources = knowledge_context_for_chat(
             message,

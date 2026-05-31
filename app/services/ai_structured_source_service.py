@@ -78,6 +78,14 @@ def machine_source_card(machine):
     return _machine_source_card(machine) if machine else None
 
 
+def vacation_source_cards(vacations, limit=SOURCE_CARD_LIMIT, role_visibility=""):
+    """Return compact source cards for already-visible vacation rows."""
+    return [
+        _vacation_source_card(vacation, role_visibility)
+        for vacation in list(vacations or [])[:limit]
+    ]
+
+
 def module_count_source_card(scope, count, user):
     """Return one compact aggregate source card for a visible module count."""
     if not count:
@@ -199,6 +207,41 @@ def _machine_source_card(machine):
         "site_id": machine.site_id,
         "last_downtime_at": _isoformat(machine.last_downtime_at),
     }
+
+
+def _vacation_source_card(vacation, role_visibility):
+    """Return one prompt-safe vacation source card."""
+    employee = getattr(vacation, "employee", None)
+    department = str(getattr(employee, "department", "") or "")[:120]
+    employee_name = str(getattr(employee, "name", "") or "")[:160]
+    return {
+        "type": "vacation_request",
+        "id": vacation.id,
+        "title": _vacation_source_title(vacation, employee_name),
+        "module": "vacations",
+        "url": "/vacations",
+        "source_type": "vacation_request",
+        "source_id": vacation.id,
+        "source_record_id": vacation.id,
+        "source_kind": "structured",
+        "role_visibility": role_visibility or _role_visibility(department),
+        "created_at": _isoformat(vacation.created_at),
+        "employee_id": vacation.employee_id,
+        "employee_name": employee_name,
+        "department": department,
+        "start_date": vacation.start_date.isoformat() if vacation.start_date else "",
+        "end_date": vacation.end_date.isoformat() if vacation.end_date else "",
+        "days_used": vacation.days_used,
+        "status": vacation.status,
+        "shift_type": vacation.shift_type,
+    }
+
+
+def _vacation_source_title(vacation, employee_name):
+    """Return a compact vacation source title."""
+    start_date = vacation.start_date.isoformat() if vacation.start_date else ""
+    end_date = vacation.end_date.isoformat() if vacation.end_date else ""
+    return f"Urlaub {employee_name} {start_date} bis {end_date}".strip()
 
 
 def _incident_source_title(error_code, title):
