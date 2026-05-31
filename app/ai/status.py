@@ -48,7 +48,10 @@ from app.services.ai_service import (
     get_ai_provider,
     provider_fallback_error_message,
 )
-from app.services.conversation_context_service import conversation_context_for_chat
+from app.services.conversation_context_service import (
+    build_structured_context_metadata,
+    conversation_context_for_chat,
+)
 from app.services.document_service import visible_documents_query
 from app.services.embedding_service import embedding_provider_catalog
 from app.services.empty_retrieval_response_service import build_empty_retrieval_answer
@@ -390,6 +393,13 @@ def attach_audit_metadata(
     diagnostics = result.setdefault("diagnostics", ai_diagnostics("local_answer"))
     diagnostics["source_count"] = len(sources)
     diagnostics["scopes"] = sorted(requested_scopes or [])
+    structured_context = build_structured_context_metadata(
+        message,
+        result,
+        requested_scopes=requested_scopes,
+    )
+    if structured_context:
+        diagnostics["structured_context"] = structured_context
     diagnostics["retrieval_explainability"] = retrieval_explainability_summary(sources)
     diagnostics["retrieval_explainability"].update(
         {
