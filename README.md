@@ -99,14 +99,14 @@ checked-in UI state.
 | Backend | Flask, SQLAlchemy, Flask-JWT-Extended |
 | Database | SQLite for tests/dev, PostgreSQL + pgvector-ready Docker setup |
 | AI | OpenAI API with local rule-based fallback |
-| Frontend | Jinja2 templates, Tailwind CSS, React islands with Vite |
+| Frontend | Jinja2 templates, Tailwind CSS, vanilla JS |
 | Tests | pytest (417 tests, no external services required) |
 | CI | GitHub Actions: lint, compile, test, Docker build |
 
-Frontend convention: Jinja templates in `app/templates/` render the page shells,
-`app/static/` contains shared browser utilities and island loaders, and
-feature-rich screens are implemented as React islands in `frontend/src/`.
-Compiled React assets are generated into `app/static/react/` and are not tracked.
+Frontend convention: `app/static/app.js` is the shell bootstrap for auth,
+feedback, toasts, live regions and route-module loading. Route behavior lives in
+focused page modules such as `login.js`, `admin-ai.js`, `handover.js`,
+`shiftplans.js` and the workflow loader; templates avoid large inline scripts.
 
 ## Getting Started
 
@@ -337,54 +337,36 @@ handlers.
 
 ## Project Structure
 
-```text
-.
-|-- app/                         # Flask application package
-|   |-- __init__.py              # app factory, blueprint registration
-|   |-- config.py                # environment-driven runtime config
-|   |-- models.py                # SQLAlchemy models
-|   |-- extensions.py            # db, jwt, migrate instances
-|   |-- worker.py                # background RAG maintenance worker
-|   |-- admin/                   # admin APIs, user management, AI admin
-|   |-- ai/                      # chat, briefings, AI status endpoints
-|   |-- auth/                    # login, logout, session endpoints
-|   |-- core/                    # logging and cross-cutting runtime helpers
-|   |-- docs/                    # OpenAPI builder and schema parts
-|   |-- domain_models/           # typed domain payload models
-|   |-- services/                # business logic and AI/RAG services
-|   |-- templates/               # Jinja page shells
-|   |-- static/                  # CSS, shared JS, island loaders
-|   |-- tasks/, errors/          # maintenance task and fault workflows
-|   |-- machines/, inventory/    # assets, maintenance plans, materials
-|   |-- employees/, shiftplans/  # workforce and shift planning
-|   |-- handover/, vacations/    # operations handover and absence workflow
-|   |-- documents/               # reports, manuals, document review
-|   |-- health/, search/, web/   # health checks, search, browser pages
-|-- frontend/                    # React/Vite island source code
-|   |-- src/app/                 # shared React runtime providers
-|   |-- src/layout/              # application shell and navigation
-|   |-- src/api/                 # browser API client helpers
-|   |-- src/<feature>/           # feature islands and components
-|-- migrations/                  # Alembic migrations for SQLite/PostgreSQL
-|-- tests/                       # pytest suite with mock AI and in-memory DB
-|-- docs/                        # product, API, cleanup, and AI/RAG docs
-|-- scripts/                     # build and dataset generation utilities
-|-- data/                        # local runtime data placeholder only
-|-- run.py                       # WSGI/local Flask entry point
-|-- seed.py                      # seed profile dispatcher
-|-- seed_demo.py                 # local demo data seed
-|-- seed_test.py                 # local smoke-test seed
-|-- seed_production.py           # production-safe baseline seed
-|-- Dockerfile                   # production image
-|-- docker-compose.yml           # app, worker, PostgreSQL/pgvector stack
-|-- requirements.txt             # Python runtime dependencies
-|-- package.json                 # root CSS/frontend build orchestration
 ```
-
-Runtime folders such as `documents/`, `manuals/`, `knowledge/`, `backups/`,
-`logs/`, `instance/`, `.venv/`, `node_modules/`, caches, and local databases are
-ignored and should not be committed. Keep persistent production data in Docker
-volumes or configured storage paths.
+app/
+├── __init__.py          # app factory, blueprint registration
+├── models.py            # SQLAlchemy models
+├── config.py            # configuration class
+├── extensions.py        # db, jwt, migrate instances
+├── security.py          # auth decorators
+├── permissions.py       # role and dashboard permission helpers
+├── responses.py         # consistent JSON response helpers
+├── services/            # business logic (task, error, AI, search…)
+├── templates/           # Jinja2 HTML templates
+├── static/              # Tailwind CSS output, JS
+├── auth/                # login, logout, /me
+├── tasks/               # task CRUD and AI workflows
+├── errors/              # error catalog and similarity search
+├── employees/           # employee management
+├── machines/            # machine management and AI assistant
+├── shiftplans/          # shift planning, drag-and-drop, audit log
+├── handover/            # shift handover protocol
+├── vacations/           # vacation requests and approval workflow
+├── inventory/           # inventory and spare-parts forecast
+├── documents/           # document listing and AI review
+├── ai/                  # chat, daily briefing, status endpoints
+├── search/              # cross-domain knowledge search
+└── admin/               # user and permission management
+tests/                   # pytest suite, SQLite in-memory
+docs/
+├── API_PROTOCOL.md      # full endpoint reference
+└── screenshots/
+```
 
 ## Architecture
 
@@ -514,7 +496,7 @@ See [`docs/API_PROTOCOL.md`](docs/API_PROTOCOL.md) for the full endpoint referen
 ```bash
 python -m ruff check .
 python -m ruff format --check .
-python -m compileall app migrations tests seed_demo.py seed_test.py seed.py run.py
+python -m compileall app migrations tests seed_demo.py seed.py run.py
 python -m pytest tests --cov=app --cov-report=term-missing --cov-fail-under=75
 ```
 
