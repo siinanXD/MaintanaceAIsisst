@@ -2763,6 +2763,50 @@ def test_ai_chat_shiftplan_shift_count_counts_visible_entries(
     assert payload["data"]["count"] == 2
 
 
+def test_ai_chat_shiftplan_redacts_employee_names_without_employee_access(
+    app,
+    client,
+    make_user,
+    make_employee,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify shiftplan answer text follows employee_access_level restrictions."""
+    user = make_user(username="ai_shiftplan_no_employee_access_user")
+    tomorrow = date.today() + timedelta(days=1)
+    employee_id = make_employee(
+        personnel_number="P-AI-SHIFT-NONE-1",
+        name="Jana Schicht Geheim",
+        department="Produktion",
+    )
+    plan_id = _create_shift_plan(app, user["id"], "Produktion", tomorrow)
+    entry_id = _create_shift_entry(app, plan_id, employee_id, tomorrow)
+    set_dashboard_permission(user["username"], "shiftplans", can_view=True)
+    set_dashboard_permission(
+        user["username"],
+        "employees",
+        can_view=False,
+        employee_access_level="none",
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Wer ist morgen eingeplant?"},
+    )
+
+    payload = response.get_json()
+    serialized_payload = json.dumps(payload, ensure_ascii=True)
+    assert response.status_code == 200
+    assert payload["type"] == "shiftplan_entries"
+    assert payload["data"]["items"][0]["employee"] is None
+    assert payload["sources"][0]["employee_name"] == ""
+    assert payload["sources"][0]["title"].startswith("Schichtplaneintrag")
+    assert "Mitarbeiter nicht sichtbar" in payload["answer"]
+    assert "Jana Schicht Geheim" not in serialized_payload
+    _assert_shiftplan_entry_source(payload["sources"][0], entry_id, "")
+
+
 def test_ai_chat_shiftplan_answer_only_redacts_sources_and_data(
     app,
     client,

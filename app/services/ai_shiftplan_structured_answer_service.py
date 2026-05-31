@@ -72,7 +72,7 @@ def _answer_entries_for_date(user, work_date, label, shift=""):
     title = f"Eingeplant {label}" if not shift else f"{shift}schicht {label}"
     return {
         "type": "shiftplan_entries",
-        "answer": _format_entry_answer(title, entries),
+        "answer": _format_entry_answer(title, entries, user),
         "data": {
             "entity_type": "shiftplans",
             "query": "entries",
@@ -219,8 +219,9 @@ def _coverage_payload(slot):
     }
 
 
-def _format_entry_answer(title, entries):
+def _format_entry_answer(title, entries, user):
     """Return a compact German shift entry answer."""
+    access_level = employee_access_level(user)
     lines = [
         f"## {title}",
         f"- **Eintraege:** {len(entries)}",
@@ -233,7 +234,7 @@ def _format_entry_answer(title, entries):
     lines.append("")
     lines.append("Sichtbare Einplanung:")
     for entry in entries[:MAX_ANSWER_ITEMS]:
-        employee_name = entry.employee.name if entry.employee else "Unbekannt"
+        employee_name = _visible_entry_employee_name(entry, access_level)
         lines.append(
             f"- {entry.work_date.isoformat()} {entry.shift}: "
             f"{employee_name} ({entry.start_time}-{entry.end_time})"
@@ -241,6 +242,13 @@ def _format_entry_answer(title, entries):
     if len(entries) > MAX_ANSWER_ITEMS:
         lines.append(f"- ... {len(entries) - MAX_ANSWER_ITEMS} weitere Eintraege")
     return "\n".join(lines)
+
+
+def _visible_entry_employee_name(entry, access_level):
+    """Return the employee display name allowed for a shift-plan answer."""
+    if access_level == "none":
+        return "Mitarbeiter nicht sichtbar"
+    return entry.employee.name if entry.employee else "Unbekannt"
 
 
 def _format_coverage_answer(title, slots):
