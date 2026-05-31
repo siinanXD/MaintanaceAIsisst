@@ -78,6 +78,11 @@ def machine_source_card(machine):
     return _machine_source_card(machine) if machine else None
 
 
+def inventory_source_cards(materials, limit=SOURCE_CARD_LIMIT):
+    """Return compact source cards for already-visible inventory rows."""
+    return [_inventory_source_card(material) for material in list(materials or [])[:limit]]
+
+
 def employee_source_cards(employees, user, limit=SOURCE_CARD_LIMIT):
     """Return compact source cards for already-visible employee rows."""
     access_level = employee_access_level(user)
@@ -258,6 +263,32 @@ def _machine_source_card(machine):
         "produced_item": machine.produced_item,
         "site_id": machine.site_id,
         "last_downtime_at": _isoformat(machine.last_downtime_at),
+    }
+
+
+def _inventory_source_card(material):
+    """Return one prompt-safe inventory source card."""
+    machine = getattr(material, "machine", None)
+    return {
+        "type": "inventory",
+        "id": material.id,
+        "title": str(getattr(material, "name", "") or "")[:160],
+        "module": "inventory",
+        "url": "/inventory",
+        "source_type": "inventory",
+        "source_id": material.id,
+        "source_record_id": material.id,
+        "source_kind": "structured",
+        "role_visibility": "public",
+        "created_at": _isoformat(material.created_at),
+        "name": str(getattr(material, "name", "") or "")[:160],
+        "quantity": material.quantity,
+        "min_quantity": material.min_quantity,
+        "criticality": str(getattr(material, "criticality", "") or "")[:40],
+        "lead_time_days": material.lead_time_days,
+        "manufacturer": str(getattr(material, "manufacturer", "") or "")[:160],
+        "machine_id": material.machine_id,
+        "machine": str(getattr(machine, "name", "") or "")[:160],
     }
 
 

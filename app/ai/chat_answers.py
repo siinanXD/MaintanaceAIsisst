@@ -31,6 +31,9 @@ from app.services.ai_employee_structured_answer_service import (
     answer_employee_structured_question,
 )
 from app.services.ai_history_service import save_chat_exchange
+from app.services.ai_inventory_structured_answer_service import (
+    answer_inventory_structured_question,
+)
 from app.services.ai_machine_structured_answer_service import (
     answer_machine_structured_question,
 )
@@ -342,6 +345,23 @@ def answer_chat(message, user, session_id=""):
             user,
             shiftplan_structured_result,
             requested_scopes or {"shiftplans"},
+            allowed_scopes,
+            message=message,
+            conversation_context=conversation_context,
+        )
+
+    inventory_structured_result = answer_inventory_structured_question(message, user)
+    if inventory_structured_result:
+        status = (
+            "permission_denied"
+            if inventory_structured_result.get("type") == "permission_denied"
+            else "local_answer"
+        )
+        inventory_structured_result["diagnostics"] = ai_diagnostics(status)
+        return attach_audit_metadata(
+            user,
+            inventory_structured_result,
+            requested_scopes or {"inventory"},
             allowed_scopes,
             message=message,
             conversation_context=conversation_context,

@@ -17,6 +17,7 @@ from app.models import (
     EmployeeMachineQualification,
     ErrorEntry,
     GeneratedDocument,
+    InventoryMaterial,
     KnowledgeChunk,
     KnowledgeDocument,
     KnowledgeGap,
@@ -231,6 +232,32 @@ SHIFTPLAN_COVERAGE_SOURCE_FIELDS = {
     "url",
     "work_date",
 }
+INVENTORY_SOURCE_FIELDS = {
+    "created_at",
+    "criticality",
+    "id",
+    "lead_time_days",
+    "machine",
+    "machine_id",
+    "manufacturer",
+    "min_quantity",
+    "module",
+    "name",
+    "quantity",
+    "role_visibility",
+    "source_id",
+    "source_kind",
+    "source_record_id",
+    "source_type",
+    "title",
+    "type",
+    "url",
+}
+FORBIDDEN_INVENTORY_SOURCE_FIELDS = {
+    "site",
+    "total_value",
+    "unit_cost",
+}
 FORBIDDEN_SHIFTPLAN_SOURCE_FIELDS = {
     "notes",
     "preferences",
@@ -418,6 +445,23 @@ def _assert_shiftplan_coverage_source(source, slot_id):
     _assert_no_forbidden_source_fields(source, FORBIDDEN_SHIFTPLAN_SOURCE_FIELDS)
 
 
+def _assert_inventory_source(source, material_id, name):
+    """Verify one compact safe inventory source card."""
+    assert set(source) == INVENTORY_SOURCE_FIELDS
+    assert source["type"] == "inventory"
+    assert source["id"] == material_id
+    assert source["title"] == name
+    assert source["name"] == name
+    assert source["module"] == "inventory"
+    assert source["url"] == "/inventory"
+    assert source["source_type"] == "inventory"
+    assert source["source_id"] == material_id
+    assert source["source_record_id"] == material_id
+    assert source["source_kind"] == "structured"
+    assert source["created_at"]
+    _assert_no_forbidden_source_fields(source, FORBIDDEN_INVENTORY_SOURCE_FIELDS)
+
+
 def _create_vacation_request(
     app,
     employee_id,
@@ -546,6 +590,15 @@ def _create_shift_coverage_slot(
         db.session.commit()
         slot_id = slot.id
     return slot_id
+
+
+def _update_inventory_material(app, material_id, **values):
+    """Update inventory material metadata directly for AI feature tests."""
+    with app.app_context():
+        material = db.session.get(InventoryMaterial, material_id)
+        for key, value in values.items():
+            setattr(material, key, value)
+        db.session.commit()
 
 
 def _link_user_employee(app, user_data, employee_id):
@@ -2742,6 +2795,176 @@ def test_ai_chat_shiftplan_answer_only_redacts_sources_and_data(
     payload = response.get_json()
     assert response.status_code == 200
     assert payload["type"] == "shiftplan_entries"
+    assert payload["sources"] == []
+    assert payload["data"] == {}
+    assert payload["evidence_visible"] is False
+    assert payload["diagnostics"]["evidence_visible"] is False
+    assert payload["answer_quality"]["evidence_visible"] is False
+
+
+def test_ai_chat_inventory_low_stock_returns_safe_visible_sources(
+    app,
+    client,
+    make_user,
+    make_material,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify low-stock inventory answers use below-minimum rows and safe sources."""
+    user = make_user(username="ai_inventory_low_stock_user")
+    low_id = make_material("Filter Low Stock", 99.9, 1)
+    ok_id = make_material("Filter OK Stock", 199.9, 10)
+    _update_inventory_material(
+        app,
+        low_id,
+        min_quantity=5,
+        criticality="high",
+        lead_time_days=12,
+        manufacturer="SafeParts",
+    )
+    _update_inventory_material(app, ok_id, min_quantity=5)
+    set_dashboard_permission(user["username"], "inventory", can_view=True)
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Materialien sind unter Mindestbestand?"},
+    )
+
+    payload = response.get_json()
+    serialized_payload = json.dumps(payload, ensure_ascii=True)
+    assert response.status_code == 200
+    assert payload["type"] == "inventory_low_stock"
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["items"][0]["name"] == "Filter Low Stock"
+    assert payload["data"]["items"][0]["is_below_minimum"] is True
+    assert "Filter OK Stock" not in serialized_payload
+    assert "99.9" not in serialized_payload
+    assert len(payload["sources"]) == 1
+    _assert_inventory_source(payload["sources"][0], low_id, "Filter Low Stock")
+
+
+def test_ai_chat_inventory_count_respects_permission(
+    client,
+    make_user,
+    make_material,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify inventory count answers require inventory visibility."""
+    user = make_user(username="ai_inventory_count_user")
+    denied = make_user(username="ai_inventory_count_denied_user")
+    make_material("Zaehler Lagerteil", 12.5, 3)
+    set_dashboard_permission(user["username"], "inventory", can_view=True)
+    set_dashboard_permission(denied["username"], "inventory", can_view=False)
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Wie viele Artikel sind im Lager?"},
+    )
+    denied_response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(denied["username"]),
+        json={"message": "Wie viele Artikel sind im Lager?"},
+    )
+
+    payload = response.get_json()
+    denied_payload = denied_response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "inventory_count"
+    assert payload["data"]["count"] == 1
+    assert denied_response.status_code == 200
+    assert denied_payload["type"] == "permission_denied"
+    assert denied_payload["sources"] == []
+
+
+def test_ai_chat_inventory_machine_filter_returns_linked_parts(
+    client,
+    make_user,
+    make_machine,
+    make_material,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify machine-filtered inventory answers return linked visible parts."""
+    user = make_user(username="ai_inventory_machine_user")
+    machine_id = make_machine(name="Anlage Lager X")
+    other_machine_id = make_machine(name="Anlage Lager Y")
+    linked_id = make_material("Sensor Lager X", 30.0, 4, machine_id=machine_id)
+    make_material("Sensor Lager Y", 40.0, 4, machine_id=other_machine_id)
+    set_dashboard_permission(user["username"], "inventory", can_view=True)
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Teile gehoeren zu Maschine Anlage Lager X?"},
+    )
+
+    payload = response.get_json()
+    serialized_payload = json.dumps(payload, ensure_ascii=True)
+    assert response.status_code == 200
+    assert payload["type"] == "inventory_machine_materials"
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["items"][0]["machine"] == "Anlage Lager X"
+    assert "Sensor Lager X" in serialized_payload
+    assert "Sensor Lager Y" not in serialized_payload
+    _assert_inventory_source(payload["sources"][0], linked_id, "Sensor Lager X")
+
+
+def test_ai_chat_inventory_reorder_question_uses_low_stock_logic(
+    app,
+    client,
+    make_user,
+    make_material,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify reorder questions use the same below-minimum stock logic."""
+    user = make_user(username="ai_inventory_reorder_user")
+    material_id = make_material("Dichtung Nachbestellen", 7.5, 0)
+    _update_inventory_material(app, material_id, min_quantity=2)
+    set_dashboard_permission(user["username"], "inventory", can_view=True)
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Was muss nachbestellt werden?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "inventory_low_stock"
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["items"][0]["name"] == "Dichtung Nachbestellen"
+
+
+def test_ai_chat_inventory_answer_only_redacts_sources_and_data(
+    app,
+    client,
+    make_user,
+    make_material,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify answer-only mode redacts structured inventory evidence."""
+    user = make_user(username="ai_inventory_answer_only_user")
+    material_id = make_material("Lager Answer Only", 5.0, 1)
+    _update_inventory_material(app, material_id, min_quantity=3)
+    set_dashboard_permission(user["username"], "inventory", can_view=True)
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={
+            "message": "Welches Ersatzteil geht bald aus?",
+            "response_mode": "answer_only",
+        },
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "inventory_low_stock"
     assert payload["sources"] == []
     assert payload["data"] == {}
     assert payload["evidence_visible"] is False
