@@ -101,6 +101,16 @@ def employee_count_source_card(count, user, department=""):
     return source
 
 
+def document_source_cards(documents, limit=SOURCE_CARD_LIMIT):
+    """Return compact source cards for already-visible generated documents."""
+    return [_document_source_card(document) for document in list(documents or [])[:limit]]
+
+
+def manual_source_cards(manuals, limit=SOURCE_CARD_LIMIT):
+    """Return compact source cards for already-visible machine manuals."""
+    return [_manual_source_card(manual) for manual in list(manuals or [])[:limit]]
+
+
 def vacation_source_cards(vacations, limit=SOURCE_CARD_LIMIT, role_visibility=""):
     """Return compact source cards for already-visible vacation rows."""
     return [
@@ -257,6 +267,55 @@ def _employee_source_card(employee, access_level):
     }
 
 
+def _document_source_card(document):
+    """Return one prompt-safe generated-document source card."""
+    department = str(getattr(document, "department", "") or "")[:120]
+    return {
+        "type": "document",
+        "id": document.id,
+        "title": str(getattr(document, "title", "") or "")[:180],
+        "module": "documents",
+        "url": "/documents",
+        "source_type": "generated_document",
+        "source_id": document.id,
+        "source_record_id": document.id,
+        "source_kind": "structured",
+        "role_visibility": _role_visibility(department),
+        "created_at": _isoformat(document.created_at),
+        "updated_at": _document_updated_at(document),
+        "document_type": str(getattr(document, "document_type", "") or "")[:80],
+        "department": department,
+        "machine": str(getattr(document, "machine", "") or "")[:160],
+        "machine_id": getattr(document, "machine_id", None),
+        "status": str(getattr(document, "status", "") or "")[:40],
+        "quality_status": str(getattr(document, "quality_status", "") or "")[:40],
+    }
+
+
+def _manual_source_card(manual):
+    """Return one prompt-safe machine-manual source card."""
+    department = str(getattr(manual, "department", "") or "")[:120]
+    machine = getattr(manual, "machine", None)
+    return {
+        "type": "machine_manual",
+        "id": manual.id,
+        "title": str(getattr(manual, "title", "") or "")[:180],
+        "module": "documents",
+        "url": "/documents",
+        "source_type": "machine_manual",
+        "source_id": manual.id,
+        "source_record_id": manual.id,
+        "source_kind": "structured",
+        "role_visibility": _role_visibility(department),
+        "created_at": _isoformat(manual.created_at),
+        "updated_at": _isoformat(manual.updated_at),
+        "document_type": "machine_manual",
+        "department": department,
+        "machine": str(getattr(machine, "name", "") or "")[:160],
+        "machine_id": getattr(manual, "machine_id", None),
+    }
+
+
 def _vacation_source_card(vacation, role_visibility):
     """Return one prompt-safe vacation source card."""
     employee = getattr(vacation, "employee", None)
@@ -332,3 +391,10 @@ def _module_count_role_visibility(scope, user):
 def _isoformat(value):
     """Return an ISO timestamp when available."""
     return value.isoformat() if value else ""
+
+
+def _document_updated_at(document):
+    """Return the latest safe timestamp for a generated document."""
+    version = getattr(document, "current_version", None)
+    version_created_at = getattr(version, "created_at", None)
+    return _isoformat(version_created_at or getattr(document, "created_at", None))

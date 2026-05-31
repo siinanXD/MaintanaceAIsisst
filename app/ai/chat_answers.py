@@ -24,6 +24,9 @@ from app.models import (
 from app.security import employee_access_level, has_dashboard_permission
 from app.services.ai_audit_service import ai_analytics_summary, create_ai_audit_event
 from app.services.ai_confidence_service import attach_confidence_to_result
+from app.services.ai_document_structured_answer_service import (
+    answer_document_structured_question,
+)
 from app.services.ai_employee_structured_answer_service import (
     answer_employee_structured_question,
 )
@@ -302,6 +305,23 @@ def answer_chat(message, user, session_id=""):
             user,
             employee_structured_result,
             requested_scopes or {"employees"},
+            allowed_scopes,
+            message=message,
+            conversation_context=conversation_context,
+        )
+
+    document_structured_result = answer_document_structured_question(message, user)
+    if document_structured_result:
+        status = (
+            "permission_denied"
+            if document_structured_result.get("type") == "permission_denied"
+            else "local_answer"
+        )
+        document_structured_result["diagnostics"] = ai_diagnostics(status)
+        return attach_audit_metadata(
+            user,
+            document_structured_result,
+            requested_scopes or {"documents"},
             allowed_scopes,
             message=message,
             conversation_context=conversation_context,

@@ -21,6 +21,7 @@ from app.models import (
     KnowledgeDocument,
     KnowledgeGap,
     Machine,
+    MachineManual,
     MaintenancePlan,
     Priority,
     RetrievalEvaluationRun,
@@ -144,6 +145,55 @@ EMPLOYEE_SOURCE_FIELDS = {
     "type",
     "url",
 }
+DOCUMENT_SOURCE_FIELDS = {
+    "created_at",
+    "department",
+    "document_type",
+    "id",
+    "machine",
+    "machine_id",
+    "module",
+    "quality_status",
+    "role_visibility",
+    "source_id",
+    "source_kind",
+    "source_record_id",
+    "source_type",
+    "status",
+    "title",
+    "type",
+    "updated_at",
+    "url",
+}
+MANUAL_SOURCE_FIELDS = {
+    "created_at",
+    "department",
+    "document_type",
+    "id",
+    "machine",
+    "machine_id",
+    "module",
+    "role_visibility",
+    "source_id",
+    "source_kind",
+    "source_record_id",
+    "source_type",
+    "title",
+    "type",
+    "updated_at",
+    "url",
+}
+FORBIDDEN_DOCUMENT_SOURCE_FIELDS = {
+    "analysis",
+    "approval_comment",
+    "approved_by",
+    "extracted_text",
+    "original_filename",
+    "relative_path",
+    "rejected_by",
+    "rejection_comment",
+    "summary",
+}
 FORBIDDEN_EMPLOYEE_SOURCE_FIELDS = {
     "birth_date",
     "city",
@@ -249,6 +299,40 @@ def _assert_employee_source(source, employee_id, employee_name):
     _assert_no_forbidden_source_fields(source, FORBIDDEN_EMPLOYEE_SOURCE_FIELDS)
 
 
+def _assert_document_source(source, document_id, title):
+    """Verify one compact safe generated-document source card."""
+    assert set(source) == DOCUMENT_SOURCE_FIELDS
+    assert source["type"] == "document"
+    assert source["id"] == document_id
+    assert source["title"] == title
+    assert source["module"] == "documents"
+    assert source["url"] == "/documents"
+    assert source["source_type"] == "generated_document"
+    assert source["source_id"] == document_id
+    assert source["source_record_id"] == document_id
+    assert source["source_kind"] == "structured"
+    assert source["created_at"]
+    assert source["updated_at"]
+    _assert_no_forbidden_source_fields(source, FORBIDDEN_DOCUMENT_SOURCE_FIELDS)
+
+
+def _assert_manual_source(source, manual_id, title):
+    """Verify one compact safe machine-manual source card."""
+    assert set(source) == MANUAL_SOURCE_FIELDS
+    assert source["type"] == "machine_manual"
+    assert source["id"] == manual_id
+    assert source["title"] == title
+    assert source["module"] == "documents"
+    assert source["url"] == "/documents"
+    assert source["source_type"] == "machine_manual"
+    assert source["source_id"] == manual_id
+    assert source["source_record_id"] == manual_id
+    assert source["source_kind"] == "structured"
+    assert source["created_at"]
+    assert source["updated_at"]
+    _assert_no_forbidden_source_fields(source, FORBIDDEN_DOCUMENT_SOURCE_FIELDS)
+
+
 def _create_vacation_request(
     app,
     employee_id,
@@ -272,7 +356,39 @@ def _create_vacation_request(
         )
         db.session.add(vacation)
         db.session.commit()
-        return vacation.id
+        vacation_id = vacation.id
+    return vacation_id
+
+
+def _create_machine_manual(app, created_by, machine_id, title, department="Produktion"):
+    """Create one machine manual directly for AI feature tests."""
+    with app.app_context():
+        manual = MachineManual(
+            machine_id=machine_id,
+            department=department,
+            title=title,
+            original_filename=f"{title}.pdf",
+            relative_path=f"manual_{title}.pdf",
+            content_type="application/pdf",
+            file_size=128,
+            analysis="Interne Analyse darf nicht in AI Sources stehen",
+            summary="Interne Zusammenfassung darf nicht in AI Sources stehen",
+            created_by=created_by,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+        )
+        db.session.add(manual)
+        db.session.commit()
+        return manual.id
+
+
+def _update_generated_document(app, document_id, **values):
+    """Update generated document metadata directly for AI feature tests."""
+    with app.app_context():
+        document = db.session.get(GeneratedDocument, document_id)
+        for key, value in values.items():
+            setattr(document, key, value)
+        db.session.commit()
 
 
 def _link_user_employee(app, user_data, employee_id):
@@ -1977,6 +2093,264 @@ def test_ai_chat_employee_answer_only_redacts_sources_and_data(
     payload = response.get_json()
     assert response.status_code == 200
     assert payload["type"] == "employee_department_list"
+    assert payload["sources"] == []
+    assert payload["data"] == {}
+    assert payload["evidence_visible"] is False
+    assert payload["diagnostics"]["evidence_visible"] is False
+    assert payload["answer_quality"]["evidence_visible"] is False
+
+
+def test_ai_chat_document_department_list_returns_visible_metadata_only(
+    app,
+    client,
+    make_user,
+    make_task,
+    make_document,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify structured document answers only include visible department metadata."""
+    user = make_user(username="ai_document_department_user")
+    visible_task_id = make_task("Doku Produktion", creator_username=user["username"])
+    hidden_task_id = make_task(
+        "Doku IT",
+        creator_username=user["username"],
+        department_name="IT",
+    )
+    visible_document_id = make_document(
+        visible_task_id,
+        created_by=user["id"],
+        relative_path="2026/05/document-visible.html",
+        department="Produktion",
+        machine="Anlage Doku A",
+    )
+    hidden_document_id = make_document(
+        hidden_task_id,
+        created_by=user["id"],
+        relative_path="2026/05/document-hidden.html",
+        department="IT",
+        machine="Anlage Doku B",
+    )
+    _update_generated_document(app, visible_document_id, title="Bericht Produktion Safe")
+    _update_generated_document(app, hidden_document_id, title="Bericht IT Hidden")
+    set_dashboard_permission(user["username"], "documents", can_view=True)
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Dokumente gehoeren zur Produktion?"},
+    )
+
+    payload = response.get_json()
+    serialized_payload = json.dumps(payload, ensure_ascii=True)
+    assert response.status_code == 200
+    assert payload["type"] == "document_department_list"
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["items"][0]["title"] == "Bericht Produktion Safe"
+    assert "Bericht IT Hidden" not in serialized_payload
+    assert hidden_document_id not in {source["id"] for source in payload["sources"]}
+    _assert_document_source(
+        payload["sources"][0],
+        visible_document_id,
+        "Bericht Produktion Safe",
+    )
+
+
+def test_ai_chat_document_machine_filter_includes_reports_and_manuals(
+    app,
+    client,
+    make_user,
+    make_task,
+    make_document,
+    make_machine,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify machine-filtered document answers include safe report and manual cards."""
+    user = make_user(username="ai_document_machine_user")
+    machine_id = make_machine(name="Anlage Doku C")
+    task_id = make_task("Doku Maschine", creator_username=user["username"])
+    document_id = make_document(
+        task_id,
+        created_by=user["id"],
+        relative_path="2026/05/document-machine.html",
+        department="Produktion",
+        machine="Anlage Doku C",
+    )
+    _update_generated_document(
+        app,
+        document_id,
+        title="Bericht Anlage Doku C",
+        machine_id=machine_id,
+        summary="Interne Summary darf nicht in Sources stehen",
+        approval_comment="Interner Kommentar darf nicht in Sources stehen",
+    )
+    manual_id = _create_machine_manual(
+        app,
+        created_by=user["id"],
+        machine_id=machine_id,
+        title="Manual Anlage Doku C",
+    )
+    set_dashboard_permission(user["username"], "documents", can_view=True)
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Dokumente betreffen Maschine Anlage Doku C?"},
+    )
+
+    payload = response.get_json()
+    source_by_type = {source["type"]: source for source in payload["sources"]}
+    serialized_sources = json.dumps(payload["sources"], ensure_ascii=True)
+    assert response.status_code == 200
+    assert payload["type"] == "document_machine_list"
+    assert payload["data"]["count"] == 2
+    _assert_document_source(
+        source_by_type["document"],
+        document_id,
+        "Bericht Anlage Doku C",
+    )
+    _assert_manual_source(source_by_type["machine_manual"], manual_id, "Manual Anlage Doku C")
+    assert "Interne Summary" not in serialized_sources
+    assert "Interne Analyse" not in serialized_sources
+    assert "Interner Kommentar" not in serialized_sources
+    assert "relative_path" not in serialized_sources
+
+
+def test_ai_chat_document_outdated_uses_structured_metadata(
+    app,
+    client,
+    make_user,
+    make_task,
+    make_document,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify outdated document answers use explicit structured document metadata."""
+    user = make_user(username="ai_document_outdated_user")
+    stale_task_id = make_task("Doku Veraltet", creator_username=user["username"])
+    fresh_task_id = make_task("Doku Frisch", creator_username=user["username"])
+    stale_document_id = make_document(
+        stale_task_id,
+        created_by=user["id"],
+        relative_path="2026/05/document-stale.html",
+        department="Produktion",
+        machine="Anlage Stale",
+    )
+    fresh_document_id = make_document(
+        fresh_task_id,
+        created_by=user["id"],
+        relative_path="2026/05/document-fresh.html",
+        department="Produktion",
+        machine="Anlage Fresh",
+    )
+    _update_generated_document(
+        app,
+        stale_document_id,
+        title="Bericht Veraltet",
+        quality_status="outdated",
+    )
+    _update_generated_document(app, fresh_document_id, title="Bericht Frisch")
+    set_dashboard_permission(user["username"], "documents", can_view=True)
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Dokumente sind veraltet?"},
+    )
+
+    payload = response.get_json()
+    serialized_payload = json.dumps(payload, ensure_ascii=True)
+    assert response.status_code == 200
+    assert payload["type"] == "document_outdated"
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["items"][0]["quality_status"] == "outdated"
+    assert "Bericht Veraltet" in serialized_payload
+    assert "Bericht Frisch" not in serialized_payload
+
+
+def test_ai_chat_document_this_week_uses_visible_created_metadata(
+    app,
+    client,
+    make_user,
+    make_task,
+    make_document,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify this-week document answers use visible created/upload metadata."""
+    user = make_user(username="ai_document_this_week_user")
+    current_task_id = make_task("Doku Diese Woche", creator_username=user["username"])
+    old_task_id = make_task("Doku Alt", creator_username=user["username"])
+    current_document_id = make_document(
+        current_task_id,
+        created_by=user["id"],
+        relative_path="2026/05/document-week.html",
+        department="Produktion",
+        machine="Anlage Woche",
+    )
+    old_document_id = make_document(
+        old_task_id,
+        created_by=user["id"],
+        relative_path="2026/05/document-old.html",
+        department="Produktion",
+        machine="Anlage Alt",
+    )
+    _update_generated_document(app, current_document_id, title="Bericht Diese Woche")
+    _update_generated_document(
+        app,
+        old_document_id,
+        title="Bericht Alt",
+        created_at=datetime(2020, 1, 1),
+    )
+    set_dashboard_permission(user["username"], "documents", can_view=True)
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Dokumente wurden diese Woche hochgeladen?"},
+    )
+
+    payload = response.get_json()
+    serialized_payload = json.dumps(payload, ensure_ascii=True)
+    assert response.status_code == 200
+    assert payload["type"] == "document_this_week"
+    assert "Bericht Diese Woche" in serialized_payload
+    assert "Bericht Alt" not in serialized_payload
+
+
+def test_ai_chat_document_answer_only_redacts_sources_and_data(
+    client,
+    make_user,
+    make_task,
+    make_document,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify answer-only mode redacts structured document evidence."""
+    user = make_user(username="ai_document_answer_only_user")
+    task_id = make_task("Doku Answer Only", creator_username=user["username"])
+    make_document(
+        task_id,
+        created_by=user["id"],
+        relative_path="2026/05/document-answer-only.html",
+        department="Produktion",
+        machine="Anlage Answer",
+    )
+    set_dashboard_permission(user["username"], "documents", can_view=True)
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={
+            "message": "Welche Dokumente gehoeren zur Produktion?",
+            "response_mode": "answer_only",
+        },
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "document_department_list"
     assert payload["sources"] == []
     assert payload["data"] == {}
     assert payload["evidence_visible"] is False
