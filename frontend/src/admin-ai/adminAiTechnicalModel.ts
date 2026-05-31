@@ -107,11 +107,16 @@ export function metricLabel(key: string): string {
     index_sync_risks: "Index/Sync Risiken",
     low_confidence_rate: "Niedrige Sicherheit",
     negative_feedback_rate: "Negatives Feedback",
+    no_source_answer_count: "Beantwortet ohne Quellen",
+    no_source_no_data_count: "Keine Daten gefunden",
+    no_source_permission_denied_count: "Fehlende Berechtigung",
     no_source_rate: "Ohne Quellen",
     permission_filtered_candidate_count: "Berechtigungsfilter",
     retrieval_hit_rate: "Trefferquote",
     retrieval_p95_ms: "P95 Suchzeit",
     safety_risk_count: "Sicherheitsrisiken",
+    source_count_average_answered: "Quellen je beantworteter Frage",
+    structured_domain_distribution: "Strukturierte Bereiche",
     total_tokens: "Tokenverbrauch"
   };
   return labels[key] || key;

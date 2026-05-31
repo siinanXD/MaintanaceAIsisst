@@ -32,6 +32,67 @@ CONFIGURATION_FAILURE_STATUSES = {
     "base_url_missing",
     "unsupported_provider",
 }
+STRUCTURED_DOMAIN_LABELS = {
+    "tasks": "Tasks",
+    "errors": "Stoerungen",
+    "machines": "Maschinen",
+    "vacations": "Urlaub",
+    "employees": "Mitarbeiter",
+    "documents": "Dokumente",
+    "shiftplans": "Schichtplanung",
+    "inventory": "Lager",
+}
+STRUCTURED_ENTITY_DOMAINS = {
+    "tasks": "tasks",
+    "task": "tasks",
+    "incidents": "errors",
+    "incident": "errors",
+    "errors": "errors",
+    "error": "errors",
+    "machines": "machines",
+    "machine": "machines",
+    "vacations": "vacations",
+    "vacation": "vacations",
+    "employees": "employees",
+    "employee": "employees",
+    "documents": "documents",
+    "document": "documents",
+    "shiftplans": "shiftplans",
+    "shiftplan": "shiftplans",
+    "inventory": "inventory",
+}
+STRUCTURED_SCOPE_DOMAINS = {
+    "tasks": "tasks",
+    "errors": "errors",
+    "machines": "machines",
+    "employees": "employees",
+    "documents": "documents",
+    "shiftplans": "shiftplans",
+    "inventory": "inventory",
+}
+STRUCTURED_RESPONSE_TYPE_DOMAINS = {
+    "structured_scope": "",
+    "tasks_status": "tasks",
+    "tasks_today": "tasks",
+    "tasks_count": "tasks",
+    "errors_count": "errors",
+    "machines_count": "machines",
+    "employee_count": "employees",
+    "employees_count": "employees",
+    "documents_count": "documents",
+    "shiftplans_count": "shiftplans",
+    "inventory_count": "inventory",
+}
+STRUCTURED_RESPONSE_TYPE_PREFIX_DOMAINS = (
+    ("task_", "tasks"),
+    ("incident_", "errors"),
+    ("machine_", "machines"),
+    ("vacation_", "vacations"),
+    ("employee_", "employees"),
+    ("document_", "documents"),
+    ("shiftplan_", "shiftplans"),
+    ("inventory_", "inventory"),
+)
 
 
 def ai_observability_dashboard(args=None):
@@ -108,14 +169,44 @@ def _metric_catalog():
         _metric_definition("rag_answer_count", "RAG-Antworten", "retrieval", "count"),
         _metric_definition("no_source_count", "Antworten ohne Quellen", "quality", "count"),
         _metric_definition(
+            "no_source_permission_denied_count",
+            "Ohne Quellen wegen fehlender Berechtigung",
+            "quality",
+            "count",
+        ),
+        _metric_definition(
+            "no_source_no_data_count",
+            "Ohne Quellen weil keine Daten gefunden wurden",
+            "quality",
+            "count",
+        ),
+        _metric_definition(
+            "no_source_answer_count",
+            "Beantwortet ohne Quellen",
+            "quality",
+            "count",
+        ),
+        _metric_definition(
             "source_count_average",
             "Durchschnitt Quellen pro Antwort",
             "sources",
             "count",
         ),
         _metric_definition(
+            "source_count_average_answered",
+            "Durchschnitt Quellen pro beantworteter Frage",
+            "sources",
+            "count",
+        ),
+        _metric_definition(
             "top_structured_modules",
             "Top strukturierte Module",
+            "structured",
+            "count",
+        ),
+        _metric_definition(
+            "structured_domain_distribution",
+            "Strukturierte Antwortbereiche",
             "structured",
             "count",
         ),
@@ -364,6 +455,10 @@ def _metrics(events, chats, feedback_entries, telemetry):
     structured_answer_count = sum(1 for chat in chats if _is_structured_answer(chat))
     rag_answer_count = sum(1 for chat in chats if _is_rag_answer(chat))
     no_source_count = sum(1 for value in chat_source_counts if value == 0)
+    no_source_breakdown = _no_source_breakdown(chats)
+    answered_source_counts = [
+        int(chat.source_count or 0) for chat in chats if _is_answered_chat(chat)
+    ]
     structured_module_distribution = _structured_module_distribution(chats)
     reranking_metrics = _reranking_metrics(events)
     retrieval_slo = _retrieval_slo_summary(telemetry)
@@ -450,14 +545,21 @@ def _metrics(events, chats, feedback_entries, telemetry):
         "average_source_count": _average(source_counts),
         "source_count_average": _average(chat_source_counts),
         "average_answer_source_count": _average(chat_source_counts),
+        "source_count_average_answered": _average(answered_source_counts),
         "structured_answer_count": structured_answer_count,
         "structured_answer_rate": _rate(structured_answer_count, len(chats)),
         "rag_answer_count": rag_answer_count,
         "rag_answer_rate": _rate(rag_answer_count, len(chats)),
         "no_source_count": no_source_count,
         "no_source_rate": _rate(no_source_count, len(chats)),
+        "no_source_permission_denied_count": no_source_breakdown["permission_denied"],
+        "no_source_no_data_count": no_source_breakdown["no_data"],
+        "no_source_answer_count": no_source_breakdown["answered_without_sources"],
+        "no_source_breakdown": no_source_breakdown,
         "top_structured_modules": structured_module_distribution["rows"],
         "structured_module_distribution": structured_module_distribution["counts"],
+        "structured_domain_distribution": structured_module_distribution["counts"],
+        "structured_domain_distribution_rows": structured_module_distribution["rows"],
         "reranking": reranking_metrics,
         "reranking_request_count": reranking_metrics["request_count"],
         "average_rerank_candidate_limit": reranking_metrics["average_candidate_limit"],
@@ -2089,7 +2191,7 @@ def _is_empty_retrieval(chat):
 
 def _is_structured_answer(chat):
     """Return whether a chat used the structured database answer path."""
-    return str(chat.response_type or "") == "structured_scope"
+    return _structured_domain(chat) is not None
 
 
 def _is_rag_answer(chat):
@@ -2099,13 +2201,108 @@ def _is_rag_answer(chat):
     return str(chat.response_type or "") not in {"permission_denied", "local_answer"}
 
 
+def _structured_domain(chat):
+    """Return the structured business domain for a chat, if it used app data."""
+    response_type = str(chat.response_type or "").strip()
+    if response_type == "permission_denied":
+        return None
+
+    diagnostics = chat.diagnostics()
+    domain = _structured_domain_from_context(diagnostics.get("structured_context") or {})
+    if domain:
+        return domain
+
+    domain = _structured_domain_from_response_type(response_type)
+    if domain:
+        return domain
+
+    scopes = {str(scope).strip() for scope in diagnostics.get("scopes") or [] if scope}
+    if response_type == "structured_scope":
+        return _structured_domain_from_scopes(scopes) or "unknown"
+    return None
+
+
+def _structured_domain_from_context(context):
+    """Return a structured domain from persisted structured context metadata."""
+    if not isinstance(context, dict):
+        return ""
+    entity_type = str(context.get("entity_type") or "").strip()
+    return STRUCTURED_ENTITY_DOMAINS.get(entity_type, "")
+
+
+def _structured_domain_from_response_type(response_type):
+    """Return a structured domain from a known response type."""
+    if response_type in STRUCTURED_RESPONSE_TYPE_DOMAINS:
+        return STRUCTURED_RESPONSE_TYPE_DOMAINS[response_type]
+    for prefix, domain in STRUCTURED_RESPONSE_TYPE_PREFIX_DOMAINS:
+        if response_type.startswith(prefix):
+            return domain
+    if response_type.endswith("_count"):
+        scope = response_type.removesuffix("_count")
+        return STRUCTURED_SCOPE_DOMAINS.get(scope, "")
+    return ""
+
+
+def _structured_domain_from_scopes(scopes):
+    """Return a structured domain from a single dashboard scope."""
+    domains = {
+        STRUCTURED_SCOPE_DOMAINS[scope]
+        for scope in scopes
+        if scope in STRUCTURED_SCOPE_DOMAINS
+    }
+    return next(iter(domains)) if len(domains) == 1 else ""
+
+
+def _is_answered_chat(chat):
+    """Return whether a chat should count toward answered-source averages."""
+    return (
+        not _is_permission_denied_chat(chat)
+        and not _is_no_answer(chat)
+        and not _is_no_source_no_data_chat(chat)
+    )
+
+
+def _no_source_breakdown(chats):
+    """Return clearer no-source buckets without changing legacy totals."""
+    breakdown = {
+        "permission_denied": 0,
+        "no_data": 0,
+        "answered_without_sources": 0,
+    }
+    for chat in chats:
+        if int(chat.source_count or 0) != 0:
+            continue
+        if _is_permission_denied_chat(chat):
+            breakdown["permission_denied"] += 1
+        elif _is_no_source_no_data_chat(chat):
+            breakdown["no_data"] += 1
+        else:
+            breakdown["answered_without_sources"] += 1
+    return breakdown
+
+
+def _is_permission_denied_chat(chat):
+    """Return whether a chat represents an explicit permission denial."""
+    diagnostics = chat.diagnostics()
+    return (
+        str(chat.response_type or "") == "permission_denied"
+        or str(diagnostics.get("status") or "") == "permission_denied"
+    )
+
+
+def _is_no_source_no_data_chat(chat):
+    """Return whether a no-source chat is a structured no-data response."""
+    return int(chat.source_count or 0) == 0 and _is_structured_answer(chat)
+
+
 def _structured_module_distribution(chats):
     """Return answer counts grouped by structured Maintenance module."""
     counter = Counter()
     for chat in chats:
-        if not _is_structured_answer(chat):
+        domain = _structured_domain(chat)
+        if not domain:
             continue
-        counter[_structured_module(chat)] += 1
+        counter[domain] += 1
     return {
         "counts": dict(counter),
         "rows": [
@@ -2122,28 +2319,12 @@ def _structured_module_distribution(chats):
 
 def _structured_module(chat):
     """Return the canonical module for one structured answer."""
-    diagnostics = chat.diagnostics()
-    context = diagnostics.get("structured_context") or {}
-    entity_type = str(context.get("entity_type") or "").strip()
-    if entity_type == "tasks":
-        return "tasks"
-    if entity_type in {"incidents", "errors"}:
-        return "errors"
-    scopes = {str(scope) for scope in diagnostics.get("scopes") or []}
-    if "tasks" in scopes:
-        return "tasks"
-    if "errors" in scopes:
-        return "errors"
-    return "unknown"
+    return _structured_domain(chat) or "unknown"
 
 
 def _structured_module_label(module):
     """Return a compact German label for one structured module key."""
-    labels = {
-        "tasks": "Tasks",
-        "errors": "Stoerungen",
-        "unknown": "Unbekannt",
-    }
+    labels = {**STRUCTURED_DOMAIN_LABELS, "unknown": "Unbekannt"}
     return labels.get(str(module or "unknown"), str(module or "unknown"))
 
 

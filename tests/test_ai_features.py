@@ -5998,8 +5998,8 @@ def test_ai_observability_dashboard_tracks_structured_and_rag_answer_metrics(
                 ChatMessage(
                     user_id=user["id"],
                     message="Welche offenen Aufgaben gibt es?",
-                    response="1 offene Aufgabe gefunden.",
-                    response_type="structured_scope",
+                    response="1 Task in Bearbeitung gefunden.",
+                    response_type="tasks_status",
                     diagnostics_json=json.dumps(
                         {
                             "structured_context": {"entity_type": "tasks"},
@@ -6025,11 +6025,110 @@ def test_ai_observability_dashboard_tracks_structured_and_rag_answer_metrics(
                 ),
                 ChatMessage(
                     user_id=user["id"],
+                    message="Welche Maschine hatte die meiste Ausfallzeit?",
+                    response="Presse 3 hatte die meiste Ausfallzeit.",
+                    response_type="machine_downtime",
+                    diagnostics_json=json.dumps(
+                        {
+                            "structured_context": {"entity_type": "machines"},
+                            "scopes": ["machines"],
+                        },
+                        ensure_ascii=True,
+                    ),
+                    source_count=2,
+                ),
+                ChatMessage(
+                    user_id=user["id"],
+                    message="Wie ist mein letzter Urlaubsantrag?",
+                    response="Kein sichtbarer Urlaubsantrag gefunden.",
+                    response_type="vacation_own_status",
+                    diagnostics_json=json.dumps(
+                        {
+                            "structured_context": {"entity_type": "vacations"},
+                            "scopes": ["employees"],
+                        },
+                        ensure_ascii=True,
+                    ),
+                    source_count=0,
+                ),
+                ChatMessage(
+                    user_id=user["id"],
+                    message="Welche Mitarbeiter sind heute verfuegbar?",
+                    response="Mitarbeiterliste geladen.",
+                    response_type="employee_available",
+                    diagnostics_json=json.dumps(
+                        {
+                            "structured_context": {"entity_type": "employees"},
+                            "scopes": ["employees"],
+                        },
+                        ensure_ascii=True,
+                    ),
+                    source_count=1,
+                ),
+                ChatMessage(
+                    user_id=user["id"],
+                    message="Welche Dokumente wurden zuletzt geaendert?",
+                    response="Zuletzt geaenderte Dokumente geladen.",
+                    response_type="document_recent",
+                    diagnostics_json=json.dumps(
+                        {
+                            "structured_context": {"entity_type": "documents"},
+                            "scopes": ["documents"],
+                        },
+                        ensure_ascii=True,
+                    ),
+                    source_count=1,
+                ),
+                ChatMessage(
+                    user_id=user["id"],
+                    message="Wer ist morgen in der Fruehschicht?",
+                    response="Schichtplanung fuer morgen geladen.",
+                    response_type="shiftplan_entries",
+                    diagnostics_json=json.dumps(
+                        {
+                            "structured_context": {"entity_type": "shiftplans"},
+                            "scopes": ["shiftplans"],
+                        },
+                        ensure_ascii=True,
+                    ),
+                    source_count=1,
+                ),
+                ChatMessage(
+                    user_id=user["id"],
+                    message="Welche Lagerartikel muessen nachbestellt werden?",
+                    response="Nachzubestellende Materialien geladen.",
+                    response_type="inventory_low_stock",
+                    diagnostics_json=json.dumps(
+                        {
+                            "structured_context": {"entity_type": "inventory"},
+                            "scopes": ["inventory"],
+                        },
+                        ensure_ascii=True,
+                    ),
+                    source_count=1,
+                ),
+                ChatMessage(
+                    user_id=user["id"],
                     message="Welche Dokumente zur Pumpe helfen?",
                     response="Dokument Pumpenhandbuch nutzen.",
                     response_type="assistant",
                     diagnostics_json=json.dumps({"scopes": ["documents"]}, ensure_ascii=True),
                     source_count=1,
+                ),
+                ChatMessage(
+                    user_id=user["id"],
+                    message="Welche Maschinen sind sichtbar?",
+                    response="Keine Berechtigung fuer Maschinen.",
+                    response_type="permission_denied",
+                    diagnostics_json=json.dumps(
+                        {
+                            "status": "permission_denied",
+                            "structured_context": {"entity_type": "machines"},
+                            "scopes": ["machines"],
+                        },
+                        ensure_ascii=True,
+                    ),
+                    source_count=0,
                 ),
                 ChatMessage(
                     user_id=user["id"],
@@ -6046,25 +6145,48 @@ def test_ai_observability_dashboard_tracks_structured_and_rag_answer_metrics(
         dashboard = ai_observability_dashboard({"days": "30", "limit": "5"})
 
     metrics = dashboard["metrics"]
-    assert metrics["structured_answer_count"] == 3
-    assert metrics["structured_answer_rate"] == 0.6
+    assert metrics["structured_answer_count"] == 9
+    assert metrics["structured_answer_rate"] == 0.75
     assert metrics["rag_answer_count"] == 1
-    assert metrics["rag_answer_rate"] == 0.2
-    assert metrics["no_source_count"] == 1
-    assert metrics["no_source_rate"] == 0.2
-    assert metrics["source_count_average"] == 1
-    assert metrics["average_answer_source_count"] == 1
-    assert metrics["structured_module_distribution"] == {"tasks": 2, "errors": 1}
+    assert metrics["rag_answer_rate"] == 0.0833
+    assert metrics["no_source_count"] == 3
+    assert metrics["no_source_rate"] == 0.25
+    assert metrics["no_source_permission_denied_count"] == 1
+    assert metrics["no_source_no_data_count"] == 1
+    assert metrics["no_source_answer_count"] == 1
+    assert metrics["source_count_average"] == 0.9167
+    assert metrics["average_answer_source_count"] == 0.9167
+    assert metrics["source_count_average_answered"] == 1.1
+    assert metrics["structured_module_distribution"] == {
+        "tasks": 2,
+        "errors": 1,
+        "machines": 1,
+        "vacations": 1,
+        "employees": 1,
+        "documents": 1,
+        "shiftplans": 1,
+        "inventory": 1,
+    }
+    assert metrics["structured_domain_distribution"] == metrics["structured_module_distribution"]
     assert metrics["top_structured_modules"][0] == {
         "module": "tasks",
         "label": "Tasks",
         "count": 2,
-        "rate": 0.6667,
+        "rate": 0.2222,
     }
-    assert metrics["top_structured_modules"][1]["module"] == "errors"
+    top_modules = {item["module"]: item for item in metrics["top_structured_modules"]}
+    assert top_modules["errors"]["label"] == "Stoerungen"
+    assert top_modules["machines"]["label"] == "Maschinen"
+    assert top_modules["vacations"]["label"] == "Urlaub"
+    assert top_modules["employees"]["label"] == "Mitarbeiter"
+    assert top_modules["documents"]["label"] == "Dokumente"
+    assert top_modules["shiftplans"]["label"] == "Schichtplanung"
+    assert top_modules["inventory"]["label"] == "Lager"
     assert dashboard["top_structured_modules"] == metrics["top_structured_modules"]
-    assert dashboard["top_questions"][0]["question"] == "Welche offenen Aufgaben gibt es?"
-    assert dashboard["top_questions"][0]["count"] == 2
+    assert any(
+        item["question"] == "Welche offenen Aufgaben gibt es?" and item["count"] == 2
+        for item in dashboard["top_questions"]
+    )
     assert any(item["term"] == "aufgaben" for item in dashboard["frequent_search_terms"])
 
 

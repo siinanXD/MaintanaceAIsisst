@@ -50,17 +50,23 @@ STRUCTURED_CONTEXT_KEYS = (
 ENTITY_TYPE_SCOPES = {
     "tasks": "tasks",
     "incidents": "errors",
+    "errors": "errors",
     "maintenance": "tasks",
     "employees": "employees",
+    "vacations": "employees",
     "documents": "documents",
+    "machines": "machines",
+    "shiftplans": "shiftplans",
+    "inventory": "inventory",
 }
 SCOPE_ENTITY_TYPES = {
     "tasks": "tasks",
     "errors": "incidents",
     "employees": "employees",
     "documents": "documents",
-    "machines": "maintenance",
-    "shiftplans": "maintenance",
+    "machines": "machines",
+    "shiftplans": "shiftplans",
+    "inventory": "inventory",
 }
 MACHINE_PATTERN = re.compile(
     r"\b(?:maschine|anlage|presse|linie|station|roboter|ofen)\s*[a-z0-9-]+\b",
