@@ -1379,6 +1379,62 @@ def test_rag_sources_include_shift_handover_metadata(
     assert source["url"] == "/handover"
 
 
+def test_rag_shift_handover_source_id_visibility_blocks_foreign_department(
+    app,
+    make_user,
+    make_machine,
+    set_dashboard_permission,
+):
+    """Verify RAG source-id checks block foreign shift handover chunks."""
+    user_data = make_user(
+        username="rag_handover_foreign_source_user",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+    foreign_user_data = make_user(
+        username="rag_handover_foreign_source_owner",
+        role=Role.IT,
+        department_name="IT",
+    )
+    set_dashboard_permission(user_data["username"], "shiftplans", can_view=True)
+    machine_id = make_machine(name="Presse Foreign Handover", produced_item="Servo")
+
+    with app.app_context():
+        user = db.session.get(User, user_data["id"])
+        foreign_handover = ShiftHandover(
+            department="IT",
+            shift_date=utc_now().date(),
+            shift_type="Nacht",
+            status="open",
+            handed_over_by=foreign_user_data["id"],
+            machine_id=machine_id,
+            content="Presse Foreign Handover nur fuer IT sichtbar.",
+            open_tasks="IT Diagnose offen.",
+            machine_notes="ForeignToken900 Sensor pruefen.",
+            next_notes="Nicht fuer Produktion freigeben.",
+        )
+        db.session.add(foreign_handover)
+        db.session.flush()
+        _create_quality_gate_document(
+            title="Foreign Handover Source",
+            quality_status="admin_approved",
+            created_by=user.id,
+            source_type="shift_handover",
+            source_id=foreign_handover.id,
+            text="ForeignToken900 Presse Foreign Handover Sensor Diagnose.",
+            token_text="foreigntoken900 presse foreign handover sensor diagnose",
+        )
+        db.session.commit()
+
+        _context, sources = knowledge_context_for_chat(
+            "ForeignToken900 Presse Foreign Handover Sensor Diagnose",
+            user,
+            limit=1,
+        )
+
+    assert sources == []
+
+
 def test_rag_sources_include_task_source_created_at(
     app,
     make_user,

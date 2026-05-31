@@ -42,7 +42,7 @@ from app.services.ai_service import AIServiceError, MockAIProvider, get_ai_provi
 from app.services.conversation_context_service import conversation_context_for_chat
 from app.services.document_service import visible_documents_query
 from app.services.empty_retrieval_response_service import build_empty_retrieval_answer
-from app.services.error_service import search_errors
+from app.services.error_service import search_errors, visible_errors_query
 from app.services.incident_timeline_service import daily_briefing_timeline_section
 from app.services.knowledge_service import knowledge_sources_for_chat
 from app.services.order_planning_service import (
@@ -258,11 +258,7 @@ def inventory_briefing_section(user):
 def error_briefing_section(user):
     """Return recently created error catalog briefing items."""
     since = date.today() - timedelta(days=1)
-    entries = (
-        ErrorEntry.query
-        if user.is_admin
-        else ErrorEntry.query.filter(ErrorEntry.department_id == user.department_id)
-    )
+    entries = visible_errors_query(user)
     entries = (
         entries.filter(ErrorEntry.created_at >= since)
         .order_by(ErrorEntry.created_at.desc())

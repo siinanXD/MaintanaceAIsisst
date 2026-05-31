@@ -30,6 +30,12 @@ from app.services.structured_retrieval_metadata_service import (
 )
 from app.services.task_service import visible_tasks_query
 from app.services.text_normalization_service import tokenize_text
+from app.services.visibility_query_service import (
+    visible_employees_query,
+    visible_inventory_materials_query,
+    visible_machines_query,
+    visible_shiftplans_query,
+)
 
 MAX_SOURCES = 8
 
@@ -51,7 +57,7 @@ def retrieve_ai_context(message, user, requested_scopes=None):
         candidates.extend(error_sources)
         data["errors"] = [entry.to_dict() for entry in errors]
     if "machines" in searchable_scopes:
-        machine_sources, machines = _machine_sources(message, requested_scopes)
+        machine_sources, machines = _machine_sources(message, user, requested_scopes)
         candidates.extend(machine_sources)
         data["machines"] = [machine.to_dict() for machine in machines]
         maintenance_sources, maintenance_plans = _maintenance_plan_sources(
@@ -62,7 +68,7 @@ def retrieve_ai_context(message, user, requested_scopes=None):
         candidates.extend(maintenance_sources)
         data["maintenance_plans"] = [plan.to_dict() for plan in maintenance_plans]
     if "inventory" in searchable_scopes:
-        inventory_sources, materials = _inventory_sources(message, requested_scopes)
+        inventory_sources, materials = _inventory_sources(message, user, requested_scopes)
         candidates.extend(inventory_sources)
         data["inventory"] = [material.to_dict() for material in materials]
     if "documents" in searchable_scopes:
@@ -177,9 +183,9 @@ def _error_sources(message, user, requested_scopes):
     ], [entry for entry, _score, _reason in errors]
 
 
-def _machine_sources(message, requested_scopes):
+def _machine_sources(message, user, requested_scopes):
     """Return ranked machine sources."""
-    machines = Machine.query.order_by(Machine.name.asc()).limit(30).all()
+    machines = visible_machines_query(user).order_by(Machine.name.asc()).limit(30).all()
     ranked = _rank_records(
         machines,
         message,
@@ -205,13 +211,13 @@ def _machine_sources(message, requested_scopes):
 
 def _maintenance_plan_sources(message, user, requested_scopes):
     """Return ranked maintenance-plan sources visible to the user."""
-    query = MaintenancePlan.query.order_by(
+    from app.machines.maintenance_services import visible_maintenance_plans_query
+
+    query = visible_maintenance_plans_query(user).order_by(
         MaintenancePlan.is_active.desc(),
         MaintenancePlan.next_due_date.asc(),
         MaintenancePlan.id.desc(),
     )
-    if not user.is_admin:
-        query = query.filter(MaintenancePlan.department_id == user.department_id)
     ranked = _rank_records(
         query.limit(30).all(),
         message,
@@ -235,12 +241,11 @@ def _maintenance_plan_sources(message, user, requested_scopes):
     ], [plan for plan, _score, _reason in ranked]
 
 
-def _inventory_sources(message, requested_scopes):
+def _inventory_sources(message, user, requested_scopes):
     """Return ranked inventory sources."""
     materials = (
-        InventoryMaterial.query.order_by(
-            InventoryMaterial.quantity.asc(), InventoryMaterial.name.asc()
-        )
+        visible_inventory_materials_query(user)
+        .order_by(InventoryMaterial.quantity.asc(), InventoryMaterial.name.asc())
         .limit(30)
         .all()
     )
@@ -297,9 +302,7 @@ def _document_sources(message, user, requested_scopes):
 
 def _shiftplan_sources(message, user, requested_scopes):
     """Return ranked shift-plan sources visible to the user."""
-    query = ShiftPlan.query.order_by(ShiftPlan.created_at.desc())
-    if not user.is_admin:
-        query = query.filter(ShiftPlan.status == "published")
+    query = visible_shiftplans_query(user).order_by(ShiftPlan.created_at.desc())
     ranked = _rank_records(
         query.limit(20).all(),
         message,
@@ -357,7 +360,7 @@ def _handover_sources(message, user, requested_scopes):
 def _employee_sources(message, user, requested_scopes):
     """Return ranked employee sources visible to the user access tier."""
     access_level = employee_access_level(user)
-    employees = Employee.query.order_by(Employee.name.asc()).limit(30).all()
+    employees = visible_employees_query(user).order_by(Employee.name.asc()).limit(30).all()
     ranked = _rank_records(
         employees,
         message,

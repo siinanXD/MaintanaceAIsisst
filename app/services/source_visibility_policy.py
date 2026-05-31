@@ -7,8 +7,11 @@ from app.models import (
     AssistantTrainingEntry,
     ErrorEntry,
     GeneratedDocument,
+    InventoryMaterial,
     KnowledgeDocument,
+    Machine,
     MaintenancePlan,
+    ShiftHandover,
     Task,
 )
 from app.security import has_dashboard_permission
@@ -86,11 +89,29 @@ class SourceVisibilityPolicy:
                 "task_visible",
                 "task_not_visible",
             )
+        if source_type == "machine":
+            return self._decision_from_allowed(
+                self._can_read_machine(user, document),
+                "machine_visible",
+                "machine_not_visible",
+            )
+        if source_type == "inventory_material":
+            return self._decision_from_allowed(
+                self._can_read_inventory_material(user, document),
+                "inventory_material_visible",
+                "inventory_material_not_visible",
+            )
         if source_type == "maintenance_plan":
             return self._decision_from_allowed(
                 self._can_read_maintenance_plan(user, document),
                 "maintenance_plan_visible",
                 "maintenance_plan_not_visible",
+            )
+        if source_type == "shift_handover":
+            return self._decision_from_allowed(
+                self._can_read_shift_handover(user, document),
+                "shift_handover_visible",
+                "shift_handover_not_visible",
             )
         if source_type == "manual_training":
             return self._decision_from_allowed(
@@ -140,6 +161,34 @@ class SourceVisibilityPolicy:
 
         return visible_tasks_query(user).filter(Task.id == document.source_id).first() is not None
 
+    def _can_read_machine(self, user, document):
+        """Return whether a machine source is visible to the user."""
+        if not self._has_any_dashboard(user, ("machines",)):
+            return False
+        if not document.source_id:
+            return False
+        from app.services.visibility_query_service import visible_machines_query
+
+        return (
+            visible_machines_query(user).filter(Machine.id == document.source_id).first()
+            is not None
+        )
+
+    def _can_read_inventory_material(self, user, document):
+        """Return whether an inventory source is visible to the user."""
+        if not self._has_any_dashboard(user, ("inventory",)):
+            return False
+        if not document.source_id:
+            return False
+        from app.services.visibility_query_service import visible_inventory_materials_query
+
+        return (
+            visible_inventory_materials_query(user)
+            .filter(InventoryMaterial.id == document.source_id)
+            .first()
+            is not None
+        )
+
     def _can_read_maintenance_plan(self, user, document):
         """Return whether a maintenance-plan source is visible to the user."""
         if not self._has_any_dashboard(user, ("machines",)):
@@ -152,6 +201,19 @@ class SourceVisibilityPolicy:
             visible_maintenance_plans_query(user)
             .filter(MaintenancePlan.id == document.source_id)
             .first()
+            is not None
+        )
+
+    def _can_read_shift_handover(self, user, document):
+        """Return whether a shift-handover source is visible to the user."""
+        if not self._has_any_dashboard(user, ("shiftplans",)):
+            return False
+        if not document.source_id:
+            return False
+        from app.handover.services import visible_handovers_query
+
+        return (
+            visible_handovers_query(user).filter(ShiftHandover.id == document.source_id).first()
             is not None
         )
 
