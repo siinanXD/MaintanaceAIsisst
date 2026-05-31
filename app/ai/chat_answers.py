@@ -48,6 +48,9 @@ from app.services.ai_safety_service import (
     enforce_post_generation_safety,
 )
 from app.services.ai_service import AIServiceError, MockAIProvider, get_ai_provider
+from app.services.ai_shiftplan_structured_answer_service import (
+    answer_shiftplan_structured_question,
+)
 from app.services.ai_structured_scope_answer_service import answer_structured_scope_question
 from app.services.ai_task_status_answer_service import answer_task_status_question
 from app.services.ai_vacation_structured_answer_service import (
@@ -322,6 +325,23 @@ def answer_chat(message, user, session_id=""):
             user,
             document_structured_result,
             requested_scopes or {"documents"},
+            allowed_scopes,
+            message=message,
+            conversation_context=conversation_context,
+        )
+
+    shiftplan_structured_result = answer_shiftplan_structured_question(message, user)
+    if shiftplan_structured_result:
+        status = (
+            "permission_denied"
+            if shiftplan_structured_result.get("type") == "permission_denied"
+            else "local_answer"
+        )
+        shiftplan_structured_result["diagnostics"] = ai_diagnostics(status)
+        return attach_audit_metadata(
+            user,
+            shiftplan_structured_result,
+            requested_scopes or {"shiftplans"},
             allowed_scopes,
             message=message,
             conversation_context=conversation_context,

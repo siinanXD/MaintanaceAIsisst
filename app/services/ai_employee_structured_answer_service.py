@@ -31,6 +31,8 @@ def answer_employee_structured_question(message, user):
     text = normalize_text(message)
     if not _is_employee_question(text):
         return None
+    if not _is_supported_employee_question(text):
+        return None
     if not can_read_employee_context(user):
         return _permission_denied()
     if _is_team_lead_question(text):
@@ -308,8 +310,23 @@ def _is_employee_question(text):
     )
 
 
+def _is_supported_employee_question(text):
+    """Return whether the employee service supports the specific question."""
+    return any(
+        (
+            _is_team_lead_question(text),
+            _is_available_today_question(text),
+            _is_missing_tomorrow_question(text),
+            _is_department_count_question(text),
+            _is_department_list_question(text),
+        )
+    )
+
+
 def _is_department_count_question(text):
     """Return whether the text asks for employee count in a department."""
+    if "schicht" in text:
+        return False
     return any(term in text for term in ("wie viele", "wieviele", "anzahl")) and any(
         term in text for term in ("hat die", "hat der", "in der", "im bereich")
     )

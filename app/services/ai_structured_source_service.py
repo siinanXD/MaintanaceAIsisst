@@ -111,6 +111,25 @@ def manual_source_cards(manuals, limit=SOURCE_CARD_LIMIT):
     return [_manual_source_card(manual) for manual in list(manuals or [])[:limit]]
 
 
+def shiftplan_source_cards(plans, limit=SOURCE_CARD_LIMIT):
+    """Return compact source cards for already-visible shift plans."""
+    return [_shiftplan_source_card(plan) for plan in list(plans or [])[:limit]]
+
+
+def shiftplan_entry_source_cards(entries, user=None, limit=SOURCE_CARD_LIMIT):
+    """Return compact source cards for already-visible shift plan entries."""
+    access_level = employee_access_level(user) if user else "basic"
+    return [
+        _shiftplan_entry_source_card(entry, access_level)
+        for entry in list(entries or [])[:limit]
+    ]
+
+
+def shiftplan_coverage_source_cards(slots, limit=SOURCE_CARD_LIMIT):
+    """Return compact source cards for already-visible shift coverage slots."""
+    return [_shiftplan_coverage_source_card(slot) for slot in list(slots or [])[:limit]]
+
+
 def vacation_source_cards(vacations, limit=SOURCE_CARD_LIMIT, role_visibility=""):
     """Return compact source cards for already-visible vacation rows."""
     return [
@@ -313,6 +332,101 @@ def _manual_source_card(manual):
         "department": department,
         "machine": str(getattr(machine, "name", "") or "")[:160],
         "machine_id": getattr(manual, "machine_id", None),
+    }
+
+
+def _shiftplan_source_card(plan):
+    """Return one prompt-safe shift-plan source card."""
+    department = str(getattr(plan, "department", "") or "")[:120]
+    return {
+        "type": "shiftplan",
+        "id": plan.id,
+        "title": str(getattr(plan, "title", "") or "")[:160],
+        "module": "shiftplans",
+        "url": "/shiftplans",
+        "source_type": "shiftplan",
+        "source_id": plan.id,
+        "source_record_id": plan.id,
+        "source_kind": "structured",
+        "role_visibility": _role_visibility(department),
+        "created_at": _isoformat(plan.created_at),
+        "department": department,
+        "start_date": plan.start_date.isoformat() if plan.start_date else "",
+        "days": plan.days,
+        "status": str(getattr(plan, "status", "") or "")[:20],
+        "coverage_percent": plan.coverage_percent,
+        "conflict_count": plan.conflict_count,
+        "critical_conflict_count": plan.critical_conflict_count,
+    }
+
+
+def _shiftplan_entry_source_card(entry, access_level):
+    """Return one prompt-safe shift-plan entry source card."""
+    plan = getattr(entry, "plan", None)
+    employee = getattr(entry, "employee", None)
+    machine = getattr(entry, "machine", None)
+    department = str(getattr(plan, "department", "") or "")[:120]
+    employee_name = (
+        str(getattr(employee, "name", "") or "")[:160]
+        if access_level != "none"
+        else ""
+    )
+    title = (
+        f"{employee_name} {entry.work_date.isoformat()} {entry.shift}".strip()
+        if employee_name
+        else f"Schichtplaneintrag {entry.work_date.isoformat()} {entry.shift}".strip()
+    )
+    return {
+        "type": "shiftplan_entry",
+        "id": entry.id,
+        "title": title,
+        "module": "shiftplans",
+        "url": "/shiftplans",
+        "source_type": "shiftplan_entry",
+        "source_id": entry.id,
+        "source_record_id": entry.id,
+        "source_kind": "structured",
+        "role_visibility": _role_visibility(department),
+        "created_at": _isoformat(entry.created_at),
+        "plan_id": entry.plan_id,
+        "department": department,
+        "employee_id": entry.employee_id,
+        "employee_name": employee_name,
+        "machine_id": entry.machine_id,
+        "machine": str(getattr(machine, "name", "") or "")[:160],
+        "work_date": entry.work_date.isoformat() if entry.work_date else "",
+        "shift": str(getattr(entry, "shift", "") or "")[:80],
+        "start_time": str(getattr(entry, "start_time", "") or "")[:5],
+        "end_time": str(getattr(entry, "end_time", "") or "")[:5],
+    }
+
+
+def _shiftplan_coverage_source_card(slot):
+    """Return one prompt-safe shift coverage source card."""
+    plan = getattr(slot, "plan", None)
+    machine = getattr(slot, "machine", None)
+    department = str(getattr(plan, "department", "") or "")[:120]
+    return {
+        "type": "shiftplan_coverage",
+        "id": slot.id,
+        "title": f"Unterdeckung {slot.work_date.isoformat()} {slot.shift}".strip(),
+        "module": "shiftplans",
+        "url": "/shiftplans",
+        "source_type": "shiftplan_coverage",
+        "source_id": slot.id,
+        "source_record_id": slot.id,
+        "source_kind": "structured",
+        "role_visibility": _role_visibility(department),
+        "created_at": _isoformat(slot.created_at),
+        "plan_id": slot.plan_id,
+        "department": department,
+        "machine_id": slot.machine_id,
+        "machine": str(getattr(machine, "name", "") or "")[:160],
+        "work_date": slot.work_date.isoformat() if slot.work_date else "",
+        "shift": str(getattr(slot, "shift", "") or "")[:80],
+        "required": slot.required,
+        "assigned": slot.assigned,
+        "missing": slot.missing,
     }
 
 

@@ -26,6 +26,9 @@ from app.models import (
     Priority,
     RetrievalEvaluationRun,
     Role,
+    ShiftPlan,
+    ShiftPlanCoverageSlot,
+    ShiftPlanEntry,
     Task,
     TaskStatus,
     User,
@@ -183,6 +186,57 @@ MANUAL_SOURCE_FIELDS = {
     "updated_at",
     "url",
 }
+SHIFTPLAN_ENTRY_SOURCE_FIELDS = {
+    "created_at",
+    "department",
+    "employee_id",
+    "employee_name",
+    "end_time",
+    "id",
+    "machine",
+    "machine_id",
+    "module",
+    "plan_id",
+    "role_visibility",
+    "shift",
+    "source_id",
+    "source_kind",
+    "source_record_id",
+    "source_type",
+    "start_time",
+    "title",
+    "type",
+    "url",
+    "work_date",
+}
+SHIFTPLAN_COVERAGE_SOURCE_FIELDS = {
+    "assigned",
+    "created_at",
+    "department",
+    "id",
+    "machine",
+    "machine_id",
+    "missing",
+    "module",
+    "plan_id",
+    "required",
+    "role_visibility",
+    "shift",
+    "source_id",
+    "source_kind",
+    "source_record_id",
+    "source_type",
+    "title",
+    "type",
+    "url",
+    "work_date",
+}
+FORBIDDEN_SHIFTPLAN_SOURCE_FIELDS = {
+    "notes",
+    "preferences",
+    "reason",
+    "suggestion",
+}
 FORBIDDEN_DOCUMENT_SOURCE_FIELDS = {
     "analysis",
     "approval_comment",
@@ -333,6 +387,37 @@ def _assert_manual_source(source, manual_id, title):
     _assert_no_forbidden_source_fields(source, FORBIDDEN_DOCUMENT_SOURCE_FIELDS)
 
 
+def _assert_shiftplan_entry_source(source, entry_id, employee_name):
+    """Verify one compact safe shift-plan entry source card."""
+    assert set(source) == SHIFTPLAN_ENTRY_SOURCE_FIELDS
+    assert source["type"] == "shiftplan_entry"
+    assert source["id"] == entry_id
+    assert source["module"] == "shiftplans"
+    assert source["url"] == "/shiftplans"
+    assert source["source_type"] == "shiftplan_entry"
+    assert source["source_id"] == entry_id
+    assert source["source_record_id"] == entry_id
+    assert source["source_kind"] == "structured"
+    assert source["employee_name"] == employee_name
+    assert source["created_at"]
+    _assert_no_forbidden_source_fields(source, FORBIDDEN_SHIFTPLAN_SOURCE_FIELDS)
+
+
+def _assert_shiftplan_coverage_source(source, slot_id):
+    """Verify one compact safe shift-plan coverage source card."""
+    assert set(source) == SHIFTPLAN_COVERAGE_SOURCE_FIELDS
+    assert source["type"] == "shiftplan_coverage"
+    assert source["id"] == slot_id
+    assert source["module"] == "shiftplans"
+    assert source["url"] == "/shiftplans"
+    assert source["source_type"] == "shiftplan_coverage"
+    assert source["source_id"] == slot_id
+    assert source["source_record_id"] == slot_id
+    assert source["source_kind"] == "structured"
+    assert source["created_at"]
+    _assert_no_forbidden_source_fields(source, FORBIDDEN_SHIFTPLAN_SOURCE_FIELDS)
+
+
 def _create_vacation_request(
     app,
     employee_id,
@@ -389,6 +474,78 @@ def _update_generated_document(app, document_id, **values):
         for key, value in values.items():
             setattr(document, key, value)
         db.session.commit()
+
+
+def _create_shift_plan(app, created_by, department, start_date, status="published"):
+    """Create one shift plan directly for AI feature tests."""
+    with app.app_context():
+        plan = ShiftPlan(
+            title=f"Plan {department} {start_date.isoformat()}",
+            start_date=start_date,
+            days=7,
+            rhythm="Test",
+            preferences="Interne Praeferenz darf nicht in Sources stehen",
+            notes="Interne Notiz darf nicht in Sources stehen",
+            department=department,
+            status=status,
+            created_by=created_by,
+        )
+        db.session.add(plan)
+        db.session.commit()
+        return plan.id
+
+
+def _create_shift_entry(
+    app,
+    plan_id,
+    employee_id,
+    work_date,
+    shift="Frueh",
+    machine_id=None,
+):
+    """Create one shift plan entry directly for AI feature tests."""
+    with app.app_context():
+        entry = ShiftPlanEntry(
+            plan_id=plan_id,
+            employee_id=employee_id,
+            machine_id=machine_id,
+            work_date=work_date,
+            shift=shift,
+            start_time="06:00" if shift == "Frueh" else "14:00",
+            end_time="14:00" if shift == "Frueh" else "22:00",
+            notes="Interne Entry-Notiz darf nicht in Sources stehen",
+        )
+        db.session.add(entry)
+        db.session.commit()
+        entry_id = entry.id
+    return entry_id
+
+
+def _create_shift_coverage_slot(
+    app,
+    plan_id,
+    work_date,
+    shift,
+    missing,
+    machine_id=None,
+):
+    """Create one shift plan coverage slot directly for AI feature tests."""
+    with app.app_context():
+        slot = ShiftPlanCoverageSlot(
+            plan_id=plan_id,
+            machine_id=machine_id,
+            work_date=work_date,
+            shift=shift,
+            required=3,
+            assigned=3 - missing,
+            missing=missing,
+            reason="Interner Grund darf nicht in Sources stehen",
+            suggestion="Interner Vorschlag darf nicht in Sources stehen",
+        )
+        db.session.add(slot)
+        db.session.commit()
+        slot_id = slot.id
+    return slot_id
 
 
 def _link_user_employee(app, user_data, employee_id):
@@ -2351,6 +2508,240 @@ def test_ai_chat_document_answer_only_redacts_sources_and_data(
     payload = response.get_json()
     assert response.status_code == 200
     assert payload["type"] == "document_department_list"
+    assert payload["sources"] == []
+    assert payload["data"] == {}
+    assert payload["evidence_visible"] is False
+    assert payload["diagnostics"]["evidence_visible"] is False
+    assert payload["answer_quality"]["evidence_visible"] is False
+
+
+def test_ai_chat_shiftplan_entries_use_visible_published_department_plans(
+    app,
+    client,
+    make_user,
+    make_employee,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify non-admin shiftplan answers use published own-department plans only."""
+    user = make_user(username="ai_shiftplan_visible_user")
+    tomorrow = date.today() + timedelta(days=1)
+    prod_employee_id = make_employee(
+        personnel_number="P-AI-SHIFT-VIS-1",
+        name="Anna Schicht Produktion",
+        department="Produktion",
+    )
+    draft_employee_id = make_employee(
+        personnel_number="P-AI-SHIFT-VIS-2",
+        name="Bernd Schicht Draft",
+        department="Produktion",
+    )
+    it_employee_id = make_employee(
+        personnel_number="P-AI-SHIFT-VIS-3",
+        name="Clara Schicht IT",
+        department="IT",
+    )
+    visible_plan_id = _create_shift_plan(app, user["id"], "Produktion", tomorrow)
+    draft_plan_id = _create_shift_plan(app, user["id"], "Produktion", tomorrow, status="draft")
+    hidden_plan_id = _create_shift_plan(app, user["id"], "IT", tomorrow)
+    entry_id = _create_shift_entry(app, visible_plan_id, prod_employee_id, tomorrow)
+    _create_shift_entry(app, draft_plan_id, draft_employee_id, tomorrow)
+    _create_shift_entry(app, hidden_plan_id, it_employee_id, tomorrow)
+    set_dashboard_permission(user["username"], "shiftplans", can_view=True)
+    set_dashboard_permission(
+        user["username"],
+        "employees",
+        can_view=True,
+        employee_access_level="basic",
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Wer ist morgen eingeplant?"},
+    )
+
+    payload = response.get_json()
+    serialized_payload = json.dumps(payload, ensure_ascii=True)
+    assert response.status_code == 200
+    assert payload["type"] == "shiftplan_entries"
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["items"][0]["employee"]["name"] == "Anna Schicht Produktion"
+    assert "Bernd Schicht Draft" not in serialized_payload
+    assert "Clara Schicht IT" not in serialized_payload
+    assert len(payload["sources"]) == 1
+    _assert_shiftplan_entry_source(payload["sources"][0], entry_id, "Anna Schicht Produktion")
+
+
+def test_ai_chat_shiftplan_master_admin_sees_all_departments(
+    app,
+    client,
+    make_user,
+    make_employee,
+    auth_headers,
+):
+    """Verify master admins can see planned employees across departments."""
+    admin = make_user(
+        username="ai_shiftplan_admin_user",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    tomorrow = date.today() + timedelta(days=1)
+    prod_employee_id = make_employee(
+        personnel_number="P-AI-SHIFT-ADMIN-1",
+        name="David Schicht Produktion",
+        department="Produktion",
+    )
+    it_employee_id = make_employee(
+        personnel_number="P-AI-SHIFT-ADMIN-2",
+        name="Eva Schicht IT",
+        department="IT",
+    )
+    prod_plan_id = _create_shift_plan(app, admin["id"], "Produktion", tomorrow)
+    it_plan_id = _create_shift_plan(app, admin["id"], "IT", tomorrow)
+    _create_shift_entry(app, prod_plan_id, prod_employee_id, tomorrow)
+    _create_shift_entry(app, it_plan_id, it_employee_id, tomorrow)
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(admin["username"]),
+        json={"message": "Wer ist morgen eingeplant?"},
+    )
+
+    payload = response.get_json()
+    serialized_payload = json.dumps(payload, ensure_ascii=True)
+    assert response.status_code == 200
+    assert payload["type"] == "shiftplan_entries"
+    assert payload["data"]["count"] == 2
+    assert "David Schicht Produktion" in serialized_payload
+    assert "Eva Schicht IT" in serialized_payload
+
+
+def test_ai_chat_shiftplan_understaffed_next_week_uses_coverage_slots(
+    app,
+    client,
+    make_user,
+    make_machine,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify undercoverage answers use visible coverage slots with missing staff."""
+    user = make_user(username="ai_shiftplan_understaffed_user")
+    machine_id = make_machine(name="Anlage Unterdeckung")
+    next_monday, _next_sunday = _next_week_test_bounds()
+    plan_id = _create_shift_plan(app, user["id"], "Produktion", next_monday)
+    missing_slot_id = _create_shift_coverage_slot(
+        app,
+        plan_id,
+        next_monday,
+        "Spaet",
+        missing=2,
+        machine_id=machine_id,
+    )
+    _create_shift_coverage_slot(app, plan_id, next_monday, "Frueh", missing=0)
+    set_dashboard_permission(user["username"], "shiftplans", can_view=True)
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Schicht ist naechste Woche unterbesetzt?"},
+    )
+
+    payload = response.get_json()
+    serialized_sources = json.dumps(payload["sources"], ensure_ascii=True)
+    assert response.status_code == 200
+    assert payload["type"] == "shiftplan_understaffed"
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["items"][0]["missing"] == 2
+    assert len(payload["sources"]) == 1
+    _assert_shiftplan_coverage_source(payload["sources"][0], missing_slot_id)
+    assert "Interner Grund" not in serialized_sources
+    assert "Interner Vorschlag" not in serialized_sources
+
+
+def test_ai_chat_shiftplan_shift_count_counts_visible_entries(
+    app,
+    client,
+    make_user,
+    make_employee,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify shift count answers count visible employees in the requested shift."""
+    user = make_user(username="ai_shiftplan_count_user")
+    tomorrow = date.today() + timedelta(days=1)
+    first_employee_id = make_employee(
+        personnel_number="P-AI-SHIFT-COUNT-1",
+        name="Frank Spaet Eins",
+        department="Produktion",
+    )
+    second_employee_id = make_employee(
+        personnel_number="P-AI-SHIFT-COUNT-2",
+        name="Gina Spaet Zwei",
+        department="Produktion",
+    )
+    night_employee_id = make_employee(
+        personnel_number="P-AI-SHIFT-COUNT-3",
+        name="Hugo Nacht",
+        department="Produktion",
+    )
+    plan_id = _create_shift_plan(app, user["id"], "Produktion", tomorrow)
+    _create_shift_entry(app, plan_id, first_employee_id, tomorrow, shift="Spaet")
+    _create_shift_entry(
+        app,
+        plan_id,
+        second_employee_id,
+        tomorrow + timedelta(days=1),
+        shift="Spaet",
+    )
+    _create_shift_entry(app, plan_id, night_employee_id, tomorrow, shift="Nacht")
+    set_dashboard_permission(user["username"], "shiftplans", can_view=True)
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Wie viele Mitarbeiter sind in der Spaetschicht?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "shiftplan_shift_count"
+    assert payload["data"]["shift"] == "Spaet"
+    assert payload["data"]["count"] == 2
+
+
+def test_ai_chat_shiftplan_answer_only_redacts_sources_and_data(
+    app,
+    client,
+    make_user,
+    make_employee,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify answer-only mode redacts structured shiftplan evidence."""
+    user = make_user(username="ai_shiftplan_answer_only_user")
+    tomorrow = date.today() + timedelta(days=1)
+    employee_id = make_employee(
+        personnel_number="P-AI-SHIFT-ANSWER-1",
+        name="Ida Schicht Answer",
+        department="Produktion",
+    )
+    plan_id = _create_shift_plan(app, user["id"], "Produktion", tomorrow)
+    _create_shift_entry(app, plan_id, employee_id, tomorrow)
+    set_dashboard_permission(user["username"], "shiftplans", can_view=True)
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={
+            "message": "Wer ist morgen eingeplant?",
+            "response_mode": "answer_only",
+        },
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "shiftplan_entries"
     assert payload["sources"] == []
     assert payload["data"] == {}
     assert payload["evidence_visible"] is False
