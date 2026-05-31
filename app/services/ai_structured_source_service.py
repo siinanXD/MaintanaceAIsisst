@@ -309,11 +309,7 @@ def _employee_source_card(employee, access_level):
         "role_visibility": _role_visibility(department),
         "created_at": _isoformat(employee.created_at),
         "employee_access_level": str(access_level or "none"),
-        "employee_id": employee.id,
-        "employee_name": employee_name,
-        "personnel_number": str(getattr(employee, "personnel_number", "") or "")[:80],
         "department": department,
-        "team": getattr(employee, "team", None),
     }
 
 

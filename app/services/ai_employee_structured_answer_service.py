@@ -6,6 +6,7 @@ from datetime import date, timedelta
 
 from app.ai.intent import can_read_employee_context
 from app.models import Employee, VacationRequest
+from app.security import employee_access_level
 from app.services.ai_prompting import permission_denied_answer
 from app.services.ai_question_normalizer import detect_department, normalize_text
 from app.services.ai_structured_source_service import (
@@ -112,7 +113,7 @@ def _answer_department_list(user, department):
             "query": "department_list",
             "department": department,
             "count": len(employees),
-            "items": [_employee_payload(employee) for employee in employees],
+            "items": [_employee_payload(employee, user) for employee in employees],
         },
         "sources": employee_source_cards(employees, user),
         "scope": "employees",
@@ -146,7 +147,7 @@ def _answer_available_on(user, target_date, label):
             "date": target_date.isoformat(),
             "count": len(available),
             "items": [
-                {**_employee_payload(employee), "availability_status": "available"}
+                {**_employee_payload(employee, user), "availability_status": "available"}
                 for employee in available
             ],
         },
@@ -169,7 +170,12 @@ def _answer_absent_on(user, target_date, label):
         .limit(MAX_ITEMS)
         .all()
     )
-    employees = [vacation.employee for vacation in vacations if vacation.employee]
+    visible_employee_ids = _visible_employee_ids(user)
+    employees = [
+        vacation.employee
+        for vacation in vacations
+        if vacation.employee and vacation.employee_id in visible_employee_ids
+    ]
     answer = _format_employee_list_answer(
         "Abwesende Mitarbeiter",
         label,
@@ -187,7 +193,7 @@ def _answer_absent_on(user, target_date, label):
             "count": len(employees),
             "items": [
                 {
-                    **_employee_payload(employee),
+                    **_employee_payload(employee, user),
                     "availability_status": "absent",
                     "absence_source": "approved_vacation",
                 }
@@ -242,14 +248,56 @@ def _approved_absent_employee_ids(user, target_date):
     return {vacation.employee_id for vacation in vacations.all()}
 
 
-def _employee_payload(employee):
+def _visible_employee_ids(user):
+    """Return ids of employees visible to the current user."""
+    rows = visible_employees_query(user).with_entities(Employee.id)
+    return {employee_id for (employee_id,) in rows}
+
+
+def _employee_payload(employee, user):
     """Return compact safe employee data for structured answers."""
-    return {
+    return _employee_payload_for_access_level(employee, employee_access_level(user))
+
+
+def _employee_payload_for_access_level(employee, access_level):
+    """Return compact employee data allowed by the user's employee access level."""
+    payload = {
         "id": employee.id,
         "personnel_number": employee.personnel_number,
         "name": employee.name,
         "department": employee.department,
         "team": employee.team,
+    }
+    if access_level != "shift":
+        return payload
+    payload.update(
+        {
+            "shift_model": employee.shift_model,
+            "last_shift": employee.last_shift,
+            "current_shift": employee.current_shift,
+            "next_shift": employee.next_shift,
+            "qualifications": employee.qualifications,
+            "favorite_machine": employee.favorite_machine,
+            "machine_qualifications": [
+                _machine_qualification_payload(qualification)
+                for qualification in employee.machine_qualifications
+            ],
+        }
+    )
+    return payload
+
+
+def _machine_qualification_payload(qualification):
+    """Return safe machine qualification data for shift-level employee answers."""
+    machine = qualification.machine
+    return {
+        "id": qualification.id,
+        "machine_id": qualification.machine_id,
+        "machine": machine.to_dict() if machine else None,
+        "level": qualification.level,
+        "valid_until": (
+            qualification.valid_until.isoformat() if qualification.valid_until else None
+        ),
     }
 
 

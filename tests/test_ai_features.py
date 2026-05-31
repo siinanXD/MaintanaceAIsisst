@@ -134,17 +134,13 @@ EMPLOYEE_SOURCE_FIELDS = {
     "created_at",
     "department",
     "employee_access_level",
-    "employee_id",
-    "employee_name",
     "id",
     "module",
-    "personnel_number",
     "role_visibility",
     "source_id",
     "source_kind",
     "source_record_id",
     "source_type",
-    "team",
     "title",
     "type",
     "url",
@@ -373,8 +369,6 @@ def _assert_employee_source(source, employee_id, employee_name):
     assert source["source_id"] == employee_id
     assert source["source_record_id"] == employee_id
     assert source["source_kind"] == "structured"
-    assert source["employee_id"] == employee_id
-    assert source["employee_name"] == employee_name
     assert source["title"] == employee_name
     assert source["created_at"]
     _assert_no_forbidden_source_fields(source, FORBIDDEN_EMPLOYEE_SOURCE_FIELDS)
@@ -2046,6 +2040,74 @@ def test_ai_chat_employee_context_is_department_scoped(
     assert "Bernd Scope IT" not in serialized_payload
 
 
+def test_ai_chat_employee_structured_denies_missing_employee_permission(
+    client,
+    make_user,
+    make_employee,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify structured employee answers require employee view permission."""
+    user = make_user(username="ai_employee_no_view_user")
+    make_employee(
+        personnel_number="P-AI-EMPL-NOVIEW-1",
+        name="Nora Keine Sicht",
+        department="Produktion",
+    )
+    set_dashboard_permission(
+        user["username"],
+        "employees",
+        can_view=False,
+        employee_access_level="none",
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Wer arbeitet in der Produktion?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "permission_denied"
+    assert payload["sources"] == []
+    assert "Nora Keine Sicht" not in json.dumps(payload, ensure_ascii=True)
+
+
+def test_ai_chat_employee_structured_denies_none_employee_access_level(
+    client,
+    make_user,
+    make_employee,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify employee_access_level none does not expose employee data."""
+    user = make_user(username="ai_employee_access_none_user")
+    make_employee(
+        personnel_number="P-AI-EMPL-NONE-1",
+        name="Noah Access None",
+        department="Produktion",
+    )
+    set_dashboard_permission(
+        user["username"],
+        "employees",
+        can_view=True,
+        employee_access_level="none",
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Wie viele Mitarbeiter hat die Produktion?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "permission_denied"
+    assert payload["sources"] == []
+    assert "Noah Access None" not in json.dumps(payload, ensure_ascii=True)
+
+
 def test_ai_chat_employee_department_list_uses_visible_department_scope(
     client,
     make_user,
@@ -2089,6 +2151,99 @@ def test_ai_chat_employee_department_list_uses_visible_department_scope(
     _assert_employee_source(payload["sources"][0], prod_id, "Anna Liste Produktion")
     assert payload["sources"][0]["employee_access_level"] == "basic"
     assert payload["sources"][0]["role_visibility"] == "department:Produktion"
+
+
+def test_ai_chat_employee_department_list_uses_shift_safe_payload(
+    client,
+    make_user,
+    make_employee,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify shift employee access exposes shift-safe fields only."""
+    user = make_user(username="ai_employee_shift_payload_user")
+    make_employee(
+        personnel_number="P-AI-EMPL-SHIFT-1",
+        name="Berta Schichtdaten",
+        department="Produktion",
+        salary_group="E12",
+    )
+    set_dashboard_permission(
+        user["username"],
+        "employees",
+        can_view=True,
+        employee_access_level="shift",
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Wer arbeitet in der Produktion?"},
+    )
+
+    payload = response.get_json()
+    employee_payload = payload["data"]["items"][0]
+    assert response.status_code == 200
+    assert payload["type"] == "employee_department_list"
+    assert employee_payload["name"] == "Berta Schichtdaten"
+    assert employee_payload["shift_model"] == "2-Schicht"
+    assert employee_payload["current_shift"] == "Frueh"
+    assert employee_payload["qualifications"] == "CNC"
+    assert "salary_group" not in employee_payload
+    assert "birth_date" not in employee_payload
+    assert set(payload["sources"][0]) == EMPLOYEE_SOURCE_FIELDS
+
+
+def test_ai_chat_employee_available_today_excludes_approved_absences(
+    app,
+    client,
+    make_user,
+    make_employee,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify today's availability subtracts approved visible vacation only."""
+    manager = make_user(username="ai_employee_available_manager")
+    present_id = make_employee(
+        personnel_number="P-AI-EMPL-AVAIL-1",
+        name="Paula Heute Da",
+        department="Produktion",
+    )
+    approved_id = make_employee(
+        personnel_number="P-AI-EMPL-AVAIL-2",
+        name="Quentin Heute Urlaub",
+        department="Produktion",
+    )
+    pending_id = make_employee(
+        personnel_number="P-AI-EMPL-AVAIL-3",
+        name="Rita Heute Pending",
+        department="Produktion",
+    )
+    today = date.today()
+    _create_vacation_request(app, approved_id, today, today, status="approved")
+    _create_vacation_request(app, pending_id, today, today, status="pending")
+    set_dashboard_permission(
+        manager["username"],
+        "employees",
+        can_view=True,
+        can_write=True,
+        employee_access_level="basic",
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(manager["username"]),
+        json={"message": "Welche Mitarbeiter sind heute verfuegbar?"},
+    )
+
+    payload = response.get_json()
+    serialized_payload = json.dumps(payload, ensure_ascii=True)
+    assert response.status_code == 200
+    assert payload["type"] == "employee_available"
+    assert {item["id"] for item in payload["data"]["items"]} == {present_id, pending_id}
+    assert "Paula Heute Da" in serialized_payload
+    assert "Rita Heute Pending" in serialized_payload
+    assert "Quentin Heute Urlaub" not in serialized_payload
 
 
 def test_ai_chat_employee_master_admin_sees_all_available_employees(
