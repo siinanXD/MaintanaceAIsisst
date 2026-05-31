@@ -45,6 +45,10 @@ const MONITORING_KPIS = [
   ["average_retrieval_ms", "Quellenabruf Ø", "0 ms"],
   ["total_tokens", "Tokenverbrauch", "0"],
   ["error_rate", "Fehlerquote", "0%"],
+  ["structured_answer_count", "Strukturierte Antworten", "0"],
+  ["rag_answer_count", "RAG-Antworten", "0"],
+  ["no_source_count", "Ohne Quellen", "0"],
+  ["source_count_average", "Quellen Ø", "0"],
   ["empty_retrieval_rate", "Leere Abrufe", "0%"],
   ["hallucination_warning_count", "Halluzinationswarnungen", "0"],
   ["retrieval_hit_rate", "Trefferquote", "0%"],
@@ -276,6 +280,14 @@ function DiagnosticsSection({ onRefresh, technicalState }: AdminAiTechnicalProps
   const workflows = Array.isArray(observability.workflows) ? observability.workflows.filter(isPayload) : [];
   const topErrors = Array.isArray(observability.top_errors) ? observability.top_errors.filter(isPayload) : [];
   const gaps = Array.isArray(observability.knowledge_gaps) ? observability.knowledge_gaps.filter(isPayload) : [];
+  const topQuestions = observability.top_questions || metrics.top_questions || metrics.frequent_questions;
+  const sourceDistribution = observability.source_distribution || metrics.source_distribution_rows;
+  const structuredModules = Array.isArray(metrics.top_structured_modules)
+    ? metrics.top_structured_modules.filter(isPayload)
+    : [];
+  const frequentSearchTerms = Array.isArray(metrics.frequent_search_terms)
+    ? metrics.frequent_search_terms.filter(isPayload)
+    : [];
 
   return (
     <section className="ai-admin-area" id="ai-diagnostics" data-ai-admin-area="answers">
@@ -288,7 +300,8 @@ function DiagnosticsSection({ onRefresh, technicalState }: AdminAiTechnicalProps
       <section className="panel ai-observability-panel">
         <div className="panel-header"><div><h3>KI-Metrik-Cockpit</h3><p className="panel-meta">Latenz, Tokens, Fehler, leere Abrufe und Halluzinationswarnungen.</p></div></div>
         <div className="dashboard-grid dashboard-grid-4">{MONITORING_KPIS.map(([key, label, fallback]) => <article className="metric-card" key={key}><span>{label}</span><strong data-ai-monitoring-kpi={key}>{metrics[key] == null && quality[key] == null ? fallback : monitoringValue(key, metrics[key] ?? quality[key])}</strong></article>)}</div>
-        <div className="content-grid two-columns mt-4"><StatsList dataAttr="data-ai-top-questions" rows={topList(observability.top_questions)} empty={["Fragen", "keine Daten"]} /><StatsList dataAttr="data-ai-source-distribution" rows={topList(observability.source_distribution)} empty={["Quellen", "keine Daten"]} /></div>
+        <div className="content-grid two-columns mt-4"><StatsList dataAttr="data-ai-top-questions" rows={topList(topQuestions)} empty={["Fragen", "keine Daten"]} /><StatsList dataAttr="data-ai-source-distribution" rows={topList(sourceDistribution)} empty={["Quellen", "keine Daten"]} /></div>
+        <div className="content-grid two-columns mt-4"><StatsList dataAttr="data-ai-top-structured-modules" rows={structuredModules.map((item) => [item.label || item.module, item.count] as const)} empty={["Strukturierte Module", "keine Daten"]} /><StatsList dataAttr="data-ai-frequent-search-terms" rows={frequentSearchTerms.map((item) => [item.term, item.count] as const)} empty={["Suchbegriffe", "keine Daten"]} /></div>
       </section>
       <section className="panel"><div className="panel-header"><h3>Quellenabruf Monitoring</h3><span className="panel-meta">Top Treffer, schlechte Treffer, Textabschnitt-Nutzung und Dokumentverteilung.</span></div><div className="content-grid two-columns"><StatsList dataAttr="data-ai-top-hits" rows={topList(retrieval.top_hits)} empty={["Treffer", "keine Daten"]} /><StatsList dataAttr="data-ai-poor-hits" rows={topList(retrieval.poor_hits)} empty={["Schlechte Treffer", "keine Daten"]} /></div><div className="content-grid two-columns mt-4"><StatsList dataAttr="data-ai-chunk-usage" rows={topList(retrieval.chunk_usage)} empty={["Textabschnitte", "keine Daten"]} /><StatsList dataAttr="data-ai-quality-metrics" rows={Object.entries(quality).slice(0, 6).map(([key, value]) => [metricLabel(key), monitoringValue(key, value)] as const)} empty={["Qualität", "keine Daten"]} /></div></section>
       <section className="panel"><div className="panel-header"><h3>Workflow-Kosten und Fehler</h3><span className="panel-meta">Metadata-only Auswertung ohne Prompt- oder Antworttexte</span></div><div className="content-grid two-columns"><DataTable caption="AI-Workflows nach Ereignissen, Fehlern, Ausweichbetrieb, Tokens und Kosten" headers={["Workflow", "Ereignisse", "Ausweichbetrieb", "Fehler", "Tokens", "Kosten", "Latenz"]} dataAttr="data-ai-workflows" rows={workflows.map((item) => [item.workflow, item.events, percentText(item.fallback_rate || 0), item.errors, item.total_tokens, item.estimated_cost_usd, `${numberText(item.average_latency_ms || 0)} ms`])} /><StatsList dataAttr="data-ai-top-errors" rows={topErrors.map((item) => [item.error_category, item.count] as const)} empty={["AI Fehler", "keine Fehler im Zeitraum"]} /></div></section>

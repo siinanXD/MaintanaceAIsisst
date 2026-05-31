@@ -53,6 +53,28 @@ from app.services.vector_sync_status_service import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+FORBIDDEN_TASK_SOURCE_FIELDS = {
+    "blocked_reason",
+    "completed_by_user",
+    "creator",
+    "current_worker",
+    "description",
+}
+FORBIDDEN_INCIDENT_SOURCE_FIELDS = {
+    "description",
+    "downtime_minutes",
+    "impact",
+    "possible_causes",
+    "production_loss_minutes",
+    "solution",
+    "symptoms",
+}
+
+
+def _assert_no_forbidden_source_fields(source, forbidden_fields):
+    """Verify a source card does not expose fields reserved for data payloads."""
+    for field in forbidden_fields:
+        assert field not in source
 
 
 def test_ai_chat_returns_today_tasks_without_openai(
@@ -218,11 +240,491 @@ def test_ai_chat_counts_open_tasks_only_as_task_followup(
     assert first_response.status_code == 200
     assert first_response.get_json()["type"] == "tasks_today"
     assert followup_response.status_code == 200
-    assert followup_payload["type"] == "tasks_status"
-    assert followup_payload["data"]["status"] == TaskStatus.OPEN.value
+    assert followup_payload["type"] == "structured_scope"
+    assert followup_payload["data"]["entity_type"] == "tasks"
+    assert followup_payload["data"]["filters"]["status"] == TaskStatus.OPEN.value
     assert followup_payload["data"]["count"] == 1
     assert fresh_response.status_code == 200
-    assert fresh_response.get_json()["type"] != "tasks_status"
+    assert fresh_response.get_json()["type"] != "structured_scope"
+
+
+def test_ai_chat_structured_task_answers_return_safe_source_cards(
+    client,
+    make_user,
+    make_task,
+    auth_headers,
+):
+    """Verify structured task answers expose compact safe source cards."""
+    user = make_user(username="ai_task_source_cards_user")
+    visible_id = make_task(
+        "Dringender sichtbarer Task",
+        creator_username=user["username"],
+        priority=Priority.URGENT,
+        description="Interner Task-Text darf nicht in Source Cards stehen",
+    )
+    make_task(
+        "Dringender fremder Task",
+        creator_username=user["username"],
+        department_name="IT",
+        priority=Priority.URGENT,
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche dringenden Tasks gibt es?"},
+    )
+
+    payload = response.get_json()
+    sources = payload["sources"]
+    assert response.status_code == 200
+    assert payload["type"] == "structured_scope"
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["items"][0]["id"] == visible_id
+    assert len(sources) == 1
+    source = sources[0]
+    assert source["type"] == "task"
+    assert source["id"] == visible_id
+    assert source["title"] == "Dringender sichtbarer Task"
+    assert source["module"] == "tasks"
+    assert source["url"] == "/tasks"
+    assert source["source_type"] == "task"
+    assert source["source_id"] == visible_id
+    assert source["source_record_id"] == visible_id
+    assert source["source_kind"] == "structured"
+    assert source["department"] == "Produktion"
+    assert source["role_visibility"] == "department:Produktion"
+    assert source["created_at"]
+    assert source["status"] == TaskStatus.OPEN.value
+    assert source["priority"] == Priority.URGENT.value
+    assert source["due_date"]
+    _assert_no_forbidden_source_fields(source, FORBIDDEN_TASK_SOURCE_FIELDS)
+    assert "Dringender fremder Task" not in json.dumps(payload["data"], ensure_ascii=True)
+    assert "Dringender fremder Task" not in json.dumps(sources, ensure_ascii=True)
+    assert payload["diagnostics"]["source_count"] == len(sources)
+    assert payload["answer_quality"]["source_count"] == len(sources)
+    assert payload["answer_quality"]["has_sources"] is True
+
+
+def test_ai_chat_structured_followup_inherits_incident_scope(
+    app,
+    client,
+    make_user,
+    make_error_entry,
+    auth_headers,
+):
+    """Verify incident follow-ups inherit status scope from the prior answer."""
+    user = make_user(username="ai_incident_followup_user")
+    open_critical_id = make_error_entry(
+        "Presse 7",
+        "IF-CRIT",
+        "Kritische Stoerung",
+        department_name="Produktion",
+    )
+    open_medium_id = make_error_entry(
+        "Presse 8",
+        "IF-MED",
+        "Normale Stoerung",
+        department_name="Produktion",
+    )
+    closed_id = make_error_entry(
+        "Presse 9",
+        "IF-CLOSED",
+        "Geschlossene Stoerung",
+        department_name="Produktion",
+    )
+    foreign_id = make_error_entry(
+        "Presse 10",
+        "IF-FOREIGN",
+        "Fremde Stoerung",
+        department_name="IT",
+    )
+    with app.app_context():
+        db.session.get(ErrorEntry, open_critical_id).status = "open"
+        db.session.get(ErrorEntry, open_critical_id).severity = "critical"
+        db.session.get(ErrorEntry, open_medium_id).status = "open"
+        db.session.get(ErrorEntry, open_medium_id).severity = "medium"
+        db.session.get(ErrorEntry, closed_id).status = "closed"
+        db.session.get(ErrorEntry, closed_id).severity = "critical"
+        db.session.get(ErrorEntry, foreign_id).status = "open"
+        db.session.get(ErrorEntry, foreign_id).severity = "critical"
+        db.session.commit()
+
+    headers = auth_headers(user["username"])
+    first_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Welche Störungen sind offen?",
+            "session_id": "incident-followup",
+        },
+    )
+    followup_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Und welche sind kritisch?",
+            "session_id": "incident-followup",
+        },
+    )
+
+    first_payload = first_response.get_json()
+    followup_payload = followup_response.get_json()
+    assert first_response.status_code == 200
+    assert first_payload["type"] == "structured_scope"
+    assert first_payload["data"]["entity_type"] == "incidents"
+    assert first_payload["data"]["count"] == 2
+    assert first_payload["data"]["filters"]["status"] == "open"
+    assert followup_response.status_code == 200
+    assert followup_payload["type"] == "structured_scope"
+    assert followup_payload["data"]["entity_type"] == "incidents"
+    assert followup_payload["data"]["count"] == 1
+    assert followup_payload["data"]["filters"]["status"] == "open"
+    assert followup_payload["data"]["filters"]["severity"] == "critical"
+    assert followup_payload["data"]["items"][0]["error_code"] == "IF-CRIT"
+
+
+def test_ai_chat_counts_visible_open_incidents_from_structured_data(
+    app,
+    client,
+    make_user,
+    make_error_entry,
+    auth_headers,
+):
+    """Verify open incident counts use only visible structured errors."""
+    user = make_user(username="ai_open_incident_count_user")
+    visible_open_id = make_error_entry(
+        "Presse Open",
+        "OPEN-1",
+        "Offene sichtbare Stoerung",
+        department_name="Produktion",
+    )
+    visible_closed_id = make_error_entry(
+        "Presse Closed",
+        "OPEN-2",
+        "Geschlossene sichtbare Stoerung",
+        department_name="Produktion",
+    )
+    foreign_open_id = make_error_entry(
+        "Presse Foreign",
+        "OPEN-3",
+        "Fremde offene Stoerung",
+        department_name="IT",
+    )
+    with app.app_context():
+        db.session.get(ErrorEntry, visible_open_id).status = "open"
+        db.session.get(ErrorEntry, visible_closed_id).status = "closed"
+        db.session.get(ErrorEntry, foreign_open_id).status = "open"
+        db.session.commit()
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Wie viele Stoerungen sind offen?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "structured_scope"
+    assert payload["data"]["entity_type"] == "incidents"
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["filters"]["status"] == "open"
+    assert "OPEN-3" not in json.dumps(payload, ensure_ascii=True)
+
+
+def test_ai_chat_lists_visible_critical_incidents_from_structured_data(
+    app,
+    client,
+    make_user,
+    make_error_entry,
+    auth_headers,
+):
+    """Verify critical incident lists use only visible structured errors."""
+    user = make_user(username="ai_critical_incident_user")
+    critical_id = make_error_entry(
+        "Presse Critical",
+        "CRIT-1",
+        "Kritische sichtbare Stoerung",
+        department_name="Produktion",
+    )
+    medium_id = make_error_entry(
+        "Presse Medium",
+        "CRIT-2",
+        "Normale sichtbare Stoerung",
+        department_name="Produktion",
+    )
+    foreign_id = make_error_entry(
+        "Presse Foreign Critical",
+        "CRIT-3",
+        "Fremde kritische Stoerung",
+        department_name="IT",
+    )
+    with app.app_context():
+        db.session.get(ErrorEntry, critical_id).severity = "critical"
+        db.session.get(ErrorEntry, medium_id).severity = "medium"
+        db.session.get(ErrorEntry, foreign_id).severity = "critical"
+        db.session.commit()
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Stoerungen sind kritisch?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "structured_scope"
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["filters"]["severity"] == "critical"
+    assert payload["data"]["items"][0]["error_code"] == "CRIT-1"
+    assert len(payload["sources"]) == 1
+    source = payload["sources"][0]
+    assert source["type"] == "error"
+    assert source["id"] == critical_id
+    assert source["title"] == "CRIT-1 - Kritische sichtbare Stoerung"
+    assert source["module"] == "errors"
+    assert source["url"] == "/errors"
+    assert source["source_type"] == "error"
+    assert source["source_id"] == critical_id
+    assert source["source_record_id"] == critical_id
+    assert source["source_kind"] == "structured"
+    assert source["department"] == "Produktion"
+    assert source["machine"] == "Presse Critical"
+    assert source["machine_id"] is None
+    assert source["role_visibility"] == "department:Produktion"
+    assert source["created_at"]
+    assert source["status"] == "open"
+    assert source["severity"] == "critical"
+    assert source["error_code"] == "CRIT-1"
+    _assert_no_forbidden_source_fields(source, FORBIDDEN_INCIDENT_SOURCE_FIELDS)
+    assert "CRIT-3" not in json.dumps(payload, ensure_ascii=True)
+
+
+def test_ai_chat_filters_incidents_reported_today_from_structured_data(
+    app,
+    client,
+    make_user,
+    make_error_entry,
+    auth_headers,
+):
+    """Verify incident questions about today filter created_at from structured data."""
+    user = make_user(username="ai_today_incident_user")
+    today_id = make_error_entry(
+        "Presse Today",
+        "TODAY-1",
+        "Heute gemeldete Stoerung",
+        department_name="Produktion",
+    )
+    yesterday_id = make_error_entry(
+        "Presse Yesterday",
+        "TODAY-2",
+        "Gestern gemeldete Stoerung",
+        department_name="Produktion",
+    )
+    with app.app_context():
+        db.session.get(ErrorEntry, today_id).created_at = datetime.combine(
+            date.today(),
+            time(hour=8),
+        )
+        db.session.get(ErrorEntry, yesterday_id).created_at = datetime.combine(
+            date.today() - timedelta(days=1),
+            time(hour=8),
+        )
+        db.session.commit()
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Stoerungen wurden heute gemeldet?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "structured_scope"
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["filters"]["time_range"] == "today"
+    assert payload["data"]["items"][0]["error_code"] == "TODAY-1"
+
+
+def test_ai_chat_aggregates_incidents_by_visible_machine(
+    app,
+    client,
+    make_user,
+    make_error_entry,
+    auth_headers,
+):
+    """Verify incident machine aggregation uses only visible structured errors."""
+    user = make_user(username="ai_incident_machine_aggregation_user")
+    make_error_entry("Presse Top", "TOP-1", "Top Stoerung A", department_name="Produktion")
+    make_error_entry("Presse Top", "TOP-2", "Top Stoerung B", department_name="Produktion")
+    make_error_entry("Presse Other", "TOP-3", "Andere Stoerung", department_name="Produktion")
+    make_error_entry("Presse Foreign", "TOP-4", "Fremde Stoerung", department_name="IT")
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Maschine hat die meisten Stoerungen?"},
+    )
+
+    payload = response.get_json()
+    top = payload["data"]["aggregation"]["top"]
+    assert response.status_code == 200
+    assert payload["type"] == "structured_scope"
+    assert payload["data"]["entity_type"] == "incidents"
+    assert payload["data"]["count"] == 3
+    assert top["machine"] == "Presse Top"
+    assert top["count"] == 2
+    assert {item["error_code"] for item in top["examples"]} == {"TOP-1", "TOP-2"}
+    assert {source["error_code"] for source in payload["sources"]} == {"TOP-1", "TOP-2"}
+    assert all(source["machine"] == "Presse Top" for source in payload["sources"])
+    assert "TOP-3" not in json.dumps(payload["sources"], ensure_ascii=True)
+    assert "TOP-4" not in json.dumps(payload, ensure_ascii=True)
+
+
+def test_ai_chat_lists_incidents_in_my_area_without_foreign_department(
+    client,
+    make_user,
+    make_error_entry,
+    auth_headers,
+):
+    """Verify my-area incident questions rely on visible error scope."""
+    user = make_user(username="ai_my_area_incident_user")
+    make_error_entry("Presse Bereich", "AREA-1", "Bereich Stoerung", department_name="Produktion")
+    make_error_entry("Presse Fremd", "AREA-2", "Fremde Stoerung", department_name="IT")
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Stoerungen gibt es in meinem Bereich?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "structured_scope"
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["items"][0]["error_code"] == "AREA-1"
+    assert "AREA-2" not in json.dumps(payload, ensure_ascii=True)
+
+
+def test_ai_chat_incident_structured_answer_respects_errors_permission(
+    client,
+    make_user,
+    make_error_entry,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify incident structured answers deny users without errors:view."""
+    user = make_user(username="ai_incident_permission_denied_user")
+    make_error_entry("Presse Denied", "DENY-1", "Verborgene Stoerung")
+    set_dashboard_permission(user["username"], "errors", can_view=False)
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Wie viele Stoerungen sind offen?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "permission_denied"
+    assert payload["sources"] == []
+
+
+def test_ai_chat_answer_only_redacts_structured_sources_for_normal_users(
+    client,
+    make_user,
+    make_task,
+    auth_headers,
+):
+    """Verify answer-only mode still hides structured source evidence and data."""
+    user = make_user(username="ai_structured_answer_only_user")
+    make_task(
+        "Answer-only sichtbarer Task",
+        creator_username=user["username"],
+        priority=Priority.URGENT,
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={
+            "message": "Welche dringenden Tasks gibt es?",
+            "response_mode": "answer_only",
+        },
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "structured_scope"
+    assert payload["sources"] == []
+    assert payload["data"] == {}
+    assert payload["evidence_visible"] is False
+    assert payload["answer_quality"]["evidence_visible"] is False
+    assert payload["diagnostics"]["evidence_visible"] is False
+
+
+def test_ai_chat_structured_followup_preserves_department_filter(
+    client,
+    make_user,
+    make_task,
+    auth_headers,
+):
+    """Verify follow-up refinements keep the previous department filter."""
+    admin = make_user(
+        username="ai_department_followup_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    make_task(
+        "Instandhaltung dringend",
+        creator_username=admin["username"],
+        department_name="Instandhaltung",
+        priority=Priority.URGENT,
+    )
+    make_task(
+        "Instandhaltung normal",
+        creator_username=admin["username"],
+        department_name="Instandhaltung",
+        priority=Priority.NORMAL,
+    )
+    make_task(
+        "Produktion dringend",
+        creator_username=admin["username"],
+        department_name="Produktion",
+        priority=Priority.URGENT,
+    )
+    headers = auth_headers(admin["username"])
+
+    first_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Zeig mir die Aufgaben der Instandhaltung.",
+            "session_id": "department-followup",
+        },
+    )
+    followup_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Welche davon sind dringend?",
+            "session_id": "department-followup",
+        },
+    )
+
+    first_payload = first_response.get_json()
+    followup_payload = followup_response.get_json()
+    assert first_response.status_code == 200
+    assert first_payload["type"] == "structured_scope"
+    assert first_payload["data"]["count"] == 2
+    assert first_payload["data"]["filters"]["department"] == "Instandhaltung"
+    assert followup_response.status_code == 200
+    assert followup_payload["type"] == "structured_scope"
+    assert followup_payload["data"]["entity_type"] == "tasks"
+    assert followup_payload["data"]["count"] == 1
+    assert followup_payload["data"]["filters"]["department"] == "Instandhaltung"
+    assert followup_payload["data"]["filters"]["priority"] == "urgent"
+    assert followup_payload["data"]["items"][0]["title"] == "Instandhaltung dringend"
 
 
 def test_ai_chat_rejects_empty_messages(client, make_user, auth_headers):
@@ -326,6 +828,87 @@ def test_ai_chat_employee_context_respects_basic_access(
     assert source["role_visibility"] == "department:Produktion"
     assert source["employee_access_level"] == "basic"
     assert source["created_at"]
+
+
+def test_ai_chat_employee_context_is_department_scoped(
+    client,
+    make_user,
+    make_employee,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify non-admin employee AI context stays scoped to the user's department."""
+    user = make_user(username="ai_employee_department_scope_user")
+    make_employee(
+        personnel_number="P-AI-SCOPE-1",
+        name="Anna Scope Produktion",
+        department="Produktion",
+    )
+    make_employee(
+        personnel_number="P-AI-SCOPE-2",
+        name="Bernd Scope IT",
+        department="IT",
+    )
+    set_dashboard_permission(
+        user["username"],
+        "employees",
+        can_view=True,
+        employee_access_level="basic",
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Mitarbeiterdaten darf ich sehen?"},
+    )
+
+    payload = response.get_json()
+    names = {item["name"] for item in payload["data"]["employees"]}
+    serialized_payload = json.dumps(payload, ensure_ascii=True)
+    assert response.status_code == 200
+    assert "Anna Scope Produktion" in names
+    assert "Bernd Scope IT" not in serialized_payload
+
+
+def test_ai_chat_dashboard_permission_override_controls_machine_counts(
+    client,
+    make_user,
+    make_machine,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify AI count answers follow assigned machine dashboard permissions."""
+    user = make_user(username="ai_machine_permission_override_user")
+    make_machine(name="Permission Presse AI", produced_item="Deckel")
+
+    blocked_response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Wie viele Maschinen gibt es?"},
+    )
+    set_dashboard_permission(user["username"], "machines", can_view=True)
+    allowed_response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Wie viele Maschinen gibt es?"},
+    )
+    set_dashboard_permission(user["username"], "machines", can_view=False)
+    revoked_response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Wie viele Maschinen gibt es?"},
+    )
+
+    blocked_payload = blocked_response.get_json()
+    allowed_payload = allowed_response.get_json()
+    revoked_payload = revoked_response.get_json()
+    assert blocked_response.status_code == 200
+    assert blocked_payload["type"] == "permission_denied"
+    assert allowed_response.status_code == 200
+    assert allowed_payload["type"] == "machines_count"
+    assert allowed_payload["data"]["count"] == 1
+    assert revoked_response.status_code == 200
+    assert revoked_payload["type"] == "permission_denied"
 
 
 def test_ai_chat_returns_sources_and_audit_metadata(
@@ -2929,6 +3512,102 @@ def test_ai_observability_dashboard_combines_logs_quality_and_retrieval(
         available["Welche Ursache hat der unbekannte Fehler FU-000?"]["answer_uncertainty"]
         == "high"
     )
+
+
+def test_ai_observability_dashboard_tracks_structured_and_rag_answer_metrics(
+    app,
+    make_user,
+):
+    """Verify AI Admin metrics distinguish structured, RAG, and no-source answers."""
+    user = make_user(username="ai_structured_observability_user")
+    with app.app_context():
+        db.session.add_all(
+            [
+                ChatMessage(
+                    user_id=user["id"],
+                    message="Welche offenen Aufgaben gibt es?",
+                    response="2 offene Aufgaben gefunden.",
+                    response_type="structured_scope",
+                    diagnostics_json=json.dumps(
+                        {
+                            "structured_context": {"entity_type": "tasks"},
+                            "scopes": ["tasks"],
+                        },
+                        ensure_ascii=True,
+                    ),
+                    source_count=2,
+                ),
+                ChatMessage(
+                    user_id=user["id"],
+                    message="Welche offenen Aufgaben gibt es?",
+                    response="1 offene Aufgabe gefunden.",
+                    response_type="structured_scope",
+                    diagnostics_json=json.dumps(
+                        {
+                            "structured_context": {"entity_type": "tasks"},
+                            "scopes": ["tasks"],
+                        },
+                        ensure_ascii=True,
+                    ),
+                    source_count=1,
+                ),
+                ChatMessage(
+                    user_id=user["id"],
+                    message="Welche Stoerungen sind kritisch?",
+                    response="1 kritische Stoerung gefunden.",
+                    response_type="structured_scope",
+                    diagnostics_json=json.dumps(
+                        {
+                            "structured_context": {"entity_type": "incidents"},
+                            "scopes": ["errors"],
+                        },
+                        ensure_ascii=True,
+                    ),
+                    source_count=1,
+                ),
+                ChatMessage(
+                    user_id=user["id"],
+                    message="Welche Dokumente zur Pumpe helfen?",
+                    response="Dokument Pumpenhandbuch nutzen.",
+                    response_type="assistant",
+                    diagnostics_json=json.dumps({"scopes": ["documents"]}, ensure_ascii=True),
+                    source_count=1,
+                ),
+                ChatMessage(
+                    user_id=user["id"],
+                    message="Gibt es unbekannte Hinweise?",
+                    response="Keine belegte Antwort vorhanden.",
+                    response_type="assistant",
+                    diagnostics_json=json.dumps({"empty_retrieval": True}, ensure_ascii=True),
+                    source_count=0,
+                ),
+            ]
+        )
+        db.session.commit()
+
+        dashboard = ai_observability_dashboard({"days": "30", "limit": "5"})
+
+    metrics = dashboard["metrics"]
+    assert metrics["structured_answer_count"] == 3
+    assert metrics["structured_answer_rate"] == 0.6
+    assert metrics["rag_answer_count"] == 1
+    assert metrics["rag_answer_rate"] == 0.2
+    assert metrics["no_source_count"] == 1
+    assert metrics["no_source_rate"] == 0.2
+    assert metrics["source_count_average"] == 1
+    assert metrics["average_answer_source_count"] == 1
+    assert metrics["structured_module_distribution"] == {"tasks": 2, "errors": 1}
+    assert metrics["top_structured_modules"][0] == {
+        "module": "tasks",
+        "label": "Tasks",
+        "count": 2,
+        "rate": 0.6667,
+    }
+    assert metrics["top_structured_modules"][1]["module"] == "errors"
+    assert dashboard["top_structured_modules"] == metrics["top_structured_modules"]
+    assert dashboard["top_questions"][0]["question"] == "Welche offenen Aufgaben gibt es?"
+    assert dashboard["top_questions"][0]["count"] == 2
+    assert any(item["term"] == "aufgaben" for item in dashboard["frequent_search_terms"])
 
 
 def test_ai_observability_dashboard_exposes_failed_requests_without_prompts(

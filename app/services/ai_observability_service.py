@@ -57,14 +57,23 @@ def ai_observability_dashboard(args=None):
         provider_readiness,
         limit,
     )
+    ai_logs = _ai_logs(chats, limit)
+    failed_requests = _failed_requests(events, limit)
     return {
         "window_days": days,
         "provider_readiness": provider_readiness,
         "metrics": metrics,
         "retrieval_monitoring": retrieval_monitoring,
-        "ai_logs": _ai_logs(chats, limit),
-        "failed_requests": _failed_requests(events, limit),
+        "ai_logs": ai_logs,
+        "logs": ai_logs,
+        "failed_requests": failed_requests,
         "quality_metrics": quality_metrics,
+        "top_questions": metrics["top_questions"],
+        "frequent_questions": metrics["frequent_questions"],
+        "frequent_search_terms": metrics["frequent_search_terms"],
+        "source_distribution": metrics["source_distribution_rows"],
+        "source_kind_distribution": metrics["source_kind_distribution_rows"],
+        "top_structured_modules": metrics["top_structured_modules"],
         "recommended_actions": recommended_actions,
         "next_best_action": recommended_actions[0] if recommended_actions else None,
         "recommended_action_summary": _recommended_action_summary(
@@ -90,6 +99,26 @@ def _metric_catalog():
     return [
         _metric_definition("frequent_questions", "Haeufige Fragen", "usage", "count"),
         _metric_definition("frequent_search_terms", "Suchbegriffe", "usage", "count"),
+        _metric_definition(
+            "structured_answer_count",
+            "Strukturierte Antworten",
+            "structured",
+            "count",
+        ),
+        _metric_definition("rag_answer_count", "RAG-Antworten", "retrieval", "count"),
+        _metric_definition("no_source_count", "Antworten ohne Quellen", "quality", "count"),
+        _metric_definition(
+            "source_count_average",
+            "Durchschnitt Quellen pro Antwort",
+            "sources",
+            "count",
+        ),
+        _metric_definition(
+            "top_structured_modules",
+            "Top strukturierte Module",
+            "structured",
+            "count",
+        ),
         _metric_definition("average_final_top_k", "Durchschnitt Top-K", "retrieval", "count"),
         _metric_definition("average_tokens", "Durchschnitt Tokens", "cost", "tokens"),
         _metric_definition("cost_windows", "Kostenfenster", "cost", "usd"),
@@ -331,6 +360,11 @@ def _metrics(events, chats, feedback_entries, telemetry):
     source_kind_distribution = _source_kind_distribution(events)
     feedback_summary = _feedback_summary(feedback_entries)
     source_counts = [int(event.source_count or 0) for event in events]
+    chat_source_counts = [int(chat.source_count or 0) for chat in chats]
+    structured_answer_count = sum(1 for chat in chats if _is_structured_answer(chat))
+    rag_answer_count = sum(1 for chat in chats if _is_rag_answer(chat))
+    no_source_count = sum(1 for value in chat_source_counts if value == 0)
+    structured_module_distribution = _structured_module_distribution(chats)
     reranking_metrics = _reranking_metrics(events)
     retrieval_slo = _retrieval_slo_summary(telemetry)
     source_rows = _source_rows(events)
@@ -414,6 +448,16 @@ def _metrics(events, chats, feedback_entries, telemetry):
         "source_metadata_min_coverage_rate": source_metadata_metrics["min_coverage_rate"],
         "average_final_top_k": _average(source_counts),
         "average_source_count": _average(source_counts),
+        "source_count_average": _average(chat_source_counts),
+        "average_answer_source_count": _average(chat_source_counts),
+        "structured_answer_count": structured_answer_count,
+        "structured_answer_rate": _rate(structured_answer_count, len(chats)),
+        "rag_answer_count": rag_answer_count,
+        "rag_answer_rate": _rate(rag_answer_count, len(chats)),
+        "no_source_count": no_source_count,
+        "no_source_rate": _rate(no_source_count, len(chats)),
+        "top_structured_modules": structured_module_distribution["rows"],
+        "structured_module_distribution": structured_module_distribution["counts"],
         "reranking": reranking_metrics,
         "reranking_request_count": reranking_metrics["request_count"],
         "average_rerank_candidate_limit": reranking_metrics["average_candidate_limit"],
@@ -2041,6 +2085,66 @@ def _is_empty_retrieval(chat):
     """Return whether a chat was answered without retrieved sources."""
     diagnostics = chat.diagnostics()
     return bool(diagnostics.get("empty_retrieval")) or int(chat.source_count or 0) == 0
+
+
+def _is_structured_answer(chat):
+    """Return whether a chat used the structured database answer path."""
+    return str(chat.response_type or "") == "structured_scope"
+
+
+def _is_rag_answer(chat):
+    """Return whether a chat looks like a RAG-backed unstructured answer."""
+    if _is_structured_answer(chat) or int(chat.source_count or 0) <= 0:
+        return False
+    return str(chat.response_type or "") not in {"permission_denied", "local_answer"}
+
+
+def _structured_module_distribution(chats):
+    """Return answer counts grouped by structured Maintenance module."""
+    counter = Counter()
+    for chat in chats:
+        if not _is_structured_answer(chat):
+            continue
+        counter[_structured_module(chat)] += 1
+    return {
+        "counts": dict(counter),
+        "rows": [
+            {
+                "module": module,
+                "label": _structured_module_label(module),
+                "count": count,
+                "rate": _rate(count, sum(counter.values())),
+            }
+            for module, count in counter.most_common()
+        ],
+    }
+
+
+def _structured_module(chat):
+    """Return the canonical module for one structured answer."""
+    diagnostics = chat.diagnostics()
+    context = diagnostics.get("structured_context") or {}
+    entity_type = str(context.get("entity_type") or "").strip()
+    if entity_type == "tasks":
+        return "tasks"
+    if entity_type in {"incidents", "errors"}:
+        return "errors"
+    scopes = {str(scope) for scope in diagnostics.get("scopes") or []}
+    if "tasks" in scopes:
+        return "tasks"
+    if "errors" in scopes:
+        return "errors"
+    return "unknown"
+
+
+def _structured_module_label(module):
+    """Return a compact German label for one structured module key."""
+    labels = {
+        "tasks": "Tasks",
+        "errors": "Stoerungen",
+        "unknown": "Unbekannt",
+    }
+    return labels.get(str(module or "unknown"), str(module or "unknown"))
 
 
 def _is_no_answer(chat):
