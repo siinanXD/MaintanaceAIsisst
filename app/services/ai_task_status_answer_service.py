@@ -13,6 +13,7 @@ from app.services.ai_question_normalizer import (
     detect_time_range,
     normalize_text,
 )
+from app.services.ai_structured_source_service import task_source_cards
 from app.services.task_service import visible_tasks_query
 
 TASK_TERMS = ("task", "tasks", "aufgabe", "aufgaben")
@@ -64,7 +65,7 @@ def answer_task_status_question(message, user, conversation_context=None):
             "timeframe": timeframe,
             "items": [task.to_dict() for task in items],
         },
-        "sources": [],
+        "sources": task_source_cards(items),
     }
 
 

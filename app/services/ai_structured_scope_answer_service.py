@@ -17,6 +17,11 @@ from app.services.ai_question_normalizer import (
     mentions_my_area,
     normalize_text,
 )
+from app.services.ai_structured_source_service import (
+    incident_source_cards,
+    incident_source_cards_from_payloads,
+    task_source_cards,
+)
 from app.services.error_service import visible_errors_query
 from app.services.task_service import visible_tasks_query
 
@@ -27,7 +32,6 @@ INCIDENT_ENTITY_TERMS = ("stoerung", "stoerungen", "fehler", "incident", "incide
 SUPPORTED_ENTITIES = {"tasks", "incidents"}
 MAX_ITEMS = 20
 ANSWER_ITEMS = 10
-SOURCE_CARD_LIMIT = 5
 
 
 def answer_structured_scope_question(message, user, conversation_context=None):
@@ -72,7 +76,7 @@ def _answer_tasks(message, user, filters):
             "filters": _public_filters(filters),
             "items": [task.to_dict() for task in tasks],
         },
-        "sources": _task_sources(tasks),
+        "sources": task_source_cards(tasks),
         "scope": "tasks",
         "structured_context": _structured_context("tasks", filters),
     }
@@ -98,7 +102,7 @@ def _answer_incidents(message, user, filters):
             "filters": _public_filters(filters),
             "items": [incident.to_dict() for incident in incidents],
         },
-        "sources": _incident_sources(incidents),
+        "sources": incident_source_cards(incidents),
         "scope": "errors",
         "structured_context": _structured_context("incidents", filters),
     }
@@ -124,7 +128,7 @@ def _answer_incident_machine_aggregation(user, filters):
             },
             "items": top_group["examples"] if top_group else [],
         },
-        "sources": _incident_sources_from_payloads(top_group["examples"] if top_group else []),
+        "sources": incident_source_cards_from_payloads(top_group["examples"] if top_group else []),
         "scope": "errors",
         "structured_context": _structured_context("incidents", filters),
     }
@@ -323,126 +327,6 @@ def _structured_context(entity_type, filters):
 def _public_filters(filters):
     """Return safe structured filters for the API payload."""
     return dict(filters)
-
-
-def _task_sources(tasks):
-    """Return compact source cards for visible structured task rows."""
-    return [_task_source(task) for task in tasks[:SOURCE_CARD_LIMIT]]
-
-
-def _task_source(task):
-    """Return one prompt-safe task source card."""
-    department = _department_name(task)
-    return {
-        "type": "task",
-        "id": task.id,
-        "title": task.title,
-        "module": "tasks",
-        "url": "/tasks",
-        "source_type": "task",
-        "source_id": task.id,
-        "source_record_id": task.id,
-        "source_kind": "structured",
-        "department": department,
-        "role_visibility": _role_visibility(department),
-        "created_at": _isoformat(task.created_at),
-        "status": task.status.value if task.status else "",
-        "priority": task.priority.value if task.priority else "",
-        "due_date": task.due_date.isoformat() if task.due_date else "",
-    }
-
-
-def _incident_sources(incidents):
-    """Return compact source cards for visible structured incident rows."""
-    return [_incident_source(incident) for incident in incidents[:SOURCE_CARD_LIMIT]]
-
-
-def _incident_source(incident):
-    """Return one prompt-safe incident source card."""
-    department = _department_name(incident)
-    title = _incident_source_title(incident.error_code, incident.title)
-    return {
-        "type": "error",
-        "id": incident.id,
-        "title": title,
-        "module": "errors",
-        "url": "/errors",
-        "source_type": "error",
-        "source_id": incident.id,
-        "source_record_id": incident.id,
-        "source_kind": "structured",
-        "department": department,
-        "machine": incident.machine,
-        "machine_id": incident.machine_id,
-        "role_visibility": _role_visibility(department),
-        "created_at": _isoformat(incident.created_at),
-        "status": incident.status,
-        "severity": incident.severity,
-        "error_code": incident.error_code,
-    }
-
-
-def _incident_sources_from_payloads(incidents):
-    """Return compact source cards from already-visible incident payloads."""
-    return [_incident_source_from_payload(incident) for incident in incidents[:SOURCE_CARD_LIMIT]]
-
-
-def _incident_source_from_payload(incident):
-    """Return one prompt-safe incident source card from a public payload."""
-    department = _payload_department_name(incident)
-    incident_id = incident.get("id")
-    return {
-        "type": "error",
-        "id": incident_id,
-        "title": _incident_source_title(incident.get("error_code"), incident.get("title")),
-        "module": "errors",
-        "url": "/errors",
-        "source_type": "error",
-        "source_id": incident_id,
-        "source_record_id": incident_id,
-        "source_kind": "structured",
-        "department": department,
-        "machine": incident.get("machine") or "",
-        "machine_id": incident.get("machine_id"),
-        "role_visibility": _role_visibility(department),
-        "created_at": incident.get("created_at") or "",
-        "status": incident.get("status") or "",
-        "severity": incident.get("severity") or "",
-        "error_code": incident.get("error_code") or "",
-    }
-
-
-def _incident_source_title(error_code, title):
-    """Return the compact incident source title."""
-    safe_title = str(title or "").strip()
-    safe_code = str(error_code or "").strip()
-    return f"{safe_code} - {safe_title}" if safe_code else safe_title
-
-
-def _department_name(record):
-    """Return a bounded department name from a structured row."""
-    department = getattr(record, "department", None)
-    if isinstance(department, str):
-        return department[:120]
-    return str(getattr(department, "name", "") or "")[:120]
-
-
-def _payload_department_name(payload):
-    """Return a bounded department name from a structured row payload."""
-    department = payload.get("department") if isinstance(payload, dict) else None
-    if isinstance(department, dict):
-        return str(department.get("name") or "")[:120]
-    return str(department or "")[:120]
-
-
-def _role_visibility(department):
-    """Return a compact role visibility label for structured source cards."""
-    return f"department:{department}" if department else "public"
-
-
-def _isoformat(value):
-    """Return an ISO timestamp when available."""
-    return value.isoformat() if value else ""
 
 
 def _permission_denied(label, scope):
