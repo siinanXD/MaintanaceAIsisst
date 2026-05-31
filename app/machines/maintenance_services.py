@@ -302,9 +302,9 @@ def _machine_signal_map(user):
         for document in documents_query.limit(200).all():
             machine = _document_machine(document, machines)
             if machine:
-                signals.setdefault(machine, _empty_machine_signals())[
-                    "maintenance_reports"
-                ].append(document)
+                signals.setdefault(machine, _empty_machine_signals())["maintenance_reports"].append(
+                    document
+                )
 
     if has_dashboard_permission(user, "shiftplans", "view"):
         handovers = (
@@ -323,9 +323,9 @@ def _machine_signal_map(user):
                 machines=machines,
             )
             if machine:
-                signals.setdefault(machine, _empty_machine_signals())[
-                    "shift_handovers"
-                ].append(handover)
+                signals.setdefault(machine, _empty_machine_signals())["shift_handovers"].append(
+                    handover
+                )
     return signals
 
 
@@ -746,9 +746,7 @@ def _latest_preventive_signal_at(signals):
     timestamps.extend(task.updated_at for task in signals["tasks"] if task.updated_at)
     timestamps.extend(entry.created_at for entry in signals["errors"] if entry.created_at)
     timestamps.extend(
-        document.created_at
-        for document in signals["maintenance_reports"]
-        if document.created_at
+        document.created_at for document in signals["maintenance_reports"] if document.created_at
     )
     timestamps.extend(
         datetime.combine(handover.shift_date, datetime.min.time())

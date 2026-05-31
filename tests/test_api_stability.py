@@ -1866,8 +1866,7 @@ def test_dashboard_react_markup_replaces_fallback_clone():
     assert "operationCards" in dashboard_react_sources
     assert "operationDrilldownRows" in dashboard_react_sources
     assert (
-        "DashboardShiftPeople" in dashboard_markup
-        or "DashboardCockpitPanels" in dashboard_markup
+        "DashboardShiftPeople" in dashboard_markup or "DashboardCockpitPanels" in dashboard_markup
     )
     assert "handoverTitle" in dashboard_react_sources
     assert "handoverStatusValue" in dashboard_react_sources
@@ -1881,8 +1880,7 @@ def test_dashboard_react_markup_replaces_fallback_clone():
     assert "activityItems" in dashboard_react_sources
     assert "inventoryMetrics" in dashboard_react_sources
     assert (
-        "DashboardTaskOverview" in dashboard_markup
-        or "DashboardSituationStrip" in dashboard_markup
+        "DashboardTaskOverview" in dashboard_markup or "DashboardSituationStrip" in dashboard_markup
     )
     assert "activeDashboardIncidents" in dashboard_react_sources
     assert "frequentIncidentCodes" in dashboard_react_sources
@@ -1890,8 +1888,7 @@ def test_dashboard_react_markup_replaces_fallback_clone():
     assert "dashboardTaskGroups" in dashboard_react_sources
     assert "dashboardCriticalTasks" in dashboard_react_sources
     assert (
-        "DashboardAssetStatus" in dashboard_markup
-        or "DashboardCockpitPanels" in dashboard_markup
+        "DashboardAssetStatus" in dashboard_markup or "DashboardCockpitPanels" in dashboard_markup
     )
     assert "DashboardTechnicalDetails" in dashboard_markup
     assert "dashboardHeroStatus" in dashboard_react_sources

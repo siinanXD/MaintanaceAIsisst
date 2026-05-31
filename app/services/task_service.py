@@ -681,9 +681,7 @@ def task_priority_history(task, documents, visible_errors, visible_handovers=Non
     related_handovers = task_related_handovers(task, machines, visible_handovers or [])
     return {
         "maintenance_reports_count": len(documents),
-        "last_maintenance_report_at": (
-            documents[0].created_at.isoformat() if documents else None
-        ),
+        "last_maintenance_report_at": (documents[0].created_at.isoformat() if documents else None),
         "machines": machines,
         "related_error_count": len(related_errors),
         "recent_related_errors": related_errors[:3],
@@ -876,11 +874,7 @@ def task_priority_tokens(text):
         "kontrolle",
         "normal",
     }
-    return {
-        token
-        for token in re.findall(r"[\w-]{4,}", text.lower())
-        if token not in ignored
-    }
+    return {token for token in re.findall(r"[\w-]{4,}", text.lower()) if token not in ignored}
 
 
 def task_priority_history_signals(task, documents, related_errors, related_handovers=None):
@@ -1032,16 +1026,11 @@ def task_priority_source_references(task, documents, related_errors, related_han
     """Return prompt-safe references used as task-priority evidence."""
     references = [_task_priority_task_reference(task.to_dict())]
     references.extend(
-        _task_priority_document_reference(document)
-        for document in (documents or [])[:3]
+        _task_priority_document_reference(document) for document in (documents or [])[:3]
     )
+    references.extend(_task_priority_error_reference(entry) for entry in (related_errors or [])[:3])
     references.extend(
-        _task_priority_error_reference(entry)
-        for entry in (related_errors or [])[:3]
-    )
-    references.extend(
-        _task_priority_handover_reference(handover)
-        for handover in (related_handovers or [])[:3]
+        _task_priority_handover_reference(handover) for handover in (related_handovers or [])[:3]
     )
     return [reference for reference in references if reference]
 

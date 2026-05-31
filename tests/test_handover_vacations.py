@@ -416,9 +416,9 @@ def test_handover_summary_respects_task_and_error_permissions(
     assert payload["source_counts"]["uses_only_visible_sources"] is True
     assert payload["confidence"]["uncertainty"] == "high"
     assert payload["evidence_summary"]["source_types"] == ["shift_handover"]
-    assert [
-        source["type"] for source in payload["evidence_summary"]["source_references"]
-    ] == ["shift_handover"]
+    assert [source["type"] for source in payload["evidence_summary"]["source_references"]] == [
+        "shift_handover"
+    ]
     assert payload["evidence_summary"]["has_open_task_context"] is False
     assert payload["evidence_summary"]["has_disruption_context"] is False
     assert payload["evidence_summary"]["llm_call"] is False

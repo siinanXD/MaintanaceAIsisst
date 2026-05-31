@@ -46,10 +46,7 @@ def test_local_development_schema_adds_missing_retrieval_evaluation_columns(app)
     """Verify local startup repairs additive retrieval evaluation metric columns."""
     with app.app_context():
         db.session.execute(
-            db.text(
-                "ALTER TABLE retrieval_evaluation_run "
-                "DROP COLUMN query_type_accuracy"
-            )
+            db.text("ALTER TABLE retrieval_evaluation_run " "DROP COLUMN query_type_accuracy")
         )
         db.session.commit()
 

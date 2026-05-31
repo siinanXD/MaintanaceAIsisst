@@ -833,9 +833,7 @@ def _admin_user_permission_summary(admin_user):
     )
     employees = permissions.get("employees")
     employee_access = (
-        employees.get("employee_access_level", "none")
-        if isinstance(employees, dict)
-        else "none"
+        employees.get("employee_access_level", "none") if isinstance(employees, dict) else "none"
     )
     return {
         "view": view,

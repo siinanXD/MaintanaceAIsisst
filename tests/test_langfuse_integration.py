@@ -95,13 +95,8 @@ def test_ai_status_reports_openai_provider_readiness(app):
 
     assert missing_key_status["provider_status"]["ready"] is False
     assert missing_key_status["provider_status"]["reason"] == "api_key_missing"
-    assert (
-        missing_key_status["provider_status"]["configuration_action"]
-        == "set_openai_api_key"
-    )
-    assert "OPENAI_API_KEY" in missing_key_status["provider_status"][
-        "recommended_action"
-    ]
+    assert missing_key_status["provider_status"]["configuration_action"] == "set_openai_api_key"
+    assert "OPENAI_API_KEY" in missing_key_status["provider_status"]["recommended_action"]
     assert whitespace_key_status["provider_status"]["ready"] is False
     assert whitespace_key_status["provider_status"]["reason"] == "api_key_missing"
     assert whitespace_key_status["api_key_configured"] is False
@@ -178,13 +173,8 @@ def test_ai_status_reports_openai_compatible_base_url_requirement(app):
     assert missing_base_url_status["provider_status"]["ready"] is False
     assert missing_base_url_status["provider_status"]["reason"] == "base_url_missing"
     assert missing_base_url_status["provider_status"]["base_url_configured"] is False
-    assert (
-        missing_base_url_status["provider_status"]["configuration_action"]
-        == "set_ai_base_url"
-    )
-    assert "AI_BASE_URL" in missing_base_url_status["provider_status"][
-        "recommended_action"
-    ]
+    assert missing_base_url_status["provider_status"]["configuration_action"] == "set_ai_base_url"
+    assert "AI_BASE_URL" in missing_base_url_status["provider_status"]["recommended_action"]
     assert whitespace_base_url_status["provider_status"]["ready"] is False
     assert whitespace_base_url_status["provider_status"]["reason"] == "base_url_missing"
     assert whitespace_base_url_status["provider_status"]["base_url_configured"] is False
@@ -203,10 +193,7 @@ def test_ai_status_reports_unsupported_provider_without_crashing(app):
     assert status["provider_status"]["provider"] == "gemini"
     assert status["provider_status"]["ready"] is False
     assert status["provider_status"]["reason"] == "unsupported_provider"
-    assert (
-        status["provider_status"]["configuration_action"]
-        == "select_supported_provider"
-    )
+    assert status["provider_status"]["configuration_action"] == "select_supported_provider"
     assert "AI_PROVIDER" in status["provider_status"]["recommended_action"]
     assert status["ready"] is False
     assert status["readiness"]["status"] == "degraded"
@@ -258,12 +245,8 @@ def test_ai_status_reports_openai_compatible_embedding_readiness(app):
     assert whitespace["reason"] == "base_url_missing"
     assert whitespace["base_url_configured"] is False
     assert missing_base_url_status["ready"] is False
-    assert missing_base_url_status["readiness"]["degraded_components"] == [
-        "embedding_provider"
-    ]
-    assert missing_base_url_status["readiness"]["reasons"] == [
-        "embedding_base_url_missing"
-    ]
+    assert missing_base_url_status["readiness"]["degraded_components"] == ["embedding_provider"]
+    assert missing_base_url_status["readiness"]["reasons"] == ["embedding_base_url_missing"]
     assert missing_base_url_status["readiness"]["next_action"]["component"] == (
         "embedding_provider"
     )
@@ -271,9 +254,9 @@ def test_ai_status_reports_openai_compatible_embedding_readiness(app):
         missing_base_url_status["readiness"]["next_action"]["configuration_action"]
         == "set_ai_base_url"
     )
-    assert "AI_BASE_URL" in missing_base_url_status["readiness"]["next_action"][
-        "recommended_action"
-    ]
+    assert (
+        "AI_BASE_URL" in missing_base_url_status["readiness"]["next_action"]["recommended_action"]
+    )
     assert ready["ready"] is True
     assert ready["effective_provider"] == "openai_compatible"
     assert ready["base_url_configured"] is True
@@ -292,10 +275,7 @@ def test_ai_status_reports_unsupported_embedding_provider_fallback(app):
     assert embedding_status["ready"] is False
     assert embedding_status["reason"] == "unsupported_provider"
     assert embedding_status["effective_provider"] == "hashing"
-    assert (
-        embedding_status["configuration_action"]
-        == "select_supported_embedding_provider"
-    )
+    assert embedding_status["configuration_action"] == "select_supported_embedding_provider"
     assert "EMBEDDING_PROVIDER" in embedding_status["recommended_action"]
     assert status["ready"] is False
     assert status["readiness"]["degraded_components"] == ["embedding_provider"]

@@ -145,9 +145,7 @@ def test_golden_question_set_has_required_coverage():
     assert all(case.min_source_count >= 1 for case in cases)
     assert all(allowed_source_types(case) for case in cases)
     assert all(
-        case.expected_keywords
-        for case in cases
-        if "shift_handover" in case.expected_source_types
+        case.expected_keywords for case in cases if "shift_handover" in case.expected_source_types
     )
 
 
@@ -169,9 +167,7 @@ def test_demo_golden_handover_questions_include_expected_keywords():
     )
 
     assert all(
-        case.expected_keywords
-        for case in cases
-        if "shift_handover" in case.expected_source_types
+        case.expected_keywords for case in cases if "shift_handover" in case.expected_source_types
     )
 
 

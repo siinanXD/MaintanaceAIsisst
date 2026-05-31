@@ -384,10 +384,7 @@ def _source_metadata_missing_fields(events):
     for event in events:
         for source in _event_sources(event):
             counter.update(_missing_source_metadata_fields(source))
-    return [
-        {"field": field, "count": count}
-        for field, count in counter.most_common()
-    ]
+    return [{"field": field, "count": count} for field, count in counter.most_common()]
 
 
 def _event_sources(event):
@@ -775,11 +772,7 @@ def _chunk_size_metrics(chunks):
 def _chunk_block_kinds(metadata):
     """Return bounded chunk block kinds from stored chunk metadata."""
     raw_value = str((metadata or {}).get("chunk_block_kinds") or "")
-    return [
-        _bounded_string(kind.strip(), 40)
-        for kind in raw_value.split(",")
-        if kind.strip()
-    ]
+    return [_bounded_string(kind.strip(), 40) for kind in raw_value.split(",") if kind.strip()]
 
 
 def _metadata_int_values(metadata_rows, key):

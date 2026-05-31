@@ -36,9 +36,7 @@ def ai_readiness_summary(provider_status, embedding_status, last_error=None):
         reason = str(embedding_status.get("reason") or "embedding_not_ready")
         prefixed_reason = f"embedding_{reason}"
         reasons.append(prefixed_reason)
-        actions.append(
-            _readiness_action("embedding_provider", prefixed_reason, embedding_status)
-        )
+        actions.append(_readiness_action("embedding_provider", prefixed_reason, embedding_status))
     if last_error is not None:
         degraded_components.append("last_error")
         reason = str(last_error)

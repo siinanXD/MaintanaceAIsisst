@@ -63,8 +63,7 @@ def validate_runtime_config(config):
         raise RuntimeError("RAG_CHUNK_OVERLAP must be smaller than RAG_CHUNK_SIZE")
     if chunking_mode not in SUPPORTED_RAG_CHUNKING_MODES:
         raise RuntimeError(
-            "RAG_CHUNKING_MODE must be one of "
-            f"{sorted(SUPPORTED_RAG_CHUNKING_MODES)}"
+            "RAG_CHUNKING_MODE must be one of " f"{sorted(SUPPORTED_RAG_CHUNKING_MODES)}"
         )
     if not 0 <= semantic_breakpoint_threshold <= 1:
         raise RuntimeError("RAG_SEMANTIC_BREAKPOINT_THRESHOLD must be between 0 and 1")

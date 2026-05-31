@@ -173,9 +173,7 @@ def token_set(value):
 def _chunk_quality_metadata(text):
     """Return prompt-safe size metrics for chunk audit and reindex diagnostics."""
     chunk_text_value = str(text or "")
-    non_empty_lines = [
-        line for line in chunk_text_value.splitlines() if str(line or "").strip()
-    ]
+    non_empty_lines = [line for line in chunk_text_value.splitlines() if str(line or "").strip()]
     return {
         "chunk_char_count": len(chunk_text_value),
         "chunk_line_count": len(non_empty_lines),
@@ -678,11 +676,7 @@ def _append_structured_chunk(chunks, blocks, metadata, extra_metadata=None):
 def _block_structure_metadata(blocks):
     """Return compact source block metadata for retrieval explainability."""
     block_kinds = sorted(
-        {
-            str(block.kind or "paragraph")[:40]
-            for block in blocks
-            if str(block.kind or "").strip()
-        }
+        {str(block.kind or "paragraph")[:40] for block in blocks if str(block.kind or "").strip()}
     )
     return {
         "chunk_block_count": len(blocks),

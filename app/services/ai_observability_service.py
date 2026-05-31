@@ -273,9 +273,7 @@ def _provider_readiness_metrics(provider_readiness):
         "provider_ready": bool(provider_readiness.get("ready")),
         "provider_readiness_status": str(readiness.get("status") or "unknown"),
         "provider_degraded_component_count": len(degraded_components),
-        "provider_next_action_type": str(
-            next_action.get("configuration_action") or ""
-        )
+        "provider_next_action_type": str(next_action.get("configuration_action") or "")
         if isinstance(next_action, dict)
         else "",
     }
@@ -377,12 +375,8 @@ def _metrics(events, chats, feedback_entries, telemetry):
         "source_conflict_rate": _rate(source_conflict_count, len(chats)),
         "answer_quality_distribution": answer_quality_distribution["counts"],
         "answer_quality_distribution_rows": answer_quality_distribution["rows"],
-        "answer_quality_reason_distribution": answer_quality_reason_distribution[
-            "counts"
-        ],
-        "answer_quality_reason_distribution_rows": answer_quality_reason_distribution[
-            "rows"
-        ],
+        "answer_quality_reason_distribution": answer_quality_reason_distribution["counts"],
+        "answer_quality_reason_distribution_rows": answer_quality_reason_distribution["rows"],
         "answer_quality_actions": answer_quality_actions,
         "answer_quality_action_count": len(answer_quality_actions),
         "answer_quality_action_summary": _action_summary(answer_quality_actions),
@@ -403,19 +397,13 @@ def _metrics(events, chats, feedback_entries, telemetry):
         "stale_source_rate": source_freshness["stale_source_rate"],
         "undated_source_count": source_freshness["undated_source_count"],
         "retrieval_action_count": action_summaries["retrieval"]["total"],
-        "retrieval_critical_action_count": action_summaries["retrieval"][
-            "critical_priority_count"
-        ],
-        "retrieval_high_action_count": action_summaries["retrieval"][
-            "high_priority_count"
-        ],
+        "retrieval_critical_action_count": action_summaries["retrieval"]["critical_priority_count"],
+        "retrieval_high_action_count": action_summaries["retrieval"]["high_priority_count"],
         "evaluation_action_count": action_summaries["evaluation"]["total"],
         "evaluation_critical_action_count": action_summaries["evaluation"][
             "critical_priority_count"
         ],
-        "evaluation_high_action_count": action_summaries["evaluation"][
-            "high_priority_count"
-        ],
+        "evaluation_high_action_count": action_summaries["evaluation"]["high_priority_count"],
         "evaluation_quality_gate_status": evaluation_gate_metrics["status"],
         "evaluation_quality_gate_passed": evaluation_gate_metrics["passed"],
         "evaluation_quality_gate_issue_count": evaluation_gate_metrics["issue_count"],
@@ -423,9 +411,7 @@ def _metrics(events, chats, feedback_entries, telemetry):
         "evaluation_warning_count": evaluation_gate_metrics["warning_count"],
         "source_metadata_gap_count": source_metadata_metrics["gap_count"],
         "source_metadata_gap_fields": source_metadata_metrics["gap_fields"],
-        "source_metadata_min_coverage_rate": source_metadata_metrics[
-            "min_coverage_rate"
-        ],
+        "source_metadata_min_coverage_rate": source_metadata_metrics["min_coverage_rate"],
         "average_final_top_k": _average(source_counts),
         "average_source_count": _average(source_counts),
         "reranking": reranking_metrics,
@@ -630,10 +616,7 @@ def _provider_readiness_action(provider_readiness):
     component = str(next_action.get("component") or "provider")
     reason = str(next_action.get("reason") or "")
     return {
-        "type": str(
-            next_action.get("configuration_action")
-            or "review_provider_configuration"
-        ),
+        "type": str(next_action.get("configuration_action") or "review_provider_configuration"),
         "priority": "critical",
         "target_type": "ai_provider_readiness",
         "target": component,
@@ -780,9 +763,7 @@ def _quality_metrics(events, telemetry):
             "expected_no_result_success_count",
             0,
         ),
-        "expected_no_result_success_rate": latest_eval.get(
-            "expected_no_result_success_rate"
-        ),
+        "expected_no_result_success_rate": latest_eval.get("expected_no_result_success_rate"),
         "unexpected_no_result_count": latest_eval.get("unexpected_no_result_count", 0),
         "unexpected_no_result_rate": latest_eval.get("unexpected_no_result_rate"),
         "min_source_count_fail_count": latest_eval.get(
@@ -803,9 +784,7 @@ def _quality_metrics(events, telemetry):
         "source_metadata_gaps": source_metadata_gaps,
         "evaluation_quality_gate": evaluation_quality_gate,
         "evaluation_blocking_count": len(evaluation_blocking),
-        "evaluation_blocking_metrics": [
-            blocking["metric"] for blocking in evaluation_blocking
-        ],
+        "evaluation_blocking_metrics": [blocking["metric"] for blocking in evaluation_blocking],
         "evaluation_blocking_rows": evaluation_blocking,
         "evaluation_warning_count": len(evaluation_warnings),
         "evaluation_warning_metrics": [warning["metric"] for warning in evaluation_warnings],
@@ -997,13 +976,9 @@ def _evaluation_quality_actions(latest_eval, quality_gate, source_metadata_gaps)
                 "warning_metrics": warning_metrics,
                 "focus_areas": _evaluation_warning_focus_areas(warning_metrics),
                 "reason": "Das Retrieval Quality Gate meldet Warnungen.",
-                "recommended_action": _evaluation_warning_recommended_action(
-                    warning_metrics
-                ),
+                "recommended_action": _evaluation_warning_recommended_action(warning_metrics),
                 "next_steps": _evaluation_warning_next_steps(warning_metrics),
-                "success_criteria": _evaluation_warning_success_criteria(
-                    warning_metrics
-                ),
+                "success_criteria": _evaluation_warning_success_criteria(warning_metrics),
             }
         )
     return actions[:5]
@@ -1314,9 +1289,7 @@ def _frequent_search_terms(chats):
 def _feedback_summary(feedback_entries):
     """Return positive, neutral and negative feedback counters."""
     positive = sum(1 for feedback in feedback_entries if feedback.rating == "helpful")
-    partial = sum(
-        1 for feedback in feedback_entries if feedback.rating == "partially_helpful"
-    )
+    partial = sum(1 for feedback in feedback_entries if feedback.rating == "partially_helpful")
     negative = sum(1 for feedback in feedback_entries if feedback.rating in NEGATIVE_RATINGS)
     total = positive + partial + negative
     return {
@@ -1402,9 +1375,7 @@ def _knowledge_gap_metrics(chats=None):
     open_gaps = KnowledgeGap.query.filter_by(status="open").count()
     detection = knowledge_gap_detection({"limit": DEFAULT_OBSERVABILITY_LIMIT})
     uncertain_question_gaps = _uncertain_question_gap_rows(chats or [])
-    uncertain_question_actions = _uncertain_question_gap_actions(
-        uncertain_question_gaps
-    )
+    uncertain_question_actions = _uncertain_question_gap_actions(uncertain_question_gaps)
     top_gaps = (
         KnowledgeGap.query.order_by(
             KnowledgeGap.occurrence_count.desc(),
@@ -1416,8 +1387,7 @@ def _knowledge_gap_metrics(chats=None):
     )
     detection_summary = detection.get("summary") or {}
     recommended_actions = (
-        list(detection.get("knowledge_gap_actions") or [])
-        + uncertain_question_actions
+        list(detection.get("knowledge_gap_actions") or []) + uncertain_question_actions
     )[:10]
     action_priority_counts = Counter(
         str(action.get("priority") or "unknown") for action in recommended_actions
@@ -1445,9 +1415,7 @@ def _knowledge_gap_metrics(chats=None):
         ),
         "department_gap_count": detection_summary.get("department_gap_count", 0),
         "uncertain_question_gap_count": len(uncertain_question_gaps),
-        "high_uncertainty_answer_count": sum(
-            item["count"] for item in uncertain_question_gaps
-        ),
+        "high_uncertainty_answer_count": sum(item["count"] for item in uncertain_question_gaps),
         "uncertain_question_gaps": uncertain_question_gaps,
         "uncertain_question_actions": uncertain_question_actions,
         "uncertain_question_action_count": len(uncertain_question_actions),
@@ -1506,9 +1474,7 @@ def _uncertain_question_gap_rows(chats):
         if chat.created_at >= item["latest_at"]:
             item["latest_at"] = chat.created_at
             item["question"] = _bounded(chat.message, 220)
-            item["knowledge_gap_id"] = _optional_int(
-                chat.diagnostics().get("knowledge_gap_id")
-            )
+            item["knowledge_gap_id"] = _optional_int(chat.diagnostics().get("knowledge_gap_id"))
     rows = [
         {
             "question": item["question"],
@@ -1524,9 +1490,7 @@ def _uncertain_question_gap_rows(chats):
         }
         for item in grouped.values()
     ]
-    return sorted(rows, key=lambda row: (row["count"], row["latest_at"]), reverse=True)[
-        :10
-    ]
+    return sorted(rows, key=lambda row: (row["count"], row["latest_at"]), reverse=True)[:10]
 
 
 def _uncertain_question_gap_actions(rows):
@@ -1754,8 +1718,7 @@ def _stale_source_rows(source_rows, limit):
     rows = [
         row
         for row in source_rows
-        if row.get("source_age_days") is not None
-        and row["source_age_days"] >= stale_days
+        if row.get("source_age_days") is not None and row["source_age_days"] >= stale_days
     ]
     rows.sort(
         key=lambda row: (
@@ -1796,8 +1759,7 @@ def _source_metadata_quality_actions(source_freshness, stale_sources, undated_so
                 "stale_threshold_days": stale_days,
                 "sample_sources": _source_action_samples(stale_sources),
                 "reason": (
-                    f"{stale_count} abgerufene Quelle(n) sind aelter als "
-                    f"{stale_days} Tage."
+                    f"{stale_count} abgerufene Quelle(n) sind aelter als " f"{stale_days} Tage."
                 ),
                 "recommended_action": (
                     "Quellen fachlich pruefen, veraltete Inhalte aktualisieren "
@@ -1824,8 +1786,7 @@ def _source_metadata_quality_actions(source_freshness, stale_sources, undated_so
                 "count": undated_count,
                 "sample_sources": _source_action_samples(undated_sources),
                 "reason": (
-                    f"{undated_count} abgerufene Quelle(n) haben kein auswertbares "
-                    "Source-Datum."
+                    f"{undated_count} abgerufene Quelle(n) haben kein auswertbares " "Source-Datum."
                 ),
                 "recommended_action": (
                     "Fehlende created_at/source_created_at Metadaten ergaenzen, "
@@ -1871,18 +1832,14 @@ def _recommended_action_summary(actions, metrics):
     summary = _action_summary(actions)
     answer_quality_actions = metrics.get("answer_quality_actions") or []
     answer_quality_summary = metrics.get("answer_quality_action_summary") or {}
-    summary["answer_quality_action_count"] = int(
-        metrics.get("answer_quality_action_count") or 0
-    )
+    summary["answer_quality_action_count"] = int(metrics.get("answer_quality_action_count") or 0)
     summary["answer_quality_high_action_count"] = int(
         answer_quality_summary.get("high_priority_count") or 0
     )
     if answer_quality_actions:
         next_action = answer_quality_actions[0]
         summary["answer_quality_next_action_type"] = str(next_action.get("type") or "")
-        summary["answer_quality_next_action_priority"] = str(
-            next_action.get("priority") or ""
-        )
+        summary["answer_quality_next_action_priority"] = str(next_action.get("priority") or "")
     return summary
 
 
@@ -1891,9 +1848,7 @@ def _action_summary(actions):
     priority_counts = Counter(str(action.get("priority") or "unknown") for action in actions)
     type_counts = Counter(str(action.get("type") or "unknown") for action in actions)
     source_counts = Counter(
-        str(action.get("action_source"))
-        for action in actions
-        if action.get("action_source")
+        str(action.get("action_source")) for action in actions if action.get("action_source")
     )
     summary = {
         "total": len(actions),
@@ -2132,8 +2087,7 @@ def _primary_warning_distribution(chats):
 def _answer_quality_reason_distribution(chats):
     """Return answer-quality reason counts and rates for admin dashboards."""
     counter = Counter(
-        answer_quality_from_history_item(chat.to_dict()).get("status_reason")
-        or "unverified_answer"
+        answer_quality_from_history_item(chat.to_dict()).get("status_reason") or "unverified_answer"
         for chat in chats
     )
     total = len(chats)
@@ -2190,8 +2144,7 @@ def _answer_quality_reason_actions(reason_counts):
                     "Quellen markiert."
                 ),
                 "recommended_action": (
-                    "Konfliktquellen fachlich pruefen und bestaetigte Fassung "
-                    "dokumentieren."
+                    "Konfliktquellen fachlich pruefen und bestaetigte Fassung " "dokumentieren."
                 ),
                 "next_steps": [
                     "Betroffene AI-Logs nach Quellenkonflikten filtern.",
@@ -2267,11 +2220,7 @@ def _is_error_event(event):
 def _failure_reason_distribution(events):
     """Return prompt-safe failed request reason counts."""
     counter = Counter(_failure_reason(event) for event in events if _is_error_event(event))
-    return [
-        {"reason": reason, "count": count}
-        for reason, count in counter.most_common()
-        if reason
-    ]
+    return [{"reason": reason, "count": count} for reason, count in counter.most_common() if reason]
 
 
 def _failure_reason(event):

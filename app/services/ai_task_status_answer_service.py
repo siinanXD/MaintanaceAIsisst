@@ -108,9 +108,7 @@ def _format_answer(status, count, tasks, timeframe, count_question):
     lines.append("Sichtbare Treffer:")
     for task in tasks[:MAX_ANSWER_ITEMS]:
         completed = (
-            f", abgeschlossen: {task.completed_at:%Y-%m-%d %H:%M}"
-            if task.completed_at
-            else ""
+            f", abgeschlossen: {task.completed_at:%Y-%m-%d %H:%M}" if task.completed_at else ""
         )
         lines.append(f"- #{task.id} {task.title} ({task.status.value}{completed})")
     if count > MAX_ANSWER_ITEMS:

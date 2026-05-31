@@ -145,9 +145,13 @@ def knowledge_gap_detection(args=None):
     """Return structured knowledge-gap clusters and coverage recommendations."""
     args = args or {}
     limit = _bounded_int(args.get("limit"), 20, 1, 100)
-    gaps = list_knowledge_gaps({**args, "status": args.get("status") or "open"}).limit(
-        limit,
-    ).all()
+    gaps = (
+        list_knowledge_gaps({**args, "status": args.get("status") or "open"})
+        .limit(
+            limit,
+        )
+        .all()
+    )
     documents = KnowledgeDocument.query.filter(
         KnowledgeDocument.status.in_(("indexed", "ready", "processed")),
     ).all()
@@ -365,9 +369,7 @@ def _error_gap_rows(gaps, documents):
                 "document_count": len(matching_documents),
                 "coverage": _coverage_label(len(matching_documents), matching_gaps),
                 "latest_gap_at": max(gap.last_seen_at for gap in matching_gaps).isoformat(),
-                "example_questions": [
-                    _bounded_gap_question(gap) for gap in matching_gaps[:3]
-                ],
+                "example_questions": [_bounded_gap_question(gap) for gap in matching_gaps[:3]],
             }
         )
     return sorted(
@@ -446,9 +448,7 @@ def _uncovered_machine_gap_rows(documents):
                 "criticality": machine.criticality,
                 "status": machine.status,
                 "last_downtime_at": (
-                    machine.last_downtime_at.isoformat()
-                    if machine.last_downtime_at
-                    else None
+                    machine.last_downtime_at.isoformat() if machine.last_downtime_at else None
                 ),
                 "document_count": 0,
                 "coverage": "missing",
@@ -758,18 +758,17 @@ def _documents_matching_error(documents, error_entry, require_error_specific=Fal
     if not needles:
         return []
     return [
-        document
-        for document in documents
-        if _document_covers_error(document, error_entry, needles)
+        document for document in documents if _document_covers_error(document, error_entry, needles)
     ]
 
 
 def _document_covers_error(document, error_entry, needles):
     """Return whether a document appears to cover a specific error entry."""
-    if (
-        document.source_id == error_entry.id
-        and str(document.source_type or "").lower() in {"error", "error_entry", "error_catalog"}
-    ):
+    if document.source_id == error_entry.id and str(document.source_type or "").lower() in {
+        "error",
+        "error_entry",
+        "error_catalog",
+    }:
         return True
     metadata_text = _document_metadata_text(document)
     return any(needle in metadata_text for needle in needles)

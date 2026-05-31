@@ -166,9 +166,7 @@ def test_golden_retrieval_evaluation_scores_seeded_queries(
     assert filter_query["chunk_metadata_coverage"]["coverage_rate"] == 1.0
     assert filter_query["chunk_metadata_coverage"]["block_metadata_coverage_rate"] == 1.0
     assert filter_query["chunk_metadata_coverage"]["average_block_count"] == 1
-    assert filter_query["chunk_metadata_coverage"]["block_kind_distribution"] == {
-        "paragraph": 1
-    }
+    assert filter_query["chunk_metadata_coverage"]["block_kind_distribution"] == {"paragraph": 1}
     assert filter_query["source_metadata_coverage"]["source_pair_coverage_rate"] == 1.0
     assert filter_query["expected_keyword_count"] == 2
     assert filter_query["expected_keyword_hit_count"] == 2
@@ -788,16 +786,12 @@ def test_golden_retrieval_evaluation_matches_source_record_pairs(
             (
                 GoldenRetrievalQuery(
                     query="GEV901 Kupplungsspiel Trainingshinweis",
-                    expected_sources=(
-                        ("manual_training", str(source_ids["training_record"])),
-                    ),
+                    expected_sources=(("manual_training", str(source_ids["training_record"])),),
                     top_k=3,
                 ),
                 GoldenRetrievalQuery(
                     query="GEV901 Kupplungsspiel Trainingshinweis",
-                    forbidden_sources=(
-                        ("manual_training", str(source_ids["training_record"])),
-                    ),
+                    forbidden_sources=(("manual_training", str(source_ids["training_record"])),),
                     top_k=3,
                 ),
             ),
@@ -807,9 +801,9 @@ def test_golden_retrieval_evaluation_matches_source_record_pairs(
     matched_query = result["queries"][0]
     forbidden_query = result["queries"][1]
     assert matched_query["retrieved_sources"][0]["source_type"] == "manual_training"
-    assert matched_query["retrieved_sources"][0]["source_record_id"] == source_ids[
-        "training_record"
-    ]
+    assert (
+        matched_query["retrieved_sources"][0]["source_record_id"] == source_ids["training_record"]
+    )
     assert matched_query["expected_hit_count"] == 1
     assert matched_query["recall_at_k"] == 1.0
     assert matched_query["mrr"] == 1.0
@@ -957,36 +951,27 @@ def test_golden_retrieval_evaluation_persists_prompt_safe_run(
         == result["expected_no_result_success_count"]
     )
     assert (
-        run_payload["expected_no_result_success_rate"]
-        == result["expected_no_result_success_rate"]
+        run_payload["expected_no_result_success_rate"] == result["expected_no_result_success_rate"]
     )
-    assert (
-        run_payload["unexpected_no_result_count"]
-        == result["unexpected_no_result_count"]
-    )
-    assert (
-        run_payload["unexpected_no_result_rate"]
-        == result["unexpected_no_result_rate"]
-    )
-    assert (
-        run_payload["min_source_count_fail_count"]
-        == result["min_source_count_fail_count"]
-    )
-    assert (
-        run_payload["min_source_count_pass_rate"] == result["min_source_count_pass_rate"]
-    )
+    assert run_payload["unexpected_no_result_count"] == result["unexpected_no_result_count"]
+    assert run_payload["unexpected_no_result_rate"] == result["unexpected_no_result_rate"]
+    assert run_payload["min_source_count_fail_count"] == result["min_source_count_fail_count"]
+    assert run_payload["min_source_count_pass_rate"] == result["min_source_count_pass_rate"]
     assert run_payload["query_type_expected_count"] == result["query_type_expected_count"]
     assert run_payload["query_type_match_count"] == result["query_type_match_count"]
     assert run_payload["query_type_accuracy"] == result["query_type_accuracy"]
-    assert run_payload["source_metadata_count"] == result["source_metadata_coverage"][
-        "retrieved_source_count"
-    ]
-    assert run_payload["source_id_coverage_rate"] == result["source_metadata_coverage"][
-        "source_id_coverage_rate"
-    ]
-    assert run_payload["source_pair_coverage_rate"] == result["source_metadata_coverage"][
-        "source_pair_coverage_rate"
-    ]
+    assert (
+        run_payload["source_metadata_count"]
+        == result["source_metadata_coverage"]["retrieved_source_count"]
+    )
+    assert (
+        run_payload["source_id_coverage_rate"]
+        == result["source_metadata_coverage"]["source_id_coverage_rate"]
+    )
+    assert (
+        run_payload["source_pair_coverage_rate"]
+        == result["source_metadata_coverage"]["source_pair_coverage_rate"]
+    )
     assert "GEV900" not in json.dumps(run_payload, ensure_ascii=True)
     assert "Filterdruck" not in json.dumps(run_payload, ensure_ascii=True)
 
@@ -1072,9 +1057,7 @@ def test_retrieval_evaluation_history_detects_regression(app):
     assert history["previous"]["id"] == previous_id
     assert history["latest"]["quality_gate"]["status"] == "fail"
     assert history["latest"]["quality_gate"]["passed"] is False
-    assert history["latest"]["quality_gate"]["blocking"][0]["metric"] == (
-        "permission_leak_count"
-    )
+    assert history["latest"]["quality_gate"]["blocking"][0]["metric"] == ("permission_leak_count")
     warning_metrics = {
         warning["metric"] for warning in history["latest"]["quality_gate"]["warnings"]
     }

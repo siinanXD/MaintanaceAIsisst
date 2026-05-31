@@ -357,9 +357,7 @@ def test_admin_retrieval_debug_endpoint_is_prompt_safe(app, client, make_user, a
     assert score_row["role_visibility"] == "department:Produktion"
     assert item["machine_references"][0]["source_record_id"] == 55
     assert item["machine_references"][0]["machine_id"] == 12
-    assert item["source_answer_links"][0]["source"]["role_visibility"] == (
-        "department:Produktion"
-    )
+    assert item["source_answer_links"][0]["source"]["role_visibility"] == ("department:Produktion")
     assert "Private chunk text" not in str(payload)
     assert payload["privacy"]["shows_chunk_text"] is False
     assert payload["privacy"]["shows_full_answer"] is False

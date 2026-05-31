@@ -68,31 +68,19 @@ def evaluate_golden_queries(golden_queries, user, retrieval_mode=RETRIEVAL_MODE_
         _evaluate_query(_coerce_golden_query(item), user, mode) for item in golden_queries
     ]
     metric_results = [item for item in query_results if item["expected_count"] > 0]
-    keyword_results = [
-        item for item in query_results if item["expected_keyword_count"] > 0
-    ]
-    keyword_miss_count = sum(
-        len(item.get("missing_keywords") or []) for item in keyword_results
-    )
+    keyword_results = [item for item in query_results if item["expected_keyword_count"] > 0]
+    keyword_miss_count = sum(len(item.get("missing_keywords") or []) for item in keyword_results)
     no_result_count = sum(1 for item in query_results if item["no_result"])
-    expected_no_result_count = sum(
-        1 for item in query_results if item["expected_no_result"]
-    )
+    expected_no_result_count = sum(1 for item in query_results if item["expected_no_result"])
     expected_no_result_success_count = sum(
         1 for item in query_results if item["expected_no_result_success"]
     )
-    unexpected_no_result_count = sum(
-        1 for item in query_results if item["unexpected_no_result"]
-    )
+    unexpected_no_result_count = sum(1 for item in query_results if item["unexpected_no_result"])
     min_source_count_fail_count = sum(
         1 for item in query_results if not item["min_source_count_met"]
     )
-    query_type_expected_count = sum(
-        1 for item in query_results if item["expected_query_type"]
-    )
-    query_type_match_count = sum(
-        1 for item in query_results if item["query_type_match"]
-    )
+    query_type_expected_count = sum(1 for item in query_results if item["expected_query_type"])
+    query_type_match_count = sum(1 for item in query_results if item["query_type_match"])
     return {
         "query_count": len(query_results),
         "metric_query_count": len(metric_results),
@@ -229,9 +217,7 @@ def persist_retrieval_evaluation_result(evaluation_result, commit=True):
         query_type_expected_count=_nonnegative_int(
             evaluation_result.get("query_type_expected_count")
         ),
-        query_type_match_count=_nonnegative_int(
-            evaluation_result.get("query_type_match_count")
-        ),
+        query_type_match_count=_nonnegative_int(evaluation_result.get("query_type_match_count")),
         query_type_accuracy=_clamped_metric(evaluation_result.get("query_type_accuracy")),
         source_metadata_count=source_metadata["retrieved_source_count"],
         source_id_coverage_rate=source_metadata["source_id_coverage_rate"],
@@ -341,8 +327,7 @@ def detect_retrieval_regression(current_run, previous_run):
         )
 
     delta = round(
-        current["expected_no_result_success_rate"]
-        - previous["expected_no_result_success_rate"],
+        current["expected_no_result_success_rate"] - previous["expected_no_result_success_rate"],
         4,
     )
     if delta <= -REGRESSION_DROP_THRESHOLD:
@@ -553,7 +538,7 @@ def _public_source_search_text(metadata, fallback_text=""):
                 _shift_handover_search_text(metadata),
             )
             if str(part or "").strip()
-    )
+        )
     return str(fallback_text or "")
 
 
@@ -732,9 +717,7 @@ def _chunk_metadata_coverage(query_results):
 
 def _source_chunk_metadata_coverage(retrieved_sources):
     """Return prompt-safe chunk metadata coverage for retrieved sources."""
-    chunk_sources = [
-        source for source in retrieved_sources if source.get("chunk_id") is not None
-    ]
+    chunk_sources = [source for source in retrieved_sources if source.get("chunk_id") is not None]
     measured_sources = [
         source for source in chunk_sources if source.get("chunk_char_count") is not None
     ]
@@ -791,9 +774,7 @@ def _retrieved_source_metadata_coverage(retrieved_sources):
         for source in sources
         if source.get("metadata_source_type") and source.get("metadata_source_id") is not None
     ]
-    with_any_pair = [
-        source for source in sources if _source_ids(source) and _source_types(source)
-    ]
+    with_any_pair = [source for source in sources if _source_ids(source) and _source_types(source)]
     return {
         "retrieved_source_count": len(sources),
         "with_source_id_count": len(with_source_id),
@@ -1057,30 +1038,18 @@ def _admin_evaluation_payload(result, question_set):
         "forbidden_source_hit_count": _nonnegative_int(result.get("forbidden_source_hit_count")),
         "no_result_count": _nonnegative_int(result.get("no_result_count")),
         "no_result_rate": _clamped_metric(result.get("no_result_rate")),
-        "expected_no_result_count": _nonnegative_int(
-            result.get("expected_no_result_count")
-        ),
+        "expected_no_result_count": _nonnegative_int(result.get("expected_no_result_count")),
         "expected_no_result_success_count": _nonnegative_int(
             result.get("expected_no_result_success_count")
         ),
         "expected_no_result_success_rate": _clamped_metric(
             result.get("expected_no_result_success_rate")
         ),
-        "unexpected_no_result_count": _nonnegative_int(
-            result.get("unexpected_no_result_count")
-        ),
-        "unexpected_no_result_rate": _clamped_metric(
-            result.get("unexpected_no_result_rate")
-        ),
-        "min_source_count_fail_count": _nonnegative_int(
-            result.get("min_source_count_fail_count")
-        ),
-        "min_source_count_pass_rate": _clamped_metric(
-            result.get("min_source_count_pass_rate")
-        ),
-        "query_type_expected_count": _nonnegative_int(
-            result.get("query_type_expected_count")
-        ),
+        "unexpected_no_result_count": _nonnegative_int(result.get("unexpected_no_result_count")),
+        "unexpected_no_result_rate": _clamped_metric(result.get("unexpected_no_result_rate")),
+        "min_source_count_fail_count": _nonnegative_int(result.get("min_source_count_fail_count")),
+        "min_source_count_pass_rate": _clamped_metric(result.get("min_source_count_pass_rate")),
+        "query_type_expected_count": _nonnegative_int(result.get("query_type_expected_count")),
         "query_type_match_count": _nonnegative_int(result.get("query_type_match_count")),
         "query_type_accuracy": _clamped_metric(result.get("query_type_accuracy")),
         "chunk_metadata_coverage": _safe_chunk_metadata_coverage(
@@ -1112,9 +1081,7 @@ def _safe_chunk_metadata_coverage(value):
             payload.get("block_metadata_coverage_rate")
         ),
         "average_block_count": _nonnegative_float(payload.get("average_block_count")),
-        "block_kind_distribution": _safe_string_int_mapping(
-            payload.get("block_kind_distribution")
-        ),
+        "block_kind_distribution": _safe_string_int_mapping(payload.get("block_kind_distribution")),
     }
 
 
@@ -1126,19 +1093,11 @@ def _safe_source_metadata_coverage(value):
         "with_source_id_count": _nonnegative_int(payload.get("with_source_id_count")),
         "with_source_type_count": _nonnegative_int(payload.get("with_source_type_count")),
         "with_source_pair_count": _nonnegative_int(payload.get("with_source_pair_count")),
-        "with_metadata_pair_count": _nonnegative_int(
-            payload.get("with_metadata_pair_count")
-        ),
+        "with_metadata_pair_count": _nonnegative_int(payload.get("with_metadata_pair_count")),
         "source_id_coverage_rate": _clamped_metric(payload.get("source_id_coverage_rate")),
-        "source_type_coverage_rate": _clamped_metric(
-            payload.get("source_type_coverage_rate")
-        ),
-        "source_pair_coverage_rate": _clamped_metric(
-            payload.get("source_pair_coverage_rate")
-        ),
-        "metadata_pair_coverage_rate": _clamped_metric(
-            payload.get("metadata_pair_coverage_rate")
-        ),
+        "source_type_coverage_rate": _clamped_metric(payload.get("source_type_coverage_rate")),
+        "source_pair_coverage_rate": _clamped_metric(payload.get("source_pair_coverage_rate")),
+        "metadata_pair_coverage_rate": _clamped_metric(payload.get("metadata_pair_coverage_rate")),
         "field_coverage": _safe_field_coverage_payload(payload.get("field_coverage")),
     }
 
@@ -1366,48 +1325,28 @@ def _run_metrics(run):
         "forbidden_source_hit_count": _nonnegative_int(payload.get("forbidden_source_hit_count")),
         "no_result_count": _nonnegative_int(payload.get("no_result_count")),
         "no_result_rate": _clamped_metric(payload.get("no_result_rate")),
-        "expected_no_result_count": _nonnegative_int(
-            payload.get("expected_no_result_count")
-        ),
+        "expected_no_result_count": _nonnegative_int(payload.get("expected_no_result_count")),
         "expected_no_result_success_rate": _clamped_metric(
             payload.get("expected_no_result_success_rate")
         ),
-        "unexpected_no_result_count": _nonnegative_int(
-            payload.get("unexpected_no_result_count")
-        ),
-        "unexpected_no_result_rate": _clamped_metric(
-            payload.get("unexpected_no_result_rate")
-        ),
-        "min_source_count_fail_count": _nonnegative_int(
-            payload.get("min_source_count_fail_count")
-        ),
-        "min_source_count_pass_rate": _clamped_metric(
-            payload.get("min_source_count_pass_rate")
-        ),
-        "query_type_expected_count": _nonnegative_int(
-            payload.get("query_type_expected_count")
-        ),
+        "unexpected_no_result_count": _nonnegative_int(payload.get("unexpected_no_result_count")),
+        "unexpected_no_result_rate": _clamped_metric(payload.get("unexpected_no_result_rate")),
+        "min_source_count_fail_count": _nonnegative_int(payload.get("min_source_count_fail_count")),
+        "min_source_count_pass_rate": _clamped_metric(payload.get("min_source_count_pass_rate")),
+        "query_type_expected_count": _nonnegative_int(payload.get("query_type_expected_count")),
         "query_type_accuracy": _clamped_metric(payload.get("query_type_accuracy")),
         "source_metadata_count": _nonnegative_int(payload.get("source_metadata_count")),
         "source_id_coverage_rate": _clamped_metric(payload.get("source_id_coverage_rate")),
-        "source_type_coverage_rate": _clamped_metric(
-            payload.get("source_type_coverage_rate")
-        ),
-        "source_pair_coverage_rate": _clamped_metric(
-            payload.get("source_pair_coverage_rate")
-        ),
-        "metadata_pair_coverage_rate": _clamped_metric(
-            payload.get("metadata_pair_coverage_rate")
-        ),
+        "source_type_coverage_rate": _clamped_metric(payload.get("source_type_coverage_rate")),
+        "source_pair_coverage_rate": _clamped_metric(payload.get("source_pair_coverage_rate")),
+        "metadata_pair_coverage_rate": _clamped_metric(payload.get("metadata_pair_coverage_rate")),
         "retrieved_chunk_count": _nonnegative_int(
             (payload.get("chunk_metadata_coverage") or {}).get("retrieved_chunk_count")
             if isinstance(payload.get("chunk_metadata_coverage"), dict)
             else payload.get("retrieved_chunk_count")
         ),
         "block_metadata_coverage_rate": _clamped_metric(
-            (payload.get("chunk_metadata_coverage") or {}).get(
-                "block_metadata_coverage_rate"
-            )
+            (payload.get("chunk_metadata_coverage") or {}).get("block_metadata_coverage_rate")
             if isinstance(payload.get("chunk_metadata_coverage"), dict)
             else payload.get("block_metadata_coverage_rate")
         ),
@@ -1439,9 +1378,7 @@ def _quality_gate_warning_signals(metrics):
             continue
         value = metrics[metric]
         threshold_missed = (
-            value > threshold
-            if metric == "unexpected_no_result_rate"
-            else value < threshold
+            value > threshold if metric == "unexpected_no_result_rate" else value < threshold
         )
         if threshold_missed:
             warnings.append(

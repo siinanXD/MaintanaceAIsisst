@@ -87,48 +87,69 @@ def test_openapi_json_documents_core_endpoints(client):
     assert "/api/v1/documents/manuals/{manual_id}/analyze" in paths
     assert "/api/v1/documents/manuals/{manual_id}/summarize" in paths
     assert "/api/v1/documents/manuals/{manual_id}" in paths
-    assert paths["/api/v1/admin/ai/observability"]["get"]["responses"]["200"][
-        "content"
-    ]["application/json"]["schema"]["$ref"] == "#/components/schemas/AIObservability"
-    assert "source identifiers" in paths["/api/v1/admin/ai/retrieval-evaluations"][
-        "get"
-    ]["responses"]["200"]["description"]
-    assert paths["/api/v1/admin/ai/retrieval-evaluations/run"]["post"][
-        "requestBody"
-    ]["content"]["application/json"]["example"]["limit"] == 20
-    assert paths["/api/v1/admin/ai/retrieval-evaluations/run"]["post"]["responses"][
-        "201"
-    ]["content"]["application/json"]["schema"]["$ref"] == (
-        "#/components/schemas/RetrievalEvaluationRunResult"
+    assert (
+        paths["/api/v1/admin/ai/observability"]["get"]["responses"]["200"]["content"][
+            "application/json"
+        ]["schema"]["$ref"]
+        == "#/components/schemas/AIObservability"
     )
-    assert paths["/api/v1/admin/ai/retrieval-telemetry"]["get"]["responses"]["200"][
+    assert (
+        "source identifiers"
+        in paths["/api/v1/admin/ai/retrieval-evaluations"]["get"]["responses"]["200"]["description"]
+    )
+    assert (
+        paths["/api/v1/admin/ai/retrieval-evaluations/run"]["post"]["requestBody"]["content"][
+            "application/json"
+        ]["example"]["limit"]
+        == 20
+    )
+    assert paths["/api/v1/admin/ai/retrieval-evaluations/run"]["post"]["responses"]["201"][
         "content"
-    ]["application/json"]["schema"]["$ref"] == "#/components/schemas/RetrievalTelemetry"
-    assert paths["/api/v1/ai/error-assistant"]["post"]["responses"]["200"]["content"][
-        "application/json"
-    ]["schema"]["$ref"] == "#/components/schemas/ErrorAssistantResult"
-    assert paths["/api/v1/ai/status"]["get"]["responses"]["200"]["content"][
-        "application/json"
-    ]["schema"]["$ref"] == "#/components/schemas/AIStatus"
-    assert paths["/api/v1/ai/chat"]["post"]["responses"]["200"]["content"][
-        "application/json"
-    ]["schema"]["$ref"] == "#/components/schemas/AIChatResponse"
-    assert paths["/health/ready"]["get"]["responses"]["200"]["content"][
-        "application/json"
-    ]["schema"]["$ref"] == "#/components/schemas/HealthReadiness"
-    assert paths["/api/v1/tasks/prioritize"]["post"]["responses"]["200"]["content"][
-        "application/json"
-    ]["schema"]["items"]["$ref"] == "#/components/schemas/TaskPrioritySuggestion"
-    assert paths["/api/v1/machines/maintenance-recommendations"]["get"]["responses"][
-        "200"
-    ]["content"]["application/json"]["schema"]["$ref"] == (
+    ]["application/json"]["schema"]["$ref"] == ("#/components/schemas/RetrievalEvaluationRunResult")
+    assert (
+        paths["/api/v1/admin/ai/retrieval-telemetry"]["get"]["responses"]["200"]["content"][
+            "application/json"
+        ]["schema"]["$ref"]
+        == "#/components/schemas/RetrievalTelemetry"
+    )
+    assert (
+        paths["/api/v1/ai/error-assistant"]["post"]["responses"]["200"]["content"][
+            "application/json"
+        ]["schema"]["$ref"]
+        == "#/components/schemas/ErrorAssistantResult"
+    )
+    assert (
+        paths["/api/v1/ai/status"]["get"]["responses"]["200"]["content"]["application/json"][
+            "schema"
+        ]["$ref"]
+        == "#/components/schemas/AIStatus"
+    )
+    assert (
+        paths["/api/v1/ai/chat"]["post"]["responses"]["200"]["content"]["application/json"][
+            "schema"
+        ]["$ref"]
+        == "#/components/schemas/AIChatResponse"
+    )
+    assert (
+        paths["/health/ready"]["get"]["responses"]["200"]["content"]["application/json"]["schema"][
+            "$ref"
+        ]
+        == "#/components/schemas/HealthReadiness"
+    )
+    assert (
+        paths["/api/v1/tasks/prioritize"]["post"]["responses"]["200"]["content"][
+            "application/json"
+        ]["schema"]["items"]["$ref"]
+        == "#/components/schemas/TaskPrioritySuggestion"
+    )
+    assert paths["/api/v1/machines/maintenance-recommendations"]["get"]["responses"]["200"][
+        "content"
+    ]["application/json"]["schema"]["$ref"] == (
         "#/components/schemas/MaintenanceRecommendationLightResponse"
     )
-    assert paths["/api/v1/handover/{handover_id}/summary"]["get"]["responses"][
-        "200"
-    ]["content"]["application/json"]["schema"]["$ref"] == (
-        "#/components/schemas/ShiftHandoverSummary"
-    )
+    assert paths["/api/v1/handover/{handover_id}/summary"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]["$ref"] == ("#/components/schemas/ShiftHandoverSummary")
 
 
 def test_openapi_examples_are_present(client):
@@ -172,51 +193,45 @@ def test_openapi_examples_are_present(client):
     )
     provider_catalog = ai_status_schema["properties"]["provider_catalog"]["example"]
     assert any(
-        item["provider"] == "gemini" and item["status"] == "planned"
-        for item in provider_catalog
+        item["provider"] == "gemini" and item["status"] == "planned" for item in provider_catalog
     )
-    embedding_provider_catalog = ai_status_schema["properties"][
-        "embedding_provider_catalog"
-    ]["example"]
+    embedding_provider_catalog = ai_status_schema["properties"]["embedding_provider_catalog"][
+        "example"
+    ]
     assert any(
         item["provider"] == "hashing" and item["status"] == "supported"
         for item in embedding_provider_catalog
     )
     readiness_schema = ai_status_schema["properties"]["readiness"]
-    assert readiness_schema["properties"]["actions"]["items"]["properties"][
-        "configuration_action"
-    ]["example"] == "select_supported_provider"
+    assert (
+        readiness_schema["properties"]["actions"]["items"]["properties"]["configuration_action"][
+            "example"
+        ]
+        == "select_supported_provider"
+    )
     assert readiness_schema["properties"]["next_action"]["nullable"] is True
-    assert "AI_PROVIDER" in readiness_schema["properties"]["next_action"][
-        "properties"
-    ]["recommended_action"]["example"]
     assert (
-        provider_status_schema["properties"]["effective_provider"]["example"] == "mock"
+        "AI_PROVIDER"
+        in readiness_schema["properties"]["next_action"]["properties"]["recommended_action"][
+            "example"
+        ]
     )
+    assert provider_status_schema["properties"]["effective_provider"]["example"] == "mock"
     assert (
-        provider_status_schema["properties"]["configuration_action"]["example"]
-        == "set_ai_base_url"
+        provider_status_schema["properties"]["configuration_action"]["example"] == "set_ai_base_url"
     )
-    assert "AI_BASE_URL" in provider_status_schema["properties"][
-        "recommended_action"
-    ]["example"]
-    assert (
-        provider_status_schema["properties"]["api_key_configured"]["example"] is False
-    )
+    assert "AI_BASE_URL" in provider_status_schema["properties"]["recommended_action"]["example"]
+    assert provider_status_schema["properties"]["api_key_configured"]["example"] is False
     assert provider_status_schema["properties"]["model_configured"]["example"] is True
     assert provider_status_schema["properties"]["dimensions"]["example"] == 384
     health_schema = spec["components"]["schemas"]["HealthReadiness"]
     health_ai_schema = health_schema["properties"]["components"]["properties"]["ai"]
-    assert (
-        health_ai_schema["properties"]["effective_provider"]["example"] == "mock"
-    )
+    assert health_ai_schema["properties"]["effective_provider"]["example"] == "mock"
     assert (
         health_ai_schema["properties"]["configuration_action"]["example"]
         == "select_supported_provider"
     )
-    assert "AI_PROVIDER" in health_ai_schema["properties"]["recommended_action"][
-        "example"
-    ]
+    assert "AI_PROVIDER" in health_ai_schema["properties"]["recommended_action"]["example"]
     assert health_ai_schema["properties"]["embedding_provider"]["$ref"] == (
         "#/components/schemas/AIProviderStatus"
     )
@@ -231,9 +246,9 @@ def test_openapi_examples_are_present(client):
     evidence_schema = rca_schema["properties"]["evidence"]
     assert evidence_schema["properties"]["uses_only_visible_sources"]["example"] is True
     assert (
-        evidence_schema["properties"]["similar_case_sources"]["items"]["properties"][
-            "error_code"
-        ]["example"]
+        evidence_schema["properties"]["similar_case_sources"]["items"]["properties"]["error_code"][
+            "example"
+        ]
         == "P42-HYD"
     )
     assert (
@@ -245,16 +260,11 @@ def test_openapi_examples_are_present(client):
     rag_source_schema = evidence_schema["properties"]["rag_sources"]["items"]
     assert rag_source_schema["properties"]["chunk_id"]["example"] == 42
     assert rag_source_schema["properties"]["machine_id"]["example"] == 7
-    assert (
-        rag_source_schema["properties"]["created_at"]["format"]
-        == "date-time"
-    )
+    assert rag_source_schema["properties"]["created_at"]["format"] == "date-time"
     task_priority_schema = spec["components"]["schemas"]["TaskPrioritySuggestion"]
     task_confidence_schema = task_priority_schema["properties"]["confidence"]
     task_evidence_schema = task_priority_schema["properties"]["evidence_counts"]
-    task_reference_schema = task_priority_schema["properties"]["evidence_references"][
-        "items"
-    ]
+    task_reference_schema = task_priority_schema["properties"]["evidence_references"]["items"]
     task_steps_schema = task_priority_schema["properties"]["next_steps"]["items"]
     assert task_confidence_schema["properties"]["score"]["example"] == 78
     assert task_confidence_schema["properties"]["uncertainty"]["example"] == "low"
@@ -270,10 +280,7 @@ def test_openapi_examples_are_present(client):
     maintenance_schema = spec["components"]["schemas"]["MaintenanceRecommendationLight"]
     maintenance_evidence = maintenance_schema["properties"]["evidence_summary"]
     maintenance_steps = maintenance_schema["properties"]["next_steps"]["items"]
-    assert (
-        maintenance_schema["properties"]["confidence_uncertainty"]["example"]
-        == "medium"
-    )
+    assert maintenance_schema["properties"]["confidence_uncertainty"]["example"] == "medium"
     assert maintenance_steps["properties"]["type"]["example"] == "error_history_review"
     assert maintenance_steps["properties"]["urgency"]["example"] == "high"
     assert maintenance_evidence["properties"]["uses_only_visible_sources"]["example"] is True
@@ -281,14 +288,10 @@ def test_openapi_examples_are_present(client):
     assert maintenance_evidence["properties"]["recurring_issue_window_days"]["example"] == 30
     assert "rag_source" in maintenance_evidence["properties"]["source_types"]["example"]
     maintenance_rag_source = maintenance_evidence["properties"]["rag_sources"]["items"]
-    assert maintenance_rag_source["properties"]["source_type"]["example"] == (
-        "maintenance_plan"
-    )
+    assert maintenance_rag_source["properties"]["source_type"]["example"] == ("maintenance_plan")
     assert maintenance_rag_source["properties"]["chunk_id"]["example"] == 42
     assert maintenance_rag_source["properties"]["created_at"]["format"] == "date-time"
-    maintenance_response = spec["components"]["schemas"][
-        "MaintenanceRecommendationLightResponse"
-    ]
+    maintenance_response = spec["components"]["schemas"]["MaintenanceRecommendationLightResponse"]
     assert (
         maintenance_response["properties"]["recommendation_type"]["example"]
         == "maintenance_recommendation_light"
@@ -300,29 +303,19 @@ def test_openapi_examples_are_present(client):
     assert handover_confidence["properties"]["uncertainty"]["example"] == "low"
     assert handover_action_schema["properties"]["source_id"]["example"] == 18
     assert handover_action_schema["properties"]["priority"]["example"] == "high"
-    assert handover_evidence["properties"]["workflow"]["example"] == (
-        "shift_handover_summary"
-    )
+    assert handover_evidence["properties"]["workflow"]["example"] == ("shift_handover_summary")
     assert handover_evidence["properties"]["provider"]["example"] == "local_rules"
     assert handover_evidence["properties"]["uses_only_visible_sources"]["example"] is True
     assert handover_evidence["properties"]["llm_call"]["example"] is False
     assert "task" in handover_evidence["properties"]["source_types"]["example"]
-    handover_source_reference = handover_evidence["properties"]["source_references"][
-        "items"
-    ]
+    handover_source_reference = handover_evidence["properties"]["source_references"]["items"]
     assert handover_source_reference["properties"]["type"]["example"] == "task"
-    assert (
-        handover_source_reference["properties"]["machine"]["example"]
-        == "Handover Presse"
-    )
+    assert handover_source_reference["properties"]["machine"]["example"] == "Handover Presse"
     assert (
         handover_source_reference["properties"]["role_visibility"]["example"]
         == "department:Produktion"
     )
-    assert (
-        handover_source_reference["properties"]["created_at"]["format"]
-        == "date-time"
-    )
+    assert handover_source_reference["properties"]["created_at"]["format"] == "date-time"
     run_schema = spec["components"]["schemas"]["RetrievalEvaluationRunResult"]
     assert run_schema["properties"]["keyword_miss_count"]["example"] == 2
     assert run_schema["properties"]["expected_no_result_success_rate"]["example"] == 1.0
@@ -330,18 +323,15 @@ def test_openapi_examples_are_present(client):
     assert run_schema["properties"]["min_source_count_fail_count"]["example"] == 1
     assert run_schema["properties"]["min_source_count_pass_rate"]["example"] == 0.92
     assert run_schema["properties"]["quality_gate"]["example"]["status"] == "warning"
-    assert (
-        run_schema["properties"]["privacy"]["example"]["stores_expected_keywords"]
-        is False
-    )
+    assert run_schema["properties"]["privacy"]["example"]["stores_expected_keywords"] is False
     telemetry_schema = spec["components"]["schemas"]["RetrievalTelemetry"]
     unused_chunks_schema = telemetry_schema["properties"]["unused_chunks"]
     chunk_metrics_schema = unused_chunks_schema["properties"]["chunk_size_metrics"]
     assert chunk_metrics_schema["properties"]["average_block_count"]["example"] == 2
     assert (
-        chunk_metrics_schema["properties"]["block_kind_distribution"]["items"][
-            "properties"
-        ]["key"]["example"]
+        chunk_metrics_schema["properties"]["block_kind_distribution"]["items"]["properties"]["key"][
+            "example"
+        ]
         == "list"
     )
     unused_sample_schema = unused_chunks_schema["properties"]["sample"]["items"]
@@ -353,13 +343,9 @@ def test_openapi_examples_are_present(client):
     observability_schema = spec["components"]["schemas"]["AIObservability"]
     answer_quality_schema = spec["components"]["schemas"]["AnswerQuality"]
     assert answer_quality_schema["properties"]["evidence_visible"]["example"] is True
+    assert answer_quality_schema["properties"]["status_reason"]["example"] == "sources_available"
     assert (
-        answer_quality_schema["properties"]["status_reason"]["example"]
-        == "sources_available"
-    )
-    assert (
-        answer_quality_schema["properties"]["primary_warning_type"]["example"]
-        == "source_conflict"
+        answer_quality_schema["properties"]["primary_warning_type"]["example"] == "source_conflict"
     )
     chat_schema = spec["components"]["schemas"]["AIChatResponse"]
     assert chat_schema["properties"]["answer_quality"]["$ref"] == (
@@ -376,25 +362,24 @@ def test_openapi_examples_are_present(client):
     assert provider_readiness_schema["properties"]["provider_status"]["$ref"] == (
         "#/components/schemas/AIProviderStatus"
     )
-    assert provider_readiness_schema["properties"]["readiness"]["properties"][
-        "next_action"
-    ]["nullable"] is True
+    assert (
+        provider_readiness_schema["properties"]["readiness"]["properties"]["next_action"][
+            "nullable"
+        ]
+        is True
+    )
     observability_metrics = observability_schema["properties"]["metrics"]["properties"]
     assert "retrieval_hit_rate" in observability_metrics
     assert observability_metrics["provider_ready"]["example"] is False
     assert observability_metrics["provider_readiness_status"]["example"] == "degraded"
     assert observability_metrics["provider_degraded_component_count"]["example"] == 1
     assert (
-        observability_metrics["provider_next_action_type"]["example"]
-        == "select_supported_provider"
+        observability_metrics["provider_next_action_type"]["example"] == "select_supported_provider"
     )
     assert observability_metrics["source_conflict_count"]["example"] == 1
     assert observability_metrics["source_conflict_rate"]["example"] == 0.04
     assert (
-        observability_metrics["answer_quality_distribution"]["example"][
-            "conflicting_sources"
-        ]
-        == 1
+        observability_metrics["answer_quality_distribution"]["example"]["conflicting_sources"] == 1
     )
     assert "answer_quality_distribution_rows" in observability_metrics
     assert (
@@ -404,24 +389,19 @@ def test_openapi_examples_are_present(client):
         == 2
     )
     assert "answer_quality_reason_distribution_rows" in observability_metrics
-    answer_quality_action_schema = observability_metrics["answer_quality_actions"][
-        "items"
-    ]
+    answer_quality_action_schema = observability_metrics["answer_quality_actions"]["items"]
     assert answer_quality_action_schema["properties"]["type"]["example"] == (
         "review_no_answer_guarded_questions"
     )
     assert observability_metrics["answer_quality_action_count"]["example"] == 2
     assert (
-        observability_metrics["answer_quality_action_summary"]["properties"][
-            "next_action_type"
-        ]["example"]
+        observability_metrics["answer_quality_action_summary"]["properties"]["next_action_type"][
+            "example"
+        ]
         == "review_no_answer_guarded_questions"
     )
     assert (
-        observability_metrics["primary_warning_distribution"]["example"][
-            "hallucination_risk"
-        ]
-        == 2
+        observability_metrics["primary_warning_distribution"]["example"]["hallucination_risk"] == 2
     )
     assert "primary_warning_distribution_rows" in observability_metrics
     assert observability_metrics["uncertainty_distribution"]["example"]["high"] == 2
@@ -443,47 +423,31 @@ def test_openapi_examples_are_present(client):
         "metadata_pair",
     ]
     assert observability_metrics["source_metadata_min_coverage_rate"]["example"] == 0.5
-    retrieval_monitoring_schema = observability_schema["properties"][
-        "retrieval_monitoring"
-    ]
-    source_freshness_schema = retrieval_monitoring_schema["properties"][
-        "source_freshness"
-    ]
+    retrieval_monitoring_schema = observability_schema["properties"]["retrieval_monitoring"]
+    source_freshness_schema = retrieval_monitoring_schema["properties"]["source_freshness"]
     top_hit_schema = retrieval_monitoring_schema["properties"]["top_hits"]["items"]
-    assert top_hit_schema["properties"]["title"]["example"] == (
-        "Presse 42 Hydraulikhandbuch"
-    )
+    assert top_hit_schema["properties"]["title"]["example"] == ("Presse 42 Hydraulikhandbuch")
     assert "source_created_at" in top_hit_schema["properties"]
     assert top_hit_schema["properties"]["source_age_days"]["example"] == 365
-    stale_source_schema = retrieval_monitoring_schema["properties"]["stale_sources"][
-        "items"
-    ]
+    stale_source_schema = retrieval_monitoring_schema["properties"]["stale_sources"]["items"]
     assert stale_source_schema["properties"]["stale_threshold_days"]["example"] == 180
-    assert stale_source_schema["properties"]["title"]["example"] == (
-        "Presse 42 Hydraulikhandbuch"
-    )
+    assert stale_source_schema["properties"]["title"]["example"] == ("Presse 42 Hydraulikhandbuch")
     retrieval_quality_action_schema = retrieval_monitoring_schema["properties"][
         "retrieval_quality_actions"
     ]["items"]
     assert retrieval_quality_action_schema["properties"]["type"]["example"] == (
         "review_low_quality_retrieval_hits"
     )
-    assert retrieval_quality_action_schema["properties"]["target"]["example"] == (
-        "poor_hits"
-    )
-    undated_source_schema = retrieval_monitoring_schema["properties"][
-        "undated_sources"
-    ]["items"]
+    assert retrieval_quality_action_schema["properties"]["target"]["example"] == ("poor_hits")
+    undated_source_schema = retrieval_monitoring_schema["properties"]["undated_sources"]["items"]
     assert undated_source_schema["properties"]["title"]["example"] == (
         "Presse 42 Wartungsnotiz ohne Datum"
     )
     assert undated_source_schema["properties"]["source_age_days"]["nullable"] is True
-    metadata_action_schema = retrieval_monitoring_schema["properties"][
-        "metadata_quality_actions"
-    ]["items"]
-    assert metadata_action_schema["properties"]["type"]["example"] == (
-        "complete_source_dates"
-    )
+    metadata_action_schema = retrieval_monitoring_schema["properties"]["metadata_quality_actions"][
+        "items"
+    ]
+    assert metadata_action_schema["properties"]["type"]["example"] == ("complete_source_dates")
     assert metadata_action_schema["properties"]["target_type"]["example"] == (
         "retrieval_source_metadata"
     )
@@ -495,40 +459,19 @@ def test_openapi_examples_are_present(client):
     assert source_freshness_schema["properties"]["stale_threshold_days"]["example"] == 180
     assert source_freshness_schema["properties"]["stale_source_rate"]["example"] == 0.1667
     quality_metrics_schema = observability_schema["properties"]["quality_metrics"]
+    assert quality_metrics_schema["properties"]["min_source_count_fail_count"]["example"] == 1
+    assert quality_metrics_schema["properties"]["min_source_count_pass_rate"]["example"] == 0.92
+    assert quality_metrics_schema["properties"]["expected_no_result_success_rate"]["example"] == 1.0
+    assert quality_metrics_schema["properties"]["unexpected_no_result_rate"]["example"] == 0.0
+    assert quality_metrics_schema["properties"]["query_type_accuracy"]["example"] == 0.8333
     assert (
-        quality_metrics_schema["properties"]["min_source_count_fail_count"]["example"]
-        == 1
-    )
-    assert (
-        quality_metrics_schema["properties"]["min_source_count_pass_rate"]["example"]
-        == 0.92
-    )
-    assert (
-        quality_metrics_schema["properties"]["expected_no_result_success_rate"][
-            "example"
+        quality_metrics_schema["properties"]["evaluation_quality_gate"]["example"]["warnings"][0][
+            "metric"
         ]
-        == 1.0
-    )
-    assert (
-        quality_metrics_schema["properties"]["unexpected_no_result_rate"]["example"]
-        == 0.0
-    )
-    assert (
-        quality_metrics_schema["properties"]["query_type_accuracy"]["example"]
-        == 0.8333
-    )
-    assert (
-        quality_metrics_schema["properties"]["evaluation_quality_gate"]["example"][
-            "warnings"
-        ][0]["metric"]
         == "recall_at_k"
     )
-    evaluation_action_schema = quality_metrics_schema["properties"][
-        "evaluation_actions"
-    ]["items"]
-    assert evaluation_action_schema["properties"]["type"]["example"] == (
-        "fix_permission_leaks"
-    )
+    evaluation_action_schema = quality_metrics_schema["properties"]["evaluation_actions"]["items"]
+    assert evaluation_action_schema["properties"]["type"]["example"] == ("fix_permission_leaks")
     assert evaluation_action_schema["properties"]["priority"]["example"] == "critical"
     assert evaluation_action_schema["properties"]["warning_metrics"]["example"] == [
         "block_metadata_coverage_rate"
@@ -547,10 +490,7 @@ def test_openapi_examples_are_present(client):
         "evaluation_action_summary"
     ]
     assert evaluation_action_summary_schema["properties"]["total"]["example"] == 4
-    assert (
-        evaluation_action_summary_schema["properties"]["critical_priority_count"]["example"]
-        == 1
-    )
+    assert evaluation_action_summary_schema["properties"]["critical_priority_count"]["example"] == 1
     assert (
         evaluation_action_summary_schema["properties"]["next_action_type"]["example"]
         == "fix_permission_leaks"
@@ -561,9 +501,7 @@ def test_openapi_examples_are_present(client):
         "permission_leak_count"
         in quality_metrics_schema["properties"]["evaluation_blocking_metrics"]["example"]
     )
-    blocking_row_schema = quality_metrics_schema["properties"][
-        "evaluation_blocking_rows"
-    ]["items"]
+    blocking_row_schema = quality_metrics_schema["properties"]["evaluation_blocking_rows"]["items"]
     assert (
         blocking_row_schema["properties"]["reason"]["example"]
         == "retrieved_forbidden_or_invisible_source"
@@ -572,70 +510,49 @@ def test_openapi_examples_are_present(client):
         "keyword_hit_rate"
         in quality_metrics_schema["properties"]["evaluation_warning_metrics"]["example"]
     )
-    warning_row_schema = quality_metrics_schema["properties"]["evaluation_warning_rows"][
-        "items"
-    ]
-    assert (
-        warning_row_schema["properties"]["reason"]["example"]
-        == "expected_keywords_missing"
-    )
-    recommended_action_schema = observability_schema["properties"][
-        "recommended_actions"
-    ]["items"]
-    assert recommended_action_schema["properties"]["action_source"]["example"] == (
-        "evaluation"
-    )
+    warning_row_schema = quality_metrics_schema["properties"]["evaluation_warning_rows"]["items"]
+    assert warning_row_schema["properties"]["reason"]["example"] == "expected_keywords_missing"
+    recommended_action_schema = observability_schema["properties"]["recommended_actions"]["items"]
+    assert recommended_action_schema["properties"]["action_source"]["example"] == ("evaluation")
     assert recommended_action_schema["properties"]["action_source"]["type"] == "string"
-    assert recommended_action_schema["properties"]["type"]["example"] == (
-        "fix_permission_leaks"
-    )
+    assert recommended_action_schema["properties"]["type"]["example"] == ("fix_permission_leaks")
     assert recommended_action_schema["properties"]["rank"]["example"] == 1
     assert recommended_action_schema["properties"]["rank_label"]["example"] == "P1"
     next_best_action_schema = observability_schema["properties"]["next_best_action"]
     assert next_best_action_schema["nullable"] is True
-    assert next_best_action_schema["properties"]["type"]["example"] == (
-        "fix_permission_leaks"
-    )
+    assert next_best_action_schema["properties"]["type"]["example"] == ("fix_permission_leaks")
     recommended_action_summary_schema = observability_schema["properties"][
         "recommended_action_summary"
     ]
     assert recommended_action_summary_schema["properties"]["total"]["example"] == 5
     assert (
-        recommended_action_summary_schema["properties"]["critical_priority_count"][
-            "example"
-        ]
-        == 1
+        recommended_action_summary_schema["properties"]["critical_priority_count"]["example"] == 1
     )
     assert (
         recommended_action_summary_schema["properties"]["next_action_source"]["example"]
         == "evaluation"
     )
     assert (
-        recommended_action_summary_schema["properties"]["answer_quality_action_count"][
-            "example"
-        ]
+        recommended_action_summary_schema["properties"]["answer_quality_action_count"]["example"]
         == 2
     )
     assert (
-        recommended_action_summary_schema["properties"][
-            "answer_quality_next_action_type"
-        ]["example"]
+        recommended_action_summary_schema["properties"]["answer_quality_next_action_type"][
+            "example"
+        ]
         == "review_no_answer_guarded_questions"
     )
-    assert (
-        recommended_action_summary_schema["properties"]["source_distribution"]["type"]
-        == "array"
-    )
+    assert recommended_action_summary_schema["properties"]["source_distribution"]["type"] == "array"
     ai_log_schema = observability_schema["properties"]["ai_logs"]["items"]
     assert ai_log_schema["properties"]["knowledge_gap_id"]["example"] == 321
     assert ai_log_schema["properties"]["knowledge_gap_created"]["example"] is True
     assert (
-        ai_log_schema["properties"]["confidence"]["properties"]["uncertainty"]["example"]
-        == "high"
+        ai_log_schema["properties"]["confidence"]["properties"]["uncertainty"]["example"] == "high"
     )
-    assert ai_log_schema["properties"]["sources"]["items"]["properties"]["title"][
-        "example"
-    ] == "Presse 42 Hydraulikhandbuch"
+    assert (
+        ai_log_schema["properties"]["sources"]["items"]["properties"]["title"]["example"]
+        == "Presse 42 Hydraulikhandbuch"
+    )
     knowledge_gap_schema = observability_schema["properties"]["metrics"]["properties"][
         "knowledge_gaps"
     ]
@@ -646,16 +563,14 @@ def test_openapi_examples_are_present(client):
     assert "uncovered_machine_gaps" in knowledge_gap_schema["properties"]
     assert "uncertain_question_gaps" in knowledge_gap_schema["properties"]
     assert (
-        knowledge_gap_schema["properties"]["uncertain_question_gaps"]["items"][
-            "properties"
-        ]["answer_uncertainty"]["example"]
+        knowledge_gap_schema["properties"]["uncertain_question_gaps"]["items"]["properties"][
+            "answer_uncertainty"
+        ]["example"]
         == "high"
     )
     assert "uncertain_question_actions" in knowledge_gap_schema["properties"]
     assert (
-        knowledge_gap_schema["properties"]["uncertain_question_actions"]["example"][0][
-            "type"
-        ]
+        knowledge_gap_schema["properties"]["uncertain_question_actions"]["example"][0]["type"]
         == "review_uncertain_answer_gap"
     )
     error_gap_item = knowledge_gap_schema["properties"]["error_gaps"]["items"]
@@ -663,9 +578,7 @@ def test_openapi_examples_are_present(client):
     assert error_gap_item["properties"]["coverage"]["example"] == "missing"
     uncovered_error_item = knowledge_gap_schema["properties"]["uncovered_error_gaps"]["items"]
     assert uncovered_error_item["properties"]["priority"]["example"] == "high"
-    uncovered_machine_item = knowledge_gap_schema["properties"]["uncovered_machine_gaps"][
-        "items"
-    ]
+    uncovered_machine_item = knowledge_gap_schema["properties"]["uncovered_machine_gaps"]["items"]
     assert uncovered_machine_item["properties"]["criticality"]["example"] == "critical"
     assert spec["components"]["schemas"]["KnowledgeDocument"]["properties"]["status"]["example"]
     assert spec["components"]["schemas"]["KnowledgeDocument"]["properties"]["quality_status"][
@@ -675,10 +588,7 @@ def test_openapi_examples_are_present(client):
     retrieval_eval_schema = spec["components"]["schemas"]["RetrievalEvaluationRunResult"]
     assert retrieval_eval_schema["properties"]["query_type_accuracy"]["example"] == 0.8333
     chunk_coverage_schema = retrieval_eval_schema["properties"]["chunk_metadata_coverage"]
-    assert (
-        chunk_coverage_schema["properties"]["block_metadata_coverage_rate"]["example"]
-        == 1.0
-    )
+    assert chunk_coverage_schema["properties"]["block_metadata_coverage_rate"]["example"] == 1.0
     assert chunk_coverage_schema["properties"]["block_kind_distribution"]["example"] == {
         "paragraph": 6,
         "list": 2,

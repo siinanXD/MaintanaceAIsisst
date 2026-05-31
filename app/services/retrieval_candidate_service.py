@@ -229,11 +229,7 @@ def _chunk_block_kinds(value):
         raw_values = value
     else:
         raw_values = str(value or "").split(",")
-    return [
-        str(kind).strip()[:40]
-        for kind in raw_values
-        if str(kind or "").strip()
-    ]
+    return [str(kind).strip()[:40] for kind in raw_values if str(kind or "").strip()]
 
 
 def _positive_int(value, default):

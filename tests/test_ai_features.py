@@ -628,10 +628,7 @@ def test_ai_chat_marks_and_persists_low_confidence_answers(
     assert payload["confidence"]["level"] == "low"
     assert payload["diagnostics"]["confidence_level"] == "low"
     assert payload["answer_quality"]["status"] == "no_answer"
-    assert (
-        payload["answer_quality"]["status_reason"]
-        == "empty_retrieval_hallucination_guard"
-    )
+    assert payload["answer_quality"]["status_reason"] == "empty_retrieval_hallucination_guard"
     assert payload["answer_quality"]["uncertainty"] == "high"
     assert payload["answer_quality"]["no_answer"] is True
     assert payload["answer"].startswith("## Niedrige Confidence")
@@ -680,10 +677,7 @@ def test_ai_chat_blocks_hallucination_when_retrieval_is_empty(
     assert payload["diagnostics"]["hallucination_warning"] is True
     assert {"empty_retrieval", "hallucination_risk"}.issubset(warnings)
     assert payload["answer_quality"]["status"] == "no_answer"
-    assert (
-        payload["answer_quality"]["status_reason"]
-        == "empty_retrieval_hallucination_guard"
-    )
+    assert payload["answer_quality"]["status_reason"] == "empty_retrieval_hallucination_guard"
     assert payload["answer_quality"]["warning_count"] >= 2
     assert "hallucination_risk" in payload["answer_quality"]["warning_types"]
     assert payload["answer_quality"]["primary_warning_type"] == "hallucination_risk"
@@ -803,9 +797,7 @@ def test_answer_quality_marks_conflicting_sources_as_uncertain(app):
 
     with app.app_context():
         finalized = finalize_chat_result_quality(result, "Wie behebe ich Fehler C900?")
-    warning_types = {
-        warning["type"] for warning in finalized["diagnostics"]["quality_warnings"]
-    }
+    warning_types = {warning["type"] for warning in finalized["diagnostics"]["quality_warnings"]}
 
     assert "source_conflict" in warning_types
     assert finalized["answer_quality"]["status"] == "conflicting_sources"
@@ -813,9 +805,7 @@ def test_answer_quality_marks_conflicting_sources_as_uncertain(app):
     assert finalized["answer_quality"]["uncertainty"] == "medium"
     assert finalized["answer_quality"]["has_sources"] is True
     assert finalized["answer_quality"]["no_answer"] is False
-    assert "Widerspruechliche Quellen" in finalized["answer_quality"][
-        "recommended_user_action"
-    ]
+    assert "Widerspruechliche Quellen" in finalized["answer_quality"]["recommended_user_action"]
 
 
 def test_answer_quality_prioritizes_conflicts_over_low_confidence(app):
@@ -838,9 +828,7 @@ def test_answer_quality_prioritizes_conflicts_over_low_confidence(app):
     }
 
     finalized = finalize_chat_result_quality(result, "Wie behebe ich Fehler C901?")
-    warning_types = {
-        warning["type"] for warning in finalized["diagnostics"]["quality_warnings"]
-    }
+    warning_types = {warning["type"] for warning in finalized["diagnostics"]["quality_warnings"]}
 
     assert {"low_confidence", "source_conflict"} <= warning_types
     assert finalized["answer_quality"]["status"] == "conflicting_sources"
@@ -1054,9 +1042,7 @@ def test_ai_chat_retrieves_admin_user_roles_for_admins_only(
     admin_payload = admin_response.get_json()
     user_payload = user_response.get_json()
     admin_sources = admin_payload["sources"]
-    admin_user_source = next(
-        source for source in admin_sources if source["type"] == "admin_user"
-    )
+    admin_user_source = next(source for source in admin_sources if source["type"] == "admin_user")
     serialized_payload = json.dumps(admin_payload, ensure_ascii=True)
     assert admin_response.status_code == 200
     assert admin_payload["type"] == "assistant"
@@ -2037,9 +2023,7 @@ def test_retrieval_quality_analytics_aggregates_prompt_safe_signals(app, make_us
     assert telemetry["unused_chunks"]["chunk_size_metrics"]["max_block_count"] == 2
     block_kind_distribution = {
         item["key"]: item["count"]
-        for item in telemetry["unused_chunks"]["chunk_size_metrics"][
-            "block_kind_distribution"
-        ]
+        for item in telemetry["unused_chunks"]["chunk_size_metrics"]["block_kind_distribution"]
     }
     assert block_kind_distribution["list"] == 1
     assert block_kind_distribution["paragraph"] == 1
@@ -2263,8 +2247,7 @@ def test_ai_observability_exposes_retrieval_slo_metadata_gap_warning(app, make_u
     assert retrieval_slo["status"] == "critical"
     assert retrieval_slo["source_metadata_missing_rate"] == 0.5
     missing_fields = {
-        item["field"]: item["count"]
-        for item in retrieval_slo["source_metadata_missing_fields"]
+        item["field"]: item["count"] for item in retrieval_slo["source_metadata_missing_fields"]
     }
     assert missing_fields == {
         "module": 1,
@@ -2584,8 +2567,7 @@ def test_ai_observability_dashboard_combines_logs_quality_and_retrieval(
         "no_answer": 1,
     }
     answer_quality_rows = {
-        row["status"]: row
-        for row in dashboard["metrics"]["answer_quality_distribution_rows"]
+        row["status"]: row for row in dashboard["metrics"]["answer_quality_distribution_rows"]
     }
     assert answer_quality_rows["grounded"]["rate"] == 0.3333
     assert answer_quality_rows["conflicting_sources"]["count"] == 1
@@ -2604,24 +2586,16 @@ def test_ai_observability_dashboard_combines_logs_quality_and_retrieval(
         action["type"]: action for action in dashboard["metrics"]["answer_quality_actions"]
     }
     assert dashboard["metrics"]["answer_quality_action_count"] == 2
-    assert (
-        answer_quality_actions["review_no_answer_guarded_questions"]["priority"]
-        == "high"
-    )
+    assert answer_quality_actions["review_no_answer_guarded_questions"]["priority"] == "high"
     assert answer_quality_actions["review_no_answer_guarded_questions"]["count"] == 1
     assert (
         answer_quality_actions["review_conflicting_answer_sources"]["target"]
         == "source_conflict_detected"
     )
-    answer_quality_action_summary = dashboard["metrics"][
-        "answer_quality_action_summary"
-    ]
+    answer_quality_action_summary = dashboard["metrics"]["answer_quality_action_summary"]
     assert answer_quality_action_summary["total"] == 2
     assert answer_quality_action_summary["high_priority_count"] == 1
-    assert (
-        answer_quality_action_summary["next_action_type"]
-        == "review_no_answer_guarded_questions"
-    )
+    assert answer_quality_action_summary["next_action_type"] == "review_no_answer_guarded_questions"
     assert dashboard["metrics"]["primary_warning_distribution"] == {
         "none": 1,
         "source_conflict": 1,
@@ -2639,8 +2613,7 @@ def test_ai_observability_dashboard_combines_logs_quality_and_retrieval(
         "high": 1,
     }
     uncertainty_rows = {
-        row["uncertainty"]: row
-        for row in dashboard["metrics"]["uncertainty_distribution_rows"]
+        row["uncertainty"]: row for row in dashboard["metrics"]["uncertainty_distribution_rows"]
     }
     assert uncertainty_rows["high"]["count"] == 1
     assert uncertainty_rows["medium"]["rate"] == 0.3333
@@ -2670,9 +2643,7 @@ def test_ai_observability_dashboard_combines_logs_quality_and_retrieval(
     assert dashboard["metrics"]["knowledge_gaps"]["uncovered_error_gap_count"] == 0
     assert dashboard["metrics"]["knowledge_gaps"]["critical_uncovered_error_gap_count"] == 0
     assert dashboard["metrics"]["knowledge_gaps"]["uncovered_machine_gap_count"] == 0
-    assert (
-        dashboard["metrics"]["knowledge_gaps"]["critical_uncovered_machine_gap_count"] == 0
-    )
+    assert dashboard["metrics"]["knowledge_gaps"]["critical_uncovered_machine_gap_count"] == 0
     assert dashboard["metrics"]["knowledge_gaps"]["uncovered_error_gaps"] == []
     assert dashboard["metrics"]["knowledge_gaps"]["uncovered_machine_gaps"] == []
     assert dashboard["metrics"]["knowledge_gaps"]["department_gap_count"] == 1
@@ -2683,9 +2654,7 @@ def test_ai_observability_dashboard_combines_logs_quality_and_retrieval(
     assert uncertain_gap["answer_uncertainty"] == "high"
     assert uncertain_gap["no_answer_count"] == 1
     assert uncertain_gap["knowledge_gap_id"] == 321
-    uncertain_action = dashboard["metrics"]["knowledge_gaps"][
-        "uncertain_question_actions"
-    ][0]
+    uncertain_action = dashboard["metrics"]["knowledge_gaps"]["uncertain_question_actions"][0]
     assert dashboard["metrics"]["knowledge_gaps"]["uncertain_question_action_count"] == 1
     assert uncertain_action["type"] == "review_uncertain_answer_gap"
     assert uncertain_action["priority"] == "high"
@@ -2714,14 +2683,11 @@ def test_ai_observability_dashboard_combines_logs_quality_and_retrieval(
     assert dashboard["metrics"]["knowledge_gaps"]["action_count"] >= 1
     assert dashboard["metrics"]["knowledge_gaps"]["high_priority_action_count"] >= 0
     action_priorities = {
-        item["key"] for item in dashboard["metrics"]["knowledge_gaps"][
-            "action_priority_distribution"
-        ]
+        item["key"]
+        for item in dashboard["metrics"]["knowledge_gaps"]["action_priority_distribution"]
     }
     action_types = {
-        item["key"] for item in dashboard["metrics"]["knowledge_gaps"][
-            "action_type_distribution"
-        ]
+        item["key"] for item in dashboard["metrics"]["knowledge_gaps"]["action_type_distribution"]
     }
     assert {"medium"} <= action_priorities or {"high"} <= action_priorities
     assert {
@@ -2741,8 +2707,7 @@ def test_ai_observability_dashboard_combines_logs_quality_and_retrieval(
         for action in dashboard["recommended_actions"]
     )
     assert any(
-        action["action_source"] == "knowledge_gap"
-        for action in dashboard["recommended_actions"]
+        action["action_source"] == "knowledge_gap" for action in dashboard["recommended_actions"]
     )
     recommended_summary = dashboard["recommended_action_summary"]
     assert recommended_summary["total"] == 5
@@ -2759,12 +2724,9 @@ def test_ai_observability_dashboard_combines_logs_quality_and_retrieval(
         == "review_no_answer_guarded_questions"
     )
     assert recommended_summary["answer_quality_next_action_priority"] == "high"
-    recommended_sources = {
-        item["key"] for item in recommended_summary["type_distribution"]
-    }
+    recommended_sources = {item["key"] for item in recommended_summary["type_distribution"]}
     recommended_action_sources = {
-        item["key"]: item["count"]
-        for item in recommended_summary["source_distribution"]
+        item["key"]: item["count"] for item in recommended_summary["source_distribution"]
     }
     assert {
         "fix_permission_leaks",
@@ -2799,17 +2761,14 @@ def test_ai_observability_dashboard_combines_logs_quality_and_retrieval(
     assert dashboard["quality_metrics"]["forbidden_source_hit_count"] == 1
     assert dashboard["quality_metrics"]["evaluation_quality_gate"]["status"] == "fail"
     assert dashboard["quality_metrics"]["evaluation_quality_gate"]["passed"] is False
-    assert dashboard["quality_metrics"]["evaluation_quality_gate"]["blocking"][0][
-        "metric"
-    ] == "permission_leak_count"
-    assert dashboard["quality_metrics"]["evaluation_blocking_count"] == 2
     assert (
-        "permission_leak_count"
-        in dashboard["quality_metrics"]["evaluation_blocking_metrics"]
+        dashboard["quality_metrics"]["evaluation_quality_gate"]["blocking"][0]["metric"]
+        == "permission_leak_count"
     )
+    assert dashboard["quality_metrics"]["evaluation_blocking_count"] == 2
+    assert "permission_leak_count" in dashboard["quality_metrics"]["evaluation_blocking_metrics"]
     blocking_rows = {
-        item["metric"]: item
-        for item in dashboard["quality_metrics"]["evaluation_blocking_rows"]
+        item["metric"]: item for item in dashboard["quality_metrics"]["evaluation_blocking_rows"]
     }
     assert blocking_rows["permission_leak_count"]["value"] == 1
     assert blocking_rows["permission_leak_count"]["threshold"] == 0
@@ -2894,8 +2853,7 @@ def test_ai_observability_dashboard_combines_logs_quality_and_retrieval(
     assert undated_source["source_created_at"] == ""
     assert undated_source["source_age_days"] is None
     metadata_actions = {
-        item["type"]: item
-        for item in dashboard["retrieval_monitoring"]["metadata_quality_actions"]
+        item["type"]: item for item in dashboard["retrieval_monitoring"]["metadata_quality_actions"]
     }
     stale_action = metadata_actions["review_stale_sources"]
     assert stale_action["count"] == 1
@@ -2917,9 +2875,7 @@ def test_ai_observability_dashboard_combines_logs_quality_and_retrieval(
     assert action_summary["medium_priority_count"] == 2
     assert action_summary["next_action_type"] == "review_low_quality_retrieval_hits"
     assert action_summary["next_action_priority"] == "high"
-    action_types = {
-        item["key"] for item in action_summary["type_distribution"]
-    }
+    action_types = {item["key"] for item in action_summary["type_distribution"]}
     assert {
         "review_low_quality_retrieval_hits",
         "review_stale_sources",
@@ -2966,16 +2922,13 @@ def test_ai_observability_dashboard_combines_logs_quality_and_retrieval(
     assert conflict_log["confidence"]["uncertainty"] == "medium"
     assert dashboard["debug_tools"]["prompt_blueprint"]["system_prompt"]
     assert dashboard["debug_tools"]["request_analysis"]["retrieval"]["source_count"] == 1
-    assert dashboard["debug_tools"]["request_analysis"]["answer_quality"]["status"] == (
-        "grounded"
-    )
+    assert dashboard["debug_tools"]["request_analysis"]["answer_quality"]["status"] == ("grounded")
     assert dashboard["debug_tools"]["request_analysis"]["confidence"]["uncertainty"] == "low"
-    available = {
-        item["question"]: item for item in dashboard["debug_tools"]["available_requests"]
-    }
-    assert available["Welche Ursache hat der unbekannte Fehler FU-000?"][
-        "answer_uncertainty"
-    ] == "high"
+    available = {item["question"]: item for item in dashboard["debug_tools"]["available_requests"]}
+    assert (
+        available["Welche Ursache hat der unbekannte Fehler FU-000?"]["answer_uncertainty"]
+        == "high"
+    )
 
 
 def test_ai_observability_dashboard_exposes_failed_requests_without_prompts(
@@ -3030,13 +2983,9 @@ def test_ai_observability_dashboard_exposes_failed_requests_without_prompts(
 
         dashboard = ai_observability_dashboard({"days": "30", "limit": "5"})
 
-    failed = next(
-        item for item in dashboard["failed_requests"] if item["status"] == "openai_error"
-    )
+    failed = next(item for item in dashboard["failed_requests"] if item["status"] == "openai_error")
     unsupported = next(
-        item
-        for item in dashboard["failed_requests"]
-        if item["status"] == "unsupported_provider"
+        item for item in dashboard["failed_requests"] if item["status"] == "unsupported_provider"
     )
     missing_base_url = next(
         item for item in dashboard["failed_requests"] if item["status"] == "base_url_missing"
@@ -3146,8 +3095,7 @@ def test_admin_ai_observability_endpoint_is_admin_only(
     assert payload["provider_readiness"]["provider_status"]["provider"] == "mock"
     assert payload["provider_readiness"]["readiness"]["next_action"] is None
     assert not any(
-        action["action_source"] == "provider_readiness"
-        for action in payload["recommended_actions"]
+        action["action_source"] == "provider_readiness" for action in payload["recommended_actions"]
     )
     assert payload["privacy"]["raw_chunk_text_visible"] is False
 
@@ -3168,9 +3116,7 @@ def test_ai_observability_includes_provider_readiness_actions(app):
     assert dashboard["metrics"]["provider_ready"] is False
     assert dashboard["metrics"]["provider_readiness_status"] == "degraded"
     assert dashboard["metrics"]["provider_degraded_component_count"] == 1
-    assert dashboard["metrics"]["provider_next_action_type"] == (
-        "select_supported_provider"
-    )
+    assert dashboard["metrics"]["provider_next_action_type"] == ("select_supported_provider")
     assert next_action["component"] == "provider"
     assert next_action["configuration_action"] == "select_supported_provider"
     assert "AI_PROVIDER" in next_action["recommended_action"]
@@ -3178,10 +3124,7 @@ def test_ai_observability_includes_provider_readiness_actions(app):
     assert dashboard["next_best_action"]["type"] == "select_supported_provider"
     assert dashboard["next_best_action"]["priority"] == "critical"
     assert dashboard["next_best_action"]["rank"] == 1
-    assert (
-        dashboard["recommended_action_summary"]["next_action_source"]
-        == "provider_readiness"
-    )
+    assert dashboard["recommended_action_summary"]["next_action_source"] == "provider_readiness"
     assert "test-secret-key" not in serialized
     assert "api_key" not in serialized.lower().replace("api_key_configured", "")
 
@@ -4849,10 +4792,7 @@ def test_ai_status_reports_effective_provider_for_unsupported_provider(
     assert payload["provider_status"]["provider"] == "gemini"
     assert payload["provider_status"]["reason"] == "unsupported_provider"
     assert payload["provider_status"]["effective_provider"] == "mock"
-    assert (
-        payload["provider_status"]["configuration_action"]
-        == "select_supported_provider"
-    )
+    assert payload["provider_status"]["configuration_action"] == "select_supported_provider"
     assert "AI_PROVIDER" in payload["provider_status"]["recommended_action"]
     gemini_entry = next(
         item for item in payload["provider_catalog"] if item["provider"] == "gemini"
@@ -4863,8 +4803,7 @@ def test_ai_status_reports_effective_provider_for_unsupported_provider(
     assert "provider" in payload["readiness"]["degraded_components"]
     assert payload["readiness"]["next_action"]["component"] == "provider"
     assert (
-        payload["readiness"]["next_action"]["configuration_action"]
-        == "select_supported_provider"
+        payload["readiness"]["next_action"]["configuration_action"] == "select_supported_provider"
     )
     assert "AI_PROVIDER" in payload["readiness"]["next_action"]["recommended_action"]
 

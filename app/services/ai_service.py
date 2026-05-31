@@ -737,9 +737,7 @@ def _provider_recommended_action(reason):
         "": "Provider ist einsatzbereit.",
         "api_key_missing": "OPENAI_API_KEY setzen oder AI_PROVIDER=mock verwenden.",
         "base_url_missing": "AI_BASE_URL fuer den OpenAI-kompatiblen Endpoint setzen.",
-        "unsupported_provider": (
-            "AI_PROVIDER auf openai, openai_compatible oder mock setzen."
-        ),
+        "unsupported_provider": ("AI_PROVIDER auf openai, openai_compatible oder mock setzen."),
     }
     return actions.get(str(reason or ""), "AI-Provider-Konfiguration pruefen.")
 
@@ -972,9 +970,7 @@ def _highest_related_error_severity(errors):
     """Return the highest severity label from related error payloads."""
     severity_order = {"low": 1, "medium": 2, "high": 3, "critical": 4}
     severities = [
-        str(error.get("severity") or "").lower()
-        for error in errors
-        if isinstance(error, dict)
+        str(error.get("severity") or "").lower() for error in errors if isinstance(error, dict)
     ]
     if not severities:
         return ""

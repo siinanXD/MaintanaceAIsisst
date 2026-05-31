@@ -356,11 +356,7 @@ def _rca_summary(query, possible_causes, similar_cases, confidence, history_evid
     top_cause = possible_causes[0]["cause"]
     case_count = len(similar_cases)
     history_count = (history_evidence or _empty_history_evidence())["source_count"]
-    history_text = (
-        f", {history_count} sichtbare Historienquellen"
-        if history_count
-        else ""
-    )
+    history_text = f", {history_count} sichtbare Historienquellen" if history_count else ""
     return (
         f"Wahrscheinlichste Hypothese: {top_cause}. "
         f"Basis: {case_count} aehnliche sichtbare Faelle{history_text}, Confidence "
@@ -421,10 +417,7 @@ def _history_task_sources(user, query_tokens, machine_hints):
     from app.services.task_service import visible_tasks_query
 
     tasks = (
-        visible_tasks_query(user)
-        .order_by(Task.updated_at.desc(), Task.id.desc())
-        .limit(40)
-        .all()
+        visible_tasks_query(user).order_by(Task.updated_at.desc(), Task.id.desc()).limit(40).all()
     )
     rows = [
         _task_history_payload(task)

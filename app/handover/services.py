@@ -232,9 +232,7 @@ def summarize_shift_handover(handover, user):
         "next_actions": next_actions,
         "open_tasks": [_task_summary_item(task) for task in open_tasks],
         "disruptions": [_error_summary_item(entry) for entry in disruptions],
-        "maintenance_plans": [
-            _maintenance_plan_summary_item(plan) for plan in maintenance_plans
-        ],
+        "maintenance_plans": [_maintenance_plan_summary_item(plan) for plan in maintenance_plans],
         "confidence": confidence,
         "source_counts": _handover_source_counts(
             handover,

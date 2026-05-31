@@ -675,9 +675,7 @@ class RetrievalEvaluationRun(db.Model):
             "no_result_count": int(self.no_result_count or 0),
             "no_result_rate": round(float(self.no_result_rate or 0.0), 4),
             "expected_no_result_count": int(self.expected_no_result_count or 0),
-            "expected_no_result_success_count": int(
-                self.expected_no_result_success_count or 0
-            ),
+            "expected_no_result_success_count": int(self.expected_no_result_success_count or 0),
             "expected_no_result_success_rate": round(
                 float(self.expected_no_result_success_rate or 0.0),
                 4,

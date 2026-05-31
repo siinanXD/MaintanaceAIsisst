@@ -86,12 +86,12 @@ def test_validate_runtime_config_rejects_invalid_chunking_mode():
                 "RAG_SEMANTIC_BREAKPOINT_THRESHOLD": 0.35,
                 "RAG_SEMANTIC_MIN_CHUNK_CHARS": 600,
                 "RAG_SEMANTIC_TARGET_CHUNK_CHARS": 1200,
-            "RAG_SEMANTIC_MAX_CHUNK_CHARS": 1800,
-            "RAG_TOP_K": 4,
-            "RAG_RERANK_CANDIDATE_LIMIT": 20,
-            "RAG_SEMANTIC_ONLY_MIN_SIMILARITY": 0.78,
-        }
-    )
+                "RAG_SEMANTIC_MAX_CHUNK_CHARS": 1800,
+                "RAG_TOP_K": 4,
+                "RAG_RERANK_CANDIDATE_LIMIT": 20,
+                "RAG_SEMANTIC_ONLY_MIN_SIMILARITY": 0.78,
+            }
+        )
 
 
 def test_validate_runtime_config_rejects_invalid_semantic_threshold():

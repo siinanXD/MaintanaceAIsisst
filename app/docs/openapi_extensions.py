@@ -100,9 +100,7 @@ ADDITIONAL_SCHEMAS = {
             },
             "recommended_action": {
                 "type": "string",
-                "example": (
-                    "AI_BASE_URL fuer den OpenAI-kompatiblen Endpoint setzen."
-                ),
+                "example": ("AI_BASE_URL fuer den OpenAI-kompatiblen Endpoint setzen."),
             },
             "api_key_configured": {"type": "boolean", "example": False},
             "base_url_configured": {"type": "boolean", "example": False},
@@ -224,8 +222,7 @@ ADDITIONAL_SCHEMAS = {
                             "recommended_action": {
                                 "type": "string",
                                 "example": (
-                                    "AI_PROVIDER auf openai, openai_compatible "
-                                    "oder mock setzen."
+                                    "AI_PROVIDER auf openai, openai_compatible " "oder mock setzen."
                                 ),
                             },
                         },
@@ -286,8 +283,7 @@ ADDITIONAL_SCHEMAS = {
                             "recommended_action": {
                                 "type": "string",
                                 "example": (
-                                    "AI_PROVIDER auf openai, openai_compatible "
-                                    "oder mock setzen."
+                                    "AI_PROVIDER auf openai, openai_compatible " "oder mock setzen."
                                 ),
                             },
                             "base_url_configured": {
@@ -403,10 +399,7 @@ ADDITIONAL_SCHEMAS = {
                 "properties": {
                     "summary": {
                         "type": "string",
-                        "example": (
-                            "Wahrscheinlichste Hypothese: Hydraulikfilter "
-                            "verschmutzt."
-                        ),
+                        "example": ("Wahrscheinlichste Hypothese: Hydraulikfilter " "verschmutzt."),
                     },
                     "possible_causes": {"type": "array", "items": {"type": "object"}},
                     "similar_cases": {"type": "array", "items": {"type": "object"}},
@@ -802,8 +795,7 @@ ADDITIONAL_SCHEMAS = {
                     "reason": {
                         "type": "string",
                         "example": (
-                            "Fehlerhistorie und Wartungsberichte stuetzen die "
-                            "Priorisierung."
+                            "Fehlerhistorie und Wartungsberichte stuetzen die " "Priorisierung."
                         ),
                     },
                     "uses_only_visible_sources": {
@@ -1032,9 +1024,7 @@ ADDITIONAL_SCHEMAS = {
         "properties": {
             "items": {
                 "type": "array",
-                "items": {
-                    "$ref": "#/components/schemas/MaintenanceRecommendationLight"
-                },
+                "items": {"$ref": "#/components/schemas/MaintenanceRecommendationLight"},
             },
             "count": {"type": "integer", "example": 3},
             "total_candidates": {"type": "integer", "example": 5},
@@ -1089,9 +1079,7 @@ ADDITIONAL_SCHEMAS = {
                         },
                         "text": {
                             "type": "string",
-                            "example": (
-                                "Hydraulikdruck pruefen bis 2026-07-04 bearbeiten."
-                            ),
+                            "example": ("Hydraulikdruck pruefen bis 2026-07-04 bearbeiten."),
                         },
                         "priority": {"type": "string", "example": "high"},
                         "due_date": {"type": "string", "format": "date"},
@@ -1498,9 +1486,7 @@ ADDITIONAL_SCHEMAS = {
                                     "properties": {
                                         "question": {
                                             "type": "string",
-                                            "example": (
-                                                "Welche Ursache hat Fehler X999?"
-                                            ),
+                                            "example": ("Welche Ursache hat Fehler X999?"),
                                         },
                                         "count": {"type": "integer", "example": 3},
                                         "no_answer_count": {
@@ -2099,9 +2085,7 @@ ADDITIONAL_SCHEMAS = {
                                 "threshold": {"type": "number", "example": 0},
                                 "reason": {
                                     "type": "string",
-                                    "example": (
-                                        "retrieved_forbidden_or_invisible_source"
-                                    ),
+                                    "example": ("retrieved_forbidden_or_invisible_source"),
                                 },
                             },
                         },
@@ -2183,8 +2167,7 @@ ADDITIONAL_SCHEMAS = {
                                     "type": "array",
                                     "items": {"type": "string"},
                                     "example": [
-                                        "block_metadata_coverage_rate liegt "
-                                        "mindestens bei 0.8.",
+                                        "block_metadata_coverage_rate liegt " "mindestens bei 0.8.",
                                     ],
                                 },
                             },
@@ -2535,9 +2518,7 @@ ADDITIONAL_PATHS = {
                     "description": "Readiness diagnostics loaded",
                     "content": {
                         "application/json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/HealthReadiness"
-                            }
+                            "schema": {"$ref": "#/components/schemas/HealthReadiness"}
                         }
                     },
                 },
@@ -2554,9 +2535,7 @@ ADDITIONAL_PATHS = {
                 "200": {
                     "description": "AI status loaded without secrets",
                     "content": {
-                        "application/json": {
-                            "schema": {"$ref": "#/components/schemas/AIStatus"}
-                        }
+                        "application/json": {"schema": {"$ref": "#/components/schemas/AIStatus"}}
                     },
                 },
                 "403": {"$ref": "#/components/responses/Forbidden"},
@@ -2637,9 +2616,7 @@ ADDITIONAL_PATHS = {
                     ),
                     "content": {
                         "application/json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/ErrorAssistantResult"
-                            }
+                            "schema": {"$ref": "#/components/schemas/ErrorAssistantResult"}
                         }
                     },
                 },
@@ -2677,10 +2654,7 @@ ADDITIONAL_PATHS = {
                             "schema": {
                                 "type": "array",
                                 "items": {
-                                    "$ref": (
-                                        "#/components/schemas/"
-                                        "TaskPrioritySuggestion"
-                                    )
+                                    "$ref": ("#/components/schemas/" "TaskPrioritySuggestion")
                                 },
                             }
                         }
@@ -2695,9 +2669,7 @@ ADDITIONAL_PATHS = {
     "/api/v1/machines/maintenance-recommendations": {
         "get": {
             "tags": ["Machines", "AI"],
-            "summary": (
-                "Return light maintenance recommendations from visible history"
-            ),
+            "summary": ("Return light maintenance recommendations from visible history"),
             "security": [{"bearerAuth": []}],
             "parameters": [
                 {
@@ -2716,8 +2688,7 @@ ADDITIONAL_PATHS = {
                         "application/json": {
                             "schema": {
                                 "$ref": (
-                                    "#/components/schemas/"
-                                    "MaintenanceRecommendationLightResponse"
+                                    "#/components/schemas/" "MaintenanceRecommendationLightResponse"
                                 )
                             }
                         }
@@ -2732,9 +2703,7 @@ ADDITIONAL_PATHS = {
     "/api/v1/handover/{handover_id}/summary": {
         "get": {
             "tags": ["Shift Handover", "AI"],
-            "summary": (
-                "Summarize a visible shift handover with tasks and disruptions"
-            ),
+            "summary": ("Summarize a visible shift handover with tasks and disruptions"),
             "security": [{"bearerAuth": []}],
             "parameters": [
                 {
@@ -2752,9 +2721,7 @@ ADDITIONAL_PATHS = {
                     ),
                     "content": {
                         "application/json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/ShiftHandoverSummary"
-                            }
+                            "schema": {"$ref": "#/components/schemas/ShiftHandoverSummary"}
                         }
                     },
                 },
@@ -3151,16 +3118,11 @@ ADDITIONAL_PATHS = {
             },
             "responses": {
                 "201": {
-                    "description": (
-                        "Retrieval evaluation persisted as aggregate metrics only"
-                    ),
+                    "description": ("Retrieval evaluation persisted as aggregate metrics only"),
                     "content": {
                         "application/json": {
                             "schema": {
-                                "$ref": (
-                                    "#/components/schemas/"
-                                    "RetrievalEvaluationRunResult"
-                                )
+                                "$ref": ("#/components/schemas/" "RetrievalEvaluationRunResult")
                             }
                         }
                     },

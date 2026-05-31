@@ -193,9 +193,7 @@ def test_error_assistant_finds_matching_entry(client, make_user, make_error_entr
     assert rca["evidence"]["similar_case_sources"][0]["type"] == "error"
     assert rca["evidence"]["similar_case_sources"][0]["score"] >= 45
     assert rca["evidence"]["rag_sources"] == []
-    fix_step = next(
-        step for step in rca["next_steps"] if "Lager austauschen" in step["step"]
-    )
+    fix_step = next(step for step in rca["next_steps"] if "Lager austauschen" in step["step"])
     assert fix_step["source"] == "similar_case_solution"
     assert fix_step["source_id"] == rca["similar_cases"][0]["id"]
     assert fix_step["error_code"] == "E42"

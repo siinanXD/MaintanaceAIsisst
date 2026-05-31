@@ -155,14 +155,10 @@ def get_embedding_provider():
     if provider_name == "openai_compatible":
         api_key = _config_text_value("OPENAI_API_KEY", "")
         if not api_key:
-            logger.warning(
-                "embedding_fallback provider=openai_compatible reason=api_key_missing"
-            )
+            logger.warning("embedding_fallback provider=openai_compatible reason=api_key_missing")
             return HashingEmbeddingProvider(_config_value("RAG_HASH_EMBEDDING_DIMENSIONS", 384))
         if not _config_value("AI_BASE_URL", ""):
-            logger.warning(
-                "embedding_fallback provider=openai_compatible reason=base_url_missing"
-            )
+            logger.warning("embedding_fallback provider=openai_compatible reason=base_url_missing")
             return HashingEmbeddingProvider(_config_value("RAG_HASH_EMBEDDING_DIMENSIONS", 384))
         return OpenAIEmbeddingProvider(
             api_key=api_key,

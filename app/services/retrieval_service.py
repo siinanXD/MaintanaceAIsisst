@@ -666,11 +666,7 @@ def _chunk_structure_line(metadata):
     block_kinds = metadata.get("chunk_block_kinds") or []
     if isinstance(block_kinds, str):
         block_kinds = [kind.strip() for kind in block_kinds.split(",")]
-    block_kinds = [
-        str(kind).strip()[:40]
-        for kind in block_kinds
-        if str(kind or "").strip()
-    ]
+    block_kinds = [str(kind).strip()[:40] for kind in block_kinds if str(kind or "").strip()]
     block_count = metadata.get("chunk_block_count")
     if block_count not in (None, "") and block_kinds:
         return f"Chunk-Struktur: {block_count} Block(s), Arten: {', '.join(block_kinds)}"

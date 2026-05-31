@@ -732,19 +732,14 @@ def test_prioritize_tasks_sends_shift_handover_history_to_provider(
     assert payload[0]["evidence_counts"]["shift_handovers"] == 1
     assert payload[0]["evidence_counts"]["recent_shift_handovers"] == 1
     handover_reference = next(
-        source
-        for source in payload[0]["evidence_references"]
-        if source["type"] == "shift_handover"
+        source for source in payload[0]["evidence_references"] if source["type"] == "shift_handover"
     )
     assert handover_reference["id"] == handover_id
     assert handover_reference["machine_id"] == machine_id
     assert handover_reference["role_visibility"] == "department:Produktion"
     assert "open_tasks" not in handover_reference
     assert "next_notes" not in handover_reference
-    assert any(
-        step["type"] == "review_shift_handover"
-        for step in payload[0]["next_steps"]
-    )
+    assert any(step["type"] == "review_shift_handover" for step in payload[0]["next_steps"])
     assert history["shift_handover_count"] == 1
     assert history["recent_shift_handovers"][0]["id"] == handover_id
     assert "shift_handover_history" in history["risk_signals"]

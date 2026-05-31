@@ -117,11 +117,7 @@ def database_probe():
 
 def _degraded_components(components):
     """Return component names whose readiness probe is not ok."""
-    return [
-        name
-        for name, payload in components.items()
-        if not bool((payload or {}).get("ok"))
-    ]
+    return [name for name, payload in components.items() if not bool((payload or {}).get("ok"))]
 
 
 def ai_probe():
