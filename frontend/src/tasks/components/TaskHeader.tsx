@@ -1,7 +1,12 @@
-import type { ReactNode } from "react";
+﻿import type { ReactNode } from "react";
+
+import { PageActionBar } from "../../components/ui/PageActionBar";
+import { createActionDefinition } from "../../components/ui/createActionSchema";
 
 type TaskHeaderProps = {
   readonly writable: boolean;
+  readonly onCreateFromMessage: () => void;
+  readonly onCreateTask: () => void;
   readonly onRefreshPriorities: () => Promise<void>;
   readonly priorityBusy: boolean;
 };
@@ -11,30 +16,33 @@ type TaskHeaderProps = {
  */
 export function TaskHeader({
   writable,
+  onCreateFromMessage,
+  onCreateTask,
   onRefreshPriorities,
   priorityBusy
 }: TaskHeaderProps): ReactNode {
   return (
-    <section className="page-hero task-workboard-hero">
+    <section className="page-hero task-workboard-hero is-compact">
       <div>
         <h1 className="page-title">Maintenance Workboard</h1>
-        <p className="page-description">Wartungs-, Reparatur- und Prüfaufgaben nach Priorität, Status, Bereich und Fälligkeit steuern.</p>
+        <p className="page-description">
+          Wartungs-, Reparatur- und Prüfaufgaben nach Priorität, Status, Bereich und Fälligkeit steuern.
+        </p>
       </div>
-      <div className="task-hero-actions">
-        {writable ? (
-          <a className="btn btn-primary btn-sm" data-permission-write="tasks" href="#task-create">Aufgabe anlegen</a>
-        ) : null}
-        <button
-          className="btn btn-outline btn-sm"
-          data-task-priority-refresh
-          disabled={priorityBusy}
-          onClick={onRefreshPriorities}
-          type="button"
-        >
-          {priorityBusy ? "Wird geladen..." : "Priorität aktualisieren"}
-        </button>
-        <a className="btn btn-ghost btn-sm" href="/">Cockpit</a>
-      </div>
+      <PageActionBar
+        label="Aufgaben Aktionen"
+        actions={[
+          { hidden: !writable, onClick: onCreateTask, schema: createActionDefinition("taskCreate"), variant: "primary" },
+          { hidden: !writable, onClick: onCreateFromMessage, schema: createActionDefinition("taskSuggestion"), variant: "outline" },
+          {
+            disabled: priorityBusy,
+            label: priorityBusy ? "Wird geladen..." : "Priorität aktualisieren",
+            onClick: () => void onRefreshPriorities(),
+            variant: "outline"
+          },
+          { href: "/", label: "Cockpit", variant: "ghost" }
+        ]}
+      />
     </section>
   );
 }

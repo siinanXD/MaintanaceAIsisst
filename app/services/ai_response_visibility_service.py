@@ -3,6 +3,7 @@
 from copy import deepcopy
 
 from app.models import Role
+from app.services.ai_answer_quality_service import redacted_answer_quality
 
 ANSWER_ONLY_MODE = "answer_only"
 VISIBLE_STATUS_KEYS = ("status", "fallback_used")
@@ -41,6 +42,7 @@ def redact_ai_chat_response(result, user, answer_only=False):
     redacted["data"] = _empty_data(redacted.get("data"))
     redacted["diagnostics"] = _redacted_diagnostics(redacted.get("diagnostics"))
     redacted["evidence_visible"] = False
+    redacted["answer_quality"] = redacted_answer_quality(redacted.get("answer_quality"))
     redacted.pop("rag", None)
     redacted.pop("action_preview", None)
     redacted.pop("confidence", None)
@@ -67,6 +69,7 @@ def redact_chat_history_item(item):
     redacted["source_count"] = 0
     redacted["confidence_score"] = None
     redacted["confidence_level"] = ""
+    redacted["answer_quality"] = redacted_answer_quality(redacted.get("answer_quality"))
     redacted["evidence_visible"] = False
     redacted.pop("sources", None)
     return redacted

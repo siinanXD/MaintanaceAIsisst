@@ -9,7 +9,9 @@ from app.extensions import db
 from app.models import Employee, EmployeeDocument, ErrorEntry, Role, Task
 from app.responses import success_response
 from app.security import roles_required
+from app.services.ai_service import ai_api_key_configured, ai_provider_status
 from app.services.database_schema_service import database_schema_status
+from app.services.embedding_service import embedding_provider_status
 from app.services.knowledge_service import knowledge_index_status
 from app.services.operations_metrics_service import operations_metrics
 
@@ -38,17 +40,21 @@ def readiness_check():
     database["schema"] = schema
     database["ok"] = bool(database["ok"] and schema["ok"])
     rag = rag_probe() if database["ok"] else {"ok": False, "reason": "database_unavailable"}
+    components = {
+        "database": database,
+        "ai": ai,
+        "rag": rag,
+    }
+    degraded_components = _degraded_components(components)
     status_code = 200 if database["ok"] else 503
     status = "ok" if database["ok"] else "error"
     return (
         jsonify(
             {
                 "status": status,
-                "components": {
-                    "database": database,
-                    "ai": ai,
-                    "rag": rag,
-                },
+                "ready": not degraded_components,
+                "degraded_components": degraded_components,
+                "components": components,
             }
         ),
         status_code,
@@ -109,17 +115,77 @@ def database_probe():
         }
 
 
+def _degraded_components(components):
+    """Return component names whose readiness probe is not ok."""
+    return [
+        name
+        for name, payload in components.items()
+        if not bool((payload or {}).get("ok"))
+    ]
+
+
 def ai_probe():
     """Return AI provider configuration readiness without external API calls."""
     provider = str(current_app.config.get("AI_PROVIDER", "mock")).lower()
-    api_key_configured = bool(current_app.config.get("OPENAI_API_KEY"))
-    requires_key = provider in {"openai", "gemini"}
-    return {
-        "ok": bool(api_key_configured or not requires_key),
+    api_key_configured = ai_api_key_configured(current_app.config)
+    provider_status = ai_provider_status(provider, api_key_configured)
+    embedding_status = embedding_provider_status(current_app.config)
+    reason = provider_status["reason"] or _embedding_readiness_reason(embedding_status)
+    action = _ai_readiness_action(provider_status, embedding_status)
+    payload = {
+        "ok": bool(provider_status["ready"] and embedding_status["ready"]),
         "provider": provider,
         "api_key_configured": api_key_configured,
-        "mode": "external" if requires_key and api_key_configured else "local_fallback",
+        "mode": provider_status["mode"],
+        "reason": reason,
+        "effective_provider": provider_status.get("effective_provider", provider),
+        "configuration_action": action["configuration_action"],
+        "recommended_action": action["recommended_action"],
+        "embedding_provider": embedding_status,
     }
+    if "base_url_configured" in provider_status:
+        payload["base_url_configured"] = provider_status["base_url_configured"]
+    return payload
+
+
+def _ai_readiness_action(provider_status, embedding_status):
+    """Return the remediation action for the degraded AI readiness component."""
+    if not provider_status.get("ready", False):
+        return {
+            "configuration_action": provider_status.get(
+                "configuration_action",
+                "review_provider_configuration",
+            ),
+            "recommended_action": provider_status.get("recommended_action", ""),
+        }
+    if not embedding_status.get("ready", False):
+        return {
+            "configuration_action": embedding_status.get(
+                "configuration_action",
+                "review_embedding_provider_configuration",
+            ),
+            "recommended_action": embedding_status.get("recommended_action", ""),
+        }
+    return {
+        "configuration_action": "none",
+        "recommended_action": "AI- und Embedding-Provider sind einsatzbereit.",
+    }
+
+
+def _embedding_readiness_reason(embedding_status):
+    """Return a top-level AI readiness reason for embedding-only failures."""
+    if embedding_status.get("ready", False):
+        return ""
+    reason = str(embedding_status.get("reason") or "not_ready")
+    return f"embedding_{reason}"
+
+
+def _rag_readiness_reason(status):
+    """Return a compact RAG readiness reason without exposing document content."""
+    reasons = status.get("readiness_reasons") or []
+    if reasons:
+        return str(reasons[0])[:180]
+    return "rag_not_ready"
 
 
 def rag_probe():
@@ -127,10 +193,12 @@ def rag_probe():
     try:
         status = knowledge_index_status()
         diagnostics = status["diagnostics"]
+        rag_ready = bool(diagnostics["ready"])
         return {
-            "ok": bool(diagnostics["rag_enabled"]),
+            "ok": rag_ready,
             "enabled": diagnostics["rag_enabled"],
             "ready": diagnostics["ready"],
+            "reason": "" if rag_ready else _rag_readiness_reason(status),
             "documents": status["documents"],
             "indexed": status["indexed"],
             "stale": status["stale"],

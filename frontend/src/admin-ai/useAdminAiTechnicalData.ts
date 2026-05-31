@@ -23,13 +23,13 @@ import {
 /**
  * Load Admin-AI technical diagnostics and expose action helpers.
  */
-export function useAdminAiTechnicalData(adminAiView: AdminAiView) {
+export function useAdminAiTechnicalData(adminAiView: AdminAiView, canUseAdminAiApi: boolean) {
   const [technicalState, setTechnicalState] = useState<AdminAiTechnicalState>(
     EMPTY_ADMIN_AI_TECHNICAL_STATE
   );
 
   useEffect(() => {
-    if (adminAiView !== "technical") return undefined;
+    if (adminAiView !== "technical" || !canUseAdminAiApi) return undefined;
 
     const controller = new AbortController();
     void refreshTechnical(controller.signal);
@@ -37,7 +37,7 @@ export function useAdminAiTechnicalData(adminAiView: AdminAiView) {
     return () => {
       controller.abort();
     };
-  }, [adminAiView, technicalState.filters]);
+  }, [adminAiView, canUseAdminAiApi, technicalState.filters]);
 
   /**
    * Load all React-owned Technical datasets with partial failure handling.

@@ -50,7 +50,10 @@ from app.services.knowledge_source_quality_service import (
     reset_chunk_quality_reports,
 )
 from app.services.retrieval_scoring_service import HybridRetrievalScorer
-from app.services.source_visibility_policy import can_user_read_source_document
+from app.services.source_visibility_policy import (
+    can_user_read_source_document,
+    source_role_visibility_label,
+)
 from app.services.technical_entity_service import (
     entities_to_json,
     entity_token_text,
@@ -238,6 +241,7 @@ def chunk_vector_metadata(document, chunk):
     """Return metadata stored with an external vector record."""
     quality_gate = retrieval_quality_gate_for_document(document)
     entities = chunk.entities()
+    source_created_at = structured_source_created_at(document)
     metadata = {
         "type": "knowledge",
         "id": document.id,
@@ -249,6 +253,9 @@ def chunk_vector_metadata(document, chunk):
         "source_id": document.source_id,
         "document_type": document.source_type,
         "department": document.department,
+        "machine_id": structured_source_machine_id(document),
+        "role_visibility": source_role_visibility_label(document),
+        "created_at": source_created_at or document.created_at.isoformat(),
         "url": source_url(document),
         "updated_at": document.updated_at.isoformat() if document.updated_at else "",
         "quality_status": quality_gate.status,

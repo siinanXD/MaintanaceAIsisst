@@ -6,6 +6,8 @@ import {
 
 import { markIslandMounted } from "../app/islandMount";
 import { canWriteDashboard } from "../auth/permissions";
+import { ActionDrawer } from "../components/ui/ActionDrawer";
+import { createActionDefinition } from "../components/ui/createActionSchema";
 import {
   loadMachineHistory,
   loadMachines,
@@ -36,6 +38,7 @@ const MACHINES_OVERVIEW_ISLAND = {
  */
 export function MachinesOverviewApp(): ReactNode {
   const writable = canWriteDashboard("machines");
+  const [isCreateDrawerOpen, setIsCreateDrawerOpen] = useState(false);
   const [editingMachine, setEditingMachine] = useState<Machine | null>(null);
   const [history, setHistory] = useState<MachineHistory | null>(null);
   const [machines, setMachines] = useState<Machine[]>([]);
@@ -101,11 +104,19 @@ export function MachinesOverviewApp(): ReactNode {
       setMessage({ text: machineErrorMessage(error), error: true });
     });
     refreshRecommendations();
+    if (window.location.hash === "#machine-create") {
+      setIsCreateDrawerOpen(true);
+    }
   }, []);
 
   return (
     <>
-      <MachinesHeader issueCount={0} onAssistantFocus={focusAssistant} />
+      <MachinesHeader
+        issueCount={0}
+        onAssistantFocus={focusAssistant}
+        onCreateMachine={() => setIsCreateDrawerOpen(true)}
+        writable={writable}
+      />
       <MachineStats issueCount={0} machines={machines} />
       {message.text ? (
         <section className="card app-card" role="alert">
@@ -115,7 +126,6 @@ export function MachinesOverviewApp(): ReactNode {
         </section>
       ) : null}
       <section className="dashboard-grid">
-        <MachineFormPanel hidden={!writable} onCreated={refreshMachines} />
         <MaintenanceRecommendations onHistory={showMachineHistoryById} recommendations={recommendations} />
         <MachineHistoryPanel history={history} />
         <MachineList
@@ -128,6 +138,20 @@ export function MachinesOverviewApp(): ReactNode {
         />
       </section>
       <MachineEditDialog machine={editingMachine} onClose={() => setEditingMachine(null)} onSaved={refreshMachines} />
+      <ActionDrawer
+        definition={createActionDefinition("machineCreate")}
+        isOpen={isCreateDrawerOpen}
+        onClose={() => setIsCreateDrawerOpen(false)}
+      >
+        <MachineFormPanel
+          drawerMode
+          hidden={!writable}
+          onCreated={async () => {
+            await refreshMachines();
+            setIsCreateDrawerOpen(false);
+          }}
+        />
+      </ActionDrawer>
     </>
   );
 }

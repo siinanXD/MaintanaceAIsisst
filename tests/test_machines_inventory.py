@@ -231,11 +231,14 @@ def test_maintenance_plan_update_delete_and_inactive_generation(
 
 
 def test_preventive_maintenance_recommendations_use_visible_history(
+    app,
     client,
     make_user,
     make_machine,
     make_task,
+    make_document,
     make_error_entry,
+    set_dashboard_permission,
     auth_headers,
 ):
     """Verify preventive recommendations are built from visible machine history."""
@@ -249,12 +252,21 @@ def test_preventive_maintenance_recommendations_use_visible_history(
         role=Role.INSTANDHALTUNG,
         department_name="Instandhaltung",
     )
-    make_machine(name="Anlage Preventive")
-    make_task(
+    set_dashboard_permission(user["username"], "documents", can_view=True)
+    set_dashboard_permission(user["username"], "shiftplans", can_view=True)
+    machine_id = make_machine(name="Anlage Preventive")
+    task_id = make_task(
         "Anlage Preventive Hydraulik pruefen",
         creator_username=user["username"],
         department_name="Instandhaltung",
         description="Anlage Preventive zeigt wieder Druckverlust.",
+    )
+    make_document(
+        task_id=task_id,
+        created_by=user["id"],
+        department="Instandhaltung",
+        machine="Anlage Preventive",
+        relative_path="2026/05/preventive/report.html",
     )
     make_error_entry(
         "Anlage Preventive",
@@ -264,6 +276,35 @@ def test_preventive_maintenance_recommendations_use_visible_history(
         possible_causes="Hydraulikfilter zugesetzt",
         solution="Filter pruefen",
     )
+    with app.app_context():
+        department = Department.query.filter_by(name="Instandhaltung").one()
+        plan = MaintenancePlan(
+            title="Hydraulik Preventive",
+            description="Regelmaessige Hydraulikpruefung",
+            interval_days=30,
+            next_due_date=date.today() + timedelta(days=7),
+            priority=Priority.SOON,
+            is_active=True,
+            machine_id=machine_id,
+            department=department,
+            created_by=user["id"],
+        )
+        db.session.add(plan)
+        db.session.add(
+            ShiftHandover(
+                department="Instandhaltung",
+                area="Hydraulik",
+                machine_id=machine_id,
+                shift_date=date.today(),
+                shift_type="Spaet",
+                status="open",
+                content="Anlage Preventive zeigte wieder Druckverlust.",
+                open_tasks="Hydraulikdruck in naechster Schicht pruefen.",
+                machine_notes="Filter und Ventilblock beobachten.",
+                next_notes="Wartungsfenster vorbereiten.",
+            )
+        )
+        db.session.commit()
     client.post(
         "/api/v1/admin/ai/knowledge/reindex",
         headers=auth_headers(admin["username"]),
@@ -280,7 +321,120 @@ def test_preventive_maintenance_recommendations_use_visible_history(
     assert payload["items"][0]["machine"]["name"] == "Anlage Preventive"
     assert payload["items"][0]["source_counts"]["tasks"] == 1
     assert payload["items"][0]["source_counts"]["errors"] == 1
+    assert payload["items"][0]["source_counts"]["maintenance_reports"] == 1
+    assert payload["items"][0]["source_counts"]["maintenance_plans"] == 1
+    assert payload["items"][0]["source_counts"]["shift_handovers"] == 1
     assert payload["items"][0]["source_counts"]["rag_sources"] >= 1
+    assert payload["items"][0]["recommendation_type"] == "maintenance_recommendation_light"
+    assert payload["items"][0]["confidence"] >= 50
+    assert payload["items"][0]["confidence_level"] in {"medium", "high"}
+    assert payload["items"][0]["confidence_uncertainty"] in {"low", "medium"}
+    assert payload["items"][0]["confidence_reason"]
+    next_steps = payload["items"][0]["next_steps"]
+    next_step_types = {step["type"] for step in next_steps}
+    assert next_steps
+    assert "error_history_review" in next_step_types
+    assert "maintenance_plan_review" in next_step_types
+    assert all(step["title"] and step["detail"] for step in next_steps)
+    assert all(step["urgency"] in {"high", "medium", "low"} for step in next_steps)
+    evidence_summary = payload["items"][0]["evidence_summary"]
+    assert evidence_summary["uses_only_visible_sources"] is True
+    assert evidence_summary["predictive_claim"] is False
+    assert evidence_summary["direct_source_count"] == 5
+    assert evidence_summary["rag_source_count"] >= 1
+    rag_evidence = evidence_summary["rag_sources"][0]
+    assert rag_evidence["type"] == "knowledge"
+    assert rag_evidence["source_type"]
+    assert rag_evidence["source_id"]
+    assert rag_evidence["chunk_id"]
+    assert rag_evidence["title"]
+    assert rag_evidence["module"] == "knowledge"
+    assert rag_evidence["role_visibility"]
+    assert rag_evidence["created_at"]
+    assert "text" not in rag_evidence
+    assert {
+        "task",
+        "error",
+        "maintenance_report",
+        "maintenance_plan",
+        "shift_handover",
+        "rag_source",
+    } <= set(evidence_summary["source_types"])
+    assert evidence_summary["recurring_issue_window_days"] == 30
+    assert evidence_summary["latest_signal_at"]
+    assert "Predictive-Maintenance" in payload["disclaimer"]
+    assert "Ausfallwahrscheinlichkeit" in payload["items"][0]["limitations"][0]
+    evidence_types = {item["type"] for item in payload["items"][0]["evidence"]}
+    assert {
+        "task",
+        "error",
+        "maintenance_report",
+        "maintenance_plan",
+        "shift_handover",
+    } <= evidence_types
+
+
+def test_preventive_maintenance_recommendations_do_not_leak_handovers_without_permission(
+    app,
+    client,
+    make_user,
+    make_machine,
+    make_task,
+    make_error_entry,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify maintenance recommendations do not count handovers without visibility."""
+    user = make_user(
+        username="preventive_no_handover_permission",
+        role=Role.INSTANDHALTUNG,
+        department_name="Instandhaltung",
+    )
+    set_dashboard_permission(user["username"], "errors", can_view=True)
+    set_dashboard_permission(user["username"], "shiftplans", can_view=False)
+    machine_id = make_machine(name="Anlage Preventive Hidden")
+    make_task(
+        "Anlage Preventive Hidden Hydraulik pruefen",
+        creator_username=user["username"],
+        department_name="Instandhaltung",
+        description="Anlage Preventive Hidden zeigt wieder Druckverlust.",
+    )
+    make_error_entry(
+        "Anlage Preventive Hidden",
+        "PV901",
+        "Druckverlust",
+        department_name="Instandhaltung",
+        possible_causes="Hydraulikfilter zugesetzt",
+        solution="Filter pruefen",
+    )
+    with app.app_context():
+        db.session.add(
+            ShiftHandover(
+                department="Instandhaltung",
+                area="Hydraulik",
+                machine_id=machine_id,
+                shift_date=date.today(),
+                shift_type="Spaet",
+                status="open",
+                content="Diese Uebergabe darf ohne Recht nicht in Empfehlungen erscheinen.",
+                open_tasks="Hydraulikdruck pruefen.",
+            )
+        )
+        db.session.commit()
+
+    response = client.get(
+        "/api/v1/machines/maintenance-recommendations",
+        headers=auth_headers(user["username"]),
+    )
+
+    item = response.get_json()["data"]["items"][0]
+    evidence_types = {entry["type"] for entry in item["evidence"]}
+    assert response.status_code == 200
+    assert item["machine"]["name"] == "Anlage Preventive Hidden"
+    assert item["source_counts"]["shift_handovers"] == 0
+    assert item["confidence_uncertainty"] in {"low", "medium", "high"}
+    assert "shift_handover" not in evidence_types
+    assert "shift_handover" not in item["evidence_summary"]["source_types"]
 
 
 def test_maintenance_task_generation_requires_task_write_permission(

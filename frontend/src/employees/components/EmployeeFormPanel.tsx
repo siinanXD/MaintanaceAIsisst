@@ -6,6 +6,7 @@ import { EMPTY_EMPLOYEE_DRAFT, employeeErrorMessage } from "../employeeUtils";
 import { EmployeeFormFields } from "./EmployeeFormFields";
 
 type EmployeeFormPanelProps = {
+  readonly drawerMode?: boolean;
   readonly draft: EmployeeDraft;
   readonly hidden: boolean;
   readonly message: MessageState;
@@ -35,7 +36,7 @@ export function EmployeeFormPanel(props: EmployeeFormPanelProps): ReactNode {
   }
 
   return (
-    <details className="card app-card mobile-action-section lg:col-span-12" data-mobile-collapsible data-permission-write="employees" hidden={props.hidden} open>
+    <details className="card app-card mobile-action-section lg:col-span-12" data-mobile-collapsible data-permission-write="employees" hidden={props.hidden} open={props.drawerMode ?? true}>
       <summary className="mobile-action-summary">
         <span>
           <span className="mobile-action-title">Mitarbeiter anlegen</span>

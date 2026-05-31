@@ -373,6 +373,9 @@ def _vector_context(candidates):
         ]
         if metadata.get("section_title"):
             block_lines.append(f"Abschnitt: {metadata['section_title']}")
+        chunk_structure = _chunk_structure_line(metadata)
+        if chunk_structure:
+            block_lines.append(chunk_structure)
         if machine_context:
             block_lines.append(machine_context)
         block_lines.append(candidate.content)
@@ -551,6 +554,9 @@ def _classification_scope_hints(query_classification):
         "shiftplans": "shiftplans",
         "task": "tasks",
         "tasks": "tasks",
+        "admin_user": "admin_users",
+        "admin_users": "admin_users",
+        "dashboard_permission": "admin_users",
     }
     scopes = []
     for source in _classification_sources(query_classification):
@@ -653,3 +659,23 @@ def _machine_context_line(metadata):
     }
     reason_text = ", ".join(labels.get(reason, reason) for reason in reasons)
     return f"Maschinenkontext: {reason_text}"
+
+
+def _chunk_structure_line(metadata):
+    """Return an optional context line explaining chunk structure signals."""
+    block_kinds = metadata.get("chunk_block_kinds") or []
+    if isinstance(block_kinds, str):
+        block_kinds = [kind.strip() for kind in block_kinds.split(",")]
+    block_kinds = [
+        str(kind).strip()[:40]
+        for kind in block_kinds
+        if str(kind or "").strip()
+    ]
+    block_count = metadata.get("chunk_block_count")
+    if block_count not in (None, "") and block_kinds:
+        return f"Chunk-Struktur: {block_count} Block(s), Arten: {', '.join(block_kinds)}"
+    if block_kinds:
+        return f"Chunk-Struktur: Arten: {', '.join(block_kinds)}"
+    if block_count not in (None, ""):
+        return f"Chunk-Struktur: {block_count} Block(s)"
+    return ""

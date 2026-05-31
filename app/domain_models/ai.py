@@ -635,9 +635,27 @@ class RetrievalEvaluationRun(db.Model):
     recall_at_k = db.Column(db.Float, nullable=False, default=0.0)
     mrr = db.Column(db.Float, nullable=False, default=0.0)
     ndcg_at_k = db.Column(db.Float, nullable=False, default=0.0)
+    keyword_query_count = db.Column(db.Integer, nullable=False, default=0)
+    keyword_hit_rate = db.Column(db.Float, nullable=False, default=0.0)
     permission_leak_count = db.Column(db.Integer, nullable=False, default=0)
     forbidden_source_hit_count = db.Column(db.Integer, nullable=False, default=0)
     no_result_count = db.Column(db.Integer, nullable=False, default=0)
+    no_result_rate = db.Column(db.Float, nullable=False, default=0.0)
+    expected_no_result_count = db.Column(db.Integer, nullable=False, default=0)
+    expected_no_result_success_count = db.Column(db.Integer, nullable=False, default=0)
+    expected_no_result_success_rate = db.Column(db.Float, nullable=False, default=0.0)
+    unexpected_no_result_count = db.Column(db.Integer, nullable=False, default=0)
+    unexpected_no_result_rate = db.Column(db.Float, nullable=False, default=0.0)
+    min_source_count_fail_count = db.Column(db.Integer, nullable=False, default=0)
+    min_source_count_pass_rate = db.Column(db.Float, nullable=False, default=0.0)
+    query_type_expected_count = db.Column(db.Integer, nullable=False, default=0)
+    query_type_match_count = db.Column(db.Integer, nullable=False, default=0)
+    query_type_accuracy = db.Column(db.Float, nullable=False, default=0.0)
+    source_metadata_count = db.Column(db.Integer, nullable=False, default=0)
+    source_id_coverage_rate = db.Column(db.Float, nullable=False, default=0.0)
+    source_type_coverage_rate = db.Column(db.Float, nullable=False, default=0.0)
+    source_pair_coverage_rate = db.Column(db.Float, nullable=False, default=0.0)
+    metadata_pair_coverage_rate = db.Column(db.Float, nullable=False, default=0.0)
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
 
     __table_args__ = (db.Index("ix_retrieval_evaluation_run_created", "created_at"),)
@@ -650,9 +668,47 @@ class RetrievalEvaluationRun(db.Model):
             "recall_at_k": round(float(self.recall_at_k or 0.0), 4),
             "mrr": round(float(self.mrr or 0.0), 4),
             "ndcg_at_k": round(float(self.ndcg_at_k or 0.0), 4),
+            "keyword_query_count": int(self.keyword_query_count or 0),
+            "keyword_hit_rate": round(float(self.keyword_hit_rate or 0.0), 4),
             "permission_leak_count": int(self.permission_leak_count or 0),
             "forbidden_source_hit_count": int(self.forbidden_source_hit_count or 0),
             "no_result_count": int(self.no_result_count or 0),
+            "no_result_rate": round(float(self.no_result_rate or 0.0), 4),
+            "expected_no_result_count": int(self.expected_no_result_count or 0),
+            "expected_no_result_success_count": int(
+                self.expected_no_result_success_count or 0
+            ),
+            "expected_no_result_success_rate": round(
+                float(self.expected_no_result_success_rate or 0.0),
+                4,
+            ),
+            "unexpected_no_result_count": int(self.unexpected_no_result_count or 0),
+            "unexpected_no_result_rate": round(
+                float(self.unexpected_no_result_rate or 0.0),
+                4,
+            ),
+            "min_source_count_fail_count": int(self.min_source_count_fail_count or 0),
+            "min_source_count_pass_rate": round(
+                float(self.min_source_count_pass_rate or 0.0),
+                4,
+            ),
+            "query_type_expected_count": int(self.query_type_expected_count or 0),
+            "query_type_match_count": int(self.query_type_match_count or 0),
+            "query_type_accuracy": round(float(self.query_type_accuracy or 0.0), 4),
+            "source_metadata_count": int(self.source_metadata_count or 0),
+            "source_id_coverage_rate": round(float(self.source_id_coverage_rate or 0.0), 4),
+            "source_type_coverage_rate": round(
+                float(self.source_type_coverage_rate or 0.0),
+                4,
+            ),
+            "source_pair_coverage_rate": round(
+                float(self.source_pair_coverage_rate or 0.0),
+                4,
+            ),
+            "metadata_pair_coverage_rate": round(
+                float(self.metadata_pair_coverage_rate or 0.0),
+                4,
+            ),
             "created_at": self.created_at.isoformat(),
         }
 

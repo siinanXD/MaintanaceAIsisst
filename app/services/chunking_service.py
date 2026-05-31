@@ -67,10 +67,12 @@ class TextChunk:
 
     def to_dict(self):
         """Return the chunk as a JSON-serializable dictionary."""
+        metadata = dict(self.metadata)
+        metadata.update(_chunk_quality_metadata(self.text))
         return {
             "text": self.text,
             "chunk_index": self.chunk_index,
-            "metadata": dict(self.metadata),
+            "metadata": metadata,
         }
 
 
@@ -166,6 +168,19 @@ def normalize_text(value):
 def token_set(value):
     """Return normalized retrieval tokens for local matching."""
     return set(tokenize_text(value))
+
+
+def _chunk_quality_metadata(text):
+    """Return prompt-safe size metrics for chunk audit and reindex diagnostics."""
+    chunk_text_value = str(text or "")
+    non_empty_lines = [
+        line for line in chunk_text_value.splitlines() if str(line or "").strip()
+    ]
+    return {
+        "chunk_char_count": len(chunk_text_value),
+        "chunk_line_count": len(non_empty_lines),
+        "chunk_token_count": len(tokenize_text(chunk_text_value)),
+    }
 
 
 def chunk_text(text, metadata=None, config=None):
@@ -642,6 +657,8 @@ def _append_structured_chunk(chunks, blocks, metadata, extra_metadata=None):
     """Append one packed structured chunk with section metadata."""
     text = _blocks_text(blocks)
     first_block = blocks[0]
+    chunk_structure_metadata = _block_structure_metadata(blocks)
+    chunk_structure_metadata.update(extra_metadata or {})
     chunks.append(
         TextChunk(
             text=text,
@@ -652,10 +669,25 @@ def _append_structured_chunk(chunks, blocks, metadata, extra_metadata=None):
                 section_title=first_block.section_title,
                 source_section=_source_section(first_block),
                 source_offset=first_block.offset,
-                extra_metadata=extra_metadata,
+                extra_metadata=chunk_structure_metadata,
             ),
         )
     )
+
+
+def _block_structure_metadata(blocks):
+    """Return compact source block metadata for retrieval explainability."""
+    block_kinds = sorted(
+        {
+            str(block.kind or "paragraph")[:40]
+            for block in blocks
+            if str(block.kind or "").strip()
+        }
+    )
+    return {
+        "chunk_block_count": len(blocks),
+        "chunk_block_kinds": ",".join(block_kinds),
+    }
 
 
 def _blocks_text(blocks):

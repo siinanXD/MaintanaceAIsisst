@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+﻿import { type ReactNode } from "react";
 
 import { AdminAiEffectiveness } from "./AdminAiSectionsEffectiveness";
 import { AdminAiOverview } from "./AdminAiSectionsOverview";
@@ -12,6 +12,7 @@ import { type AdminAiEffectivenessState } from "./adminAiEffectivenessModel";
 import { type AdminAiOverviewLoadState } from "./adminAiOverviewModel";
 import { type AdminAiFaqEntry, type AdminAiPromptFaqState } from "./adminAiPromptFaqModel";
 import { type AdminAiRagBoardState, type AdminAiTrainingForm } from "./adminAiRagBoardModel";
+import { useAdminAiRoleAccess } from "./adminAiRoleAccess";
 import { type AdminAiSourceCheckState } from "./adminAiSourceCheckModel";
 import { type AdminAiTechnicalFilters, type AdminAiTechnicalState } from "./adminAiTechnicalModel";
 
@@ -95,6 +96,8 @@ export function AdminAiMarkup({
   technicalState,
   view
 }: AdminAiMarkupProps): ReactNode {
+  const roleAccess = useAdminAiRoleAccess();
+
   return (
     <AdminAiShell
       effectivenessState={effectivenessState}
@@ -141,13 +144,18 @@ export function AdminAiMarkup({
         ragBoardState,
         sourceCheckState,
         technicalState,
-        view
+        view,
+        canUseAdminAiApi: roleAccess.canUseAdminAiApi,
+        isTechnicalRole: roleAccess.isTechnicalRole
       })}
     </AdminAiShell>
   );
 }
 
-type AdminAiViewContentProps = AdminAiMarkupProps;
+type AdminAiViewContentProps = AdminAiMarkupProps & {
+  readonly canUseAdminAiApi: boolean;
+  readonly isTechnicalRole: boolean;
+};
 
 /**
  * Render the active Admin-AI section for the current canonical route.
@@ -188,8 +196,14 @@ function adminAiViewContent({
   ragBoardState,
   sourceCheckState,
   technicalState,
-  view
+  view,
+  canUseAdminAiApi,
+  isTechnicalRole
 }: AdminAiViewContentProps): ReactNode {
+  if (!canUseAdminAiApi) {
+    return <AdminAiApiRoleNotice />;
+  }
+
   if (view === "rag_board") {
     return (
       <AdminAiRagBoard
@@ -242,6 +256,9 @@ function adminAiViewContent({
     return <AdminAiEffectiveness effectivenessState={effectivenessState} />;
   }
   if (view === "technical") {
+    if (!isTechnicalRole) {
+      return <AdminAiTechnicalRoleNotice />;
+    }
     return (
       <AdminAiTechnical
         onFilterChange={onTechnicalFilterChange}
@@ -262,5 +279,50 @@ function adminAiViewContent({
       overviewEventError={overviewEventError}
       overviewState={overviewState}
     />
+  );
+}
+
+/**
+ * Render the role notice for hidden technical AI diagnostics.
+ */
+function AdminAiTechnicalRoleNotice(): ReactNode {
+  return (
+    <section className="ai-admin-area" id="ai-technical" data-ai-admin-area="technical">
+      <section className="panel">
+        <div className="panel-header">
+          <div>
+            <span className="section-kicker">Technology & Operations</span>
+            <h3>Technische Diagnose ist für Master Admin sichtbar</h3>
+            <p className="panel-meta">
+              Roh-Prompts, Debug-Panels und interne Retrieval-Diagnosen folgen dem Backend-Vertrag
+              der Admin-AI-API und bleiben für andere Rollen ausgeblendet.
+            </p>
+          </div>
+        </div>
+      </section>
+    </section>
+  );
+}
+
+/**
+ * Render the AI Admin access notice when the stored role cannot call Admin-AI APIs.
+ */
+function AdminAiApiRoleNotice(): ReactNode {
+  return (
+    <section className="ai-admin-area" data-ai-admin-area="access-denied">
+      <section className="panel">
+        <div className="panel-header">
+          <div>
+            <span className="section-kicker">AI Admin Zugriff</span>
+            <h3>AI Admin ist für Master Admin freigegeben</h3>
+            <p className="panel-meta">
+              Die Admin-AI-API ist im Backend mit Master-Admin-Rechten geschuetzt. Deshalb blendet
+              das Frontend API-abhaengige AI-Admin-Bereiche für andere Rollen aus, statt nicht
+              nutzbare Panels zu laden.
+            </p>
+          </div>
+        </div>
+      </section>
+    </section>
   );
 }

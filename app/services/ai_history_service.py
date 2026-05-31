@@ -3,6 +3,7 @@
 import json
 
 from app.models import ChatMessage
+from app.services.ai_answer_quality_service import answer_quality_from_history_item
 from app.services.conversation_context_service import normalize_session_id
 
 
@@ -63,13 +64,25 @@ def paginated_chat_history(user, args, include_all=False):
     total = query.count()
     entries = query.offset(offset).limit(limit).all()
     return {
-        "items": [entry.to_dict(include_user=include_all) for entry in entries],
+        "items": [chat_history_item(entry, include_user=include_all) for entry in entries],
         "pagination": {
             "limit": limit,
             "offset": offset,
             "total": total,
         },
     }
+
+
+def chat_history_item(entry, include_user=False):
+    """Return one chat-history item with compact answer-quality metadata."""
+    payload = entry.to_dict(include_user=include_user)
+    payload["answer_quality"] = answer_quality_from_history_item(payload)
+    return payload
+
+
+def history_answer_quality(item):
+    """Return answer-quality metadata reconstructed from stored chat fields."""
+    return answer_quality_from_history_item(item)
 
 
 def parse_limit_offset(args, default_limit=30, max_limit=200):

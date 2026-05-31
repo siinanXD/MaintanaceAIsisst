@@ -1,4 +1,5 @@
 import { type AdminAiView } from "./AdminAiTypes";
+import { useAdminAiRoleAccess } from "./adminAiRoleAccess";
 import { useAdminAiActions } from "./useAdminAiActions";
 import { useAdminAiEffectivenessData } from "./useAdminAiEffectivenessData";
 import { useAdminAiOverviewData } from "./useAdminAiOverviewData";
@@ -11,12 +12,13 @@ import { useAdminAiTechnicalData } from "./useAdminAiTechnicalData";
  * Compose Admin-AI data hooks and expose the canonical page props.
  */
 export function useAdminAiData(adminAiView: AdminAiView) {
-  const overviewData = useAdminAiOverviewData(adminAiView);
-  const effectivenessData = useAdminAiEffectivenessData(adminAiView);
-  const promptFaqData = useAdminAiPromptFaqData(adminAiView);
-  const ragBoardData = useAdminAiRagBoardData(adminAiView);
+  const roleAccess = useAdminAiRoleAccess();
+  const overviewData = useAdminAiOverviewData(adminAiView, roleAccess.canUseAdminAiApi);
+  const effectivenessData = useAdminAiEffectivenessData(adminAiView, roleAccess.canUseAdminAiApi);
+  const promptFaqData = useAdminAiPromptFaqData(adminAiView, roleAccess.canUseAdminAiApi);
+  const ragBoardData = useAdminAiRagBoardData(adminAiView, roleAccess.canUseAdminAiApi);
   const sourceCheckData = useAdminAiSourceCheckData();
-  const technicalData = useAdminAiTechnicalData(adminAiView);
+  const technicalData = useAdminAiTechnicalData(adminAiView, roleAccess.canUseAdminAiApi);
 
   const actions = useAdminAiActions({
     handleApproveFaq: promptFaqData.handleApproveFaq,

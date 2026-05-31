@@ -228,6 +228,7 @@
     padding: 1rem 1.1rem;
   }
 
+  .ai-admin-hero h1,
   .ai-admin-hero h2,
   .ai-admin-area-header h3 {
     margin: 0.15rem 0 0;
@@ -236,6 +237,7 @@
     line-height: 1.08;
   }
 
+  .ai-admin-hero h1,
   .ai-admin-hero h2 {
     font-size: 1.55rem;
   }

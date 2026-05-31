@@ -1,5 +1,7 @@
-import type { ReactNode } from "react";
+﻿import type { ReactNode } from "react";
 
+import { PageActionBar } from "../../components/ui/PageActionBar";
+import { createActionDefinition } from "../../components/ui/createActionSchema";
 import type { VacationRequest, VacationSummary } from "../vacationTypes";
 
 type VacationHeaderProps = {
@@ -8,21 +10,29 @@ type VacationHeaderProps = {
   readonly summaries: readonly VacationSummary[];
 };
 
+type VacationHeroProps = {
+  readonly onRequestOpen: () => void;
+};
+
 /**
  * Render the vacations page hero.
  */
-export function VacationHeader(): ReactNode {
+export function VacationHeader({ onRequestOpen }: VacationHeroProps): ReactNode {
   return (
-    <section className="page-hero vacation-hero">
+    <section className="page-hero vacation-hero is-compact">
       <div>
-        <p className="page-kicker">Personalplanung</p>
         <h1 className="page-title">Urlaubsplanung</h1>
-        <p className="page-description">Anträge, Vertreter, Schichtbezug und Auswirkungen auf den Betrieb in einer gemeinsamen Planungsansicht.</p>
+        <p className="page-description">
+          Antraege, Vertreter, Schichtbezug und Auswirkungen auf den Betrieb in einer gemeinsamen Planungsansicht.
+        </p>
       </div>
-      <div className="vacation-hero-actions" aria-label="Schnellaktionen">
-        <a className="btn btn-primary btn-sm" href="#vacation-request">Urlaub beantragen</a>
-        <a className="btn btn-outline btn-sm" href="#vacation-decisions">Offene Anträge prüfen</a>
-      </div>
+      <PageActionBar
+        label="Urlaubsplanung Aktionen"
+        actions={[
+          { onClick: onRequestOpen, schema: createActionDefinition("vacationRequest"), variant: "primary" },
+          { href: "#vacation-decisions", label: "Offene Antraege", variant: "outline" }
+        ]}
+      />
     </section>
   );
 }
@@ -41,7 +51,7 @@ export function VacationStats({ requests, selectedBalance, summaries }: Vacation
       <article className="vacation-control-stat is-warning">
         <span>Ausstehend</span>
         <strong data-vac-pending-count>{pendingRequests.length}</strong>
-        <small>Anträge zur Entscheidung</small>
+        <small>Antraege zur Entscheidung</small>
       </article>
       <article className="vacation-control-stat is-risk">
         <span>Konflikte</span>
@@ -49,7 +59,7 @@ export function VacationStats({ requests, selectedBalance, summaries }: Vacation
         <small>Unterbesetzung oder Schichttreffer</small>
       </article>
       <article className="vacation-control-stat is-good">
-        <span>Verfügbar</span>
+        <span>Verfuegbar</span>
         <strong data-vac-selected-available>{selectedBalance ? String(selectedBalance.available || 0) : "-"}</strong>
         <small>für ausgewählte Person</small>
       </article>
@@ -61,7 +71,7 @@ export function VacationStats({ requests, selectedBalance, summaries }: Vacation
       <article className="vacation-control-stat is-muted">
         <span>Reserviert</span>
         <strong data-vac-pending-total>{pendingTotal || "-"}</strong>
-        <small>durch offene Anträge</small>
+        <small>durch offene Antraege</small>
       </article>
     </section>
   );

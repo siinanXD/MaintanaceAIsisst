@@ -1,11 +1,15 @@
-import { type ReactNode } from "react";
+﻿import { useState, type ReactNode } from "react";
 
+import { ActionDrawer } from "../components/ui/ActionDrawer";
+import { PageActionBar } from "../components/ui/PageActionBar";
+import { createActionDefinition } from "../components/ui/createActionSchema";
 import {
   promptFaqText,
   type AdminAiFaqEntry,
   type AdminAiPromptFaqState
 } from "./adminAiPromptFaqModel";
 import { FaqRows, PromptList, SnippetList, submitForm, SuggestionList } from "./AdminAiPromptFaqShared";
+import { useAdminAiRoleAccess } from "./adminAiRoleAccess";
 
 type AdminAiPromptFaqProps = {
   readonly onApproveFaq: (entry: AdminAiFaqEntry) => void;
@@ -23,9 +27,13 @@ export function AdminAiPromptFaq({
   onPromptVersionSubmit,
   promptFaqState
 }: AdminAiPromptFaqProps): ReactNode {
+  const [activeDrawer, setActiveDrawer] = useState<"faq" | "prompt" | null>(null);
+  const roleAccess = useAdminAiRoleAccess();
+
   return (
     <>
-      <section className="ai-admin-area" id="ai-prompts" data-ai-admin-area="prompts">
+      {roleAccess.isTechnicalRole ? (
+        <section className="ai-admin-area" id="ai-prompts" data-ai-admin-area="prompts">
         <div className="ai-admin-area-header">
           <div>
             <span className="section-kicker">3. Prompt & FAQ</span>
@@ -51,39 +59,39 @@ export function AdminAiPromptFaq({
               <h3>Neuer Prompt-Entwurf</h3>
               <span className="panel-meta">Entwurf speichern, danach gezielt aktivieren</span>
             </div>
-            <form className="stack" data-ai-prompt-version-form onSubmit={submitForm(onPromptVersionSubmit)}>
-              <select
-                className="input input-bordered"
-                name="template_id"
-                data-ai-prompt-template-select
-                aria-label="Workflow auswählen"
-              >
-                {promptFaqState.prompts.map((prompt) => (
-                  <option key={promptFaqText(prompt.id)} value={promptFaqText(prompt.id, "")}>
-                    {promptFaqText(prompt.name)} ({promptFaqText(prompt.workflow_key)})
-                  </option>
-                ))}
-              </select>
-              <textarea className="input input-bordered" name="system_prompt" rows={9} placeholder="System-Prompt" />
-              <textarea
-                className="input input-bordered"
-                name="user_prompt_template"
-                rows={5}
-                placeholder="User-Prompt-Template, z. B. {question}, {context}, {payload_json}"
-              />
-              <input className="input input-bordered" name="change_note" placeholder="Änderungsnotiz" />
-              <div className="toolbar">
-                <button className="btn btn-primary" disabled={promptFaqState.isSaving} type="submit">
-                  Entwurf speichern
-                </button>
-                <span className="panel-meta" data-ai-prompt-form-status>
-                  {promptFaqState.promptFormStatus}
-                </span>
-              </div>
-            </form>
+            <PageActionBar
+              label="Prompt Entwurf Aktionen"
+              actions={[
+                {
+                  disabled: promptFaqState.isSaving,
+                  onClick: () => setActiveDrawer("prompt"),
+                  schema: createActionDefinition("adminPromptDraft"),
+                  variant: "primary"
+                }
+              ]}
+            />
+            <span className="panel-meta" data-ai-prompt-form-status>
+              {promptFaqState.promptFormStatus}
+            </span>
           </section>
         </div>
-      </section>
+        </section>
+      ) : (
+        <section className="ai-admin-area" id="ai-prompts" data-ai-admin-area="prompts">
+          <section className="panel">
+            <div className="panel-header">
+              <div>
+                <span className="section-kicker">Prompts & FAQ</span>
+                <h3>Prompt-Versionen sind für technische Rollen ausgeblendet</h3>
+                <p className="panel-meta">
+                  FAQ-Entwuerfe und Wissensluecken bleiben sichtbar. Roh-Prompts,
+                  Prompt-Entwuerfe und Rollback-Aktionen sind IT/Master vorbehalten.
+                </p>
+              </div>
+            </div>
+          </section>
+        </section>
+      )}
 
       <section className="ai-admin-area" id="ai-faq" data-ai-admin-area="faq">
         <div className="ai-admin-area-header">
@@ -125,19 +133,17 @@ export function AdminAiPromptFaq({
               <h3>FAQ erfassen</h3>
               <span className="panel-meta">Standard ist Entwurf</span>
             </div>
-            <form className="stack" data-ai-faq-form onSubmit={submitForm(onFaqSubmit)}>
-              <textarea className="input input-bordered" name="question" rows={3} placeholder="Frage" />
-              <textarea className="input input-bordered" name="answer" rows={5} placeholder="Freigegebene Antwort" />
-              <div className="content-grid two-columns">
-                <input className="input input-bordered" name="category" placeholder="Kategorie" />
-                <input className="input input-bordered" name="keywords" placeholder="Keywords" />
-                <input className="input input-bordered" name="machine" placeholder="Maschine optional" />
-                <input className="input input-bordered" name="department" placeholder="Abteilung optional" />
-              </div>
-              <button className="btn btn-primary" disabled={promptFaqState.isSaving} type="submit">
-                FAQ-Entwurf speichern
-              </button>
-            </form>
+            <PageActionBar
+              label="FAQ Entwurf Aktionen"
+              actions={[
+                {
+                  disabled: promptFaqState.isSaving,
+                  onClick: () => setActiveDrawer("faq"),
+                  schema: createActionDefinition("adminFaqDraft"),
+                  variant: "primary"
+                }
+              ]}
+            />
           </section>
         </div>
         <section className="panel mt-4">
@@ -169,6 +175,102 @@ export function AdminAiPromptFaq({
           <SnippetList snippets={promptFaqState.responseSnippets} />
         </section>
       </section>
+      {roleAccess.isTechnicalRole ? (
+        <ActionDrawer
+        definition={createActionDefinition("adminPromptDraft")}
+        isOpen={activeDrawer === "prompt"}
+        onClose={() => setActiveDrawer(null)}
+      >
+        <PromptDraftForm
+          isSaving={promptFaqState.isSaving}
+          onSubmit={onPromptVersionSubmit}
+          prompts={promptFaqState.prompts}
+          status={promptFaqState.promptFormStatus}
+        />
+        </ActionDrawer>
+      ) : null}
+      <ActionDrawer
+        definition={createActionDefinition("adminFaqDraft")}
+        isOpen={activeDrawer === "faq"}
+        onClose={() => setActiveDrawer(null)}
+      >
+        <FaqDraftForm isSaving={promptFaqState.isSaving} onSubmit={onFaqSubmit} />
+      </ActionDrawer>
     </>
+  );
+}
+
+/**
+ * Render the admin prompt draft form inside the shared action drawer.
+ */
+function PromptDraftForm({
+  isSaving,
+  onSubmit,
+  prompts,
+  status
+}: {
+  readonly isSaving: boolean;
+  readonly onSubmit: (form: HTMLFormElement) => void;
+  readonly prompts: AdminAiPromptFaqState["prompts"];
+  readonly status: string;
+}): ReactNode {
+  return (
+    <form className="stack" data-ai-prompt-version-form onSubmit={submitForm(onSubmit)}>
+      <select
+        className="input input-bordered"
+        name="template_id"
+        data-ai-prompt-template-select
+        aria-label="Workflow auswählen"
+      >
+        {prompts.map((prompt) => (
+          <option key={promptFaqText(prompt.id)} value={promptFaqText(prompt.id, "")}>
+            {promptFaqText(prompt.name)} ({promptFaqText(prompt.workflow_key)})
+          </option>
+        ))}
+      </select>
+      <textarea className="input input-bordered" name="system_prompt" rows={9} placeholder="System-Prompt" />
+      <textarea
+        className="input input-bordered"
+        name="user_prompt_template"
+        rows={5}
+        placeholder="User-Prompt-Template, z. B. {question}, {context}, {payload_json}"
+      />
+      <input className="input input-bordered" name="change_note" placeholder="Änderungsnotiz" />
+      <div className="toolbar">
+        <button className="btn btn-primary" disabled={isSaving} type="submit">
+          Entwurf speichern
+        </button>
+        <span className="panel-meta" data-ai-prompt-form-status>
+          {status}
+        </span>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * Render the admin FAQ draft form inside the shared action drawer.
+ */
+function FaqDraftForm({
+  isSaving,
+  onSubmit
+}: {
+  readonly isSaving: boolean;
+  readonly onSubmit: (form: HTMLFormElement) => void;
+}): ReactNode {
+  return (
+    <form className="stack" data-ai-faq-form onSubmit={submitForm(onSubmit)}>
+      <textarea className="input input-bordered" name="question" rows={3} placeholder="Frage" />
+      <textarea className="input input-bordered" name="answer" rows={5} placeholder="Freigegebene Antwort" />
+      <div className="content-grid two-columns">
+        <input className="input input-bordered" name="category" placeholder="Kategorie" />
+        <input className="input input-bordered" name="keywords" placeholder="Keywords" />
+        <input className="input input-bordered" name="machine" placeholder="Maschine optional" />
+        <input className="input input-bordered" name="department" placeholder="Abteilung optional" />
+      </div>
+      <button className="btn btn-primary" disabled={isSaving} type="submit">
+        FAQ-Entwurf speichern
+      </button>
+    </form>
   );
 }

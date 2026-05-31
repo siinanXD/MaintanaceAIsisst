@@ -1,5 +1,7 @@
 import { type FormEvent, type ReactNode } from "react";
 
+import { ActionDrawer } from "../components/ui/ActionDrawer";
+import { createActionDefinition } from "../components/ui/createActionSchema";
 import { HandoverDialog } from "./HandoverDialog";
 import { HandoverForm } from "./HandoverForm";
 import { HandoverGuidance } from "./HandoverGuidance";
@@ -26,6 +28,8 @@ type HandoverMarkupProps = {
   readonly machines: readonly Machine[];
   readonly onCloseDialog: () => void;
   readonly onComplete: (handover: HandoverRecord) => void;
+  readonly onCreateClose: () => void;
+  readonly onCreateOpen: () => void;
   readonly onEdit: (handover: HandoverRecord) => void;
   readonly onFilter: () => void;
   readonly onFilterChange: (filters: HandoverFilters) => void;
@@ -34,6 +38,7 @@ type HandoverMarkupProps = {
   readonly onSaveDialog: (id: number, payload: HandoverPayload) => void;
   readonly onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   readonly savingDialog: boolean;
+  readonly showCreateDrawer: boolean;
   readonly stats: HandoverStatsData;
   readonly submitting: boolean;
   readonly writable: boolean;
@@ -53,6 +58,8 @@ export function HandoverMarkup({
   machines,
   onCloseDialog,
   onComplete,
+  onCreateClose,
+  onCreateOpen,
   onEdit,
   onFilter,
   onFilterChange,
@@ -61,23 +68,16 @@ export function HandoverMarkup({
   onSaveDialog,
   onSubmit,
   savingDialog,
+  showCreateDrawer,
   stats,
   submitting,
   writable,
 }: HandoverMarkupProps): ReactNode {
   return (
     <>
-      <HandoverHero onFocusList={onFocusList} />
+      <HandoverHero onCreateOpen={onCreateOpen} onFocusList={onFocusList} writable={writable} />
       <HandoverStats stats={stats} />
-      <section className="handover-workflow-grid" id="handover-workflow" aria-label="Schichtübergabe Workflow">
-        {writable ? (
-          <HandoverForm
-            machines={machines}
-            message={formMessage}
-            onSubmit={onSubmit}
-            submitting={submitting}
-          />
-        ) : null}
+      <section className="handover-workflow-grid" id="handover-workflow" aria-label="Schichtuebergabe Workflow">
         <HandoverGuidance />
       </section>
       <HandoverList
@@ -100,6 +100,20 @@ export function HandoverMarkup({
         onSave={onSaveDialog}
         saving={savingDialog}
       />
+      <ActionDrawer
+        definition={createActionDefinition("handoverCreate")}
+        isOpen={showCreateDrawer}
+        onClose={onCreateClose}
+      >
+        {writable ? (
+          <HandoverForm
+            machines={machines}
+            message={formMessage}
+            onSubmit={onSubmit}
+            submitting={submitting}
+          />
+        ) : null}
+      </ActionDrawer>
     </>
   );
 }

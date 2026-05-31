@@ -1,30 +1,33 @@
-import { type ReactNode } from "react";
+﻿import { type ReactNode } from "react";
+
+import { PageActionBar } from "../components/ui/PageActionBar";
+import { createActionDefinition } from "../components/ui/createActionSchema";
 
 type HandoverHeroProps = {
+  readonly onCreateOpen: () => void;
   readonly onFocusList: () => void;
+  readonly writable: boolean;
 };
 
 /**
  * Render the handover page hero and quick actions.
  */
-export function HandoverHero({ onFocusList }: HandoverHeroProps): ReactNode {
+export function HandoverHero({ onCreateOpen, onFocusList, writable }: HandoverHeroProps): ReactNode {
   return (
-    <section className="page-hero handover-hero">
+    <section className="page-hero handover-hero is-compact">
       <div>
-        <h1 className="page-title">Schichtübergabe</h1>
+        <h1 className="page-title">Schichtuebergabe</h1>
         <p className="page-description">
-          Strukturierte Übergabe für Produktion, Instandhaltung, Sicherheit, Material und offene
-          Folgearbeiten.
+          Strukturierte Uebergabe für Produktion, Instandhaltung, Sicherheit, Material und offene Folgearbeiten.
         </p>
       </div>
-      <div className="handover-hero-actions">
-        <a className="btn btn-primary btn-sm" href="#handover-workflow" data-permission-write="shiftplans">
-          Neue Übergabe
-        </a>
-        <button className="btn btn-outline btn-sm" type="button" data-handover-focus-list="" onClick={onFocusList}>
-          Verlauf prüfen
-        </button>
-      </div>
+      <PageActionBar
+        label="Schichtuebergabe Aktionen"
+        actions={[
+          { hidden: !writable, onClick: onCreateOpen, schema: createActionDefinition("handoverCreate"), variant: "primary" },
+          { label: "Verlauf prüfen", onClick: onFocusList, variant: "outline" }
+        ]}
+      />
     </section>
   );
 }

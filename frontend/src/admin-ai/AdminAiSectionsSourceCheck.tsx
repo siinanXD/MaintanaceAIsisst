@@ -5,6 +5,7 @@ import {
   type AdminAiSourceCheckState,
   type AdminAiSourceTestSource
 } from "./adminAiSourceCheckModel";
+import { useAdminAiRoleAccess } from "./adminAiRoleAccess";
 
 export type AdminAiSourceCheckProps = {
   readonly onCreateFaq: () => void;
@@ -36,6 +37,8 @@ export function AdminAiSourceTestPanel({
   onSourceTestSubmit = () => {},
   sourceCheckState = EMPTY_ADMIN_AI_SOURCE_CHECK_STATE
 }: AdminAiSourceTestPanelProps): ReactNode {
+  const roleAccess = useAdminAiRoleAccess();
+
   return (
     <>
       <div className="source-test-layout">
@@ -142,7 +145,10 @@ export function AdminAiSourceTestPanel({
               <strong data-ai-source-test-kpi="latency">{sourceCheckState.kpis.latency}</strong>
             </article>
           </div>
-          <SourceCheckSources sources={sourceCheckState.sources} />
+          <SourceCheckSources
+            reportedSourceCount={sourceCheckState.reportedSourceCount}
+            sources={sourceCheckState.sources}
+          />
           <div
             className="toolbar source-test-actions"
             data-ai-source-test-actions
@@ -208,13 +214,15 @@ export function AdminAiSourceTestPanel({
         </section>
       </div>
 
-      <section className="panel mt-4">
-        <div className="panel-header">
-          <h3>Prompt-Vorschau</h3>
-          <span className="panel-meta" data-ai-lab-meta>{sourceCheckState.promptMeta}</span>
-        </div>
-        <pre className="ai-debug-prompt" data-ai-lab-preview>{sourceCheckState.promptPreview}</pre>
-      </section>
+      {roleAccess.isTechnicalRole ? (
+        <section className="panel mt-4">
+          <div className="panel-header">
+            <h3>Prompt-Vorschau</h3>
+            <span className="panel-meta" data-ai-lab-meta>{sourceCheckState.promptMeta}</span>
+          </div>
+          <pre className="ai-debug-prompt" data-ai-lab-preview>{sourceCheckState.promptPreview}</pre>
+        </section>
+      ) : null}
     </>
   );
 }
@@ -223,10 +231,14 @@ export function AdminAiSourceTestPanel({
  * Render source cards or the empty source row for the Source Check result.
  */
 function SourceCheckSources({
+  reportedSourceCount,
   sources
 }: {
+  readonly reportedSourceCount: number;
   readonly sources: readonly AdminAiSourceTestSource[];
 }): ReactNode {
+  const hiddenSourceCount = Math.max(reportedSourceCount - sources.length, 0);
+
   return (
     <div className="source-test-sources" data-ai-source-test-sources>
       {sources.length ? (
@@ -239,9 +251,19 @@ function SourceCheckSources({
       ) : (
         <div className="stat-row">
           <span>Quellen</span>
-          <strong>Keine Quellen gefunden.</strong>
+          <strong>
+            {hiddenSourceCount
+              ? `${hiddenSourceCount} Quellen referenziert, aber in dieser Ansicht nicht sichtbar.`
+              : "Keine Quellen gefunden."}
+          </strong>
         </div>
       )}
+      {sources.length && hiddenSourceCount ? (
+        <div className="stat-row">
+          <span>Hinweis</span>
+          <strong>{hiddenSourceCount} weitere Quellen sind nur als Metadaten vorhanden.</strong>
+        </div>
+      ) : null}
     </div>
   );
 }

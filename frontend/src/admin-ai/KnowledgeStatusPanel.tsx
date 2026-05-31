@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+﻿import { type ReactNode } from "react";
 
 import {
   type AdminAiRagBoardState,
@@ -179,8 +179,8 @@ function RagStatusPanel({ state }: { readonly state: AdminAiRagBoardState }): Re
           ["Suchindex", diagnostics.vector_store],
           ["Embedding-Anbieter", diagnostics.embedding_provider],
           ["Textabschnitting", `${ragText(diagnostics.chunk_size)} / ${ragText(diagnostics.chunk_overlap)}`],
-          ["Top K", diagnostics.top_k],
-          ["Scan Limit", diagnostics.scan_limit]
+          ["Genutzte Quellen pro Antwort", diagnostics.top_k],
+          ["Maximal geprüfte Quellen", diagnostics.scan_limit]
         ]} target="diagnostics" />
       </div>
       <div className="content-grid two-columns mt-4">

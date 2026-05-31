@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+from app.services.retrieval_debug_service import public_retrieval_debug
+
 EXPLAINABILITY_FIELDS = (
     "semantic_similarity",
     "lexical_score",
@@ -134,6 +136,8 @@ def sanitize_audit_explainability(value):
         payload["knowledge_links"] = _sanitize_knowledge_links(value.get("knowledge_links"))
     if "retrieval_duration_ms" in value:
         payload["retrieval_duration_ms"] = _int_value(value.get("retrieval_duration_ms"))
+    if "retrieval_debug" in value:
+        payload["retrieval_debug"] = public_retrieval_debug(value.get("retrieval_debug"))
     return payload
 
 
@@ -211,7 +215,7 @@ def _quality_status_counts(items):
 def _audit_source_explainability(source):
     """Return source IDs and explainability without text, title, prompt, or answer."""
     explainability = explainability_from_source(source)
-    return {
+    payload = {
         "type": str(source.get("type") or "")[:80],
         "id": _optional_int(source.get("id")),
         "chunk_id": _optional_int(source.get("chunk_id")),
@@ -221,13 +225,15 @@ def _audit_source_explainability(source):
         "score": _rounded_float(source.get("score"), 2),
         "explainability": explainability,
     }
+    payload.update(_safe_source_metadata(source))
+    return payload
 
 
 def _sanitize_audit_source(source):
     """Return one sanitized audit source explainability item."""
     if not isinstance(source, dict):
         return {}
-    return {
+    payload = {
         "type": str(source.get("type") or "")[:80],
         "id": _optional_int(source.get("id")),
         "chunk_id": _optional_int(source.get("chunk_id")),
@@ -236,6 +242,25 @@ def _sanitize_audit_source(source):
         "chunk_order": _optional_int(source.get("chunk_order")),
         "score": _rounded_float(source.get("score"), 2),
         "explainability": _normalize_explainability(source.get("explainability")),
+    }
+    payload.update(_safe_source_metadata(source))
+    return payload
+
+
+def _safe_source_metadata(source):
+    """Return prompt-safe source metadata useful for admin RAG diagnostics."""
+    return {
+        "source_type": str(source.get("source_type") or "")[:80],
+        "source_id": _optional_int(source.get("source_id")),
+        "source_record_id": _optional_int(source.get("source_record_id")),
+        "source_kind": str(source.get("source_kind") or "")[:80],
+        "knowledge_source_type": str(source.get("knowledge_source_type") or "")[:80],
+        "module": str(source.get("module") or "")[:80],
+        "machine_id": _optional_int(source.get("machine_id")),
+        "role_visibility": str(source.get("role_visibility") or "")[:140],
+        "role": str(source.get("role") or "")[:80],
+        "employee_access_level": str(source.get("employee_access_level") or "")[:40],
+        "created_at": str(source.get("created_at") or "")[:40],
     }
 
 

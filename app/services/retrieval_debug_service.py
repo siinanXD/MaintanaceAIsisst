@@ -26,6 +26,11 @@ SENSITIVE_MAPPING_KEYS = {
     "text",
     "title",
     "user_question",
+    "examples",
+    "items",
+    "sample",
+    "samples",
+    "snippets",
 }
 
 
@@ -50,6 +55,7 @@ class RetrievalDebugCounters:
     vector_store: str = ""
     filters: dict = field(default_factory=dict)
     top_k: int | None = None
+    rerank_candidate_limit: int | None = None
     source_types: dict = field(default_factory=dict)
     duration_ms: int = 0
     decision_trace: list[dict] = field(default_factory=list)
@@ -57,6 +63,7 @@ class RetrievalDebugCounters:
     def to_dict(self):
         """Return a JSON-safe dictionary without prompts or source text."""
         score_anchor_filtered = _safe_int(self.score_anchor_filtered or self.score_filtered)
+        reranking = _reranking_payload(self)
         return {
             "sql_candidates_found": _safe_int(self.sql_candidates_found),
             "keyword_candidates_found": _safe_int(self.keyword_candidates_found),
@@ -79,6 +86,8 @@ class RetrievalDebugCounters:
             "vector_store": str(self.vector_store or ""),
             "filters": _safe_mapping(self.filters),
             "top_k": _safe_optional_int(self.top_k),
+            "rerank_candidate_limit": _safe_optional_int(self.rerank_candidate_limit),
+            "reranking": reranking,
             "source_types": _safe_mapping(self.source_types),
             "duration_ms": _safe_int(self.duration_ms),
             "candidate_counts": {
@@ -125,6 +134,7 @@ def merge_retrieval_debug(*items, **overrides):
             "vector_store",
             "filters",
             "top_k",
+            "rerank_candidate_limit",
             "source_types",
             "decision_trace",
         ):
@@ -214,6 +224,29 @@ def _safe_optional_int(value):
     return _safe_int(value)
 
 
+def _reranking_payload(counters):
+    """Return a compact candidate-pool to final-context summary."""
+    candidate_count = _safe_int(counters.vector_candidates_found)
+    final_source_count = _safe_int(counters.final_visible_sources)
+    reduction_count = max(candidate_count - final_source_count, 0)
+    return {
+        "candidate_limit": _safe_optional_int(counters.rerank_candidate_limit),
+        "candidate_count": candidate_count,
+        "final_top_k": _safe_optional_int(counters.top_k),
+        "final_source_count": final_source_count,
+        "reduction_count": reduction_count,
+        "reduction_rate": _safe_rate(reduction_count, candidate_count),
+    }
+
+
+def _safe_rate(numerator, denominator):
+    """Return a bounded ratio for non-sensitive debug metrics."""
+    parsed_denominator = _safe_int(denominator)
+    if parsed_denominator <= 0:
+        return 0
+    return round(_safe_int(numerator) / parsed_denominator, 4)
+
+
 def _safe_mapping(value):
     """Return a shallow JSON-safe mapping without sensitive text payloads."""
     if not isinstance(value, dict):
@@ -230,9 +263,30 @@ def _safe_mapping(value):
             safe[str(key)] = None
         elif isinstance(item, dict):
             safe[str(key)] = _safe_mapping(item)
+        elif isinstance(item, list | tuple):
+            safe[str(key)] = _safe_sequence(item)
         else:
-            safe[str(key)] = str(item)
+            safe[str(key)] = _bounded_text(item, 160)
     return safe
+
+
+def _safe_sequence(value):
+    """Return a bounded JSON-safe list without preserving raw text collections."""
+    safe_items = []
+    for item in value[:10]:
+        if isinstance(item, bool):
+            safe_items.append(item)
+        elif isinstance(item, int | float):
+            safe_items.append(item)
+        elif item is None:
+            safe_items.append(None)
+        elif isinstance(item, dict):
+            safe_items.append(_safe_mapping(item))
+        elif isinstance(item, list | tuple):
+            safe_items.append(_safe_sequence(item))
+        else:
+            safe_items.append(_bounded_text(item, 160))
+    return safe_items
 
 
 def _safe_decisions(value):

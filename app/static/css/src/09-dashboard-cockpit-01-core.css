@@ -223,6 +223,7 @@
     padding: 0 1.45rem;
   }
 
+  .desktop-topbar .topbar-title,
   .desktop-topbar h1 {
     flex: 1 1 auto;
     min-width: 8rem;

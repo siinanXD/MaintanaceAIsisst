@@ -1,4 +1,4 @@
-import {
+﻿import {
   useEffect,
   useMemo,
   useState,
@@ -7,7 +7,8 @@ import {
 
 import { markIslandMounted } from "../app/islandMount";
 import { canWriteDashboard } from "../auth/permissions";
-import { loadDepartments, loadErrors } from "./errorApi";
+import { ActionDrawer } from "../components/ui/ActionDrawer";
+import { createActionDefinition } from "../components/ui/createActionSchema";
 import { ErrorAnalysisPanel } from "./components/ErrorAnalysisPanel";
 import { ErrorCatalog } from "./components/ErrorCatalog";
 import { ErrorCreatePanel } from "./components/ErrorCreatePanel";
@@ -15,6 +16,7 @@ import { ErrorEditDialog } from "./components/ErrorEditDialog";
 import { ErrorHeader } from "./components/ErrorHeader";
 import { ErrorStats } from "./components/ErrorStats";
 import { SimilarErrorsPanel } from "./components/SimilarErrorsPanel";
+import { loadDepartments, loadErrors } from "./errorApi";
 import type {
   Department,
   ErrorDraft,
@@ -46,6 +48,7 @@ function defaultDepartment(departments: readonly Department[]): string {
  */
 export function ErrorsApp(): ReactNode {
   const writable = canWriteDashboard("errors");
+  const [activeDrawer, setActiveDrawer] = useState<"analysis" | "create" | null>(null);
   const [createDraft, setCreateDraft] = useState<ErrorDraft>(createEmptyErrorDraft());
   const [departments, setDepartments] = useState<Department[]>([]);
   const [editingError, setEditingError] = useState<ErrorEntry | null>(null);
@@ -60,7 +63,10 @@ export function ErrorsApp(): ReactNode {
   const [message, setMessage] = useState<MessageState>({ text: "", error: false });
   const [similarResult, setSimilarResult] = useState<SimilarErrorResult | null>(null);
 
-  const currentDepartment = useMemo(() => createDraft.department || defaultDepartment(departments), [createDraft.department, departments]);
+  const currentDepartment = useMemo(
+    () => createDraft.department || defaultDepartment(departments),
+    [createDraft.department, departments]
+  );
 
   /**
    * Refresh departments and visible errors in parallel.
@@ -86,21 +92,11 @@ export function ErrorsApp(): ReactNode {
   }
 
   /**
-   * Focus the analysis textarea.
-   */
-  function focusAnalysis(): void {
-    document.querySelector("[data-error-analyze-form]")?.scrollIntoView({ behavior: "smooth", block: "center" });
-    window.requestAnimationFrame(() => {
-      document.querySelector<HTMLTextAreaElement>("#error-analysis-description")?.focus();
-    });
-  }
-
-  /**
-   * Apply a draft produced by AI analysis.
+   * Apply a draft produced by AI analysis and open the create drawer.
    */
   function applyDraft(draft: ErrorDraft): void {
     setCreateDraft(draft);
-    document.querySelector("[data-error-form]")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setActiveDrawer("create");
   }
 
   useEffect(() => {
@@ -111,11 +107,19 @@ export function ErrorsApp(): ReactNode {
     refreshErrorsData().catch((error: unknown) => {
       setMessage({ text: errorMessage(error), error: true });
     });
+    if (window.location.hash === "#incident-create") {
+      setActiveDrawer("create");
+    }
   }, []);
 
   return (
     <>
-      <ErrorHeader onAnalysisFocus={focusAnalysis} onSearchFocus={focusSearch} writable={writable} />
+      <ErrorHeader
+        onAnalysisOpen={() => setActiveDrawer("analysis")}
+        onCreateOpen={() => setActiveDrawer("create")}
+        onSearchFocus={focusSearch}
+        writable={writable}
+      />
       <ErrorStats errors={errors} />
       {message.text ? (
         <section className="card app-card" role="alert">
@@ -125,22 +129,6 @@ export function ErrorsApp(): ReactNode {
         </section>
       ) : null}
       <section className="incident-workflow-grid" aria-label="Störungsworkflows">
-        <ErrorCreatePanel
-          departments={departments}
-          draft={createDraft}
-          hidden={!writable}
-          message={message}
-          onDraftChange={setCreateDraft}
-          onMessageChange={setMessage}
-          onSaved={refreshErrorsData}
-          onSimilarResult={setSimilarResult}
-        />
-        <ErrorAnalysisPanel
-          currentDepartment={currentDepartment}
-          hidden={!writable}
-          onApplyDraft={applyDraft}
-          onSimilarResult={setSimilarResult}
-        />
         <SimilarErrorsPanel result={similarResult} />
       </section>
       <ErrorCatalog
@@ -160,6 +148,39 @@ export function ErrorsApp(): ReactNode {
         onMessageChange={setMessage}
         onSaved={refreshErrorsData}
       />
+      <ActionDrawer
+        definition={createActionDefinition("errorCreate")}
+        isOpen={activeDrawer === "create"}
+        onClose={() => setActiveDrawer(null)}
+      >
+        <ErrorCreatePanel
+          departments={departments}
+          drawerMode
+          draft={createDraft}
+          hidden={!writable}
+          message={message}
+          onDraftChange={setCreateDraft}
+          onMessageChange={setMessage}
+          onSaved={async () => {
+            await refreshErrorsData();
+            setActiveDrawer(null);
+          }}
+          onSimilarResult={setSimilarResult}
+        />
+      </ActionDrawer>
+      <ActionDrawer
+        definition={createActionDefinition("errorSuggestion")}
+        isOpen={activeDrawer === "analysis"}
+        onClose={() => setActiveDrawer(null)}
+      >
+        <ErrorAnalysisPanel
+          currentDepartment={currentDepartment}
+          drawerMode
+          hidden={!writable}
+          onApplyDraft={applyDraft}
+          onSimilarResult={setSimilarResult}
+        />
+      </ActionDrawer>
     </>
   );
 }

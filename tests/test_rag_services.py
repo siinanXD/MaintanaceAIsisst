@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
+from app.config import validate_runtime_config
 from app.domain_models.common import utc_now
 from app.extensions import db
 from app.models import (
@@ -18,11 +19,15 @@ from app.models import (
     KnowledgeChunk,
     KnowledgeDocument,
     Machine,
+    Priority,
     Role,
+    ShiftHandover,
+    Task,
+    TaskStatus,
     User,
 )
 from app.services.chunking_service import ChunkingConfig, chunk_text
-from app.services.embedding_service import HashingEmbeddingProvider
+from app.services.embedding_service import HashingEmbeddingProvider, get_embedding_provider
 from app.services.knowledge_aging_service import (
     knowledge_aging_state,
     mark_outdated_knowledge_by_age,
@@ -37,9 +42,96 @@ from app.services.knowledge_source_quality_service import (
     latest_chunk_quality_summary,
     reset_chunk_quality_reports,
 )
+from app.services.retrieval_candidate_service import (
+    public_sources_from_candidates,
+    vector_result_candidate,
+)
 from app.services.retrieval_service import knowledge_context_for_chat, retrieve_context
 from app.services.technical_entity_service import extract_technical_entities
-from app.services.vector_store_service import get_vector_store
+from app.services.vector_store_service import (
+    _flat_metadata,
+    _rerank_candidate_limit,
+    get_vector_store,
+)
+
+
+def test_validate_runtime_config_accepts_semantic_chunking_defaults():
+    """Verify supported semantic chunking settings pass startup validation."""
+    validate_runtime_config(
+        {
+            "TESTING": True,
+            "RAG_CHUNKING_MODE": "hybrid_semantic",
+            "RAG_CHUNK_SIZE": 1400,
+            "RAG_CHUNK_OVERLAP": 160,
+            "RAG_SEMANTIC_BREAKPOINT_THRESHOLD": 0.35,
+            "RAG_SEMANTIC_MIN_CHUNK_CHARS": 600,
+            "RAG_SEMANTIC_TARGET_CHUNK_CHARS": 1200,
+            "RAG_SEMANTIC_MAX_CHUNK_CHARS": 1800,
+            "RAG_TOP_K": 4,
+            "RAG_RERANK_CANDIDATE_LIMIT": 20,
+            "RAG_SEMANTIC_ONLY_MIN_SIMILARITY": 0.78,
+        }
+    )
+
+
+def test_validate_runtime_config_rejects_invalid_chunking_mode():
+    """Verify unsupported chunking modes fail before indexing starts."""
+    with pytest.raises(RuntimeError, match="RAG_CHUNKING_MODE"):
+        validate_runtime_config(
+            {
+                "TESTING": True,
+                "RAG_CHUNKING_MODE": "fixed_windows",
+                "RAG_CHUNK_SIZE": 1400,
+                "RAG_CHUNK_OVERLAP": 160,
+                "RAG_SEMANTIC_BREAKPOINT_THRESHOLD": 0.35,
+                "RAG_SEMANTIC_MIN_CHUNK_CHARS": 600,
+                "RAG_SEMANTIC_TARGET_CHUNK_CHARS": 1200,
+            "RAG_SEMANTIC_MAX_CHUNK_CHARS": 1800,
+            "RAG_TOP_K": 4,
+            "RAG_RERANK_CANDIDATE_LIMIT": 20,
+            "RAG_SEMANTIC_ONLY_MIN_SIMILARITY": 0.78,
+        }
+    )
+
+
+def test_validate_runtime_config_rejects_invalid_semantic_threshold():
+    """Verify semantic breakpoint thresholds stay in the supported range."""
+    with pytest.raises(RuntimeError, match="RAG_SEMANTIC_BREAKPOINT_THRESHOLD"):
+        validate_runtime_config(
+            {
+                "TESTING": True,
+                "RAG_CHUNKING_MODE": "hybrid_semantic",
+                "RAG_CHUNK_SIZE": 1400,
+                "RAG_CHUNK_OVERLAP": 160,
+                "RAG_SEMANTIC_BREAKPOINT_THRESHOLD": 1.5,
+                "RAG_SEMANTIC_MIN_CHUNK_CHARS": 600,
+                "RAG_SEMANTIC_TARGET_CHUNK_CHARS": 1200,
+                "RAG_SEMANTIC_MAX_CHUNK_CHARS": 1800,
+                "RAG_TOP_K": 4,
+                "RAG_RERANK_CANDIDATE_LIMIT": 20,
+                "RAG_SEMANTIC_ONLY_MIN_SIMILARITY": 0.78,
+            }
+        )
+
+
+def test_validate_runtime_config_rejects_invalid_semantic_only_similarity():
+    """Verify semantic-only retrieval thresholds stay in the supported range."""
+    with pytest.raises(RuntimeError, match="RAG_SEMANTIC_ONLY_MIN_SIMILARITY"):
+        validate_runtime_config(
+            {
+                "TESTING": True,
+                "RAG_CHUNKING_MODE": "hybrid_semantic",
+                "RAG_CHUNK_SIZE": 1400,
+                "RAG_CHUNK_OVERLAP": 160,
+                "RAG_SEMANTIC_BREAKPOINT_THRESHOLD": 0.35,
+                "RAG_SEMANTIC_MIN_CHUNK_CHARS": 600,
+                "RAG_SEMANTIC_TARGET_CHUNK_CHARS": 1200,
+                "RAG_SEMANTIC_MAX_CHUNK_CHARS": 1800,
+                "RAG_TOP_K": 4,
+                "RAG_RERANK_CANDIDATE_LIMIT": 20,
+                "RAG_SEMANTIC_ONLY_MIN_SIMILARITY": 1.5,
+            }
+        )
 
 
 def test_chunk_text_preserves_metadata_and_overlap():
@@ -55,6 +147,9 @@ def test_chunk_text_preserves_metadata_and_overlap():
     assert chunks[0]["metadata"]["machine_id"] == 7
     assert chunks[0]["metadata"]["document_type"] == "manual"
     assert chunks[0]["metadata"]["chunk_index"] == 0
+    assert chunks[0]["metadata"]["chunk_char_count"] == len(chunks[0]["text"])
+    assert chunks[0]["metadata"]["chunk_line_count"] >= 1
+    assert chunks[0]["metadata"]["chunk_token_count"] >= 1
     assert "Hydraulikfilter" in chunks[1]["text"]
 
 
@@ -82,10 +177,13 @@ def test_chunk_text_preserves_section_headings_steps_and_tables():
     step_chunk = chunks[0]
     table_chunk = chunks[1]
     assert step_chunk["metadata"]["section_title"] == "Wartungsschritte"
+    assert step_chunk["metadata"]["chunk_block_count"] == 1
+    assert step_chunk["metadata"]["chunk_block_kinds"] == "list"
     assert "1. Anlage stoppen" in step_chunk["text"]
     assert "2. Filter X900 ausbauen" in step_chunk["text"]
     assert "3. Filter X900 einsetzen" in step_chunk["text"]
     assert table_chunk["metadata"]["section_title"] == "Ersatzteile"
+    assert table_chunk["metadata"]["chunk_block_kinds"] == "table"
     assert "| Filter X900 | 1 |" in table_chunk["text"]
     assert [chunk["metadata"]["chunk_order"] for chunk in chunks] == [0, 1]
     assert [chunk["metadata"]["source_offset"] for chunk in chunks] == sorted(
@@ -122,6 +220,8 @@ def test_hybrid_semantic_chunking_splits_topic_changes():
     assert "Hydraulikpumpe" in chunks[0]["text"]
     assert "Schaltschrank" in chunks[1]["text"]
     assert chunks[0]["metadata"]["chunking_mode"] == "hybrid_semantic"
+    assert chunks[0]["metadata"]["chunk_block_count"] == 1
+    assert chunks[0]["metadata"]["chunk_block_kinds"] == "paragraph"
     assert chunks[1]["metadata"]["semantic_group"] == 1
 
 
@@ -217,6 +317,41 @@ def test_hashing_embedding_provider_is_stable_and_normalized():
     assert first == second
     assert len(first) == 64
     assert math.isclose(sum(value * value for value in first), 1.0)
+
+
+def test_openai_compatible_embedding_provider_uses_configured_base_url(app):
+    """Verify OpenAI-compatible embedding providers use the configured base URL."""
+    with app.app_context():
+        app.config["EMBEDDING_PROVIDER"] = "openai_compatible"
+        app.config["OPENAI_API_KEY"] = "test-key"
+        app.config["AI_BASE_URL"] = "http://127.0.0.1:11434/v1"
+        provider = get_embedding_provider()
+
+    assert provider.name == "openai_compatible"
+    assert str(provider.client.base_url).rstrip("/") == "http://127.0.0.1:11434/v1"
+
+
+def test_openai_embedding_provider_ignores_local_base_url(app):
+    """Verify official OpenAI embeddings do not inherit local compatible base URLs."""
+    with app.app_context():
+        app.config["EMBEDDING_PROVIDER"] = "openai"
+        app.config["OPENAI_API_KEY"] = "test-key"
+        app.config["AI_BASE_URL"] = "http://127.0.0.1:11434/v1"
+        provider = get_embedding_provider()
+
+    assert provider.name == "openai"
+    assert str(provider.client.base_url).rstrip("/") != "http://127.0.0.1:11434/v1"
+
+
+def test_openai_compatible_embedding_provider_falls_back_without_base_url(app):
+    """Verify local embeddings remain available when local base URL is missing."""
+    with app.app_context():
+        app.config["EMBEDDING_PROVIDER"] = "openai_compatible"
+        app.config["OPENAI_API_KEY"] = "test-key"
+        app.config["AI_BASE_URL"] = ""
+        provider = get_embedding_provider()
+
+    assert isinstance(provider, HashingEmbeddingProvider)
 
 
 def test_technical_entity_extraction_combines_catalog_and_rules(app):
@@ -348,9 +483,90 @@ def test_rebuild_chunks_persists_section_metadata(app):
 
     assert chunk_metadata["section_title"] == "Wartungsschritte"
     assert chunk_metadata["chunk_order"] == 0
+    assert chunk_metadata["chunk_block_count"] == 1
+    assert chunk_metadata["chunk_block_kinds"] == "list"
+    assert chunk_metadata["chunk_char_count"] == len(chunk.text)
+    assert chunk_metadata["chunk_line_count"] == 4
+    assert chunk_metadata["chunk_token_count"] >= 8
     assert vector_metadata["section_title"] == "Wartungsschritte"
     assert vector_metadata["source_section"] == "section-1"
+    assert vector_metadata["chunk_char_count"] == len(chunk.text)
+    assert vector_metadata["chunk_line_count"] == 4
+    assert vector_metadata["chunk_token_count"] >= 8
+    assert vector_metadata["chunk_block_count"] == 1
+    assert vector_metadata["chunk_block_kinds"] == "list"
     assert "wartungsschritte" in chunk.token_text
+
+
+def test_chunk_vector_metadata_includes_safe_source_scope_metadata(
+    app,
+    make_machine,
+    make_error_entry,
+):
+    """Verify external vector records keep safe source scope metadata."""
+    machine_id = make_machine(name="Presse Vector Meta", produced_item="Servo")
+    error_id = make_error_entry(
+        "Presse Vector Meta",
+        "VM-100",
+        "Vector Metadata Stoerung",
+        department_name="Produktion",
+        description="VM-100 Sensor pruefen.",
+    )
+    source_created_at = utc_now() - timedelta(days=5)
+
+    with app.app_context():
+        error_entry = db.session.get(ErrorEntry, error_id)
+        error_entry.machine_id = machine_id
+        error_entry.created_at = source_created_at
+        document = KnowledgeDocument(
+            source_type="error_entry",
+            source_id=error_id,
+            title="VM-100 Vector Metadata",
+            original_filename="vm-100.txt",
+            relative_path="",
+            content_type="text/plain",
+            department="Produktion",
+            status="indexed",
+            is_public=True,
+            chunk_count=0,
+            created_at=utc_now(),
+            updated_at=utc_now(),
+        )
+        db.session.add(document)
+        db.session.flush()
+
+        rebuild_chunks(
+            document,
+            "VM-100 Vector Metadata Sensor Stoerung an Presse Vector Meta.",
+        )
+        db.session.commit()
+
+        chunk = KnowledgeChunk.query.filter_by(document_id=document.id).one()
+        metadata = chunk_vector_metadata(document, chunk)
+
+    assert metadata["source_type"] == "error_entry"
+    assert metadata["source_id"] == error_id
+    assert metadata["machine_id"] == machine_id
+    assert metadata["role_visibility"] == "department:Produktion"
+    assert metadata["created_at"].startswith(source_created_at.date().isoformat())
+    assert metadata["module"] == "knowledge"
+
+
+def test_flat_metadata_omits_none_values_for_chroma():
+    """Verify Chroma metadata normalization does not emit unsupported None values."""
+    metadata = _flat_metadata(
+        {
+            "id": 7,
+            "machine_id": None,
+            "role_visibility": "department:Produktion",
+            "technical_entities": {"machines": ["Presse 7"]},
+        }
+    )
+
+    assert metadata["id"] == 7
+    assert metadata["role_visibility"] == "department:Produktion"
+    assert "machine_id" not in metadata
+    assert "Presse 7" in metadata["technical_entities"]
 
 
 def test_rebuild_chunks_marks_document_error_when_embedding_fails(app):
@@ -1007,6 +1223,398 @@ def test_rag_sources_include_explainability_without_debug_flag(
     assert "recency_influence" in explainability
 
 
+def test_rag_sources_include_safe_source_metadata(
+    app,
+    make_user,
+    make_machine,
+    make_error_entry,
+    set_dashboard_permission,
+):
+    """Verify public RAG source cards expose safe chunk and source metadata."""
+    user_data = make_user(
+        username="rag_safe_metadata_user",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+    set_dashboard_permission(user_data["username"], "errors", can_view=True)
+    machine_id = make_machine(name="Presse Meta", produced_item="Servo")
+    error_id = make_error_entry(
+        "Presse Meta",
+        "META-100",
+        "Metadata Stoerung",
+        department_name="Produktion",
+        description="Sensor meldet sporadisch kein Signal.",
+        possible_causes="Sensor verschmutzt.",
+        solution="Sensor reinigen und Abstand pruefen.",
+    )
+
+    with app.app_context():
+        user = db.session.get(User, user_data["id"])
+        db.session.get(ErrorEntry, error_id).machine_id = machine_id
+        document = _create_quality_gate_document(
+            title="META-100 Presse Meta",
+            quality_status="admin_approved",
+            created_by=user.id,
+            source_type="error_entry",
+            source_id=error_id,
+            text="META-100 Sensor Stoerung Presse Meta pruefen.",
+            token_text="meta 100 sensor stoerung presse pruefen",
+        )
+        document.chunks[0].entities_json = json.dumps(
+            {
+                "_chunk_metadata": {
+                    "chunk_block_count": 2,
+                    "chunk_block_kinds": "error_code,paragraph",
+                    "chunking_mode": "hybrid_semantic",
+                }
+            },
+            ensure_ascii=True,
+        )
+        db.session.commit()
+
+        context, sources = knowledge_context_for_chat(
+            "META-100 Presse Meta Sensor Stoerung",
+            user,
+            limit=1,
+        )
+
+    source = sources[0]
+    assert source["source_type"] == "error_entry"
+    assert source["source_id"] == error_id
+    assert source["title"] == "META-100 Presse Meta"
+    assert source["module"] == "knowledge"
+    assert source["machine_id"] == machine_id
+    assert source["role_visibility"] == "department:Produktion"
+    assert source["created_at"]
+    assert source["chunk_id"]
+    assert source["chunk_block_count"] == 2
+    assert source["chunk_block_kinds"] == ["error_code", "paragraph"]
+    assert source["chunking_mode"] == "hybrid_semantic"
+    assert "Chunk-Struktur: 2 Block(s), Arten: error_code, paragraph" in context
+
+
+def test_vector_result_candidate_normalizes_chunk_structure_metadata():
+    """Verify vector-store string metadata becomes stable public source fields."""
+    result = type(
+        "VectorResult",
+        (),
+        {
+            "score": 90,
+            "text": "META-200 Listenpunkt und Fehlercode.",
+            "metadata": {
+                "type": "knowledge",
+                "id": 7,
+                "chunk_id": 13,
+                "chunk_block_count": "2",
+                "chunk_block_kinds": "list, error_code",
+                "title": "META-200",
+                "module": "knowledge",
+                "source_type": "machine_manual",
+                "source_id": 5,
+            },
+        },
+    )()
+
+    public_source = public_sources_from_candidates([vector_result_candidate(result)])[0]
+
+    assert public_source["chunk_block_count"] == 2
+    assert public_source["chunk_block_kinds"] == ["list", "error_code"]
+
+
+def test_rag_sources_include_shift_handover_metadata(
+    app,
+    make_user,
+    make_machine,
+    set_dashboard_permission,
+):
+    """Verify shift handover RAG sources expose safe metadata."""
+    user_data = make_user(
+        username="rag_handover_metadata_user",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+    set_dashboard_permission(user_data["username"], "shiftplans", can_view=True)
+    machine_id = make_machine(name="Presse Handover Meta", produced_item="Servo")
+
+    with app.app_context():
+        user = db.session.get(User, user_data["id"])
+        handover = ShiftHandover(
+            department="Produktion",
+            shift_date=utc_now().date(),
+            shift_type="Spaet",
+            status="open",
+            handed_over_by=user.id,
+            machine_id=machine_id,
+            content="Presse Handover Meta braucht Kontrolle.",
+            open_tasks="Hydraulikpruefung offen.",
+            machine_notes="Sensorabgleich beobachten.",
+            next_notes="Druck im ersten Auftrag pruefen.",
+        )
+        db.session.add(handover)
+        db.session.flush()
+        _create_quality_gate_document(
+            title="Handover Meta Presse",
+            quality_status="admin_approved",
+            created_by=user.id,
+            source_type="shift_handover",
+            source_id=handover.id,
+            text="Presse Handover Meta Sensorabgleich Hydraulikpruefung.",
+            token_text="presse handover meta sensorabgleich hydraulikpruefung",
+        )
+        db.session.commit()
+
+        _context, sources = knowledge_context_for_chat(
+            "Presse Handover Meta Sensorabgleich Hydraulikpruefung",
+            user,
+            limit=1,
+        )
+
+    source = sources[0]
+    assert source["source_type"] == "shift_handover"
+    assert source["source_id"] == handover.id
+    assert source["machine_id"] == machine_id
+    assert source["machine"] == "Presse Handover Meta"
+    assert source["role_visibility"] == "department:Produktion"
+    assert source["created_at"]
+    assert source["url"] == "/handover"
+
+
+def test_rag_sources_include_task_source_created_at(
+    app,
+    make_user,
+    set_dashboard_permission,
+):
+    """Verify task RAG sources use safe metadata from the original task."""
+    user_data = make_user(
+        username="rag_task_metadata_user",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+    set_dashboard_permission(user_data["username"], "tasks", can_view=True)
+    task_created_at = utc_now() - timedelta(days=3)
+
+    with app.app_context():
+        user = db.session.get(User, user_data["id"])
+        task = Task(
+            title="Task Metadata Quelle",
+            description="TM-100 Hydraulikpruefung an Taskquelle.",
+            priority=Priority.URGENT,
+            status=TaskStatus.OPEN,
+            due_date=task_created_at.date(),
+            department=user.department,
+            created_by=user.id,
+            created_at=task_created_at,
+            updated_at=task_created_at,
+        )
+        db.session.add(task)
+        db.session.flush()
+        task_id = task.id
+        _create_quality_gate_document(
+            title="TM-100 Task Metadata",
+            quality_status="admin_approved",
+            created_by=user.id,
+            source_type="task",
+            source_id=task_id,
+            text="TM-100 Task Metadata Hydraulikpruefung pruefen.",
+            token_text="tm 100 task metadata hydraulikpruefung pruefen",
+        )
+        db.session.commit()
+
+        _context, sources = knowledge_context_for_chat(
+            "TM-100 Task Metadata Hydraulikpruefung",
+            user,
+            limit=1,
+        )
+
+    source = sources[0]
+    assert source["source_type"] == "task"
+    assert source["source_id"] == task_id
+    assert source["department"] == "Produktion"
+    assert source["role_visibility"] == "department:Produktion"
+    assert source["created_at"].startswith(task_created_at.date().isoformat())
+    assert source["url"] == "/tasks"
+
+
+def test_vector_store_labels_private_department_visibility(
+    app,
+    make_user,
+    set_dashboard_permission,
+):
+    """Verify private knowledge sources expose prompt-safe visibility metadata."""
+    admin_data = make_user(
+        username="rag_private_visibility_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    set_dashboard_permission(admin_data["username"], "documents", can_view=True)
+    app.config["RAG_VECTOR_STORE"] = "local"
+
+    with app.app_context():
+        admin = db.session.get(User, admin_data["id"])
+        _create_quality_gate_document(
+            title="PV-100 Private Sichtbarkeit",
+            quality_status="admin_approved",
+            created_by=admin.id,
+            text="PV-100 Private Sichtbarkeit pruefen.",
+            token_text="pv 100 private sichtbarkeit pruefen",
+            is_public=False,
+        )
+        db.session.commit()
+
+        results = get_vector_store().similarity_search(
+            "PV-100 Private Sichtbarkeit",
+            admin,
+            limit=1,
+            filters={"role_visibility": "private:department:Produktion"},
+        )
+
+    assert results
+    assert results[0].metadata["role_visibility"] == "private:department:Produktion"
+
+
+def test_vector_store_filters_by_safe_machine_metadata(
+    app,
+    make_user,
+    make_machine,
+    make_error_entry,
+    set_dashboard_permission,
+):
+    """Verify hybrid vector search honors safe machine metadata filters."""
+    user_data = make_user(
+        username="rag_machine_filter_user",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+    set_dashboard_permission(user_data["username"], "errors", can_view=True)
+    set_dashboard_permission(user_data["username"], "machines", can_view=True)
+    set_dashboard_permission(user_data["username"], "shiftplans", can_view=True)
+    presse_10_id = make_machine(name="Presse 10", produced_item="Servo")
+    presse_11_id = make_machine(name="Presse 11", produced_item="Servo")
+    matching_error_id = make_error_entry(
+        "Presse 10",
+        "MF-100",
+        "Maschinenfilter Treffer",
+        department_name="Produktion",
+        description="Servo meldet MF-100.",
+    )
+    other_error_id = make_error_entry(
+        "Presse 11",
+        "MF-100",
+        "Maschinenfilter Fremdtreffer",
+        department_name="Produktion",
+        description="Servo meldet MF-100.",
+    )
+
+    with app.app_context():
+        user = db.session.get(User, user_data["id"])
+        db.session.get(ErrorEntry, matching_error_id).machine_id = presse_10_id
+        db.session.get(ErrorEntry, other_error_id).machine_id = presse_11_id
+        matching_handover = ShiftHandover(
+            department="Produktion",
+            shift_date=utc_now().date(),
+            shift_type="Spaet",
+            status="open",
+            handed_over_by=user.id,
+            machine_id=presse_10_id,
+            machine_notes="MF-100 Servo Maschinenfilter an Presse 10 beobachten.",
+        )
+        other_handover = ShiftHandover(
+            department="Produktion",
+            shift_date=utc_now().date(),
+            shift_type="Nacht",
+            status="open",
+            handed_over_by=user.id,
+            machine_id=presse_11_id,
+            machine_notes="MF-100 Servo Maschinenfilter an Presse 11 beobachten.",
+        )
+        db.session.add_all([matching_handover, other_handover])
+        db.session.flush()
+        _create_quality_gate_document(
+            title="MF-100 Maschine Presse 10",
+            quality_status="admin_approved",
+            created_by=user.id,
+            source_type="machine",
+            source_id=presse_10_id,
+            text="MF-100 Servo Maschinenfilter Stammdaten Presse 10.",
+            token_text="mf 100 servo maschinenfilter stammdaten presse 10",
+        )
+        _create_quality_gate_document(
+            title="MF-100 Maschine Presse 11",
+            quality_status="admin_approved",
+            created_by=user.id,
+            source_type="machine",
+            source_id=presse_11_id,
+            text="MF-100 Servo Maschinenfilter Stammdaten Presse 11.",
+            token_text="mf 100 servo maschinenfilter stammdaten presse 11",
+        )
+        _create_quality_gate_document(
+            title="MF-100 Presse 10",
+            quality_status="admin_approved",
+            created_by=user.id,
+            source_type="error_entry",
+            source_id=matching_error_id,
+            text="MF-100 Servo Maschinenfilter Presse 10 pruefen.",
+            token_text="mf 100 servo maschinenfilter presse 10 pruefen",
+        )
+        _create_quality_gate_document(
+            title="MF-100 Presse 11",
+            quality_status="admin_approved",
+            created_by=user.id,
+            source_type="error_entry",
+            source_id=other_error_id,
+            text="MF-100 Servo Maschinenfilter Presse 11 pruefen.",
+            token_text="mf 100 servo maschinenfilter presse 11 pruefen",
+        )
+        _create_quality_gate_document(
+            title="MF-100 Handover Presse 10",
+            quality_status="admin_approved",
+            created_by=user.id,
+            source_type="shift_handover",
+            source_id=matching_handover.id,
+            text="MF-100 Servo Maschinenfilter Presse 10 im Handover.",
+            token_text="mf 100 servo maschinenfilter presse 10 handover",
+        )
+        _create_quality_gate_document(
+            title="MF-100 Handover Presse 11",
+            quality_status="admin_approved",
+            created_by=user.id,
+            source_type="shift_handover",
+            source_id=other_handover.id,
+            text="MF-100 Servo Maschinenfilter Presse 11 im Handover.",
+            token_text="mf 100 servo maschinenfilter presse 11 handover",
+        )
+        db.session.commit()
+
+        results = get_vector_store().similarity_search(
+            "MF-100 Servo Maschinenfilter",
+            user=user,
+            limit=5,
+            filters={
+                "machine_id": presse_10_id,
+                "module": "knowledge",
+                "role_visibility": "department:Produktion",
+            },
+        )
+
+    assert results
+    assert {result.metadata["title"] for result in results} == {
+        "MF-100 Maschine Presse 10",
+        "MF-100 Presse 10",
+        "MF-100 Handover Presse 10",
+    }
+    assert all(result.metadata["machine_id"] == presse_10_id for result in results)
+
+
+def test_rag_rerank_candidate_limit_fetches_more_than_final_top_k(app):
+    """Verify the rerank candidate limit is distinct from the final answer top K."""
+    with app.app_context():
+        app.config["RAG_TOP_K"] = 4
+        app.config["RAG_RERANK_CANDIDATE_LIMIT"] = 20
+
+        assert _rerank_candidate_limit(app.config["RAG_TOP_K"]) == 20
+        assert _rerank_candidate_limit(30) == 30
+
+
 def test_machine_aware_retrieval_prefers_same_error_machine(
     app,
     make_user,
@@ -1464,6 +2072,7 @@ def _create_quality_gate_document(
     text="QG900 QG901 Hydraulik Servo Spezialverfahren Qualitaetsgate.",
     token_text="qg900 qg901 hydraulik servo spezialverfahren qualitaetsgate",
     updated_at=None,
+    is_public=True,
 ):
     """Create an indexed knowledge document with one deterministic matching chunk."""
     timestamp = updated_at or utc_now()
@@ -1477,7 +2086,7 @@ def _create_quality_gate_document(
         department="Produktion",
         status="indexed",
         quality_status=quality_status,
-        is_public=True,
+        is_public=is_public,
         chunk_count=1,
         created_by=created_by,
         created_at=timestamp,

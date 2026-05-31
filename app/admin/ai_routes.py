@@ -310,6 +310,7 @@ def ai_knowledge_gaps():
         {
             "items": [gap.to_dict() for gap in gaps],
             "open_count": open_count,
+            "detection": knowledge_gap_detection(request.args),
             "pagination": {"limit": limit, "offset": offset, "total": total},
         },
         message="Knowledge gaps loaded",

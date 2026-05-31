@@ -1,4 +1,4 @@
-import { safeErrorMessage } from "../utils/errors";
+﻿import { safeErrorMessage } from "../utils/errors";
 import { type AdminAiPayload } from "./adminAiApi";
 import {
   moneyText,
@@ -45,6 +45,13 @@ export type AdminAiProviderField = {
 export type AdminAiStatRow = {
   readonly label: string;
   readonly value: string;
+};
+
+export type AdminAiActionItem = {
+  readonly detail: string;
+  readonly key: string;
+  readonly label: string;
+  readonly tone: "is-active" | "is-stale" | "is-error" | "is-muted";
 };
 
 export const EMPTY_ADMIN_AI_OVERVIEW_STATE: AdminAiOverviewLoadState = {
@@ -196,6 +203,112 @@ export function kpiValue(summary: AdminAiPayload | null, key: string): string {
 }
 
 /**
+ * Build business-facing metrics for the Admin Control Center overview.
+ */
+export function businessMetricRows(state: AdminAiOverviewLoadState): AdminAiStatRow[] {
+  const retrievalQuality = recordField(state.summary, "retrieval_quality");
+  const feedback = recordField(state.summary, "feedback");
+  const readiness = recordField(state.summary, "readiness");
+
+  return [
+    { label: "Source health", value: stringField(readiness, "status", "offen") },
+    { label: "Indexed/stale documents", value: stringField(readiness, "reasons", "keine Daten") },
+    { label: "Antworten ohne Quellen", value: percentText(retrievalQuality.no_source_rate) },
+    { label: "Low confidence answers", value: percentText(retrievalQuality.low_confidence_rate) },
+    { label: "Negative feedback", value: numberText(feedback.negative || feedback.not_helpful || 0) },
+    { label: "Tokens", value: numberText(state.summary?.total_tokens) },
+    { label: "Costs", value: moneyText(state.summary?.estimated_cost_usd) },
+    { label: "Usage", value: numberText(state.summary?.events_total) }
+  ];
+}
+
+/**
+ * Build the top admin action items from existing summary and operations data.
+ */
+export function adminActionItems(state: AdminAiOverviewLoadState): AdminAiActionItem[] {
+  const summary = state.summary || {};
+  const priceConfiguration = recordField(summary, "price_configuration");
+  const retrievalQuality = recordField(summary, "retrieval_quality");
+  const feedback = recordField(summary, "feedback");
+  const operationsJobs = recordField(state.operations, "background_jobs");
+  const actionItems: AdminAiActionItem[] = [];
+
+  if (priceConfiguration.configured === false || stringField(priceConfiguration, "message").includes("nicht")) {
+    actionItems.push({
+      detail: stringField(priceConfiguration, "message", "Kostenkonfiguration prüfen."),
+      key: "missing-cost-configuration",
+      label: "Missing cost configuration",
+      tone: "is-stale"
+    });
+  }
+
+  if (numberField(summary, "error_rate") >= 0.1) {
+    actionItems.push({
+      detail: `${percentText(summary.error_rate)} Fehlerquote in der aktuellen Auswertung.`,
+      key: "high-error-rate",
+      label: "High error rate",
+      tone: "is-error"
+    });
+  }
+
+  if (numberField(retrievalQuality, "no_source_rate") >= 0.1) {
+    actionItems.push({
+      detail: `${percentText(retrievalQuality.no_source_rate)} Antworten ohne Quellen.`,
+      key: "high-no-source-rate",
+      label: "High answers without sources",
+      tone: "is-stale"
+    });
+  }
+
+  if (numberField(retrievalQuality, "knowledge_gaps_open") > 0) {
+    actionItems.push({
+      detail: `${numberText(retrievalQuality.knowledge_gaps_open)} offene Wissensluecken.`,
+      key: "open-knowledge-gaps",
+      label: "Open knowledge gaps",
+      tone: "is-stale"
+    });
+  }
+
+  if (numberField(retrievalQuality, "pending_approvals") > 0) {
+    actionItems.push({
+      detail: `${numberText(retrievalQuality.pending_approvals)} Freigaben warten.`,
+      key: "pending-approvals",
+      label: "Pending approvals",
+      tone: "is-stale"
+    });
+  }
+
+  if (numberField(operationsJobs, "failed") > 0 || numberField(operationsJobs, "running") > 0) {
+    actionItems.push({
+      detail: `${numberText(operationsJobs.running)} laufend / ${numberText(operationsJobs.failed)} fehlgeschlagen.`,
+      key: "stuck-jobs",
+      label: "Stuck or failed jobs",
+      tone: numberField(operationsJobs, "failed") > 0 ? "is-error" : "is-stale"
+    });
+  }
+
+  if (numberField(feedback, "negative") > 0 || numberField(feedback, "not_helpful") > 0) {
+    actionItems.push({
+      detail: `${numberText(feedback.negative || feedback.not_helpful)} negative Rueckmeldungen.`,
+      key: "negative-feedback",
+      label: "Negative feedback",
+      tone: "is-stale"
+    });
+  }
+
+  return actionItems.length
+    ? actionItems.slice(0, 6)
+    : [
+        {
+          detail: "Keine offenen Action Items aus den vorhandenen Metriken.",
+          key: "none",
+          label: "No admin action required",
+          tone: "is-active"
+        }
+      ];
+}
+
+/**
  * Build provider field cards from AI status payloads.
  */
 export function providerFields(state: AdminAiOverviewLoadState): AdminAiProviderField[] {
@@ -211,7 +324,7 @@ export function providerFields(state: AdminAiOverviewLoadState): AdminAiProvider
       key: "model",
       label: "Modell",
       value: stringField(state.aiStatus, "model", "lokal"),
-      detail: "Modell fuer generative Antworten."
+      detail: "Modell für generative Antworten."
     },
     {
       key: "mode",

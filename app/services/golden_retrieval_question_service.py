@@ -1,9 +1,10 @@
 """Reusable golden question definitions for AI retrieval quality checks."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 
 from app.models import (
+    Employee,
     ErrorEntry,
     GeneratedDocument,
     InventoryMaterial,
@@ -18,6 +19,7 @@ from app.models import (
 
 GOLDEN_ALLOWED_SOURCE_TYPES = (
     "document",
+    "employee",
     "error",
     "inventory",
     "knowledge",
@@ -35,6 +37,7 @@ REQUIRED_GOLDEN_CATEGORIES = {
     "Materialien",
     "Wartungen",
     "Dokumente",
+    "Mitarbeiter",
     "Schichtuebergaben",
 }
 DEFAULT_GOLDEN_TOP_K = 8
@@ -47,9 +50,12 @@ class GoldenQuestion:
     question: str
     expected_source_types: tuple[str, ...]
     expected_sources: tuple[tuple[str, str], ...] = ()
+    expected_keywords: tuple[str, ...] = ()
     allowed_source_types: tuple[str, ...] = ()
     min_source_count: int = 1
     forbidden_sources: tuple[tuple[str, str], ...] = ()
+    expected_no_result: bool = False
+    required_permission_context: dict = field(default_factory=dict)
     expected_query_type: str = ""
     top_k: int = DEFAULT_GOLDEN_TOP_K
 
@@ -72,6 +78,7 @@ def build_golden_questions(source_ids):
             ("task",),
             _source_pairs(("task", "task_today"), ids=ids),
             forbidden_sources=forbidden,
+            expected_query_type="task_question",
         ),
         GoldenQuestion(
             "Welche offenen Aufgaben gibt es heute an Presse Golden 7?",
@@ -103,6 +110,7 @@ def build_golden_questions(source_ids):
             ("error",),
             _source_pairs(("error", "error_e104"), ids=ids),
             forbidden_sources=forbidden,
+            expected_query_type="error_analysis",
         ),
         GoldenQuestion(
             "Welche Loesung gibt es fuer Fehler E104?",
@@ -128,6 +136,7 @@ def build_golden_questions(source_ids):
             "Wie behebe ich Hydraulikdruckverlust?",
             ("knowledge",),
             _source_pairs(("knowledge", "knowledge_hydraulic"), ids=ids),
+            expected_keywords=("Hydraulikdruckverlust",),
             forbidden_sources=forbidden,
         ),
         GoldenQuestion(
@@ -135,6 +144,7 @@ def build_golden_questions(source_ids):
             ("machine",),
             _source_pairs(("machine", "machine"), ids=ids),
             forbidden_sources=forbidden,
+            expected_query_type="machine_question",
         ),
         GoldenQuestion(
             "Wie ist der Maschinenstatus von Maschine Presse Golden 7?",
@@ -153,6 +163,7 @@ def build_golden_questions(source_ids):
             ("inventory",),
             _source_pairs(("inventory", "material_filter"), ids=ids),
             forbidden_sources=forbidden,
+            expected_query_type="inventory_question",
         ),
         GoldenQuestion(
             "Welche Ersatzteile sind unter Mindestbestand?",
@@ -167,6 +178,7 @@ def build_golden_questions(source_ids):
             min_source_count=2,
             forbidden_sources=forbidden,
         ),
+        *_employee_golden_questions(ids, forbidden),
         GoldenQuestion(
             "Welche Wartungen Golden Hydraulikpruefung sind faellig?",
             ("knowledge",),
@@ -195,7 +207,9 @@ def build_golden_questions(source_ids):
             "Was steht im Handbuch zu Sensorabgleich E104?",
             ("knowledge",),
             _source_pairs(("knowledge", "knowledge_e104"), ids=ids),
+            expected_keywords=("Sensorabgleich", "E104"),
             forbidden_sources=forbidden,
+            expected_query_type="document_question",
         ),
         GoldenQuestion(
             "Welche Dokumentation hilft bei X900?",
@@ -214,8 +228,10 @@ def build_golden_questions(source_ids):
             "Was war zur Presse Golden 7 in der letzten Schichtuebergabe offen?",
             ("shift_handover", "machine"),
             _source_pairs(("shift_handover", "handover"), ("machine", "machine"), ids=ids),
+            expected_keywords=("Hydraulikpruefung", "Sensorabgleich"),
             min_source_count=2,
             forbidden_sources=forbidden,
+            expected_query_type="trend_history_question",
         ),
         GoldenQuestion(
             "Welche Quellen helfen bei Fehler E104 und offener Aufgabe?",
@@ -249,6 +265,7 @@ def build_demo_golden_questions(source_ids):
                 "Welche dringenden Aufgaben sind heute offen?",
                 ("task",),
                 _source_pairs(("task", "task_hydraulic"), ids=ids),
+                expected_query_type="task_question",
             ),
             GoldenQuestion(
                 "Welche Aufgabe ist an Hydraulikpresse 03 gerade dringend?",
@@ -260,6 +277,7 @@ def build_demo_golden_questions(source_ids):
                 "Was bedeutet Fehler INS-E-103?",
                 ("error",),
                 _source_pairs(("error", "ins_e_103"), ids=ids),
+                expected_query_type="error_analysis",
             ),
             GoldenQuestion(
                 "Welche Loesung gibt es fuer Druck faellt ab an Hydraulikpresse 03?",
@@ -271,6 +289,7 @@ def build_demo_golden_questions(source_ids):
                 "Welche Materialien sind bei Hydraulikpresse 03 unter Mindestbestand?",
                 ("inventory",),
                 _source_pairs(("inventory", "seal_kit"), ids=ids),
+                expected_query_type="inventory_question",
             ),
             GoldenQuestion(
                 "Welche Maschine hat aktuell offene oder laufende dringende Aufgaben?",
@@ -292,11 +311,15 @@ def build_demo_golden_questions(source_ids):
                 "Was steht im Manual zur Hydraulikpresse 03 bei Druckverlust?",
                 ("knowledge",),
                 _source_pairs(("knowledge", "hydraulic_manual_doc"), ids=ids),
+                expected_keywords=("Hydraulikpresse", "Druckverlust"),
+                expected_query_type="document_question",
             ),
             GoldenQuestion(
                 "Was wurde in der letzten Schicht zu Spritzgussanlage 04 gemeldet?",
                 ("shift_handover",),
                 _source_pairs(("shift_handover", "spritz_handover"), ids=ids),
+                expected_keywords=("Spritzgussanlage", "Schicht"),
+                expected_query_type="trend_history_question",
             ),
             GoldenQuestion(
                 "Welche Ersatzteile blockieren Wartung an Hydraulikpresse 03?",
@@ -312,6 +335,7 @@ def build_demo_golden_questions(source_ids):
                     ("error", "ins_e_103"),
                     ids=ids,
                 ),
+                expected_keywords=("Hydraulikdruckverlust", "Hydraulikpresse"),
                 min_source_count=2,
             ),
         )
@@ -354,6 +378,10 @@ def golden_categories(case):
         keyword in question for keyword in ("dokument", "handbuch", "anleitung")
     ):
         categories.add("Dokumente")
+    if "employee" in source_types or any(
+        keyword in question for keyword in ("mitarbeiter", "personal", "qualifikation")
+    ):
+        categories.add("Mitarbeiter")
     if "shift_handover" in source_types or "schichtuebergabe" in question:
         categories.add("Schichtuebergaben")
     return categories
@@ -379,6 +407,7 @@ def dummy_source_ids():
         "normal_machine": 302,
         "material_filter": 401,
         "material_sensor": 402,
+        "employee_hydraulic": 451,
         "plan": 501,
         "document": 601,
         "manual": 701,
@@ -415,6 +444,9 @@ def resolve_golden_source_ids():
         ),
         "material_sensor": _id(
             InventoryMaterial.query.filter_by(name="Golden E104 Sensorsatz").first()
+        ),
+        "employee_hydraulic": _id(
+            Employee.query.filter_by(name="Golden Hydraulikerin Mila").first()
         ),
         "plan": _id(
             MaintenancePlan.query.filter_by(title="Golden Hydraulikpruefung faellig").first()
@@ -518,6 +550,25 @@ def _source_pair(source_type, ids, key):
     if value in (None, "", 0):
         return ()
     return (source_type, str(value))
+
+
+def _employee_golden_questions(ids, forbidden):
+    """Return employee golden questions when a visible fixture employee exists."""
+    sources = _source_pairs(("employee", "employee_hydraulic"), ids=ids)
+    if not sources:
+        return ()
+    return (
+        GoldenQuestion(
+            "Welche Mitarbeiter haben Golden Hydraulikqualifikation?",
+            ("employee",),
+            sources,
+            expected_keywords=("Hydraulikqualifikation",),
+            forbidden_sources=forbidden,
+            required_permission_context={
+                "requires_dashboards": ("employees",),
+            },
+        ),
+    )
 
 
 def _has_canonical_sources(source_ids):

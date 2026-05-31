@@ -18,7 +18,7 @@ import { payloadItems } from "./adminAiPayloadItems";
 /**
  * Load and expose Admin-AI overview data.
  */
-export function useAdminAiOverviewData(adminAiView: AdminAiView) {
+export function useAdminAiOverviewData(adminAiView: AdminAiView, canUseAdminAiApi: boolean) {
   const [overviewState, setOverviewState] = useState<AdminAiOverviewLoadState>(
     EMPTY_ADMIN_AI_OVERVIEW_STATE
   );
@@ -26,7 +26,7 @@ export function useAdminAiOverviewData(adminAiView: AdminAiView) {
   const [overviewChatQuery, setOverviewChatQuery] = useState("");
 
   useEffect(() => {
-    if (adminAiView !== "overview") return undefined;
+    if (adminAiView !== "overview" || !canUseAdminAiApi) return undefined;
 
     const controller = new AbortController();
 
@@ -74,7 +74,7 @@ export function useAdminAiOverviewData(adminAiView: AdminAiView) {
     return () => {
       controller.abort();
     };
-  }, [adminAiView, overviewChatQuery, overviewEventError]);
+  }, [adminAiView, canUseAdminAiApi, overviewChatQuery, overviewEventError]);
 
   return {
     overviewChatQuery,

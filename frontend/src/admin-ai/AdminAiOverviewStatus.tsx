@@ -1,6 +1,8 @@
-import { type ReactNode } from "react";
+﻿import { type ReactNode } from "react";
 
 import {
+  adminActionItems,
+  businessMetricRows,
   kpiValue,
   modelHealthCard,
   overviewBadge,
@@ -54,6 +56,8 @@ export function AdminAiOverviewStatus({ overviewState }: { readonly overviewStat
   const statusBadge = overviewBadge(overviewState);
   const healthCards = overviewHealthCards(overviewState);
   const modelCard = modelHealthCard(overviewState);
+  const actionItems = adminActionItems(overviewState);
+  const businessMetrics = businessMetricRows(overviewState);
 
   return (
     <>
@@ -91,6 +95,48 @@ export function AdminAiOverviewStatus({ overviewState }: { readonly overviewStat
           </article>
         ))}
       </div>
+
+      <section className="panel ai-clarity-panel admin-control-action-summary" data-ai-admin-control-center>
+        <div className="panel-header">
+          <div>
+            <h3>Handlungsbedarf</h3>
+            <p className="panel-meta">
+              Admin-Aktionen aus vorhandenen Status-, Kosten-, Feedback-, Quellen- und Jobdaten.
+            </p>
+          </div>
+          <span className={`status-pill ${actionItems[0]?.tone || "is-muted"}`}>
+            {actionItems[0]?.key === "none" ? "Keine Aktion" : `${actionItems.length} offen`}
+          </span>
+        </div>
+        <div className="document-card-grid">
+          {actionItems.map((item) => (
+            <article className={`document-card ${item.tone}`} key={item.key}>
+              <span>{item.label}</span>
+              <strong>{item.key === "none" ? "OK" : "Prüfen"}</strong>
+              <small>{item.detail}</small>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel ai-status-panel" data-ai-business-metrics>
+        <div className="panel-header">
+          <div>
+            <h3>Business metrics</h3>
+            <p className="panel-meta">
+              Source health, Antworten ohne Quellen, Low Confidence, Feedback, Tokens, Kosten und Nutzung.
+            </p>
+          </div>
+        </div>
+        <div className="dashboard-grid dashboard-grid-4">
+          {businessMetrics.map((item) => (
+            <article className="metric-card" key={item.label}>
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
+            </article>
+          ))}
+        </div>
+      </section>
 
       <section className="panel ai-clarity-panel">
         <div className="panel-header">

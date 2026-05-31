@@ -66,6 +66,7 @@
       padding-inline: 1rem;
     }
 
+    .desktop-topbar .topbar-title,
     .desktop-topbar h1 {
       font-size: 1.18rem;
     }
@@ -210,6 +211,7 @@
     min-height: auto;
   }
 
+  .ai-admin-hero h1,
   .ai-admin-hero h2 {
     max-width: 46rem;
     font-size: clamp(1.65rem, 2vw, 2.25rem);

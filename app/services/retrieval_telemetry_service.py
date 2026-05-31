@@ -14,6 +14,7 @@ from app.domain_models.common import utc_now
 from app.extensions import db
 from app.models import AIAuditEvent, AIFeedback, KnowledgeChunk, KnowledgeDocument, KnowledgeGap
 from app.services.ai_confidence_service import LOW_CONFIDENCE_THRESHOLD
+from app.services.knowledge_metadata_service import stored_chunk_metadata
 from app.services.retrieval_evaluation_service import retrieval_evaluation_history
 from app.services.vector_sync_status_service import vector_store_drift_status
 
@@ -35,7 +36,15 @@ SLO_THRESHOLDS = {
     "fallback_rate": {"warning": 0.25, "critical": 0.5},
     "vector_sync_failure_count": {"warning": 1, "critical": 3},
     "stale_index_count": {"warning": 1, "critical": 5},
+    "source_metadata_missing_rate": {"warning": 0.1, "critical": 0.25},
 }
+ESSENTIAL_SOURCE_METADATA_FIELDS = (
+    "source_type",
+    "source_id",
+    "module",
+    "role_visibility",
+    "created_at",
+)
 
 
 @dataclass
@@ -46,6 +55,13 @@ class SourceTelemetry:
     source_id: int | None
     chunk_id: int | None
     title: str = ""
+    source_record_id: int | None = None
+    source_kind: str = ""
+    knowledge_source_type: str = ""
+    module: str = ""
+    machine_id: int | None = None
+    role_visibility: str = ""
+    created_at: str = ""
     audit_uses: int = 0
     helpful_feedback: int = 0
     partially_helpful_feedback: int = 0
@@ -101,6 +117,13 @@ class SourceTelemetry:
             "id": self.source_id,
             "chunk_id": self.chunk_id,
             "title": _source_title(self),
+            "source_record_id": self.source_record_id,
+            "source_kind": self.source_kind,
+            "knowledge_source_type": self.knowledge_source_type,
+            "module": self.module,
+            "machine_id": self.machine_id,
+            "role_visibility": self.role_visibility,
+            "created_at": self.created_at,
             "audit_uses": self.audit_uses,
             "feedback_count": self.feedback_count,
             "helpful_feedback": self.helpful_feedback,
@@ -137,6 +160,7 @@ def retrieval_quality_analytics(days=None, limit=None):
             window_days=window_days,
         ),
         "retrieval_evaluation_history": retrieval_evaluation_history(limit=item_limit),
+        "reranking": _reranking_summary(events),
         "source_usage": _source_usage_summary(source_stats, item_limit),
         "poor_sources": _poor_source_summary(source_stats, item_limit),
         "unsuccessful_questions": _unsuccessful_question_summary(events),
@@ -268,6 +292,8 @@ def _slo_metric_values(events, feedback_entries, drift_status=None):
         ),
         "vector_sync_failure_count": int(drift.get("vector_sync_failure_count") or 0),
         "stale_index_count": int(drift.get("stale_document_count") or 0),
+        "source_metadata_missing_rate": _source_metadata_missing_rate(events),
+        "source_metadata_missing_fields": _source_metadata_missing_fields(events),
     }
 
 
@@ -296,6 +322,45 @@ def _permission_filtered_candidate_count(event):
     return blocked_scope_count
 
 
+def _reranking_summary(events):
+    """Return aggregate candidate-pool reduction metrics from audit debug data."""
+    rows = []
+    for event in events:
+        explainability = event.retrieval_explainability()
+        debug = explainability.get("retrieval_debug") if isinstance(explainability, dict) else {}
+        reranking = debug.get("reranking") if isinstance(debug, dict) else {}
+        if not isinstance(reranking, dict):
+            continue
+        row = {
+            "candidate_limit": _optional_int(reranking.get("candidate_limit")),
+            "candidate_count": _optional_int(reranking.get("candidate_count")),
+            "final_top_k": _optional_int(reranking.get("final_top_k")),
+            "final_source_count": _optional_int(reranking.get("final_source_count")),
+            "reduction_rate": _optional_float(reranking.get("reduction_rate")),
+        }
+        if row["candidate_limit"] is None and row["final_top_k"] is None:
+            continue
+        rows.append(row)
+    return {
+        "request_count": len(rows),
+        "average_candidate_limit": _average(
+            row["candidate_limit"] for row in rows if row["candidate_limit"] is not None
+        ),
+        "average_candidate_count": _average(
+            row["candidate_count"] for row in rows if row["candidate_count"] is not None
+        ),
+        "average_final_top_k": _average(
+            row["final_top_k"] for row in rows if row["final_top_k"] is not None
+        ),
+        "average_final_source_count": _average(
+            row["final_source_count"] for row in rows if row["final_source_count"] is not None
+        ),
+        "average_reduction_rate": _average(
+            row["reduction_rate"] for row in rows if row["reduction_rate"] is not None
+        ),
+    }
+
+
 def _event_has_safety_risk(event):
     """Return whether audit metadata contains a safety-relevant risk signal."""
     explainability = event.retrieval_explainability()
@@ -304,6 +369,64 @@ def _event_has_safety_risk(event):
     safety = explainability.get("safety")
     post_safety = explainability.get("post_generation_safety")
     return _safety_relevant(safety) or _safety_relevant(post_safety)
+
+
+def _source_metadata_missing_rate(events):
+    """Return the share of retrieved sources missing essential public metadata."""
+    sources = [source for event in events for source in _event_sources(event)]
+    missing_count = sum(1 for source in sources if _source_has_metadata_gap(source))
+    return _rate(missing_count, len(sources))
+
+
+def _source_metadata_missing_fields(events):
+    """Return prompt-safe missing source metadata field counts."""
+    counter = Counter()
+    for event in events:
+        for source in _event_sources(event):
+            counter.update(_missing_source_metadata_fields(source))
+    return [
+        {"field": field, "count": count}
+        for field, count in counter.most_common()
+    ]
+
+
+def _event_sources(event):
+    """Return prompt-safe retrieval source references stored on one audit event."""
+    explainability = event.retrieval_explainability()
+    if not isinstance(explainability, dict):
+        return []
+    sources = explainability.get("sources") or []
+    return [source for source in sources if isinstance(source, dict)]
+
+
+def _source_has_metadata_gap(source):
+    """Return whether one retrieved source lacks essential public metadata."""
+    return bool(_missing_source_metadata_fields(source))
+
+
+def _missing_source_metadata_fields(source):
+    """Return essential metadata fields missing from one retrieved source."""
+    normalized = {
+        "source_type": source.get("source_type") or source.get("type"),
+        "source_id": source.get("source_id") or source.get("id"),
+        "module": source.get("module"),
+        "role_visibility": source.get("role_visibility"),
+        "created_at": source.get("created_at"),
+    }
+    return [
+        field
+        for field in ESSENTIAL_SOURCE_METADATA_FIELDS
+        if not _has_metadata_value(normalized.get(field))
+    ]
+
+
+def _has_metadata_value(value):
+    """Return whether a metadata value is populated without rejecting zero IDs."""
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    return True
 
 
 def _safety_relevant(value):
@@ -445,7 +568,26 @@ def _source_stat(source_stats, source):
         )
     elif not source_stats[key].title and source.get("title"):
         source_stats[key].title = _bounded_string(source.get("title"), 220)
+    _merge_source_metadata(source_stats[key], source)
     return source_stats[key]
+
+
+def _merge_source_metadata(stat, source):
+    """Merge prompt-safe source metadata into an aggregate telemetry row."""
+    if stat.source_record_id is None:
+        stat.source_record_id = _optional_int(source.get("source_record_id"))
+    if not stat.source_kind:
+        stat.source_kind = _bounded_string(source.get("source_kind"), 80)
+    if not stat.knowledge_source_type:
+        stat.knowledge_source_type = _bounded_string(source.get("knowledge_source_type"), 80)
+    if not stat.module:
+        stat.module = _bounded_string(source.get("module"), 80)
+    if stat.machine_id is None:
+        stat.machine_id = _optional_int(source.get("machine_id"))
+    if not stat.role_visibility:
+        stat.role_visibility = _bounded_string(source.get("role_visibility"), 140)
+    if not stat.created_at:
+        stat.created_at = _bounded_string(source.get("created_at"), 40)
 
 
 def _source_key(source):
@@ -494,8 +636,20 @@ def _source_usage_summary(source_stats, limit):
     return {
         "used_source_count": sum(1 for stat in sources if stat.audit_uses > 0),
         "referenced_source_count": len(sources),
+        "source_kind_distribution": _source_kind_distribution(sources),
         "top_sources": [stat.to_dict() for stat in sources[:limit] if stat.audit_uses > 0],
     }
+
+
+def _source_kind_distribution(sources):
+    """Return source usage counts grouped by retrieval source kind."""
+    return dict(
+        Counter(
+            _bounded_string(stat.source_kind, 80) or "unknown"
+            for stat in sources
+            if stat.audit_uses > 0
+        )
+    )
 
 
 def _poor_source_summary(source_stats, limit):
@@ -589,8 +743,53 @@ def _unused_chunk_summary(used_chunk_ids, limit):
     return {
         "total": len(unused_chunks),
         "referenced_chunk_count": len(used_chunk_ids),
+        "chunk_size_metrics": _chunk_size_metrics(unused_chunks),
         "sample": [_chunk_payload(chunk) for chunk in unused_chunks[:limit]],
     }
+
+
+def _chunk_size_metrics(chunks):
+    """Return content-safe size metrics for chunk coverage diagnostics."""
+    metadata_rows = [stored_chunk_metadata(chunk) for chunk in chunks]
+    char_counts = _metadata_int_values(metadata_rows, "chunk_char_count")
+    token_counts = _metadata_int_values(metadata_rows, "chunk_token_count")
+    line_counts = _metadata_int_values(metadata_rows, "chunk_line_count")
+    block_counts = _metadata_int_values(metadata_rows, "chunk_block_count")
+    block_kind_counter = Counter()
+    for metadata in metadata_rows:
+        block_kind_counter.update(_chunk_block_kinds(metadata))
+    return {
+        "measured_chunk_count": len(char_counts),
+        "average_char_count": _average(char_counts),
+        "max_char_count": max(char_counts, default=0),
+        "average_token_count": _average(token_counts),
+        "max_token_count": max(token_counts, default=0),
+        "average_line_count": _average(line_counts),
+        "max_line_count": max(line_counts, default=0),
+        "average_block_count": _average(block_counts),
+        "max_block_count": max(block_counts, default=0),
+        "block_kind_distribution": _counter_payload(block_kind_counter, limit=10),
+    }
+
+
+def _chunk_block_kinds(metadata):
+    """Return bounded chunk block kinds from stored chunk metadata."""
+    raw_value = str((metadata or {}).get("chunk_block_kinds") or "")
+    return [
+        _bounded_string(kind.strip(), 40)
+        for kind in raw_value.split(",")
+        if kind.strip()
+    ]
+
+
+def _metadata_int_values(metadata_rows, key):
+    """Return parsed integer metadata values for one content-safe metric key."""
+    values = []
+    for metadata in metadata_rows:
+        parsed = _optional_int(metadata.get(key))
+        if parsed is not None:
+            values.append(parsed)
+    return values
 
 
 def _used_chunk_ids(source_stats):
@@ -659,10 +858,18 @@ def _gap_payload(gap):
 def _chunk_payload(chunk):
     """Return a content-safe unused chunk payload."""
     document = chunk.document
+    chunk_metadata = stored_chunk_metadata(chunk)
     return {
         "chunk_id": chunk.id,
         "document_id": chunk.document_id,
         "chunk_index": chunk.chunk_index,
+        "chunk_char_count": _optional_int(chunk_metadata.get("chunk_char_count")),
+        "chunk_line_count": _optional_int(chunk_metadata.get("chunk_line_count")),
+        "chunk_token_count": _optional_int(chunk_metadata.get("chunk_token_count")),
+        "chunk_block_count": _optional_int(chunk_metadata.get("chunk_block_count")),
+        "chunk_block_kinds": _chunk_block_kinds(chunk_metadata),
+        "chunking_mode": _bounded_string(chunk_metadata.get("chunking_mode"), 80),
+        "section_title": _bounded_string(chunk_metadata.get("section_title"), 180),
         "document_title": _bounded_string(getattr(document, "title", ""), 220),
         "source_type": getattr(document, "source_type", ""),
         "quality_status": getattr(document, "quality_status", ""),
@@ -768,6 +975,14 @@ def _json_list(value):
     if not isinstance(parsed, list):
         return []
     return [str(item) for item in parsed if item not in (None, "")]
+
+
+def _average(values):
+    """Return a rounded arithmetic mean for numeric telemetry values."""
+    numeric_values = [float(value) for value in values if value is not None]
+    if not numeric_values:
+        return 0
+    return round(sum(numeric_values) / len(numeric_values), 4)
 
 
 def _optional_int(value):

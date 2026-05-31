@@ -10,7 +10,16 @@ from sqlalchemy import or_
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
-from app.models import GeneratedDocument, KnowledgeChunk, KnowledgeDocument
+from app.models import (
+    ErrorEntry,
+    GeneratedDocument,
+    InventoryMaterial,
+    KnowledgeChunk,
+    KnowledgeDocument,
+    MachineManual,
+    MaintenancePlan,
+    ShiftHandover,
+)
 from app.services.chunking_service import token_set
 from app.services.embedding_service import get_embedding_provider
 from app.services.knowledge_quality_service import retrieval_quality_gate_for_document
@@ -18,18 +27,24 @@ from app.services.knowledge_service import (
     can_user_read_knowledge_document,
     document_entity_metadata,
     stored_chunk_metadata,
+    structured_source_created_at,
+    structured_source_machine_id,
 )
 from app.services.retrieval_debug_service import (
     empty_retrieval_debug,
     retrieval_debug_decision,
 )
 from app.services.retrieval_scoring_service import HybridRetrievalScorer
-from app.services.source_visibility_policy import source_visibility_decision
+from app.services.source_visibility_policy import (
+    source_role_visibility_label,
+    source_visibility_decision,
+)
 from app.services.technical_entity_service import entities_from_json, entities_to_json
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_RAG_TOP_K = 4
+DEFAULT_RAG_RERANK_CANDIDATE_LIMIT = 20
 DEFAULT_RAG_SCAN_LIMIT = 300
 DEFAULT_RAG_KEYWORD_SCAN_LIMIT = 500
 DEFAULT_RAG_MAX_KEYWORD_TERMS = 8
@@ -169,6 +184,7 @@ class SqlAlchemyKnowledgeVectorStore(BaseVectorStore):
             return []
 
         limit_value = _positive_int(limit, _config_value("RAG_TOP_K", DEFAULT_RAG_TOP_K))
+        rerank_candidate_limit = _rerank_candidate_limit(limit_value)
         scan_limit = _positive_int(
             _config_value("RAG_SCAN_LIMIT", DEFAULT_RAG_SCAN_LIMIT),
             DEFAULT_RAG_SCAN_LIMIT,
@@ -304,6 +320,7 @@ class SqlAlchemyKnowledgeVectorStore(BaseVectorStore):
             vector_store=self.name,
             filters=filters or {},
             top_k=limit_value,
+            rerank_candidate_limit=rerank_candidate_limit,
             decision_trace=decisions,
         )
         return results[:limit_value]
@@ -346,7 +363,7 @@ class PgVectorKnowledgeVectorStore(BaseVectorStore):
             return []
         limit_value = _positive_int(limit, _config_value("RAG_TOP_K", DEFAULT_RAG_TOP_K))
         query_vector = self.embedding_provider.embed_text(query_text)
-        candidate_limit = max(limit_value * 4, limit_value)
+        candidate_limit = _rerank_candidate_limit(limit_value)
         try:
             raw_rows = self._candidate_rows(query_vector, candidate_limit, filters)
         except SQLAlchemyError:
@@ -399,6 +416,7 @@ class PgVectorKnowledgeVectorStore(BaseVectorStore):
             vector_store=self.name,
             filters=filters or {},
             top_k=limit_value,
+            rerank_candidate_limit=candidate_limit,
             decision_trace=decisions,
         )
         return results[:limit_value]
@@ -560,7 +578,7 @@ class ChromaVectorStore(BaseVectorStore):
             return []
         limit_value = _positive_int(limit, _config_value("RAG_TOP_K", DEFAULT_RAG_TOP_K))
         query_embedding = self.embedding_provider.embed_text(query_text)
-        candidate_limit = max(limit_value * 4, limit_value)
+        candidate_limit = _rerank_candidate_limit(limit_value)
         response = self.collection.query(
             query_embeddings=[query_embedding],
             n_results=candidate_limit,
@@ -572,6 +590,7 @@ class ChromaVectorStore(BaseVectorStore):
             vector_store=self.name,
             filters=filters or {},
             top_k=limit_value,
+            rerank_candidate_limit=candidate_limit,
             decision_trace=[
                 retrieval_debug_decision(
                     "vector_candidate_scan",
@@ -619,6 +638,7 @@ def get_vector_store():
 def _knowledge_metadata(document, chunk, score=None):
     """Return metadata for a persisted knowledge chunk."""
     entities = _chunk_entities(chunk)
+    source_created_at = structured_source_created_at(document)
     metadata = {
         "type": "knowledge",
         "id": document.id,
@@ -630,6 +650,9 @@ def _knowledge_metadata(document, chunk, score=None):
         "source_id": document.source_id,
         "document_type": _document_type(document),
         "department": document.department,
+        "machine_id": structured_source_machine_id(document),
+        "role_visibility": source_role_visibility_label(document),
+        "created_at": source_created_at or document.created_at.isoformat(),
         "url": _source_url(document),
         "updated_at": document.updated_at.isoformat(),
         "technical_entities": entities,
@@ -713,6 +736,12 @@ def _matches_filters(document, filters):
             return False
         if key == "source_id" and str(document.source_id) != str(value):
             return False
+        if key == "module" and str(value) != "knowledge":
+            return False
+        if key == "machine_id" and str(structured_source_machine_id(document) or "") != str(value):
+            return False
+        if key == "role_visibility" and source_role_visibility_label(document) != str(value):
+            return False
     return True
 
 
@@ -729,7 +758,69 @@ def _apply_db_filters(query, filters):
     source_id = filters.get("source_id")
     if source_id not in (None, ""):
         query = query.filter(KnowledgeDocument.source_id == source_id)
+    machine_id = filters.get("machine_id")
+    if machine_id not in (None, ""):
+        query = query.filter(_machine_source_filter(machine_id))
     return query
+
+
+def _machine_source_filter(machine_id):
+    """Return a document filter for source models with direct machine links."""
+    parsed_machine_id = _optional_int(machine_id)
+    if parsed_machine_id is None:
+        return KnowledgeDocument.id.is_(None)
+    return or_(
+        (
+            (KnowledgeDocument.source_type == "machine")
+            & (KnowledgeDocument.source_id == parsed_machine_id)
+        ),
+        (
+            (KnowledgeDocument.source_type == "error_entry")
+            & KnowledgeDocument.source_id.in_(
+                db.session.query(ErrorEntry.id).filter(ErrorEntry.machine_id == parsed_machine_id)
+            )
+        ),
+        (
+            (KnowledgeDocument.source_type == "generated_document")
+            & KnowledgeDocument.source_id.in_(
+                db.session.query(GeneratedDocument.id).filter(
+                    GeneratedDocument.machine_id == parsed_machine_id
+                )
+            )
+        ),
+        (
+            (KnowledgeDocument.source_type == "inventory_material")
+            & KnowledgeDocument.source_id.in_(
+                db.session.query(InventoryMaterial.id).filter(
+                    InventoryMaterial.machine_id == parsed_machine_id
+                )
+            )
+        ),
+        (
+            (KnowledgeDocument.source_type == "maintenance_plan")
+            & KnowledgeDocument.source_id.in_(
+                db.session.query(MaintenancePlan.id).filter(
+                    MaintenancePlan.machine_id == parsed_machine_id
+                )
+            )
+        ),
+        (
+            (KnowledgeDocument.source_type == "machine_manual")
+            & KnowledgeDocument.source_id.in_(
+                db.session.query(MachineManual.id).filter(
+                    MachineManual.machine_id == parsed_machine_id
+                )
+            )
+        ),
+        (
+            (KnowledgeDocument.source_type == "shift_handover")
+            & KnowledgeDocument.source_id.in_(
+                db.session.query(ShiftHandover.id).filter(
+                    ShiftHandover.machine_id == parsed_machine_id
+                )
+            )
+        ),
+    )
 
 
 def _candidate_chunks(base_query, query_tokens, recent_limit, keyword_limit):
@@ -809,7 +900,9 @@ def _flat_metadata(metadata):
     """Return Chroma-compatible primitive metadata."""
     flat = {}
     for key, value in dict(metadata or {}).items():
-        if isinstance(value, str | int | float | bool) or value is None:
+        if value is None:
+            continue
+        if isinstance(value, str | int | float | bool):
             flat[str(key)] = value
         else:
             flat[str(key)] = str(value)
@@ -979,6 +1072,11 @@ def _chunk_for_metadata(result):
         for key in (
             "chunk_index",
             "chunk_order",
+            "chunk_char_count",
+            "chunk_line_count",
+            "chunk_token_count",
+            "chunk_block_count",
+            "chunk_block_kinds",
             "source_offset",
             "source_section",
             "section_title",
@@ -1011,6 +1109,28 @@ def _positive_int(value, default):
     except (TypeError, ValueError):
         return default
     return parsed if parsed > 0 else default
+
+
+def _optional_int(value):
+    """Return an integer when parsing succeeds, otherwise None."""
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _rerank_candidate_limit(final_limit):
+    """Return how many vector candidates should be fetched before final top-K trimming."""
+    configured_limit = _positive_int(
+        _config_value(
+            "RAG_RERANK_CANDIDATE_LIMIT",
+            DEFAULT_RAG_RERANK_CANDIDATE_LIMIT,
+        ),
+        DEFAULT_RAG_RERANK_CANDIDATE_LIMIT,
+    )
+    return max(_positive_int(final_limit, DEFAULT_RAG_TOP_K), configured_limit)
 
 
 def _is_postgresql():

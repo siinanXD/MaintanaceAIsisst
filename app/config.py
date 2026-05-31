@@ -10,6 +10,7 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_DEV_SECRET = "dev-secret-change-me"
+SUPPORTED_RAG_CHUNKING_MODES = {"structured", "hybrid_semantic"}
 
 
 def env_bool(name, default=False):
@@ -44,18 +45,29 @@ def env_float(name, default):
 
 def validate_runtime_config(config):
     """Validate high-risk runtime configuration values."""
+    chunking_mode = str(config.get("RAG_CHUNKING_MODE", "hybrid_semantic")).strip().lower()
     chunk_size = config.get("RAG_CHUNK_SIZE", 1400)
     chunk_overlap = config.get("RAG_CHUNK_OVERLAP", 160)
+    semantic_breakpoint_threshold = config.get("RAG_SEMANTIC_BREAKPOINT_THRESHOLD", 0.35)
     semantic_min_chars = config.get("RAG_SEMANTIC_MIN_CHUNK_CHARS", 600)
     semantic_target_chars = config.get("RAG_SEMANTIC_TARGET_CHUNK_CHARS", 1200)
     semantic_max_chars = config.get("RAG_SEMANTIC_MAX_CHUNK_CHARS", 1800)
     top_k = config.get("RAG_TOP_K", 4)
+    rerank_candidate_limit = config.get("RAG_RERANK_CANDIDATE_LIMIT", 20)
+    semantic_only_min_similarity = config.get("RAG_SEMANTIC_ONLY_MIN_SIMILARITY", 0.78)
     if chunk_size < 200:
         raise RuntimeError("RAG_CHUNK_SIZE must be at least 200")
     if chunk_overlap < 0:
         raise RuntimeError("RAG_CHUNK_OVERLAP must not be negative")
     if chunk_overlap >= chunk_size:
         raise RuntimeError("RAG_CHUNK_OVERLAP must be smaller than RAG_CHUNK_SIZE")
+    if chunking_mode not in SUPPORTED_RAG_CHUNKING_MODES:
+        raise RuntimeError(
+            "RAG_CHUNKING_MODE must be one of "
+            f"{sorted(SUPPORTED_RAG_CHUNKING_MODES)}"
+        )
+    if not 0 <= semantic_breakpoint_threshold <= 1:
+        raise RuntimeError("RAG_SEMANTIC_BREAKPOINT_THRESHOLD must be between 0 and 1")
     if semantic_min_chars < 100:
         raise RuntimeError("RAG_SEMANTIC_MIN_CHUNK_CHARS must be at least 100")
     if semantic_target_chars < semantic_min_chars:
@@ -70,6 +82,10 @@ def validate_runtime_config(config):
         )
     if top_k < 1:
         raise RuntimeError("RAG_TOP_K must be at least 1")
+    if rerank_candidate_limit < top_k:
+        raise RuntimeError("RAG_RERANK_CANDIDATE_LIMIT must be greater than or equal to RAG_TOP_K")
+    if not 0 <= semantic_only_min_similarity <= 1:
+        raise RuntimeError("RAG_SEMANTIC_ONLY_MIN_SIMILARITY must be between 0 and 1")
     if config.get("TESTING"):
         return
     if str(config.get("FLASK_ENV", "")).lower() != "production":
@@ -103,6 +119,7 @@ class Config:
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", DEFAULT_DEV_SECRET)
     AI_PROVIDER = os.getenv("AI_PROVIDER", "openai")
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+    AI_BASE_URL = os.getenv("AI_BASE_URL", "")
     OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     OPENAI_MODEL_FAST = os.getenv("OPENAI_MODEL_FAST", OPENAI_MODEL)
     OPENAI_MODEL_BALANCED = os.getenv("OPENAI_MODEL_BALANCED", OPENAI_MODEL)
@@ -149,6 +166,7 @@ class Config:
     RAG_SEMANTIC_TARGET_CHUNK_CHARS = env_int("RAG_SEMANTIC_TARGET_CHUNK_CHARS", 1200)
     RAG_SEMANTIC_MAX_CHUNK_CHARS = env_int("RAG_SEMANTIC_MAX_CHUNK_CHARS", 1800)
     RAG_TOP_K = env_int("RAG_TOP_K", 4)
+    RAG_RERANK_CANDIDATE_LIMIT = env_int("RAG_RERANK_CANDIDATE_LIMIT", 20)
     RAG_SCAN_LIMIT = env_int("RAG_SCAN_LIMIT", 300)
     RAG_MIN_SCORE = env_int("RAG_MIN_SCORE", 1)
     RAG_SCORE_DEBUG = env_bool("RAG_SCORE_DEBUG", default=False)

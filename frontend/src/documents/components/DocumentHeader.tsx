@@ -1,42 +1,40 @@
-import type { ReactNode } from "react";
+﻿import type { ReactNode } from "react";
+
+import { PageActionBar } from "../../components/ui/PageActionBar";
+import { createActionDefinition } from "../../components/ui/createActionSchema";
+
+type DocumentHeaderProps = {
+  readonly onFilterOpen: () => void;
+  readonly onManualUploadOpen: () => void;
+  readonly onUploadCheckOpen: () => void;
+  readonly writable: boolean;
+};
 
 /**
- * Render document page header, command bar and help text.
+ * Render document page header and actions.
  */
-export function DocumentHeader(): ReactNode {
+export function DocumentHeader({
+  onFilterOpen,
+  onManualUploadOpen,
+  onUploadCheckOpen,
+  writable
+}: DocumentHeaderProps): ReactNode {
   return (
-    <>
-      <section className="page-hero">
-        <div>
-          <p className="page-kicker">Berichte</p>
-          <h1 className="page-title">DokumentenÜbersicht</h1>
-          <p className="page-description">Berichte und Handbücher als Wissensbasis prüfen, freigeben und herunterladen.</p>
-        </div>
-      </section>
-
-      <nav className="page-command-bar" aria-label="Dokumente Schnellzugriff">
-        <a className="quick-action-row" href="#generated-documents">
-          <span>Generierte Dokumente prüfen</span>
-          <strong>Berichte</strong>
-        </a>
-        <a className="quick-action-row" href="#machine-manuals">
-          <span>Maschinenhandbücher prüfen</span>
-          <strong>Handbücher</strong>
-        </a>
-        <a className="quick-action-row" data-dashboard-nav="admin_users" hidden href="/admin/ai">
-          <span>Quellenstatus prüfen</span>
-          <strong>Admin</strong>
-        </a>
-      </nav>
-
-      <aside className="context-help" aria-label="Dokumente Orientierung">
-        <strong>Warum sind Dokumente wichtig?</strong>
-        <p>Handbücher und Berichte liefern belastbare Quellen. Gute Dokumente werden geprüft, freigegeben und für die Suche nutzbar gemacht.</p>
-        <details className="help-disclosure">
-          <summary>Was bedeutet Index-Nutzung?</summary>
-          <p>Nur freigegebene und erfolgreich vorbereitete Inhalte können als Quelle in Antworten erscheinen. Der Admin-Bereich zeigt, wenn ein Dokument veraltet oder nicht synchron ist.</p>
-        </details>
-      </aside>
-    </>
+    <section className="page-hero is-compact">
+      <div>
+        <h1 className="page-title">Dokumentenuebersicht</h1>
+        <p className="page-description">
+          Berichte und Handbücher als Wissensbasis prüfen, freigeben und herunterladen.
+        </p>
+      </div>
+      <PageActionBar
+        label="Dokumente Aktionen"
+        actions={[
+          { hidden: !writable, onClick: onManualUploadOpen, schema: createActionDefinition("documentManualUpload"), variant: "primary" },
+          { hidden: !writable, onClick: onUploadCheckOpen, schema: createActionDefinition("documentUploadCheck"), variant: "outline" },
+          { onClick: onFilterOpen, schema: createActionDefinition("documentFilter"), variant: "ghost" }
+        ]}
+      />
+    </section>
   );
 }

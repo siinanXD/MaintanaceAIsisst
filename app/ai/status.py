@@ -22,6 +22,7 @@ from app.models import (
     User,
 )
 from app.security import employee_access_level, has_dashboard_permission
+from app.services.ai_answer_quality_service import answer_quality_from_result
 from app.services.ai_audit_service import ai_analytics_summary, create_ai_audit_event
 from app.services.ai_confidence_service import attach_confidence_to_result
 from app.services.ai_history_service import save_chat_exchange
@@ -29,6 +30,7 @@ from app.services.ai_prompting import (
     permission_denied_answer,
     permission_denied_context,
 )
+from app.services.ai_provider_readiness_service import ai_provider_readiness_snapshot
 from app.services.ai_retrieval import allowed_ai_scopes, retrieve_ai_context
 from app.services.ai_routing import local_metadata, workflow_profile
 from app.services.ai_safety_service import (
@@ -38,9 +40,17 @@ from app.services.ai_safety_service import (
     assess_ai_safety,
     enforce_post_generation_safety,
 )
-from app.services.ai_service import AIServiceError, MockAIProvider, get_ai_provider
+from app.services.ai_service import (
+    AIServiceError,
+    MockAIProvider,
+    ai_provider_catalog,
+    ai_provider_fallback_reason,
+    get_ai_provider,
+    provider_fallback_error_message,
+)
 from app.services.conversation_context_service import conversation_context_for_chat
 from app.services.document_service import visible_documents_query
+from app.services.embedding_service import embedding_provider_catalog
 from app.services.empty_retrieval_response_service import build_empty_retrieval_answer
 from app.services.error_service import search_errors
 from app.services.incident_timeline_service import daily_briefing_timeline_section
@@ -250,6 +260,18 @@ def chat_quality_warnings(result, message=""):
                 "message": "Mindestens eine Quelle ist als veraltet markiert.",
             }
         )
+    source_conflicts = diagnostics.get("source_conflicts") or {}
+    if source_conflicts.get("has_conflicts"):
+        warnings.append(
+            {
+                "type": "source_conflict",
+                "severity": "warning",
+                "message": (
+                    "Quellenlage ist widerspruechlich; Antwort fachlich pruefen "
+                    "und Konflikt klaeren."
+                ),
+            }
+        )
     return warnings
 
 
@@ -269,7 +291,13 @@ def finalize_chat_result_quality(result, message):
     diagnostics["hallucination_warning"] = any(
         warning["type"] == "hallucination_risk" for warning in warnings
     )
+    result["answer_quality"] = answer_quality_from_result(result, diagnostics, warnings)
     return result
+
+
+def answer_quality_payload(result, diagnostics, warnings):
+    """Return a compact UI-facing answer quality summary."""
+    return answer_quality_from_result(result, diagnostics, warnings)
 
 
 def ai_diagnostics(
@@ -375,6 +403,10 @@ def attach_audit_metadata(
             "retrieval_duration_ms": diagnostics.get("retrieval_duration_ms", 0),
         }
     )
+    if rag.get("retrieval_debug"):
+        diagnostics["retrieval_explainability"]["retrieval_debug"] = public_retrieval_debug(
+            rag.get("retrieval_debug"),
+        )
     finalize_chat_result_quality(result, message)
     event_id = create_ai_audit_event(
         user,
@@ -399,21 +431,28 @@ def redacted_status_error(error):
 
 def ai_status():
     """Return redacted OpenAI configuration status for admins."""
-    api_key_configured = bool(current_app.config.get("OPENAI_API_KEY"))
-    provider = current_app.config.get("AI_PROVIDER", "openai")
     last_error = redacted_status_error(LAST_OPENAI_ERROR)
+    provider_readiness = ai_provider_readiness_snapshot(
+        current_app.config,
+        last_error=last_error,
+    )
     return {
-        "api_key_configured": api_key_configured,
+        "api_key_configured": provider_readiness["api_key_configured"],
         "model": workflow_profile("chat").model,
         "model_profiles": {
             "fast": workflow_profile("task_suggestion").to_dict(),
             "balanced": workflow_profile("chat").to_dict(),
             "quality": workflow_profile("quality_analysis").to_dict(),
         },
-        "provider": provider,
+        "provider": provider_readiness["provider"],
+        "provider_status": provider_readiness["provider_status"],
+        "provider_catalog": ai_provider_catalog(),
+        "embedding_provider_status": provider_readiness["embedding_provider_status"],
+        "embedding_provider_catalog": embedding_provider_catalog(),
         "streaming_enabled": bool(current_app.config.get("AI_ENABLE_STREAMING", True)),
         "langfuse": langfuse_status(current_app.config),
-        "ready": api_key_configured and last_error is None,
+        "ready": provider_readiness["ready"],
+        "readiness": provider_readiness["readiness"],
         "last_error": last_error,
         "analytics": ai_analytics_summary(7),
     }
@@ -434,12 +473,13 @@ def openai_assistant_answer(message, context):
 
     configured_provider = current_app.config.get("AI_PROVIDER", "openai").lower()
     if provider.name == "mock" and configured_provider != "mock":
-        LAST_OPENAI_ERROR = "api_key_missing"
-        logger.warning("ai_fallback workflow=chat reason=api_key_missing")
+        fallback_reason = ai_provider_fallback_reason(current_app.config)
+        LAST_OPENAI_ERROR = fallback_reason or "provider_unavailable"
+        logger.warning("ai_fallback workflow=chat reason=%s", LAST_OPENAI_ERROR)
         return None, ai_diagnostics(
-            "api_key_missing",
+            LAST_OPENAI_ERROR,
             fallback_used=True,
-            error="OPENAI_API_KEY is not configured in .env",
+            error=provider_fallback_error_message(LAST_OPENAI_ERROR),
             metadata=local_metadata("local", "chat"),
         )
 
@@ -496,6 +536,18 @@ def local_general_chat_answer(reason):
             "- **Status:** OpenAI ist nicht konfiguriert\n"
             "- **Naechster Schritt:** OPENAI_API_KEY in der .env setzen und Server neu starten"
         )
+    if reason == "base_url_missing":
+        return (
+            "## Allgemeine Antwort\n"
+            "- **Status:** OpenAI-kompatibler Provider ist nicht vollstaendig konfiguriert\n"
+            "- **Naechster Schritt:** AI_BASE_URL fuer den lokalen Endpoint setzen"
+        )
+    if reason == "unsupported_provider":
+        return (
+            "## Allgemeine Antwort\n"
+            "- **Status:** Der konfigurierte AI-Provider hat noch keinen Adapter\n"
+            "- **Naechster Schritt:** AI_PROVIDER auf openai, openai_compatible oder mock setzen"
+        )
     if reason in {"model_not_found", "model_not_allowed"}:
         return (
             "## Allgemeine Antwort\n"
@@ -533,12 +585,13 @@ def openai_general_answer(message, context=""):
     provider = get_ai_provider()
     configured_provider = current_app.config.get("AI_PROVIDER", "openai").lower()
     if provider.name == "mock" and configured_provider != "mock":
-        LAST_OPENAI_ERROR = "api_key_missing"
-        answer = local_general_chat_answer("api_key_missing")
+        fallback_reason = ai_provider_fallback_reason(current_app.config)
+        LAST_OPENAI_ERROR = fallback_reason or "provider_unavailable"
+        answer = local_general_chat_answer(LAST_OPENAI_ERROR)
         return with_general_tracking_notice(answer), ai_diagnostics(
-            "api_key_missing",
+            LAST_OPENAI_ERROR,
             fallback_used=True,
-            error="OPENAI_API_KEY is not configured in .env",
+            error=provider_fallback_error_message(LAST_OPENAI_ERROR),
             metadata=local_metadata("local", "general_chat"),
         )
 

@@ -5,6 +5,7 @@ from flask import Blueprint, request
 from app.handover.services import (
     complete_shift_handover,
     create_shift_handover,
+    summarize_shift_handover,
     update_shift_handover,
     visible_handovers_query,
 )
@@ -63,6 +64,18 @@ def get_handover(handover_id):
     """Return one visible handover record by id."""
     handover = visible_handovers_query(current_user()).filter_by(id=handover_id).first_or_404()
     return success_response(handover.to_dict())
+
+
+@handover_bp.get("/<int:handover_id>/summary")
+@dashboard_permission_required("shiftplans", "view")
+def handover_summary(handover_id):
+    """Return an AI-ready summary for one visible shift handover."""
+    user = current_user()
+    handover = visible_handovers_query(user).filter_by(id=handover_id).first_or_404()
+    return success_response(
+        summarize_shift_handover(handover, user),
+        message="Handover summary generated",
+    )
 
 
 @handover_bp.patch("/<int:handover_id>")

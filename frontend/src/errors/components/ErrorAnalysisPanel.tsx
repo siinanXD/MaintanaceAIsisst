@@ -11,6 +11,7 @@ import { draftFromAnalysis, errorMessage } from "../errorUtils";
 
 type ErrorAnalysisPanelProps = {
   readonly currentDepartment: string;
+  readonly drawerMode?: boolean;
   readonly hidden: boolean;
   readonly onApplyDraft: (draft: ErrorDraft) => void;
   readonly onSimilarResult: (result: SimilarErrorResult) => void;
@@ -61,7 +62,7 @@ function ActionPreview({ result }: { readonly result: ErrorAssistantResult | nul
 /**
  * Render the free-text error analysis panel.
  */
-export function ErrorAnalysisPanel({ currentDepartment, hidden, onApplyDraft, onSimilarResult }: ErrorAnalysisPanelProps): ReactNode {
+export function ErrorAnalysisPanel({ currentDepartment, drawerMode = false, hidden, onApplyDraft, onSimilarResult }: ErrorAnalysisPanelProps): ReactNode {
   const [analysis, setAnalysis] = useState<Partial<ErrorDraft> | null>(null);
   const [assistantResult, setAssistantResult] = useState<ErrorAssistantResult | null>(null);
   const [description, setDescription] = useState("");
@@ -99,11 +100,10 @@ export function ErrorAnalysisPanel({ currentDepartment, hidden, onApplyDraft, on
   function applyAnalysis(): void {
     if (!analysis) return;
     onApplyDraft(draftFromAnalysis(analysis, currentDepartment));
-    document.querySelector("[data-error-form]")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   return (
-    <details className="incident-action-panel app-card" data-default-collapsed="true" data-mobile-collapsible data-permission-write="errors" hidden={hidden}>
+    <details className="incident-action-panel app-card" data-default-collapsed="true" data-mobile-collapsible data-permission-write="errors" hidden={hidden} open={drawerMode}>
       <summary>
         <span>
           <strong>Aus Beschreibung vorschlagen</strong>

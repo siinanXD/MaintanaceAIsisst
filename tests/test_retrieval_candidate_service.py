@@ -51,6 +51,14 @@ def test_retrieval_candidates_rank_structured_and_rag_sources_together(
     assert scores == sorted(scores, reverse=True)
     assert all(0 <= source["normalized_score"] <= 100 for source in ranked_sources)
     assert all("raw_score" in source for source in ranked_sources)
+    task_source = next(source for source in ranked_sources if source["type"] == "task")
+    assert task_source["module"] == "tasks"
+    assert task_source["source_type"] == "task"
+    assert task_source["source_id"] == task_source["id"]
+    assert task_source["source_record_id"] == task_source["id"]
+    assert task_source["source_kind"] == "structured"
+    assert task_source["role_visibility"] == "department:Produktion"
+    assert task_source["created_at"]
 
 
 def test_candidate_ranking_keeps_rag_quality_gate_active(
@@ -131,6 +139,40 @@ def test_candidate_ranking_keeps_permission_filter_active(
 
     assert any(source["type"] == "task" for source in payload["sources"])
     assert all(source["type"] != "knowledge" for source in payload["sources"])
+
+
+def test_structured_machine_candidates_include_safe_machine_metadata(
+    app,
+    make_user,
+    make_machine,
+    set_dashboard_permission,
+):
+    """Verify structured machine retrieval exposes safe machine metadata."""
+    user_data = make_user(
+        username="candidate_machine_metadata_user",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+    set_dashboard_permission(user_data["username"], "machines", can_view=True)
+    machine_id = make_machine(name="UC904 Metadaten Presse", produced_item="Filterteil")
+
+    with app.app_context():
+        user = db.session.get(User, user_data["id"])
+        payload = retrieve_context(
+            "UC904 Metadaten Presse Filterteil",
+            user,
+            requested_scopes={"machines"},
+        )
+
+    machine_source = next(source for source in payload["sources"] if source["type"] == "machine")
+    assert machine_source["id"] == machine_id
+    assert machine_source["module"] == "machines"
+    assert machine_source["source_type"] == "machine"
+    assert machine_source["source_id"] == machine_id
+    assert machine_source["source_record_id"] == machine_id
+    assert machine_source["machine_id"] == machine_id
+    assert machine_source["role_visibility"] == "public"
+    assert machine_source["created_at"]
 
 
 def test_candidate_ranking_is_stable_for_repeated_retrieval(

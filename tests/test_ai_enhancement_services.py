@@ -6,7 +6,8 @@ from datetime import UTC, datetime
 
 from app.ai.services import answer_chat
 from app.extensions import db
-from app.models import ErrorEntry, KnowledgeChunk, KnowledgeDocument, Role, User
+from app.models import ChatMessage, ErrorEntry, KnowledgeChunk, KnowledgeDocument, Role, User
+from app.services.ai_audit_service import create_ai_audit_event
 from app.services.incident_timeline_service import incident_timeline
 from app.services.knowledge_linking_service import knowledge_links_for_document
 from app.services.query_classifier_service import (
@@ -66,18 +67,54 @@ def test_query_understanding_classifies_safety_and_routes_retrieval():
     assert result.retrieval_strategy["top_k"] >= 6
 
 
+def test_query_understanding_routes_employee_questions():
+    """Verify employee questions route to permission-aware employee sources."""
+    result = classify_query("Welche Mitarbeiter haben Hydraulik Qualifikation?")
+
+    assert result.query_type == "employee_question"
+    assert "employees" in result.recommended_scopes
+    assert "employee" in result.retrieval_strategy["source_types"]
+    assert result.retrieval_strategy["prefer_structured"] is True
+
+
+def test_query_understanding_routes_admin_user_role_questions():
+    """Verify admin-user questions route to permission-aware role sources."""
+    result = classify_query("Welche Rollen und Berechtigungen haben User im System?")
+
+    assert result.query_type == "admin_user_question"
+    assert "admin_users" in result.recommended_scopes
+    assert "admin_user" in result.retrieval_strategy["source_types"]
+    assert result.retrieval_strategy["prefer_structured"] is True
+
+
+def test_query_understanding_routes_handover_questions():
+    """Verify handover questions route to shift-handover sources."""
+    result = classify_query("Was steht in der letzten Schichtuebergabe zur Presse?")
+
+    assert result.query_type == "trend_history_question"
+    assert "shiftplans" in result.recommended_scopes
+    assert "shift_handover" in result.retrieval_strategy["source_types"]
+    assert result.retrieval_strategy["prefer_structured"] is True
+
+
 def test_query_classifier_routes_typical_live_sql_questions():
     """Verify high-level classification detects live structured-data questions."""
     classifier = QueryClassifierService()
 
     tasks = classifier.classify("Welche Tasks stehen heute an?")
     machines = classifier.classify("Welche Maschine ist kritisch?")
+    employees = classifier.classify("Welche Mitarbeiter haben Hydraulik Qualifikation?")
+    admin_users = classifier.classify("Welche Rollen haben User?")
 
     assert tasks.query_type == QUERY_TYPE_LIVE_SQL
     assert "tasks" in tasks.suggested_sources
     assert machines.query_type == QUERY_TYPE_LIVE_SQL
     assert "machines" in machines.suggested_sources
     assert "machine_hints" not in machines.possible_entities
+    assert employees.query_type == QUERY_TYPE_LIVE_SQL
+    assert "employees" in employees.suggested_sources
+    assert admin_users.query_type == QUERY_TYPE_LIVE_SQL
+    assert "admin_users" in admin_users.suggested_sources
 
 
 def test_query_classifier_routes_hybrid_error_code_questions():
@@ -222,6 +259,59 @@ def test_admin_retrieval_debug_endpoint_is_prompt_safe(app, client, make_user, a
         headers=auth_headers(admin["username"]),
         json={"message": "Was sagt das Dokument zu Anlage 1?"},
     )
+    with app.app_context():
+        admin_user = _admin_user(admin["id"])
+        audit_id = create_ai_audit_event(
+            user=admin_user,
+            workflow="assistant",
+            diagnostics={
+                "status": "local_answer",
+                "retrieval_explainability": {
+                    "source_count": 1,
+                    "explained_source_count": 1,
+                    "sources": [
+                        {
+                            "type": "knowledge",
+                            "id": 77,
+                            "source_type": "upload",
+                            "source_id": 55,
+                            "source_record_id": 55,
+                            "source_kind": "rag",
+                            "knowledge_source_type": "upload",
+                            "module": "knowledge",
+                            "machine_id": 12,
+                            "role_visibility": "department:Produktion",
+                            "created_at": "2026-05-30T10:00:00",
+                            "chunk_id": 88,
+                            "score": 42,
+                            "section_title": "Debug Abschnitt",
+                            "explainability": {
+                                "final_score": 42,
+                                "quality_status": "admin_approved",
+                                "machine_match": 0.8,
+                                "machine_match_reasons": ["machine_entity_match"],
+                            },
+                        },
+                    ],
+                },
+            },
+            source_count=1,
+        )
+        db.session.add(
+            ChatMessage(
+                user_id=admin["id"],
+                message="Debug deterministische Metadaten",
+                response="Gekuerzte Antwort ohne Chunktext.",
+                response_type="assistant",
+                diagnostics_json="{}",
+                source_count=1,
+                confidence_score=80,
+                confidence_level="high",
+                audit_event_id=audit_id,
+                created_at=datetime.now(UTC),
+            )
+        )
+        db.session.commit()
     debug_response = client.get(
         "/api/v1/admin/ai/retrieval-debug",
         headers=auth_headers(admin["username"]),
@@ -247,6 +337,29 @@ def test_admin_retrieval_debug_endpoint_is_prompt_safe(app, client, make_user, a
     assert "source_answer_links" in item
     assert "safety_checks" in item
     assert "context_builder" in item
+    rag_chunk = item["rag_chunks"][0]
+    score_row = item["scores"]["source_scores"][0]
+    assert rag_chunk["knowledge_source_type"] == "upload"
+    assert rag_chunk["module"] == "knowledge"
+    assert rag_chunk["source_type"] == "upload"
+    assert rag_chunk["source_id"] == 55
+    assert rag_chunk["source_record_id"] == 55
+    assert rag_chunk["source_kind"] == "rag"
+    assert rag_chunk["machine_id"] == 12
+    assert rag_chunk["role_visibility"] == "department:Produktion"
+    assert rag_chunk["created_at"]
+    assert score_row["knowledge_source_type"] == "upload"
+    assert score_row["source_type"] == "upload"
+    assert score_row["source_id"] == 55
+    assert score_row["source_record_id"] == 55
+    assert score_row["source_kind"] == "rag"
+    assert score_row["machine_id"] == 12
+    assert score_row["role_visibility"] == "department:Produktion"
+    assert item["machine_references"][0]["source_record_id"] == 55
+    assert item["machine_references"][0]["machine_id"] == 12
+    assert item["source_answer_links"][0]["source"]["role_visibility"] == (
+        "department:Produktion"
+    )
     assert "Private chunk text" not in str(payload)
     assert payload["privacy"]["shows_chunk_text"] is False
     assert payload["privacy"]["shows_full_answer"] is False

@@ -1,4 +1,4 @@
-import {
+﻿import {
   useEffect,
   useState,
   type FormEvent,
@@ -12,6 +12,7 @@ import { createEmptyTaskDraft, taskErrorMessage } from "../taskUtils";
 type TaskFormPanelProps = {
   readonly departments: readonly Department[];
   readonly draft: TaskDraft;
+  readonly drawerMode?: boolean;
   readonly editingTaskId: number | null;
   readonly hidden: boolean;
   readonly message: MessageState;
@@ -27,6 +28,7 @@ type TaskFormPanelProps = {
 export function TaskFormPanel({
   departments,
   draft,
+  drawerMode = false,
   editingTaskId,
   hidden,
   message,
@@ -37,10 +39,19 @@ export function TaskFormPanel({
 }: TaskFormPanelProps): ReactNode {
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(() => (
-    typeof window.matchMedia === "function"
-      ? !window.matchMedia("(max-width: 639px)").matches
-      : true
+    drawerMode || typeof window.matchMedia !== "function"
+      ? true
+      : !window.matchMedia("(max-width: 639px)").matches
   ));
+
+  /**
+   * Keep the form open when it is rendered inside the action drawer.
+   */
+  useEffect(() => {
+    if (drawerMode) {
+      setOpen(true);
+    }
+  }, [drawerMode]);
 
   /**
    * Open the form when edit mode becomes active.
@@ -50,6 +61,15 @@ export function TaskFormPanel({
       setOpen(true);
     }
   }, [editingTaskId]);
+
+  /**
+   * Update the local disclosure state unless the drawer owns visibility.
+   */
+  function handleToggle(openState: boolean): void {
+    if (!drawerMode) {
+      setOpen(openState);
+    }
+  }
 
   /**
    * Update one controlled task field.
@@ -86,13 +106,13 @@ export function TaskFormPanel({
 
   return (
     <details
-      className="task-action-panel app-card"
+      className={`task-action-panel app-card${drawerMode ? " is-drawer-panel" : ""}`}
       data-default-collapsed="true"
       data-mobile-collapsible
       data-permission-write="tasks"
       hidden={hidden}
       id="task-create"
-      onToggle={(event) => setOpen(event.currentTarget.open)}
+      onToggle={(event) => handleToggle(event.currentTarget.open)}
       open={open}
     >
       <summary>
@@ -114,14 +134,14 @@ export function TaskFormPanel({
                 onChange={(event) => updateField("department", event.target.value)}
                 value={draft.department}
               >
-                <option value="">Bereich wählen</option>
+                <option value="">Bereich waehlen</option>
                 {departments.map((department) => (
                   <option key={department.id ?? department.name} value={department.name}>{department.name}</option>
                 ))}
               </select>
             </div>
             <div className="field">
-              <label htmlFor="react-task-title">Überschrift</label>
+              <label htmlFor="react-task-title">Ueberschrift</label>
               <input
                 className="input input-bordered"
                 disabled={busy}
@@ -164,7 +184,7 @@ export function TaskFormPanel({
               </select>
             </div>
             <div className="field">
-              <label htmlFor="react-task-due-date">Fällig am</label>
+              <label htmlFor="react-task-due-date">Faellig am</label>
               <input
                 className="input input-bordered"
                 disabled={busy}

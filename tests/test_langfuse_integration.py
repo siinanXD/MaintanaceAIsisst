@@ -8,6 +8,7 @@ from urllib.parse import parse_qs, urlparse
 
 from app.ai.status import ai_diagnostics, ai_status
 from app.services.ai_audit_service import ai_analytics_summary
+from app.services.ai_provider_readiness_service import ai_readiness_summary
 from app.services.ai_routing import workflow_profile
 from app.services.ai_service import OpenAIProvider
 from app.services.langfuse_metrics_service import langfuse_metrics_summary
@@ -70,7 +71,235 @@ def test_ai_status_exposes_redacted_langfuse_readiness(app):
 
     assert status["langfuse"]["enabled"] is False
     assert status["langfuse"]["ready"] is False
+    assert status["provider_status"]["provider"] == "mock"
+    assert status["provider_status"]["ready"] is True
+    assert status["embedding_provider_status"]["provider"] == "hashing"
+    assert status["embedding_provider_status"]["ready"] is True
+    assert status["embedding_provider_status"]["effective_provider"] == "hashing"
+    assert status["ready"] is True
+    assert status["readiness"]["ready"] is True
+    assert status["readiness"]["degraded_components"] == []
     assert "secret" not in status["langfuse"]
+
+
+def test_ai_status_reports_openai_provider_readiness(app):
+    """Verify OpenAI provider readiness depends only on redacted config presence."""
+    with app.app_context():
+        app.config["AI_PROVIDER"] = "openai"
+        app.config["OPENAI_API_KEY"] = ""
+        missing_key_status = ai_status()
+        app.config["OPENAI_API_KEY"] = "   "
+        whitespace_key_status = ai_status()
+        app.config["OPENAI_API_KEY"] = "test-key"
+        ready_status = ai_status()
+
+    assert missing_key_status["provider_status"]["ready"] is False
+    assert missing_key_status["provider_status"]["reason"] == "api_key_missing"
+    assert (
+        missing_key_status["provider_status"]["configuration_action"]
+        == "set_openai_api_key"
+    )
+    assert "OPENAI_API_KEY" in missing_key_status["provider_status"][
+        "recommended_action"
+    ]
+    assert whitespace_key_status["provider_status"]["ready"] is False
+    assert whitespace_key_status["provider_status"]["reason"] == "api_key_missing"
+    assert whitespace_key_status["api_key_configured"] is False
+    assert ready_status["provider_status"]["ready"] is True
+    assert ready_status["provider_status"]["reason"] == ""
+    assert ready_status["provider_status"]["configuration_action"] == "none"
+
+
+def test_ai_status_normalizes_provider_name_in_readiness_snapshot(app):
+    """Verify readiness snapshots expose a stable normalized provider name."""
+    with app.app_context():
+        app.config["AI_PROVIDER"] = "  OpenAI_Compatible  "
+        app.config["OPENAI_API_KEY"] = "test-key"
+        app.config["AI_BASE_URL"] = "http://127.0.0.1:11434/v1"
+        status = ai_status()
+
+    assert status["provider"] == "openai_compatible"
+    assert status["provider_status"]["provider"] == "openai_compatible"
+    assert status["provider_status"]["ready"] is True
+
+
+def test_ai_readiness_summary_reports_last_error_action():
+    """Verify last AI errors become explicit admin readiness actions."""
+    provider_status = {
+        "ready": True,
+        "configuration_action": "none",
+        "recommended_action": "Provider bereit.",
+    }
+    embedding_status = {
+        "ready": True,
+        "configuration_action": "none",
+        "recommended_action": "Embedding bereit.",
+    }
+
+    readiness = ai_readiness_summary(
+        provider_status,
+        embedding_status,
+        last_error="configuration_missing",
+    )
+
+    assert readiness["ready"] is False
+    assert readiness["degraded_components"] == ["last_error"]
+    assert readiness["next_action"]["component"] == "last_error"
+    assert readiness["next_action"]["configuration_action"] == "review_last_ai_error"
+    assert "Admin-Log" in readiness["next_action"]["recommended_action"]
+
+
+def test_workflow_profile_ignores_blank_model_overrides(app, monkeypatch):
+    """Verify blank model overrides fall back to the configured routing defaults."""
+    monkeypatch.delenv("OPENAI_MODEL", raising=False)
+    monkeypatch.delenv("OPENAI_MODEL_BALANCED", raising=False)
+    monkeypatch.delenv("OPENAI_MODEL_GENERAL_CHAT", raising=False)
+    with app.app_context():
+        app.config["OPENAI_MODEL"] = "   "
+        app.config["OPENAI_MODEL_BALANCED"] = "   "
+        app.config["OPENAI_MODEL_GENERAL_CHAT"] = "   "
+        profile = workflow_profile("general_chat", legacy_model="   ")
+
+    assert profile.model == "gpt-4o-mini"
+
+
+def test_ai_status_reports_openai_compatible_base_url_requirement(app):
+    """Verify local OpenAI-compatible providers require a configured base URL."""
+    with app.app_context():
+        app.config["AI_PROVIDER"] = "openai_compatible"
+        app.config["OPENAI_API_KEY"] = "test-key"
+        app.config["AI_BASE_URL"] = ""
+        missing_base_url_status = ai_status()
+        app.config["AI_BASE_URL"] = "   "
+        whitespace_base_url_status = ai_status()
+        app.config["AI_BASE_URL"] = "http://127.0.0.1:11434/v1"
+        ready_status = ai_status()
+
+    assert missing_base_url_status["provider_status"]["ready"] is False
+    assert missing_base_url_status["provider_status"]["reason"] == "base_url_missing"
+    assert missing_base_url_status["provider_status"]["base_url_configured"] is False
+    assert (
+        missing_base_url_status["provider_status"]["configuration_action"]
+        == "set_ai_base_url"
+    )
+    assert "AI_BASE_URL" in missing_base_url_status["provider_status"][
+        "recommended_action"
+    ]
+    assert whitespace_base_url_status["provider_status"]["ready"] is False
+    assert whitespace_base_url_status["provider_status"]["reason"] == "base_url_missing"
+    assert whitespace_base_url_status["provider_status"]["base_url_configured"] is False
+    assert ready_status["provider_status"]["ready"] is True
+    assert ready_status["provider_status"]["base_url_configured"] is True
+    assert ready_status["provider_status"]["configuration_action"] == "none"
+
+
+def test_ai_status_reports_unsupported_provider_without_crashing(app):
+    """Verify unsupported providers are visibly not ready until implemented."""
+    with app.app_context():
+        app.config["AI_PROVIDER"] = "gemini"
+        app.config["OPENAI_API_KEY"] = "test-key"
+        status = ai_status()
+
+    assert status["provider_status"]["provider"] == "gemini"
+    assert status["provider_status"]["ready"] is False
+    assert status["provider_status"]["reason"] == "unsupported_provider"
+    assert (
+        status["provider_status"]["configuration_action"]
+        == "select_supported_provider"
+    )
+    assert "AI_PROVIDER" in status["provider_status"]["recommended_action"]
+    assert status["ready"] is False
+    assert status["readiness"]["status"] == "degraded"
+    assert status["readiness"]["degraded_components"] == ["provider"]
+    assert status["readiness"]["reasons"] == ["unsupported_provider"]
+
+
+def test_ai_status_reports_openai_compatible_embedding_readiness(app):
+    """Verify embedding provider readiness is visible without exposing secrets."""
+    with app.app_context():
+        app.config["EMBEDDING_PROVIDER"] = "openai_compatible"
+        app.config["OPENAI_API_KEY"] = "   "
+        app.config["AI_BASE_URL"] = "http://127.0.0.1:11434/v1"
+        missing_key_status = ai_status()
+        app.config["OPENAI_API_KEY"] = "test-key"
+        app.config["OPENAI_EMBEDDING_MODEL"] = "   "
+        missing_model_status = ai_status()
+        app.config["OPENAI_EMBEDDING_MODEL"] = "text-embedding-3-small"
+        app.config["AI_BASE_URL"] = ""
+        missing_base_url_status = ai_status()
+        app.config["AI_BASE_URL"] = "   "
+        whitespace_base_url_status = ai_status()
+        app.config["AI_BASE_URL"] = "http://127.0.0.1:11434/v1"
+        ready_status = ai_status()
+
+    missing_key = missing_key_status["embedding_provider_status"]
+    missing_model = missing_model_status["embedding_provider_status"]
+    missing = missing_base_url_status["embedding_provider_status"]
+    whitespace = whitespace_base_url_status["embedding_provider_status"]
+    ready = ready_status["embedding_provider_status"]
+    assert missing_key["ready"] is False
+    assert missing_key["reason"] == "api_key_missing"
+    assert missing_key["api_key_configured"] is False
+    assert missing_key["configuration_action"] == "set_openai_api_key"
+    assert "OPENAI_API_KEY" in missing_key["recommended_action"]
+    assert missing_model["ready"] is False
+    assert missing_model["reason"] == "embedding_model_missing"
+    assert missing_model["model_configured"] is False
+    assert missing_model["configuration_action"] == "set_openai_embedding_model"
+    assert "OPENAI_EMBEDDING_MODEL" in missing_model["recommended_action"]
+    assert missing["provider"] == "openai_compatible"
+    assert missing["ready"] is False
+    assert missing["reason"] == "base_url_missing"
+    assert missing["effective_provider"] == "hashing"
+    assert missing["base_url_configured"] is False
+    assert missing["configuration_action"] == "set_ai_base_url"
+    assert "AI_BASE_URL" in missing["recommended_action"]
+    assert whitespace["ready"] is False
+    assert whitespace["reason"] == "base_url_missing"
+    assert whitespace["base_url_configured"] is False
+    assert missing_base_url_status["ready"] is False
+    assert missing_base_url_status["readiness"]["degraded_components"] == [
+        "embedding_provider"
+    ]
+    assert missing_base_url_status["readiness"]["reasons"] == [
+        "embedding_base_url_missing"
+    ]
+    assert missing_base_url_status["readiness"]["next_action"]["component"] == (
+        "embedding_provider"
+    )
+    assert (
+        missing_base_url_status["readiness"]["next_action"]["configuration_action"]
+        == "set_ai_base_url"
+    )
+    assert "AI_BASE_URL" in missing_base_url_status["readiness"]["next_action"][
+        "recommended_action"
+    ]
+    assert ready["ready"] is True
+    assert ready["effective_provider"] == "openai_compatible"
+    assert ready["base_url_configured"] is True
+    assert ready["configuration_action"] == "none"
+    assert ready_status["ready"] is True
+
+
+def test_ai_status_reports_unsupported_embedding_provider_fallback(app):
+    """Verify unsupported embedding providers are visible while falling back locally."""
+    with app.app_context():
+        app.config["EMBEDDING_PROVIDER"] = "gemini"
+        status = ai_status()
+
+    embedding_status = status["embedding_provider_status"]
+    assert embedding_status["provider"] == "gemini"
+    assert embedding_status["ready"] is False
+    assert embedding_status["reason"] == "unsupported_provider"
+    assert embedding_status["effective_provider"] == "hashing"
+    assert (
+        embedding_status["configuration_action"]
+        == "select_supported_embedding_provider"
+    )
+    assert "EMBEDDING_PROVIDER" in embedding_status["recommended_action"]
+    assert status["ready"] is False
+    assert status["readiness"]["degraded_components"] == ["embedding_provider"]
+    assert status["readiness"]["reasons"] == ["embedding_unsupported_provider"]
 
 
 def test_ai_diagnostics_carries_langfuse_trace_metadata(app):

@@ -7,6 +7,8 @@ import {
 
 import { markIslandMounted } from "../app/islandMount";
 import { canWriteDashboard } from "../auth/permissions";
+import { ActionDrawer } from "../components/ui/ActionDrawer";
+import { createActionDefinition } from "../components/ui/createActionSchema";
 import { loadDepartments, loadTasks, prioritizeTasks } from "./taskApi";
 import { TaskBoard } from "./components/TaskBoard";
 import { TaskFormPanel } from "./components/TaskFormPanel";
@@ -51,6 +53,7 @@ function departmentOptionsFromTasks(tasks: readonly Task[]): string[] {
  */
 export function TasksApp(): ReactNode {
   const writable = canWriteDashboard("tasks");
+  const [activeDrawer, setActiveDrawer] = useState<"task" | "suggestion" | null>(null);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
   const [filters, setFilters] = useState<TaskFilters>({
@@ -137,6 +140,7 @@ export function TasksApp(): ReactNode {
     setEditingTaskId(null);
     setFormDraft(createEmptyTaskDraft());
     setMessage({ text: "Bearbeitung abgebrochen.", error: false });
+    setActiveDrawer(null);
   }
 
   /**
@@ -145,9 +149,7 @@ export function TasksApp(): ReactNode {
   function editTask(task: Task): void {
     setEditingTaskId(task.id);
     setFormDraft(draftFromTask(task));
-    window.requestAnimationFrame(() => {
-      document.querySelector("[data-task-form]")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
+    setActiveDrawer("task");
   }
 
   /**
@@ -156,9 +158,7 @@ export function TasksApp(): ReactNode {
   function applyDraft(draft: TaskDraft): void {
     setEditingTaskId(null);
     setFormDraft(draft);
-    window.requestAnimationFrame(() => {
-      document.querySelector("[data-task-form]")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
+    setActiveDrawer("task");
   }
 
   /**
@@ -168,6 +168,7 @@ export function TasksApp(): ReactNode {
     setEditingTaskId(null);
     await refreshTaskData();
     markPrioritiesStale();
+    setActiveDrawer(null);
   }
 
   useEffect(() => {
@@ -182,26 +183,27 @@ export function TasksApp(): ReactNode {
     const previewDraft = consumeTaskActionPreview();
     if (previewDraft) {
       setFormDraft(previewDraft);
+      setActiveDrawer("task");
+    } else if (window.location.hash === "#task-create") {
+      setActiveDrawer("task");
     }
   }, []);
 
   return (
     <>
-      <TaskHeader onRefreshPriorities={refreshPriorities} priorityBusy={priorityBusy} writable={writable} />
+      <TaskHeader
+        onCreateFromMessage={() => setActiveDrawer("suggestion")}
+        onCreateTask={() => {
+          setEditingTaskId(null);
+          setFormDraft(createEmptyTaskDraft());
+          setActiveDrawer("task");
+        }}
+        onRefreshPriorities={refreshPriorities}
+        priorityBusy={priorityBusy}
+        writable={writable}
+      />
       <TaskStats tasks={tasks} />
       <section className="task-workflow-grid" aria-label="Aufgaben Workflows">
-        <TaskFormPanel
-          departments={departments}
-          draft={formDraft}
-          editingTaskId={editingTaskId}
-          hidden={!writable}
-          message={message}
-          onCancelEdit={cancelEdit}
-          onDraftChange={setFormDraft}
-          onMessageChange={setMessage}
-          onSaved={handleTaskSaved}
-        />
-        <TaskSuggestionPanel hidden={!writable} onApplySuggestion={applyDraft} />
         <TaskPriorityPanel
           busy={priorityBusy}
           hint={priorityHint}
@@ -221,6 +223,32 @@ export function TasksApp(): ReactNode {
         tasks={visibleTasks}
         writable={writable}
       />
+      <ActionDrawer
+        definition={createActionDefinition("taskCreate")}
+        isOpen={activeDrawer === "task"}
+        onClose={cancelEdit}
+        title={editingTaskId ? "Aufgabe bearbeiten" : undefined}
+      >
+        <TaskFormPanel
+          departments={departments}
+          drawerMode
+          draft={formDraft}
+          editingTaskId={editingTaskId}
+          hidden={!writable}
+          message={message}
+          onCancelEdit={cancelEdit}
+          onDraftChange={setFormDraft}
+          onMessageChange={setMessage}
+          onSaved={handleTaskSaved}
+        />
+      </ActionDrawer>
+      <ActionDrawer
+        definition={createActionDefinition("taskSuggestion")}
+        isOpen={activeDrawer === "suggestion"}
+        onClose={() => setActiveDrawer(null)}
+      >
+        <TaskSuggestionPanel hidden={!writable} onApplySuggestion={applyDraft} />
+      </ActionDrawer>
     </>
   );
 }

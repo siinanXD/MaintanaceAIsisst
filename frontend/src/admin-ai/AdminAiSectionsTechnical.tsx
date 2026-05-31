@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+﻿import { type ReactNode } from "react";
 
 import {
   type AdminAiTechnicalFilters,
@@ -31,7 +31,7 @@ import {
 
 const RETRIEVAL_SLO_KPIS = [
   ["retrieval_p95_ms", "P95 Suchzeit", "0 ms"],
-  ["no_source_rate", "Ohne Quellen", "0%"],
+  ["no_source_rate", "Antworten ohne Quellen", "0%"],
   ["low_confidence_rate", "Niedrige Sicherheit", "0%"],
   ["permission_filtered_candidate_count", "Berechtigungsfilter", "0"],
   ["negative_feedback_rate", "Negatives Feedback", "0%"],
@@ -90,10 +90,51 @@ export function AdminAiTechnical(props: AdminAiTechnicalProps): ReactNode {
           <a className="document-card" href="/admin/ai#ai-models"><span>Modelle</span><strong>Provider und Laufzeit</strong><small>Status, Fallbacks und Modellprofile.</small></a>
         </div>
       </section>
-      <RetrievalSection {...props} />
-      <DiagnosticsSection {...props} />
-      <IndexingSection {...props} />
+      <CollapsedTechnicalPanel
+        detail="Recall@K, MRR, NDCG, Antworten ohne Quellen, Similarity und Quellenabruf-Ablauf."
+        title="Retrieval-Qualität und Evaluation"
+      >
+        <RetrievalSection {...props} />
+      </CollapsedTechnicalPanel>
+      <CollapsedTechnicalPanel
+        detail="Monitoring, Fehler, Prompt-Debug, Chunk-Nutzung, Top-Fragen und Wissensluecken."
+        title="Interne Diagnose und Prompt-Debug"
+      >
+        <DiagnosticsSection {...props} />
+      </CollapsedTechnicalPanel>
+      <CollapsedTechnicalPanel
+        detail="Reindex-Kommandos, Background-Jobs, Vektor-Sync, Queue und Operationsdaten."
+        title="Index, Jobs und Operations"
+      >
+        <IndexingSection {...props} />
+      </CollapsedTechnicalPanel>
     </>
+  );
+}
+
+/**
+ * Render a collapsed technical diagnostics group.
+ */
+function CollapsedTechnicalPanel({
+  children,
+  detail,
+  title
+}: {
+  readonly children: ReactNode;
+  readonly detail: string;
+  readonly title: string;
+}): ReactNode {
+  return (
+    <details className="panel admin-ai-technical-disclosure">
+      <summary>
+        <span>
+          <strong>{title}</strong>
+          <small>{detail}</small>
+        </span>
+        <span className="status-pill is-muted">aufklappen</span>
+      </summary>
+      <div className="admin-ai-technical-disclosure-body">{children}</div>
+    </details>
   );
 }
 
@@ -206,7 +247,12 @@ function RetrievalSection({
           <div className="toolbar"><span className="badge badge-ai" data-retrieval-evaluation-status>{evaluationRuns.length ? "Historie geladen" : "Noch nicht geladen"}</span><button className="btn btn-secondary" disabled={technicalState.isSaving} type="button" data-retrieval-evaluation-run onClick={onRunEvaluation}>Golden Eval ausführen</button></div>
         </div>
         <div className="dashboard-grid dashboard-grid-4">
-          {["recall_at_k", "mrr", "ndcg_at_k", "no_result_count"].map((key) => <article className="metric-card" key={key}><span>{key}</span><strong data-retrieval-evaluation-kpi={key}>{key.endsWith("count") ? numberText(latestEvaluation[key] || 0) : percentText(latestEvaluation[key] || 0)}</strong></article>)}
+          {[
+            ["recall_at_k", "Recall@K"],
+            ["mrr", "MRR"],
+            ["ndcg_at_k", "NDCG"],
+            ["no_result_count", "Keine Treffer"]
+          ].map(([key, label]) => <article className="metric-card" key={key}><span>{label}</span><strong data-retrieval-evaluation-kpi={key}>{key.endsWith("count") ? numberText(latestEvaluation[key] || 0) : percentText(latestEvaluation[key] || 0)}</strong></article>)}
         </div>
         <div className="content-grid two-columns mt-4">
           <StatsList dataAttr="data-retrieval-evaluation-regression" rows={regressionSignals.map((signal) => [ragText(signal.metric), percentText(signal.current || 0)] as const)} empty={["Golden Eval", "noch keine Runs gespeichert"]} />

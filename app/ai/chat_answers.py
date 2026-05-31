@@ -39,6 +39,7 @@ from app.services.ai_safety_service import (
     enforce_post_generation_safety,
 )
 from app.services.ai_service import AIServiceError, MockAIProvider, get_ai_provider
+from app.services.ai_task_status_answer_service import answer_task_status_question
 from app.services.conversation_context_service import conversation_context_for_chat
 from app.services.document_service import visible_documents_query
 from app.services.empty_retrieval_response_service import build_empty_retrieval_answer
@@ -338,6 +339,27 @@ def answer_chat(message, user, session_id=""):
             requested_scopes or {"tasks"},
             allowed_scopes,
             message=message,
+        )
+
+    task_status_result = answer_task_status_question(
+        message,
+        user,
+        conversation_context=conversation_context,
+    )
+    if task_status_result:
+        status = (
+            "permission_denied"
+            if task_status_result.get("type") == "permission_denied"
+            else "local_answer"
+        )
+        task_status_result["diagnostics"] = ai_diagnostics(status)
+        return attach_audit_metadata(
+            user,
+            task_status_result,
+            requested_scopes or {"tasks"},
+            allowed_scopes,
+            message=message,
+            conversation_context=conversation_context,
         )
 
     if looks_like_employee_count_question(message):

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { markIslandMounted } from "../app/islandMount";
+import { ActionDrawer } from "../components/ui/ActionDrawer";
+import { createActionDefinition } from "../components/ui/createActionSchema";
 import {
   loadCurrentUser,
   loadVacationEmployees,
@@ -39,6 +41,7 @@ const VACATIONS_ISLAND = {
  * Render the React vacations workflow island.
  */
 export function VacationsApp(): ReactNode {
+  const [isRequestDrawerOpen, setIsRequestDrawerOpen] = useState(false);
   const [draft, setDraft] = useState<VacationDraft>({ ...EMPTY_VACATION_DRAFT });
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [filterStatus, setFilterStatus] = useState("");
@@ -111,6 +114,9 @@ export function VacationsApp(): ReactNode {
     loadInitialData().catch((error: unknown) => {
       setMessage({ text: vacationErrorMessage(error), type: "error" });
     });
+    if (window.location.hash === "#vacation-request") {
+      setIsRequestDrawerOpen(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -153,22 +159,9 @@ export function VacationsApp(): ReactNode {
 
   return (
     <>
-      <VacationHeader />
+      <VacationHeader onRequestOpen={() => setIsRequestDrawerOpen(true)} />
       <VacationStats requests={requests} selectedBalance={selectedBalance} summaries={summaries} />
       <section className="vacation-planning-grid" aria-label="Urlaubsplanung Workflow">
-        <VacationRequestPanel
-          draft={draft}
-          employees={employees}
-          impact={impact}
-          impactMessage={impactMessage}
-          message={message}
-          onDraftChange={updateDraft}
-          onMessageChange={setMessage}
-          onSaved={() => refreshVacationData(selectedYear)}
-          selectedBalance={selectedBalance}
-          selectedEmployee={selectedEmployee}
-          submitDisabled={submitDisabled}
-        />
         <VacationPendingPanel
           onMessageChange={setMessage}
           onMutated={() => refreshVacationData(selectedYear)}
@@ -191,6 +184,28 @@ export function VacationsApp(): ReactNode {
         summaries={summaries}
         user={user}
       />
+      <ActionDrawer
+        definition={createActionDefinition("vacationRequest")}
+        isOpen={isRequestDrawerOpen}
+        onClose={() => setIsRequestDrawerOpen(false)}
+      >
+        <VacationRequestPanel
+          draft={draft}
+          employees={employees}
+          impact={impact}
+          impactMessage={impactMessage}
+          message={message}
+          onDraftChange={updateDraft}
+          onMessageChange={setMessage}
+          onSaved={async () => {
+            await refreshVacationData(selectedYear);
+            setIsRequestDrawerOpen(false);
+          }}
+          selectedBalance={selectedBalance}
+          selectedEmployee={selectedEmployee}
+          submitDisabled={submitDisabled}
+        />
+      </ActionDrawer>
     </>
   );
 }

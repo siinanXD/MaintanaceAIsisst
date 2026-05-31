@@ -16,13 +16,13 @@ import {
 /**
  * Load and expose Admin-AI effectiveness data.
  */
-export function useAdminAiEffectivenessData(adminAiView: AdminAiView) {
+export function useAdminAiEffectivenessData(adminAiView: AdminAiView, canUseAdminAiApi: boolean) {
   const [effectivenessState, setEffectivenessState] = useState<AdminAiEffectivenessState>(
     EMPTY_ADMIN_AI_EFFECTIVENESS_STATE
   );
 
   useEffect(() => {
-    if (adminAiView !== "effectiveness") return undefined;
+    if (adminAiView !== "effectiveness" || !canUseAdminAiApi) return undefined;
 
     const controller = new AbortController();
 
@@ -65,7 +65,7 @@ export function useAdminAiEffectivenessData(adminAiView: AdminAiView) {
     return () => {
       controller.abort();
     };
-  }, [adminAiView]);
+  }, [adminAiView, canUseAdminAiApi]);
 
   return { effectivenessState };
 }

@@ -31,6 +31,7 @@ type ShiftplansAppShellProps = {
   readonly savingEntry: boolean;
   readonly selectedMachineIds: ReadonlySet<number>;
   readonly selectedPlanIndex: number;
+  readonly showGenerateDrawer: boolean;
   readonly warnings: readonly ShiftplanWarning[];
   readonly writable: boolean;
   readonly onDeleteEntry: (entry: ShiftplanEntry) => Promise<void>;
@@ -39,6 +40,8 @@ type ShiftplansAppShellProps = {
   readonly onDraftChange: Dispatch<SetStateAction<ShiftplanDraft>>;
   readonly onEditEntry: (entry: ShiftplanEntry) => void;
   readonly onGenerate: () => Promise<void>;
+  readonly onGenerateClose: () => void;
+  readonly onGenerateOpen: () => void;
   readonly onMachineToggle: (machineId: number, checked: boolean) => void;
   readonly onMoveEntryToEntry: (entryId: number, targetEntryId: number) => Promise<void>;
   readonly onMoveEntryToSlot: (entryId: number, targetDate: string, targetShift: string) => Promise<void>;
@@ -81,6 +84,8 @@ export function ShiftplansAppShell(props: ShiftplansAppShellProps): ReactNode {
           props.onEditEntry(entry);
         }}
         onGenerate={props.onGenerate}
+        onGenerateClose={props.onGenerateClose}
+        onGenerateOpen={props.onGenerateOpen}
         onMachineToggle={props.onMachineToggle}
         onMoveEntryToEntry={props.onMoveEntryToEntry}
         onMoveEntryToSlot={props.onMoveEntryToSlot}
@@ -92,6 +97,7 @@ export function ShiftplansAppShell(props: ShiftplansAppShellProps): ReactNode {
         savingEntry={props.savingEntry}
         selectedMachineIds={props.selectedMachineIds}
         selectedPlanIndex={props.selectedPlanIndex}
+        showGenerateDrawer={props.showGenerateDrawer}
         warnings={props.warnings}
         writable={props.writable}
       />

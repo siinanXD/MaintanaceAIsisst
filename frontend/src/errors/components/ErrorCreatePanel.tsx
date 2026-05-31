@@ -8,6 +8,7 @@ import { ErrorFormFields } from "./ErrorFormFields";
 type ErrorCreatePanelProps = {
   readonly departments: readonly Department[];
   readonly draft: ErrorDraft;
+  readonly drawerMode?: boolean;
   readonly hidden: boolean;
   readonly message: MessageState;
   readonly onDraftChange: (draft: ErrorDraft) => void;
@@ -38,7 +39,15 @@ export function ErrorCreatePanel(props: ErrorCreatePanelProps): ReactNode {
   }
 
   return (
-    <details className="incident-action-panel app-card" data-default-collapsed="true" data-mobile-collapsible data-permission-write="errors" hidden={props.hidden} id="incident-create">
+    <details
+      className="incident-action-panel app-card"
+      data-default-collapsed="true"
+      data-mobile-collapsible
+      data-permission-write="errors"
+      hidden={props.hidden}
+      id="incident-create"
+      open={props.drawerMode}
+    >
       <summary>
         <span>
           <strong>Störung erfassen</strong>

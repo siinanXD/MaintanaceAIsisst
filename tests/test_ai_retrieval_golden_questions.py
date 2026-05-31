@@ -6,6 +6,7 @@ from app.domain_models.common import utc_now
 from app.extensions import db
 from app.models import (
     AssistantTrainingEntry,
+    Employee,
     ErrorEntry,
     GeneratedDocument,
     InventoryMaterial,
@@ -24,6 +25,7 @@ from app.models import (
 from app.services.golden_retrieval_question_service import (
     REQUIRED_GOLDEN_CATEGORIES,
     allowed_source_types,
+    build_demo_golden_questions,
     build_golden_questions,
     dummy_source_ids,
     golden_categories,
@@ -55,6 +57,12 @@ def test_ai_chat_golden_retrieval_questions(
         "shiftplans",
     ):
         set_dashboard_permission(user["username"], dashboard, can_view=True)
+    set_dashboard_permission(
+        user["username"],
+        "employees",
+        can_view=True,
+        employee_access_level="shift",
+    )
     app.config["RAG_ENABLED"] = True
     app.config["RAG_VECTOR_STORE"] = "local"
 
@@ -132,9 +140,39 @@ def test_golden_question_set_has_required_coverage():
 
     assert len(cases) >= 20
     assert REQUIRED_GOLDEN_CATEGORIES.issubset(categories)
+    assert "Mitarbeiter" in categories
     assert all(case.expected_sources for case in cases)
     assert all(case.min_source_count >= 1 for case in cases)
     assert all(allowed_source_types(case) for case in cases)
+    assert all(
+        case.expected_keywords
+        for case in cases
+        if "shift_handover" in case.expected_source_types
+    )
+
+
+def test_demo_golden_handover_questions_include_expected_keywords():
+    """Verify demo handover golden questions are keyword-checkable."""
+    cases = build_demo_golden_questions(
+        {
+            "task_hydraulic": 101,
+            "hydraulic": 301,
+            "ins_e_103": 201,
+            "ins_e_106": 202,
+            "seal_kit": 401,
+            "oring": 402,
+            "hydraulic_plan": 501,
+            "hydraulic_manual_doc": 601,
+            "hydraulic_training_doc": 602,
+            "spritz_handover": 901,
+        }
+    )
+
+    assert all(
+        case.expected_keywords
+        for case in cases
+        if "shift_handover" in case.expected_source_types
+    )
 
 
 def _seed_golden_sources(user):
@@ -233,6 +271,20 @@ def _seed_golden_sources(user):
         machine=machine,
     )
     db.session.add_all([material_filter, material_sensor])
+
+    employee = Employee(
+        personnel_number="GOLDEN-EMP-7",
+        name="Golden Hydraulikerin Mila",
+        department="Produktion",
+        shift_model="3-Schicht",
+        current_shift="Spaet",
+        next_shift="Nacht",
+        team=7,
+        qualifications="Hydraulikqualifikation Golden Presse 7 Sensorabgleich",
+        favorite_machine="Presse Golden 7",
+        favorite_machine_id=machine.id,
+    )
+    db.session.add(employee)
 
     plan = MaintenancePlan(
         title="Golden Hydraulikpruefung faellig",
@@ -338,6 +390,7 @@ def _seed_golden_sources(user):
         "normal_machine": normal_machine.id,
         "material_filter": material_filter.id,
         "material_sensor": material_sensor.id,
+        "employee_hydraulic": employee.id,
         "plan": plan.id,
         "document": document.id,
         "manual": manual.id,

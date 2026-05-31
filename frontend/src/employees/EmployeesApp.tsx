@@ -2,6 +2,8 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { markIslandMounted } from "../app/islandMount";
 import { canWriteDashboard } from "../auth/permissions";
+import { ActionDrawer } from "../components/ui/ActionDrawer";
+import { createActionDefinition } from "../components/ui/createActionSchema";
 import { loadEmployees } from "./employeeApi";
 import { EmployeeEditDialog } from "./components/EmployeeEditDialog";
 import { EmployeeFormPanel } from "./components/EmployeeFormPanel";
@@ -22,6 +24,7 @@ const EMPLOYEES_ISLAND = {
 export function EmployeesApp(): ReactNode {
   const writable = canWriteDashboard("employees");
   const manageable = canManageEmployees(writable);
+  const [isCreateDrawerOpen, setIsCreateDrawerOpen] = useState(false);
   const [createDraft, setCreateDraft] = useState<EmployeeDraft>({ ...EMPTY_EMPLOYEE_DRAFT });
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -42,21 +45,16 @@ export function EmployeesApp(): ReactNode {
     refreshEmployees().catch((error: unknown) => {
       setMessage({ text: employeeErrorMessage(error), error: true });
     });
+    if (window.location.hash === "#employee-create") {
+      setIsCreateDrawerOpen(true);
+    }
   }, []);
 
   return (
     <>
-      <EmployeeHeader />
+      <EmployeeHeader manageable={manageable} onCreateEmployee={() => setIsCreateDrawerOpen(true)} />
       <EmployeeStats employees={employees} />
       <section className="dashboard-grid">
-        <EmployeeFormPanel
-          draft={createDraft}
-          hidden={!manageable}
-          message={message}
-          onDraftChange={setCreateDraft}
-          onMessageChange={setMessage}
-          onSaved={refreshEmployees}
-        />
         {!manageable && message.text ? (
           <section className="card app-card lg:col-span-12" role="status">
             <div className="card-body">
@@ -78,6 +76,24 @@ export function EmployeesApp(): ReactNode {
         onMessageChange={setMessage}
         onSaved={refreshEmployees}
       />
+      <ActionDrawer
+        definition={createActionDefinition("employeeCreate")}
+        isOpen={isCreateDrawerOpen}
+        onClose={() => setIsCreateDrawerOpen(false)}
+      >
+        <EmployeeFormPanel
+          drawerMode
+          draft={createDraft}
+          hidden={!manageable}
+          message={message}
+          onDraftChange={setCreateDraft}
+          onMessageChange={setMessage}
+          onSaved={async () => {
+            await refreshEmployees();
+            setIsCreateDrawerOpen(false);
+          }}
+        />
+      </ActionDrawer>
     </>
   );
 }

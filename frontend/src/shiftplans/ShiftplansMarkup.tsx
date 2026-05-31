@@ -1,5 +1,7 @@
 import { type ReactNode } from "react";
 
+import { ActionDrawer } from "../components/ui/ActionDrawer";
+import { createActionDefinition } from "../components/ui/createActionSchema";
 import { ShiftplansEditDialog } from "./ShiftplansEditDialog";
 import { ShiftplansGenerationForm } from "./ShiftplansGenerationForm";
 import { ShiftplansHero } from "./ShiftplansHero";
@@ -35,6 +37,8 @@ type ShiftplansMarkupProps = {
   readonly onDownload: () => void;
   readonly onDraftChange: (draft: ShiftplanDraft) => void;
   readonly onEditEntry: (entry: ShiftplanEntry) => void;
+  readonly onGenerateClose: () => void;
+  readonly onGenerateOpen: () => void;
   readonly onGenerate: () => void;
   readonly onMachineToggle: (machineId: number, checked: boolean) => void;
   readonly onMoveEntryToEntry: (entryId: number, targetEntryId: number) => void;
@@ -47,6 +51,7 @@ type ShiftplansMarkupProps = {
   readonly savingEntry: boolean;
   readonly selectedMachineIds: ReadonlySet<number>;
   readonly selectedPlanIndex: number;
+  readonly showGenerateDrawer: boolean;
   readonly warnings: readonly ShiftplanWarning[];
   readonly writable: boolean;
 };
@@ -57,21 +62,8 @@ type ShiftplansMarkupProps = {
 export function ShiftplansMarkup(props: ShiftplansMarkupProps): ReactNode {
   return (
     <>
-      <ShiftplansHero />
+      <ShiftplansHero onGenerateOpen={props.onGenerateOpen} writable={props.writable} />
       <section className="dashboard-grid">
-        <ShiftplansGenerationForm
-          busyAction={props.busyAction}
-          draft={props.draft}
-          machines={props.machines}
-          message={props.formMessage}
-          models={props.models}
-          onDraftChange={props.onDraftChange}
-          onGenerate={props.onGenerate}
-          onMachineToggle={props.onMachineToggle}
-          onPreview={props.onPreview}
-          selectedMachineIds={props.selectedMachineIds}
-          writable={props.writable}
-        />
         <ShiftplansPlanView
           changelog={props.changelog}
           currentPlan={props.currentPlan}
@@ -101,6 +93,25 @@ export function ShiftplansMarkup(props: ShiftplansMarkupProps): ReactNode {
         onSave={props.onDialogSave}
         saving={props.savingEntry}
       />
+      <ActionDrawer
+        definition={createActionDefinition("shiftplanGenerate")}
+        isOpen={props.showGenerateDrawer}
+        onClose={props.onGenerateClose}
+      >
+        <ShiftplansGenerationForm
+          busyAction={props.busyAction}
+          draft={props.draft}
+          machines={props.machines}
+          message={props.formMessage}
+          models={props.models}
+          onDraftChange={props.onDraftChange}
+          onGenerate={props.onGenerate}
+          onMachineToggle={props.onMachineToggle}
+          onPreview={props.onPreview}
+          selectedMachineIds={props.selectedMachineIds}
+          writable={props.writable}
+        />
+      </ActionDrawer>
     </>
   );
 }

@@ -30,6 +30,9 @@ from app.services.retrieval_candidate_service import (
 )
 from app.services.retrieval_debug_service import retrieval_debug_decision
 from app.services.source_visibility_policy import SOURCE_VISIBILITY_POLICY
+from app.services.structured_retrieval_metadata_service import (
+    structured_record_scope_metadata,
+)
 from app.services.task_service import visible_tasks_query
 from app.services.text_normalization_service import normalize_text, tokenize_text
 
@@ -485,6 +488,8 @@ def _hit(
         metadata={
             "source_kind": "sql_keyword_fallback",
             "knowledge_source_type": source_document_type,
+            "module": module,
+            "source_record_id": source_id,
             **_safe_source_metadata(record),
         },
     )
@@ -493,38 +498,56 @@ def _hit(
 
 def _safe_source_metadata(record):
     """Return display-safe metadata for SQL fallback sources."""
+    metadata = structured_record_scope_metadata(record)
     if isinstance(record, Task):
-        return {"department": record.department.name if record.department else ""}
+        metadata.update({"department": record.department.name if record.department else ""})
+        return metadata
     if isinstance(record, ErrorEntry):
-        return {
-            "machine": record.machine,
-            "department": record.department.name if record.department else "",
-        }
+        metadata.update(
+            {
+                "machine": record.machine,
+                "department": record.department.name if record.department else "",
+            }
+        )
+        return metadata
     if isinstance(record, Machine):
-        return {"machine": record.name}
+        metadata.update({"machine": record.name})
+        return metadata
     if isinstance(record, InventoryMaterial):
-        return {"machine": record.machine.name if record.machine else ""}
+        metadata.update({"machine": record.machine.name if record.machine else ""})
+        return metadata
     if isinstance(record, MaintenancePlan):
-        return {
-            "machine": record.machine.name if record.machine else "",
-            "department": record.department.name if record.department else "",
-        }
+        metadata.update(
+            {
+                "machine": record.machine.name if record.machine else "",
+                "department": record.department.name if record.department else "",
+            }
+        )
+        return metadata
     if isinstance(record, GeneratedDocument):
-        return {
-            "machine": record.machine,
-            "department": record.department,
-            "document_type": record.document_type,
-        }
+        metadata.update(
+            {
+                "machine": record.machine,
+                "department": record.department,
+                "document_type": record.document_type,
+            }
+        )
+        return metadata
     if isinstance(record, MachineManual):
-        return {
-            "machine": record.machine.name if record.machine else "",
-            "department": record.department,
-        }
+        metadata.update(
+            {
+                "machine": record.machine.name if record.machine else "",
+                "department": record.department,
+            }
+        )
+        return metadata
     if isinstance(record, ShiftHandover):
-        return {"department": record.department}
+        metadata.update({"department": record.department})
+        return metadata
     if isinstance(record, AssistantTrainingEntry):
-        return {"department": record.department}
-    return {}
+        metadata.update({"department": record.department})
+        return metadata
+    return metadata
 
 
 def _score_match(query_text, searchable_text, exact_texts, exact_match=False):

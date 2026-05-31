@@ -210,3 +210,13 @@ def source_visibility_decision(user, document):
     if not isinstance(document, KnowledgeDocument):
         return SourceVisibilityDecision(False, "not_a_knowledge_document")
     return SOURCE_VISIBILITY_POLICY.visibility_decision(user, document)
+
+
+def source_role_visibility_label(document):
+    """Return a prompt-safe source visibility label derived from document rules."""
+    if not isinstance(document, KnowledgeDocument):
+        return "unknown"
+    department = str(getattr(document, "department", "") or "").strip()
+    if getattr(document, "is_public", False):
+        return f"department:{department[:120]}" if department else "public"
+    return f"private:department:{department[:120]}" if department else "private"

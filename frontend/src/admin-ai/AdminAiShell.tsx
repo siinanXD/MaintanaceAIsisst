@@ -1,10 +1,11 @@
-import { type ReactNode } from "react";
+﻿import { type ReactNode } from "react";
 
 import { ADMIN_AI_NAVIGATION, type AdminAiView } from "./AdminAiTypes";
 import { type AdminAiEffectivenessState } from "./adminAiEffectivenessModel";
 import { overviewBadge, type AdminAiOverviewLoadState } from "./adminAiOverviewModel";
 import { type AdminAiPromptFaqState } from "./adminAiPromptFaqModel";
 import { type AdminAiRagBoardState } from "./adminAiRagBoardModel";
+import { useAdminAiRoleAccess } from "./adminAiRoleAccess";
 import { type AdminAiSourceCheckState } from "./adminAiSourceCheckModel";
 import { type AdminAiTechnicalState } from "./adminAiTechnicalModel";
 
@@ -19,6 +20,13 @@ type AdminAiShellProps = {
   readonly view: AdminAiView;
 };
 
+type AdminAiHeroStatus = {
+  readonly label: string;
+  readonly tone: "is-active" | "is-stale" | "is-error" | "is-muted";
+};
+
+type AdminAiHeroStatusProps = Omit<AdminAiShellProps, "children">;
+
 /**
  * Render the shared Admin-AI page frame and canonical navigation.
  */
@@ -32,7 +40,17 @@ export function AdminAiShell({
   technicalState,
   view
 }: AdminAiShellProps): ReactNode {
-  const badge = overviewBadge(overviewState);
+  const heroStatus = adminAiHeroStatus({
+    effectivenessState,
+    overviewState,
+    promptFaqState,
+    ragBoardState,
+    sourceCheckState,
+    technicalState,
+    view
+  });
+  const roleAccess = useAdminAiRoleAccess();
+  const visibleNavigation = useVisibleAdminAiNavigation();
   const errorMessage =
     view === "overview"
       ? overviewState.errorMessage
@@ -50,28 +68,32 @@ export function AdminAiShell({
 
   return (
     <section className="page-section ai-admin-page" data-admin-ai-page data-ai-admin-view={view}>
-      <header className="ai-admin-hero">
+      <header className="ai-admin-hero is-compact">
         <div>
-          <span className="section-kicker">KI-Steuerzentrale</span>
-          <h2>AI-Admin als RAG-Spielbrett</h2>
+          <span className="section-kicker">Admin Control Center</span>
+          <h1>AI Admin Control Center</h1>
           <p className="panel-meta">
-            Pflege Wissen, Index und Quellen wie ein übersichtliches Spielfeld: testen, bewerten,
-            verbessern und Kosten im Blick behalten.
+            Klare Steuerung für Status, Wissensbasis, Antwortqualitaet, Prompts, Kosten und
+            technische Betriebsdiagnose.
           </p>
         </div>
         <div className="ai-admin-hero-status" aria-label="KI-Administration Schnellstatus">
-          <span className={`badge badge-ai ${badge.tone}`} data-ai-overview-state>
-            {view === "overview" ? badge.label : "Noch nicht geladen"}
+          <span className={`badge badge-ai ${heroStatus.tone}`} data-ai-overview-state>
+            {heroStatus.label}
           </span>
           <span className="panel-meta">
-            Fachliche Steuerung in RAG-Spielbrett, Quellenprüfung, Prompt & FAQ und Kosten.
+            AI-Admin-Daten folgen dem Backend-Vertrag: Master Admin.
           </span>
-          <div className="surface-action-row" aria-label="KI-Administration Schnellzugriff">
+          <div
+            className="surface-action-row"
+            aria-label="KI-Administration Schnellzugriff"
+            hidden={!roleAccess.canUseAdminAiApi}
+          >
             <a className="btn btn-primary btn-sm" href="/admin/ai/source-check">
               Testfrage prüfen
             </a>
             <a className="btn btn-secondary btn-sm" href="/admin/ai/rag-board">
-              RAG pflegen
+              Wissensbasis pflegen
             </a>
             <a className="btn btn-ghost btn-sm" href="/admin/ai/effectiveness">
               Kosten ansehen
@@ -80,10 +102,8 @@ export function AdminAiShell({
         </div>
       </header>
 
-      {view === "overview" ? <AdminAiOverviewIntro view={view} /> : null}
-
       <nav className="ai-admin-nav" aria-label="KI-Administration Bereiche">
-        {ADMIN_AI_NAVIGATION.map((item) => (
+        {visibleNavigation.map((item) => (
           <a
             aria-current={view === item.view ? "page" : undefined}
             className={view === item.view ? "is-active" : undefined}
@@ -102,125 +122,91 @@ export function AdminAiShell({
         {errorMessage}
       </p>
 
-      {view === "overview" ? <AdminAiMap view={view} /> : null}
       {children}
     </section>
   );
 }
 
 /**
- * Render the overview-only side navigation and test chat intro.
+ * Return a status badge for the active Admin-AI section instead of the overview-only state.
  */
-function AdminAiOverviewIntro({ view }: { readonly view: AdminAiView }): ReactNode {
-  return (
-    <section className="knowledge-center-shell" aria-label="KI-Administrationscenter">
-      <aside className="knowledge-side-nav" aria-label="KI-Administration Navigation">
-        <div className="knowledge-side-brand">
-          <span className="badge badge-ai">RAG aktiv</span>
-          <strong>Spielbrett</strong>
-          <small>
-            RAG-Quellen, Testfragen, Prompts, FAQ, Kosten und technische Diagnose in einem
-            Admin-Bereich.
-          </small>
-        </div>
-        {ADMIN_AI_NAVIGATION.map((item) => (
-          <a
-            aria-current={view === item.view ? "page" : undefined}
-            className={view === item.view ? "is-active" : undefined}
-            href={item.href}
-            key={item.view}
-          >
-            <span>{item.number}</span>
-            <strong>{item.label}</strong>
-            <small>{item.description}</small>
-          </a>
-        ))}
-      </aside>
-      <div className="knowledge-center-main">
-        <div className="knowledge-center-header">
-          <div>
-            <span className="section-kicker">Admin-Arbeitsbereich</span>
-            <h3>Antwortqualität fachlich steuerbar machen</h3>
-            <p className="panel-meta">
-              Jede Fläche zeigt, ob sie Quellenabdeckung, Indexgesundheit, Antwortqualität,
-              Modellkosten oder technische Protokolle beeinflusst.
-            </p>
-          </div>
-          <a className="btn btn-primary btn-sm" href="/documents">
-            Dokumente hochladen
-          </a>
-        </div>
-        <div className="document-card-grid" aria-label="KI-Administrationskomponenten">
-          <article className="document-card">
-            <span>RAG</span>
-            <strong>Spielbrett pflegen</strong>
-            <small>Zeigt Quellen, Indexfortschritt, Pflegeaktionen und Qualitätsstatus.</small>
-          </article>
-          <article className="document-card">
-            <span>Prüfung</span>
-            <strong>Testfragen bewerten</strong>
-            <small>Sendet Testfragen, zeigt Quellen und speichert Feedback.</small>
-          </article>
-          <article className="document-card">
-            <span>Prompt & FAQ</span>
-            <strong>Antwortverhalten steuern</strong>
-            <small>Verbindet Prompt-Versionen, FAQ-Entwürfe und Antwortbausteine.</small>
-          </article>
-          <article className="document-card">
-            <span>Effektivität</span>
-            <strong>Kosten gegen Nutzen sehen</strong>
-            <small>Vergleicht Tokens, Kosten, Feedback und Quellenlücken.</small>
-          </article>
-        </div>
-      </div>
-      <aside className="knowledge-test-chat" aria-label="Antwort-Test Chat">
-        <header>
-          <span className="badge badge-ai">Test Chat</span>
-          <strong>Quellenprüfung</strong>
-        </header>
-        <div className="test-chat-thread">
-          <div className="test-chat-message is-assistant">
-            Stelle eine Wartungsfrage. Die Antwort muss Quellen und Sicherheit zeigen.
-          </div>
-          <div className="test-chat-message is-user">
-            Warum fällt Presse 3 bei Hydraulikdruck ab?
-          </div>
-          <div className="test-chat-message is-assistant">
-            Prüfe Fehlerkatalog, Dokument-Textabschnitte und offene Aufgaben. Fehlende Quellen
-            werden als Gap markiert.
-          </div>
-        </div>
-        <div className="source-chip-row" aria-label="Quellenanzeige">
-          <span className="source-chip">Fehlerkatalog</span>
-          <span className="source-chip">FAQ</span>
-          <span className="source-chip">Aufgabenverlauf</span>
-        </div>
-        <label className="chat-test-input" htmlFor="ai-admin-test-query">
-          <span>Quellenabruf Abfrage</span>
-          <input
-            className="input input-bordered input-sm"
-            id="ai-admin-test-query"
-            placeholder="Frage an Wissensbasis testen"
-          />
-        </label>
-      </aside>
-    </section>
-  );
+function adminAiHeroStatus({
+  effectivenessState,
+  overviewState,
+  promptFaqState,
+  ragBoardState,
+  sourceCheckState,
+  technicalState,
+  view
+}: AdminAiHeroStatusProps): AdminAiHeroStatus {
+  if (view === "overview") return overviewBadge(overviewState);
+  if (view === "effectiveness") {
+    return loadingStatus(effectivenessState.isLoading, effectivenessState.errorMessage);
+  }
+  if (view === "prompt_faq") {
+    return loadingStatus(
+      promptFaqState.isLoading,
+      promptFaqState.errorMessage,
+      promptFaqState.isSaving ? "Speichert" : promptFaqState.statusMessage
+    );
+  }
+  if (view === "rag_board") {
+    return loadingStatus(
+      ragBoardState.isLoading,
+      ragBoardState.errorMessage,
+      ragBoardState.isSaving ? "Aktualisiert" : ragBoardState.statusMessage
+    );
+  }
+  if (view === "source_check") {
+    if (sourceCheckState.isRunning) return { label: "Test laeuft", tone: "is-muted" };
+    if (sourceCheckState.isSaving) return { label: "Speichert", tone: "is-stale" };
+    if (sourceCheckState.errorMessage) return { label: "Fehler", tone: "is-error" };
+    return {
+      label: sourceCheckState.statusMessage || sourceCheckState.stateLabel,
+      tone: toneFromClassName(sourceCheckState.stateClassName)
+    };
+  }
+  if (view === "technical") {
+    return loadingStatus(
+      technicalState.isLoading,
+      technicalState.errorMessage,
+      technicalState.isSaving ? "Aktion laeuft" : technicalState.statusMessage
+    );
+  }
+  return { label: "Bereit", tone: "is-muted" };
 }
 
 /**
- * Render the overview-only Admin-AI route map.
+ * Build a compact load status for Admin-AI sections backed by their own data hook.
  */
-function AdminAiMap({ view }: { readonly view: AdminAiView }): ReactNode {
-  return (
-    <section className="ai-admin-map" aria-label="KI-Administration Struktur">
-      {ADMIN_AI_NAVIGATION.map((item) => (
-        <a className={view === item.view ? "is-active" : undefined} href={item.href} key={item.view}>
-          <span>{item.number}</span>
-          <strong>{item.label}</strong>
-          <small>{item.description}</small>
-        </a>
-      ))}
-    </section>
+function loadingStatus(
+  isLoading: boolean,
+  errorMessage: string,
+  statusMessage = ""
+): AdminAiHeroStatus {
+  if (isLoading) return { label: "Wird geladen", tone: "is-muted" };
+  if (errorMessage) return { label: "Teilweise geladen", tone: "is-stale" };
+  if (statusMessage) return { label: statusMessage, tone: "is-active" };
+  return { label: "Geladen", tone: "is-active" };
+}
+
+/**
+ * Reuse existing status-pill tones from Source Check for the shared hero badge.
+ */
+function toneFromClassName(className: string): AdminAiHeroStatus["tone"] {
+  if (className.includes("is-error")) return "is-error";
+  if (className.includes("is-stale")) return "is-stale";
+  if (className.includes("is-active")) return "is-active";
+  return "is-muted";
+}
+
+/**
+ * Return the navigation entries visible to the current AI admin role.
+ */
+function useVisibleAdminAiNavigation(): typeof ADMIN_AI_NAVIGATION {
+  const roleAccess = useAdminAiRoleAccess();
+  if (!roleAccess.canUseAdminAiApi) return [];
+  return ADMIN_AI_NAVIGATION.filter(
+    (item) => item.view !== "technical" || roleAccess.isTechnicalRole
   );
 }

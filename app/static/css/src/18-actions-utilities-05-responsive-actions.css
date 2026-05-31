@@ -64,6 +64,7 @@
       padding: 0.9rem;
     }
 
+    .ai-admin-page:not([data-ai-admin-view="overview"]) .ai-admin-hero h1,
     .ai-admin-page:not([data-ai-admin-view="overview"]) .ai-admin-hero h2 {
       max-width: 100%;
       font-size: 1.45rem;

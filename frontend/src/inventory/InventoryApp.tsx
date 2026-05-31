@@ -2,6 +2,8 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { markIslandMounted } from "../app/islandMount";
 import { canWriteDashboard } from "../auth/permissions";
+import { ActionDrawer } from "../components/ui/ActionDrawer";
+import { createActionDefinition } from "../components/ui/createActionSchema";
 import { InventoryForecastPanel } from "./components/InventoryForecastPanel";
 import { InventoryHeader } from "./components/InventoryHeader";
 import { InventoryList } from "./components/InventoryList";
@@ -25,6 +27,7 @@ const INVENTORY_ISLAND = {
  */
 export function InventoryApp(): ReactNode {
   const writable = canWriteDashboard("inventory");
+  const [isCreateDrawerOpen, setIsCreateDrawerOpen] = useState(false);
   const [materials, setMaterials] = useState<InventoryMaterial[]>([]);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [forecast, setForecast] = useState<InventoryForecast | null>(null);
@@ -63,11 +66,14 @@ export function InventoryApp(): ReactNode {
     refreshInventory().catch((error: unknown) => {
       setLoadError(inventoryErrorMessage(error));
     });
+    if (window.location.hash === "#inventory-create") {
+      setIsCreateDrawerOpen(true);
+    }
   }, []);
 
   return (
     <>
-      <InventoryHeader />
+      <InventoryHeader onCreateMaterial={() => setIsCreateDrawerOpen(true)} writable={writable} />
       {loadError ? (
         <section className="card app-card" role="alert">
           <div className="card-body">
@@ -77,7 +83,6 @@ export function InventoryApp(): ReactNode {
       ) : null}
       <InventoryStats materials={materials} threshold={threshold} />
       <section className="dashboard-grid">
-        {writable ? <MaterialForm machines={machines} onCreated={refreshInventory} /> : null}
         <InventoryForecastPanel
           forecast={forecast}
           onForecast={runForecast}
@@ -86,6 +91,20 @@ export function InventoryApp(): ReactNode {
         />
         <InventoryList materials={materials} onRefresh={refreshInventory} writable={writable} />
       </section>
+      <ActionDrawer
+        definition={createActionDefinition("inventoryMaterialCreate")}
+        isOpen={isCreateDrawerOpen}
+        onClose={() => setIsCreateDrawerOpen(false)}
+      >
+        <MaterialForm
+          drawerMode
+          machines={machines}
+          onCreated={async () => {
+            await refreshInventory();
+            setIsCreateDrawerOpen(false);
+          }}
+        />
+      </ActionDrawer>
     </>
   );
 }

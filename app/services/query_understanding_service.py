@@ -14,6 +14,8 @@ QUERY_MACHINE = "machine_question"
 QUERY_INVENTORY = "inventory_question"
 QUERY_TASK = "task_question"
 QUERY_DOCUMENT = "document_question"
+QUERY_EMPLOYEE = "employee_question"
+QUERY_ADMIN_USER = "admin_user_question"
 QUERY_SAFETY = "safety_question"
 QUERY_GENERAL = "general_question"
 QUERY_KNOWLEDGE_GAP = "knowledge_gap"
@@ -25,6 +27,8 @@ QUERY_TYPES = {
     QUERY_INVENTORY,
     QUERY_TASK,
     QUERY_DOCUMENT,
+    QUERY_EMPLOYEE,
+    QUERY_ADMIN_USER,
     QUERY_SAFETY,
     QUERY_GENERAL,
     QUERY_KNOWLEDGE_GAP,
@@ -80,6 +84,29 @@ KEYWORDS = {
         "pdf",
         "datei",
     ),
+    QUERY_EMPLOYEE: (
+        "mitarbeiter",
+        "personal",
+        "person",
+        "team",
+        "qualifikation",
+        "qualifikationen",
+        "schichtmodell",
+        "schicht",
+    ),
+    QUERY_ADMIN_USER: (
+        "user",
+        "users",
+        "nutzer",
+        "benutzer",
+        "account",
+        "accounts",
+        "rolle",
+        "rollen",
+        "berechtigung",
+        "berechtigungen",
+        "permissions",
+    ),
     QUERY_SAFETY: (
         "sicherheit",
         "not-aus",
@@ -105,8 +132,13 @@ KEYWORDS = {
     ),
     QUERY_TREND_HISTORY: (
         "historie",
+        "handover",
         "verlauf",
         "trend",
+        "schichtuebergabe",
+        "schichtÃ¼bergabe",
+        "uebergabe",
+        "Ã¼bergabe",
         "wiederkehrend",
         "sequenz",
         "danach",
@@ -123,6 +155,8 @@ SCOPE_BY_QUERY_TYPE = {
     QUERY_INVENTORY: ("inventory", "machines", "tasks"),
     QUERY_TASK: ("tasks", "machines", "errors"),
     QUERY_DOCUMENT: ("documents",),
+    QUERY_EMPLOYEE: ("employees", "shiftplans", "machines"),
+    QUERY_ADMIN_USER: ("admin_users",),
     QUERY_SAFETY: ("machines", "errors", "documents"),
     QUERY_KNOWLEDGE_GAP: ("documents", "errors", "machines"),
     QUERY_TREND_HISTORY: ("errors", "machines", "tasks", "shiftplans"),
@@ -134,6 +168,8 @@ SOURCE_TYPES_BY_QUERY_TYPE = {
     QUERY_INVENTORY: ("inventory_material", "maintenance_plan"),
     QUERY_TASK: ("task", "maintenance_plan", "shift_handover"),
     QUERY_DOCUMENT: ("upload", "generated_document", "machine_manual"),
+    QUERY_EMPLOYEE: ("employee", "shiftplan", "machine"),
+    QUERY_ADMIN_USER: ("admin_user", "dashboard_permission"),
     QUERY_SAFETY: ("machine_manual", "error_entry", "upload"),
     QUERY_KNOWLEDGE_GAP: ("manual_training", "upload", "generated_document"),
     QUERY_TREND_HISTORY: ("error_entry", "task", "shift_handover"),
@@ -214,6 +250,10 @@ def _score_query_types(text, requested_scopes):
             scores[QUERY_TASK] += 2
         elif scope == "documents":
             scores[QUERY_DOCUMENT] += 2
+        elif scope == "employees":
+            scores[QUERY_EMPLOYEE] += 2
+        elif scope == "admin_users":
+            scores[QUERY_ADMIN_USER] += 2
         elif scope == "shiftplans":
             scores[QUERY_TREND_HISTORY] += 1
     if not any(scores.values()):
@@ -241,6 +281,8 @@ def _type_priority(query_type):
         QUERY_TASK: 6,
         QUERY_INVENTORY: 5,
         QUERY_DOCUMENT: 4,
+        QUERY_EMPLOYEE: 4,
+        QUERY_ADMIN_USER: 4,
         QUERY_KNOWLEDGE_GAP: 3,
         QUERY_GENERAL: 1,
     }
@@ -285,6 +327,8 @@ def _retrieval_strategy(query_type, is_safety):
         QUERY_INVENTORY: 4,
         QUERY_TASK: 4,
         QUERY_DOCUMENT: 6,
+        QUERY_EMPLOYEE: 5,
+        QUERY_ADMIN_USER: 5,
         QUERY_SAFETY: 6,
         QUERY_KNOWLEDGE_GAP: 5,
         QUERY_TREND_HISTORY: 7,
@@ -298,7 +342,14 @@ def _retrieval_strategy(query_type, is_safety):
         "scope_weights": _scope_weights(query_type),
         "prompt_rules": _prompt_rules(query_type, is_safety),
         "prefer_structured": query_type
-        in {QUERY_MACHINE, QUERY_INVENTORY, QUERY_TASK, QUERY_TREND_HISTORY},
+        in {
+            QUERY_MACHINE,
+            QUERY_INVENTORY,
+            QUERY_TASK,
+            QUERY_TREND_HISTORY,
+            QUERY_EMPLOYEE,
+            QUERY_ADMIN_USER,
+        },
         "prefer_confirmed": query_type in {QUERY_ERROR_ANALYSIS, QUERY_SAFETY, QUERY_DOCUMENT},
     }
 
@@ -312,6 +363,10 @@ def _scope_weights(query_type):
         weights.update({"machines": 1.6, "errors": 1.35, "documents": 1.3})
     elif query_type == QUERY_TREND_HISTORY:
         weights.update({"errors": 1.45, "machines": 1.2, "tasks": 1.15})
+    elif query_type == QUERY_EMPLOYEE:
+        weights.update({"employees": 1.6, "shiftplans": 1.2, "machines": 1.1})
+    elif query_type == QUERY_ADMIN_USER:
+        weights.update({"admin_users": 1.7})
     return weights
 
 
@@ -326,6 +381,12 @@ def _prompt_rules(query_type, is_safety):
         ],
         QUERY_ERROR_ANALYSIS: [
             "Ursachen, Pruefschritte und dokumentierte Loesungen klar trennen.",
+        ],
+        QUERY_EMPLOYEE: [
+            "Mitarbeiterdaten nur gemaess freigegebenem Zugriffsniveau verwenden.",
+        ],
+        QUERY_ADMIN_USER: [
+            "Admin-User- und Rollendaten nur fuer berechtigte Admins verwenden.",
         ],
     }
 

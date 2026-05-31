@@ -1,7 +1,7 @@
 """Tests for AI feature endpoints and services."""
 
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from io import BytesIO
 from pathlib import Path
 
@@ -13,14 +13,20 @@ from app.models import (
     AIFeedback,
     AssistantTrainingEntry,
     ChatMessage,
+    Department,
     EmployeeMachineQualification,
+    ErrorEntry,
     GeneratedDocument,
     KnowledgeChunk,
     KnowledgeDocument,
     KnowledgeGap,
+    Machine,
+    MaintenancePlan,
     Priority,
+    RetrievalEvaluationRun,
     Role,
     Task,
+    TaskStatus,
     User,
 )
 from app.services.ai_audit_service import (
@@ -29,9 +35,13 @@ from app.services.ai_audit_service import (
     create_ai_audit_event,
 )
 from app.services.ai_confidence_service import calculate_ai_confidence
-from app.services.ai_observability_service import ai_observability_dashboard
+from app.services.ai_observability_service import (
+    _evaluation_quality_actions,
+    _observability_recommended_actions,
+    ai_observability_dashboard,
+)
 from app.services.ai_routing import estimate_cost_usd, workflow_profile
-from app.services.ai_service import AIServiceError
+from app.services.ai_service import AIServiceError, get_ai_provider
 from app.services.conversation_context_service import conversation_context_for_chat
 from app.services.document_service import document_path
 from app.services.empty_retrieval_response_service import build_empty_retrieval_answer
@@ -66,6 +76,153 @@ def test_ai_chat_returns_today_tasks_without_openai(
     assert payload["type"] == "tasks_today"
     assert payload["diagnostics"]["status"] == "local_answer"
     assert payload["data"][0]["title"] == "Task fuer heute"
+
+
+def test_ai_chat_answers_yesterday_closed_tasks_from_structured_data(
+    app,
+    client,
+    make_user,
+    make_task,
+    auth_headers,
+):
+    """Verify yesterday's closed task questions use visible structured tasks."""
+    user = make_user(username="ai_yesterday_done_user")
+    yesterday = date.today() - timedelta(days=1)
+    yesterday_task_id = make_task(
+        "Gestern geschlossen sichtbar",
+        creator_username=user["username"],
+        status=TaskStatus.DONE,
+    )
+    today_task_id = make_task(
+        "Heute geschlossen nicht gestern",
+        creator_username=user["username"],
+        status=TaskStatus.DONE,
+    )
+    foreign_task_id = make_task(
+        "Gestern geschlossen fremd",
+        creator_username=user["username"],
+        department_name="IT",
+        status=TaskStatus.DONE,
+    )
+    with app.app_context():
+        db.session.get(Task, yesterday_task_id).completed_at = datetime.combine(
+            yesterday,
+            time(hour=10),
+        )
+        db.session.get(Task, today_task_id).completed_at = datetime.combine(
+            date.today(),
+            time(hour=10),
+        )
+        db.session.get(Task, foreign_task_id).completed_at = datetime.combine(
+            yesterday,
+            time(hour=11),
+        )
+        db.session.commit()
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Tasks wurden gestern geschlossen?"},
+    )
+
+    payload = response.get_json()
+    titles = [item["title"] for item in payload["data"]["items"]]
+    assert response.status_code == 200
+    assert payload["type"] == "tasks_status"
+    assert payload["diagnostics"]["status"] == "local_answer"
+    assert payload["data"]["status"] == TaskStatus.DONE.value
+    assert payload["data"]["count"] == 1
+    assert titles == ["Gestern geschlossen sichtbar"]
+    assert "Heute geschlossen nicht gestern" not in payload["answer"]
+    assert "Gestern geschlossen fremd" not in payload["answer"]
+
+
+def test_ai_chat_counts_done_tasks_from_structured_data(
+    app,
+    client,
+    make_user,
+    make_task,
+    auth_headers,
+):
+    """Verify done-task count questions do not use generic module counts."""
+    user = make_user(username="ai_done_count_user")
+    done_task_ids = [
+        make_task("Done Task A", creator_username=user["username"], status=TaskStatus.DONE),
+        make_task("Done Task B", creator_username=user["username"], status=TaskStatus.DONE),
+    ]
+    make_task("Open Task C", creator_username=user["username"], status=TaskStatus.OPEN)
+    with app.app_context():
+        for offset, task_id in enumerate(done_task_ids):
+            db.session.get(Task, task_id).completed_at = datetime.combine(
+                date.today() - timedelta(days=offset),
+                time(hour=9),
+            )
+        db.session.commit()
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Wie viele Tasks wurden beendet?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "tasks_status"
+    assert payload["data"]["status"] == TaskStatus.DONE.value
+    assert payload["data"]["count"] == 2
+    assert "Anzahl:** 2" in payload["answer"]
+
+
+def test_ai_chat_counts_open_tasks_only_as_task_followup(
+    client,
+    make_user,
+    make_task,
+    auth_headers,
+):
+    """Verify open-count follow-ups require prior task conversation context."""
+    user = make_user(username="ai_open_followup_user")
+    make_task("Offener Follow-up Task", creator_username=user["username"], status=TaskStatus.OPEN)
+    make_task(
+        "Erledigter Follow-up Task",
+        creator_username=user["username"],
+        status=TaskStatus.DONE,
+    )
+    headers = auth_headers(user["username"])
+
+    first_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Welche Tasks stehen heute an?",
+            "session_id": "task-status-followup",
+        },
+    )
+    followup_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Wie viele sind noch offen?",
+            "session_id": "task-status-followup",
+        },
+    )
+    fresh_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Wie viele sind noch offen?",
+            "session_id": "unrelated-task-status-followup",
+        },
+    )
+
+    followup_payload = followup_response.get_json()
+    assert first_response.status_code == 200
+    assert first_response.get_json()["type"] == "tasks_today"
+    assert followup_response.status_code == 200
+    assert followup_payload["type"] == "tasks_status"
+    assert followup_payload["data"]["status"] == TaskStatus.OPEN.value
+    assert followup_payload["data"]["count"] == 1
+    assert fresh_response.status_code == 200
+    assert fresh_response.get_json()["type"] != "tasks_status"
 
 
 def test_ai_chat_rejects_empty_messages(client, make_user, auth_headers):
@@ -158,10 +315,17 @@ def test_ai_chat_employee_context_respects_basic_access(
     )
 
     employee_payload = response.get_json()["data"]["employees"][0]
+    source = response.get_json()["sources"][0]
     assert response.status_code == 200
     assert employee_payload["name"] == "Anna Chat"
     assert "salary_group" not in employee_payload
     assert "city" not in employee_payload
+    assert source["type"] == "employee"
+    assert source["source_kind"] == "structured"
+    assert source["source_record_id"] == employee_payload["id"]
+    assert source["role_visibility"] == "department:Produktion"
+    assert source["employee_access_level"] == "basic"
+    assert source["created_at"]
 
 
 def test_ai_chat_returns_sources_and_audit_metadata(
@@ -187,8 +351,14 @@ def test_ai_chat_returns_sources_and_audit_metadata(
     assert payload["chat_message_id"]
     source = payload["sources"][0]
     assert source["type"] == "machine"
+    assert source["source_type"] == "machine"
+    assert source["source_id"] == source["id"]
     assert source["title"] == "Anlage Quelle"
+    assert source["module"] == "machines"
     assert source["machine"] == "Anlage Quelle"
+    assert source["machine_id"] == source["id"]
+    assert source["role_visibility"] == "public"
+    assert source["created_at"]
     assert source["source_kind"] == "structured"
     assert source["relevance"] == source["normalized_score"]
     assert source["relevance"] >= 0
@@ -196,6 +366,12 @@ def test_ai_chat_returns_sources_and_audit_metadata(
     assert payload["diagnostics"]["source_count"] == len(payload["sources"])
     assert payload["diagnostics"]["confidence_score"] == payload["confidence"]["score"]
     assert payload["diagnostics"]["confidence_level"] == payload["confidence"]["level"]
+    assert payload["answer_quality"]["status"] == "grounded"
+    assert payload["answer_quality"]["has_sources"] is True
+    assert payload["answer_quality"]["source_count"] == len(payload["sources"])
+    assert payload["answer_quality"]["confidence_score"] == payload["confidence"]["score"]
+    assert payload["answer_quality"]["evidence_visible"] is True
+    assert payload["answer_quality"]["no_answer"] is False
 
     with app.app_context():
         event = db.session.get(AIAuditEvent, audit_id)
@@ -247,6 +423,10 @@ def test_ai_chat_bubble_redacts_evidence_for_non_it_users(
         "fallback_used": False,
         "status": "local_answer",
     }
+    assert payload["answer_quality"]["evidence_visible"] is False
+    assert payload["answer_quality"]["status_reason"]
+    assert payload["answer_quality"]["source_count"] == 0
+    assert payload["answer_quality"]["confidence_score"] is None
     assert "confidence" not in payload
     assert "rag" not in payload
     assert "action_preview" not in payload
@@ -281,6 +461,7 @@ def test_ai_chat_bubble_keeps_evidence_for_it_users(
     assert payload["sources"]
     assert payload["diagnostics"]["source_count"] == len(payload["sources"])
     assert payload["confidence"]["score"] == payload["diagnostics"]["confidence_score"]
+    assert payload["answer_quality"]["evidence_visible"] is True
 
 
 def test_ai_confidence_scores_high_for_strong_sourced_context(app, make_user):
@@ -346,6 +527,16 @@ def test_ai_audit_stores_sanitized_retrieval_explainability(app, make_user):
             {
                 "type": "knowledge",
                 "id": 7,
+                "source_type": "manual_training",
+                "source_id": 42,
+                "source_record_id": 42,
+                "source_kind": "rag",
+                "knowledge_source_type": "manual_training",
+                "module": "knowledge",
+                "machine_id": 99,
+                "role_visibility": "department:Produktion",
+                "employee_access_level": "shift",
+                "created_at": "2026-05-30T10:00:00",
                 "chunk_id": 70,
                 "score": 118,
                 "title": "Sensitive source title",
@@ -362,6 +553,20 @@ def test_ai_audit_stores_sanitized_retrieval_explainability(app, make_user):
                 },
             },
         ],
+        "retrieval_debug": {
+            "top_k": 4,
+            "rerank_candidate_limit": 20,
+            "vector_candidates_found": 12,
+            "final_visible_sources": 3,
+            "decision_trace": [
+                {
+                    "step": "vector_candidate_scan",
+                    "status": "ok",
+                    "reason": "candidate_pool",
+                    "metrics": {"query": "Sensitive query", "candidate_count": 12},
+                }
+            ],
+        },
     }
 
     with app.app_context():
@@ -381,7 +586,19 @@ def test_ai_audit_stores_sanitized_retrieval_explainability(app, make_user):
     assert explainability["explained_source_count"] == 1
     assert explainability["sources"][0]["type"] == "knowledge"
     assert explainability["sources"][0]["id"] == 7
+    assert explainability["sources"][0]["source_type"] == "manual_training"
+    assert explainability["sources"][0]["source_id"] == 42
+    assert explainability["sources"][0]["source_record_id"] == 42
+    assert explainability["sources"][0]["source_kind"] == "rag"
+    assert explainability["sources"][0]["knowledge_source_type"] == "manual_training"
+    assert explainability["sources"][0]["machine_id"] == 99
+    assert explainability["sources"][0]["role_visibility"] == "department:Produktion"
+    assert explainability["sources"][0]["employee_access_level"] == "shift"
     assert explainability["sources"][0]["explainability"]["semantic_similarity"] == 0.82
+    assert explainability["retrieval_debug"]["reranking"]["candidate_limit"] == 20
+    assert explainability["retrieval_debug"]["reranking"]["candidate_count"] == 12
+    assert explainability["retrieval_debug"]["reranking"]["final_source_count"] == 3
+    assert "query" not in explainability["retrieval_debug"]["decision_trace"][0]["metrics"]
     assert "Sensitive" not in stored_json
     assert "prompt" not in stored_json
     assert "context" not in stored_json
@@ -410,6 +627,13 @@ def test_ai_chat_marks_and_persists_low_confidence_answers(
     assert response.status_code == 200
     assert payload["confidence"]["level"] == "low"
     assert payload["diagnostics"]["confidence_level"] == "low"
+    assert payload["answer_quality"]["status"] == "no_answer"
+    assert (
+        payload["answer_quality"]["status_reason"]
+        == "empty_retrieval_hallucination_guard"
+    )
+    assert payload["answer_quality"]["uncertainty"] == "high"
+    assert payload["answer_quality"]["no_answer"] is True
     assert payload["answer"].startswith("## Niedrige Confidence")
     assert payload["confidence"]["warning"]
 
@@ -455,6 +679,14 @@ def test_ai_chat_blocks_hallucination_when_retrieval_is_empty(
     assert payload["diagnostics"]["empty_retrieval"] is True
     assert payload["diagnostics"]["hallucination_warning"] is True
     assert {"empty_retrieval", "hallucination_risk"}.issubset(warnings)
+    assert payload["answer_quality"]["status"] == "no_answer"
+    assert (
+        payload["answer_quality"]["status_reason"]
+        == "empty_retrieval_hallucination_guard"
+    )
+    assert payload["answer_quality"]["warning_count"] >= 2
+    assert "hallucination_risk" in payload["answer_quality"]["warning_types"]
+    assert payload["answer_quality"]["primary_warning_type"] == "hallucination_risk"
     assert payload["sources"] == []
 
 
@@ -548,6 +780,75 @@ def test_empty_retrieval_answer_explains_filtered_candidates_without_counts():
     assert "Sichtbarkeits-, Qualitaets- oder Relevanzpruefung" in answer
     assert "SQL candidate count" not in answer
     assert "vector candidate count" not in answer
+
+
+def test_answer_quality_marks_conflicting_sources_as_uncertain(app):
+    """Verify source conflicts are visible as answer-quality uncertainty."""
+    from app.ai.status import finalize_chat_result_quality
+
+    result = {
+        "type": "assistant",
+        "answer": "Quelle A und Quelle B nennen unterschiedliche naechste Schritte.",
+        "sources": [{"type": "knowledge", "id": 1, "title": "Konfliktquelle"}],
+        "confidence": {"score": 78, "level": "high"},
+        "diagnostics": {
+            "status": "openai_used",
+            "source_conflicts": {
+                "has_conflicts": True,
+                "count": 1,
+                "summary": "1 potenzielle Quellenkonflikte erkannt.",
+            },
+        },
+    }
+
+    with app.app_context():
+        finalized = finalize_chat_result_quality(result, "Wie behebe ich Fehler C900?")
+    warning_types = {
+        warning["type"] for warning in finalized["diagnostics"]["quality_warnings"]
+    }
+
+    assert "source_conflict" in warning_types
+    assert finalized["answer_quality"]["status"] == "conflicting_sources"
+    assert finalized["answer_quality"]["status_reason"] == "source_conflict_detected"
+    assert finalized["answer_quality"]["uncertainty"] == "medium"
+    assert finalized["answer_quality"]["has_sources"] is True
+    assert finalized["answer_quality"]["no_answer"] is False
+    assert "Widerspruechliche Quellen" in finalized["answer_quality"][
+        "recommended_user_action"
+    ]
+
+
+def test_answer_quality_prioritizes_conflicts_over_low_confidence(app):
+    """Verify source conflicts stay visible even when confidence is low."""
+    from app.ai.status import finalize_chat_result_quality
+
+    result = {
+        "type": "assistant",
+        "answer": "Quellen nennen unterschiedliche Reparaturschritte.",
+        "sources": [{"type": "knowledge", "id": 1, "title": "Konflikt A"}],
+        "confidence": {"score": 31, "level": "low"},
+        "diagnostics": {
+            "status": "openai_used",
+            "source_conflicts": {
+                "has_conflicts": True,
+                "count": 2,
+                "summary": "2 potenzielle Quellenkonflikte erkannt.",
+            },
+        },
+    }
+
+    finalized = finalize_chat_result_quality(result, "Wie behebe ich Fehler C901?")
+    warning_types = {
+        warning["type"] for warning in finalized["diagnostics"]["quality_warnings"]
+    }
+
+    assert {"low_confidence", "source_conflict"} <= warning_types
+    assert finalized["answer_quality"]["status"] == "conflicting_sources"
+    assert finalized["answer_quality"]["status_reason"] == "source_conflict_detected"
+    assert finalized["answer_quality"]["uncertainty"] == "medium"
+    assert finalized["answer_quality"]["confidence_level"] == "low"
+    assert finalized["answer_quality"]["primary_warning_type"] == "source_conflict"
+    assert finalized["answer_quality"]["no_answer"] is False
 
 
 def test_ai_chat_tracks_knowledge_gap_when_no_sources_match(
@@ -726,6 +1027,184 @@ def test_ai_chat_answers_admin_user_count_permission_aware(
     assert "Admin" in user_payload["answer"]
 
 
+def test_ai_chat_retrieves_admin_user_roles_for_admins_only(
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify admin-user role data is a permission-aware structured source."""
+    admin = make_user(
+        username="ai_role_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    user = make_user(username="ai_role_normal", role=Role.INSTANDHALTUNG)
+
+    admin_response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(admin["username"]),
+        json={"message": "Welche Rollen und Berechtigungen haben User im System?"},
+    )
+    user_response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Rollen und Berechtigungen haben User im System?"},
+    )
+
+    admin_payload = admin_response.get_json()
+    user_payload = user_response.get_json()
+    admin_sources = admin_payload["sources"]
+    admin_user_source = next(
+        source for source in admin_sources if source["type"] == "admin_user"
+    )
+    serialized_payload = json.dumps(admin_payload, ensure_ascii=True)
+    assert admin_response.status_code == 200
+    assert admin_payload["type"] == "assistant"
+    assert len(admin_payload["data"]["admin_users"]) == 2
+    assert {item["username"] for item in admin_payload["data"]["admin_users"]} == {
+        "ai_role_admin",
+        "ai_role_normal",
+    }
+    assert "password_hash" not in serialized_payload
+    assert admin_user_source["source_kind"] == "structured"
+    assert admin_user_source["module"] == "admin_users"
+    assert admin_user_source["role_visibility"] == "admin_only"
+    assert admin_user_source["role"] in {Role.MASTER_ADMIN.value, Role.INSTANDHALTUNG.value}
+    assert user_response.status_code == 200
+    assert user_payload["type"] == "permission_denied"
+    assert user_payload["sources"] == []
+
+
+def test_ai_chat_retrieves_shift_handovers_as_structured_sources(
+    client,
+    make_user,
+    make_machine,
+    auth_headers,
+):
+    """Verify shift handovers are used as permission-aware structured AI sources."""
+    admin = make_user(
+        username="ai_handover_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    user = make_user(username="ai_handover_normal", role=Role.PRODUKTION)
+    machine_id = make_machine(name="Handover AI Presse", produced_item="Gehauese")
+    headers = auth_headers(admin["username"])
+    create_response = client.post(
+        "/api/v1/handover",
+        headers=headers,
+        json={
+            "department": "Produktion",
+            "machine_id": machine_id,
+            "shift_date": "2026-07-05",
+            "shift_type": "Spaet",
+            "status": "open",
+            "production_status": "reduced",
+            "machine_status": "warning",
+            "problem_category": "Hydraulik",
+            "content": "Hydraulikdruck schwankt an Handover AI Presse.",
+            "open_tasks": "Filterpruefung offen.",
+            "machine_notes": "Druckabfall bei Lastwechsel.",
+            "next_notes": "Druck in der Nachtschicht eng beobachten.",
+        },
+    )
+    assert create_response.status_code == 201
+    handover_id = create_response.get_json()["data"]["id"]
+
+    admin_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={"message": "Was steht in der Schichtuebergabe zur Handover AI Presse?"},
+    )
+    user_response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Was steht in der Schichtuebergabe zur Handover AI Presse?"},
+    )
+
+    admin_payload = admin_response.get_json()
+    user_payload = user_response.get_json()
+    handover_source = next(
+        source for source in admin_payload["sources"] if source["type"] == "shift_handover"
+    )
+    assert admin_response.status_code == 200
+    assert admin_payload["type"] == "assistant"
+    assert admin_payload["data"]["shift_handovers"][0]["id"] == handover_id
+    assert handover_source["source_kind"] == "structured"
+    assert handover_source["module"] == "shiftplans"
+    assert handover_source["source_record_id"] == handover_id
+    assert handover_source["machine_id"] == machine_id
+    assert handover_source["role_visibility"] == "department:Produktion"
+    assert handover_source["created_at"]
+    assert user_response.status_code == 200
+    assert user_payload["type"] == "permission_denied"
+    assert user_payload["sources"] == []
+
+
+def test_ai_chat_retrieves_maintenance_plans_as_structured_sources(
+    app,
+    client,
+    make_user,
+    make_machine,
+    auth_headers,
+):
+    """Verify maintenance plans are used as permission-aware structured AI sources."""
+    admin = make_user(
+        username="ai_maintenance_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    user = make_user(username="ai_maintenance_normal", role=Role.PRODUKTION)
+    machine_id = make_machine(name="Wartung AI Presse", produced_item="Deckel")
+    with app.app_context():
+        department = Department.query.filter_by(name="Produktion").one()
+        db.session.add(
+            MaintenancePlan(
+                title="Hydraulik Wartungsplan KI",
+                description="Druckspeicher und Filter an Wartung AI Presse pruefen.",
+                interval_days=14,
+                next_due_date=date.today() + timedelta(days=3),
+                priority=Priority.SOON,
+                is_active=True,
+                machine_id=machine_id,
+                department=department,
+                created_by=admin["id"],
+            )
+        )
+        db.session.commit()
+
+    admin_response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(admin["username"]),
+        json={"message": "Welche Wartungsplaene gibt es zur Wartung AI Presse?"},
+    )
+    user_response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Wartungsplaene gibt es zur Wartung AI Presse?"},
+    )
+
+    admin_payload = admin_response.get_json()
+    user_payload = user_response.get_json()
+    plan_source = next(
+        source for source in admin_payload["sources"] if source["type"] == "maintenance_plan"
+    )
+    plan_payload = admin_payload["data"]["maintenance_plans"][0]
+    assert admin_response.status_code == 200
+    assert admin_payload["type"] == "assistant"
+    assert plan_payload["title"] == "Hydraulik Wartungsplan KI"
+    assert plan_source["source_kind"] == "structured"
+    assert plan_source["module"] == "machines"
+    assert plan_source["source_record_id"] == plan_payload["id"]
+    assert plan_source["machine_id"] == machine_id
+    assert plan_source["role_visibility"] == "department:Produktion"
+    assert plan_source["created_at"]
+    assert "Predictive" not in json.dumps(admin_payload, ensure_ascii=True)
+    assert user_response.status_code == 200
+    assert user_payload["type"] == "permission_denied"
+    assert user_payload["sources"] == []
+
+
 def test_ai_chat_uses_hybrid_general_mode_for_non_app_questions(
     client,
     make_user,
@@ -840,6 +1319,94 @@ def test_ai_chat_general_fallback_explains_missing_openai_key(
     assert payload["answer"].count("protokolliert") == 1
     assert "Lokaler Fallback" not in payload["answer"]
     assert "Quelle:" not in payload["answer"]
+
+
+def test_ai_chat_general_fallback_reports_missing_compatible_base_url(
+    app,
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify OpenAI-compatible fallback reports missing AI_BASE_URL explicitly."""
+    user = make_user(username="ai_missing_base_url_chat_user")
+    app.config["AI_PROVIDER"] = "openai_compatible"
+    app.config["OPENAI_API_KEY"] = "test-key"
+    app.config["AI_BASE_URL"] = ""
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Was ist die Hauptstadt von Japan?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "general_chat"
+    assert payload["diagnostics"]["status"] == "base_url_missing"
+    assert payload["diagnostics"]["fallback_used"] is True
+    assert "AI_BASE_URL" in payload["answer"]
+
+
+def test_ai_chat_general_fallback_reports_unsupported_provider(
+    app,
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify unsupported AI providers fall back visibly instead of key errors."""
+    user = make_user(username="ai_unsupported_provider_chat_user")
+    app.config["AI_PROVIDER"] = "gemini"
+    app.config["OPENAI_API_KEY"] = "test-key"
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Was ist die Hauptstadt von Japan?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "general_chat"
+    assert payload["diagnostics"]["status"] == "unsupported_provider"
+    assert payload["diagnostics"]["fallback_used"] is True
+    assert "AI_PROVIDER" in payload["answer"]
+
+
+def test_openai_compatible_provider_uses_configured_base_url(app):
+    """Verify OpenAI-compatible providers use the configured local API base URL."""
+    with app.app_context():
+        app.config["AI_PROVIDER"] = "openai_compatible"
+        app.config["OPENAI_API_KEY"] = "test-key"
+        app.config["AI_BASE_URL"] = "http://127.0.0.1:11434/v1"
+
+        provider = get_ai_provider()
+
+    assert provider.name == "openai_compatible"
+    assert str(provider.client.base_url).rstrip("/") == "http://127.0.0.1:11434/v1"
+
+
+def test_openai_provider_ignores_local_base_url(app):
+    """Verify official OpenAI mode does not inherit local compatible base URLs."""
+    with app.app_context():
+        app.config["AI_PROVIDER"] = "openai"
+        app.config["OPENAI_API_KEY"] = "test-key"
+        app.config["AI_BASE_URL"] = "http://127.0.0.1:11434/v1"
+
+        provider = get_ai_provider()
+
+    assert provider.name == "openai"
+    assert str(provider.client.base_url).rstrip("/") != "http://127.0.0.1:11434/v1"
+
+
+def test_unsupported_ai_provider_falls_back_to_mock(app):
+    """Verify unsupported providers stay safe until dedicated adapters exist."""
+    with app.app_context():
+        app.config["AI_PROVIDER"] = "gemini"
+        app.config["OPENAI_API_KEY"] = "test-key"
+
+        provider = get_ai_provider()
+
+    assert provider.name == "mock"
 
 
 def test_ai_chat_general_openai_error_returns_short_tracked_message(
@@ -1315,17 +1882,33 @@ def test_retrieval_quality_analytics_aggregates_prompt_safe_signals(app, make_us
         )
         db.session.add_all([used_document, unused_document])
         db.session.flush()
+        used_text = "Sensitive used chunk text must not appear in telemetry."
+        unused_text = "Sensitive unused chunk text must not appear in telemetry."
         used_chunk = KnowledgeChunk(
             document_id=used_document.id,
             chunk_index=0,
-            text="Sensitive used chunk text must not appear in telemetry.",
+            text=used_text,
             token_text="telemetry used",
         )
         unused_chunk = KnowledgeChunk(
             document_id=unused_document.id,
             chunk_index=0,
-            text="Sensitive unused chunk text must not appear in telemetry.",
+            text=unused_text,
             token_text="telemetry unused",
+            entities_json=json.dumps(
+                {
+                    "_chunk_metadata": {
+                        "chunk_char_count": len(unused_text),
+                        "chunk_line_count": 1,
+                        "chunk_token_count": 8,
+                        "chunk_block_count": 2,
+                        "chunk_block_kinds": "list,paragraph",
+                        "chunking_mode": "hybrid_semantic",
+                        "section_title": "Unused Maintenance Notes",
+                    }
+                },
+                ensure_ascii=True,
+            ),
         )
         db.session.add_all([used_chunk, unused_chunk])
         db.session.flush()
@@ -1335,6 +1918,13 @@ def test_retrieval_quality_analytics_aggregates_prompt_safe_signals(app, make_us
         source_payload = {
             "type": "knowledge",
             "id": used_document_id,
+            "source_record_id": 44,
+            "source_kind": "rag",
+            "knowledge_source_type": "machine_manual",
+            "module": "knowledge",
+            "machine_id": 12,
+            "role_visibility": "department:Produktion",
+            "created_at": "2026-05-30T10:00:00",
             "chunk_id": used_chunk_id,
             "score": 12,
             "explainability": {
@@ -1351,6 +1941,12 @@ def test_retrieval_quality_analytics_aggregates_prompt_safe_signals(app, make_us
                 "retrieval_explainability": {
                     "source_count": 1,
                     "explained_source_count": 1,
+                    "retrieval_debug": {
+                        "top_k": 4,
+                        "rerank_candidate_limit": 20,
+                        "vector_candidates_found": 10,
+                        "final_visible_sources": 1,
+                    },
                     "sources": [source_payload],
                 },
             },
@@ -1410,13 +2006,50 @@ def test_retrieval_quality_analytics_aggregates_prompt_safe_signals(app, make_us
 
     assert top_source["id"] == used_document_id
     assert top_source["audit_uses"] == 1
+    assert top_source["source_record_id"] == 44
+    assert top_source["source_kind"] == "rag"
+    assert top_source["knowledge_source_type"] == "machine_manual"
+    assert top_source["machine_id"] == 12
+    assert top_source["role_visibility"] == "department:Produktion"
+    assert telemetry["source_usage"]["source_kind_distribution"]["rag"] == 1
     assert poor_source["not_helpful_feedback"] == 1
+    assert poor_source["source_record_id"] == 44
+    assert poor_source["source_kind"] == "rag"
+    assert poor_source["knowledge_source_type"] == "machine_manual"
     assert telemetry["unsuccessful_questions"]["no_source_events"] == 1
     assert telemetry["unsuccessful_questions"]["low_confidence_events"] == 1
+    assert telemetry["reranking"]["request_count"] == 1
+    assert telemetry["reranking"]["average_candidate_limit"] == 20
+    assert telemetry["reranking"]["average_candidate_count"] == 10
+    assert telemetry["reranking"]["average_final_top_k"] == 4
+    assert telemetry["reranking"]["average_final_source_count"] == 1
+    assert telemetry["reranking"]["average_reduction_rate"] == 0.9
     assert top_gap["question_hash"] == "a" * 64
     assert "question" not in top_gap
     assert telemetry["negative_feedback"]["total"] == 1
-    assert any(item["chunk_id"] == unused_chunk_id for item in unused_sample)
+    unused_item = next(item for item in unused_sample if item["chunk_id"] == unused_chunk_id)
+    assert telemetry["unused_chunks"]["chunk_size_metrics"]["measured_chunk_count"] == 1
+    assert telemetry["unused_chunks"]["chunk_size_metrics"]["average_char_count"] == len(
+        unused_text
+    )
+    assert telemetry["unused_chunks"]["chunk_size_metrics"]["average_token_count"] == 8
+    assert telemetry["unused_chunks"]["chunk_size_metrics"]["average_block_count"] == 2
+    assert telemetry["unused_chunks"]["chunk_size_metrics"]["max_block_count"] == 2
+    block_kind_distribution = {
+        item["key"]: item["count"]
+        for item in telemetry["unused_chunks"]["chunk_size_metrics"][
+            "block_kind_distribution"
+        ]
+    }
+    assert block_kind_distribution["list"] == 1
+    assert block_kind_distribution["paragraph"] == 1
+    assert unused_item["chunk_char_count"] == len(unused_text)
+    assert unused_item["chunk_line_count"] == 1
+    assert unused_item["chunk_token_count"] == 8
+    assert unused_item["chunk_block_count"] == 2
+    assert unused_item["chunk_block_kinds"] == ["list", "paragraph"]
+    assert unused_item["chunking_mode"] == "hybrid_semantic"
+    assert unused_item["section_title"] == "Unused Maintenance Notes"
     assert "Sensitive prompt" not in telemetry_text
     assert "Sensitive answer" not in telemetry_text
     assert "Sensitive used chunk text" not in telemetry_text
@@ -1527,6 +2160,121 @@ def test_retrieval_slo_metrics_aggregate_operational_signals(app, make_user):
     assert "Prompt must not appear" not in json.dumps(slo, ensure_ascii=True)
 
 
+def test_retrieval_slo_metrics_warn_on_source_metadata_gaps(app, make_user):
+    """Verify retrieval SLOs flag incomplete public source metadata."""
+    user = make_user(username="retrieval_slo_metadata_gap_user")
+    with app.app_context():
+        actor = type("UserStub", (), {"id": user["id"]})()
+        create_ai_audit_event(
+            user=actor,
+            workflow="assistant",
+            diagnostics={
+                "status": "openai_used",
+                "retrieval_explainability": {
+                    "retrieval_duration_ms": 120,
+                    "sources": [
+                        {
+                            "type": "knowledge",
+                            "id": 10,
+                            "source_type": "upload",
+                            "source_id": 10,
+                            "title": "Complete public metadata",
+                            "module": "knowledge",
+                            "role_visibility": "public",
+                            "created_at": "2026-05-30T10:00:00",
+                        },
+                        {
+                            "type": "knowledge",
+                            "id": 11,
+                            "title": "Missing derived metadata",
+                        },
+                    ],
+                },
+            },
+            requested_scopes={"documents"},
+            allowed_scopes={"documents"},
+            source_count=2,
+        )
+        db.session.commit()
+
+        telemetry = retrieval_quality_analytics(days=30, limit=5)
+
+    slo = telemetry["retrieval_slo"]
+    values = slo["last_values"]
+    metadata_warning = next(
+        warning
+        for warning in slo["warnings"]
+        if warning["metric"] == "source_metadata_missing_rate"
+    )
+    assert values["source_metadata_missing_rate"] == 0.5
+    missing_fields = {
+        item["field"]: item["count"] for item in values["source_metadata_missing_fields"]
+    }
+    assert missing_fields == {
+        "module": 1,
+        "role_visibility": 1,
+        "created_at": 1,
+    }
+    assert metadata_warning["status"] == "critical"
+    assert "Complete public metadata" not in json.dumps(slo, ensure_ascii=True)
+
+
+def test_ai_observability_exposes_retrieval_slo_metadata_gap_warning(app, make_user):
+    """Verify AI observability surfaces retrieval SLO metadata-gap warnings."""
+    user = make_user(username="ai_observability_slo_gap_user")
+    with app.app_context():
+        actor = type("UserStub", (), {"id": user["id"]})()
+        create_ai_audit_event(
+            user=actor,
+            workflow="assistant",
+            diagnostics={
+                "status": "openai_used",
+                "retrieval_explainability": {
+                    "retrieval_duration_ms": 100,
+                    "sources": [
+                        {
+                            "type": "knowledge",
+                            "id": 21,
+                            "source_type": "upload",
+                            "source_id": 21,
+                            "module": "knowledge",
+                            "role_visibility": "public",
+                            "created_at": "2026-05-30T10:00:00",
+                        },
+                        {"type": "knowledge", "id": 22},
+                    ],
+                },
+            },
+            requested_scopes={"documents"},
+            allowed_scopes={"documents"},
+            source_count=2,
+        )
+        db.session.commit()
+
+        dashboard = ai_observability_dashboard({"days": "30", "limit": "5"})
+
+    retrieval_slo = dashboard["metrics"]["retrieval_slo"]
+    metadata_warning = next(
+        warning
+        for warning in dashboard["metrics"]["retrieval_slo_warnings"]
+        if warning["metric"] == "source_metadata_missing_rate"
+    )
+    assert dashboard["metrics"]["telemetry_status"] == "critical"
+    assert retrieval_slo["status"] == "critical"
+    assert retrieval_slo["source_metadata_missing_rate"] == 0.5
+    missing_fields = {
+        item["field"]: item["count"]
+        for item in retrieval_slo["source_metadata_missing_fields"]
+    }
+    assert missing_fields == {
+        "module": 1,
+        "role_visibility": 1,
+        "created_at": 1,
+    }
+    assert retrieval_slo["warning_count"] >= 1
+    assert metadata_warning["status"] == "critical"
+
+
 def test_retrieval_slo_metrics_handle_empty_data(app):
     """Verify retrieval SLO metrics return safe defaults for empty telemetry."""
     clear_vector_sync_observability()
@@ -1544,9 +2292,16 @@ def test_retrieval_slo_metrics_handle_empty_data(app):
 def test_ai_observability_dashboard_combines_logs_quality_and_retrieval(
     app,
     make_user,
+    make_error_entry,
 ):
     """Verify AI observability combines monitoring metrics and bounded debug data."""
     user = make_user(username="ai_observability_user")
+    make_error_entry(
+        "FU",
+        "FU-000",
+        "Unbekannter FU Fehler",
+        description="FU Fehler ohne ausreichende Dokumentation.",
+    )
     with app.app_context():
         document = KnowledgeDocument(
             source_type="upload",
@@ -1569,15 +2324,33 @@ def test_ai_observability_dashboard_combines_logs_quality_and_retrieval(
             diagnostics={
                 "status": "openai_used",
                 "latency_ms": 240,
+                "input_tokens": 200,
+                "output_tokens": 120,
                 "total_tokens": 320,
+                "estimated_cost_usd": 0.012,
                 "confidence_score": 84,
                 "confidence_level": "high",
                 "retrieval_explainability": {
                     "retrieval_duration_ms": 42,
+                    "retrieval_debug": {
+                        "top_k": 4,
+                        "rerank_candidate_limit": 20,
+                        "vector_candidates_found": 12,
+                        "final_visible_sources": 1,
+                    },
                     "sources": [
                         {
                             "type": "knowledge",
                             "id": document.id,
+                            "title": "Observability Motor FU",
+                            "source_record_id": 123,
+                            "source_kind": "rag",
+                            "knowledge_source_type": "machine_manual",
+                            "module": "knowledge",
+                            "machine_id": 456,
+                            "role_visibility": "department:Produktion",
+                            "employee_access_level": "confidential",
+                            "created_at": "2000-01-01T00:00:00",
                             "chunk_id": 77,
                             "score": 88,
                             "section_title": "FU Diagnose",
@@ -1586,7 +2359,24 @@ def test_ai_observability_dashboard_combines_logs_quality_and_retrieval(
                                 "final_score": 88,
                                 "quality_status": "admin_approved",
                             },
-                        }
+                        },
+                        {
+                            "type": "knowledge",
+                            "id": document.id,
+                            "title": "Observability undated FU",
+                            "source_record_id": 124,
+                            "source_kind": "rag",
+                            "knowledge_source_type": "machine_manual",
+                            "module": "knowledge",
+                            "machine_id": 456,
+                            "role_visibility": "department:Produktion",
+                            "chunk_id": 78,
+                            "score": 20,
+                            "section_title": "FU ohne Datum",
+                            "explainability": {
+                                "semantic_similarity": 0.82,
+                            },
+                        },
                     ],
                     "context_builder": {
                         "sections": [
@@ -1605,30 +2395,80 @@ def test_ai_observability_dashboard_combines_logs_quality_and_retrieval(
             allowed_scopes={"documents"},
             source_count=1,
         )
+        sourced_chat = ChatMessage(
+            user_id=user["id"],
+            message="Welche Dokumente helfen beim FU Fehler?",
+            response="Dokument Observability Motor FU nutzen.",
+            response_type="assistant",
+            diagnostics_json=json.dumps(
+                {
+                    "confidence_score": 84,
+                    "confidence_level": "high",
+                    "quality_warnings": [],
+                },
+                ensure_ascii=True,
+            ),
+            source_count=1,
+            confidence_score=84,
+            confidence_level="high",
+            audit_event_id=audit_id,
+        )
+        db.session.add(sourced_chat)
         db.session.add(
             ChatMessage(
                 user_id=user["id"],
-                message="Welche Dokumente helfen beim FU Fehler?",
-                response="Dokument Observability Motor FU nutzen.",
+                message="Welche Quellen widersprechen sich beim FU Fehler?",
+                response="Zwei Quellen nennen unterschiedliche naechste Schritte.",
                 response_type="assistant",
                 diagnostics_json=json.dumps(
                     {
-                        "confidence_score": 84,
+                        "confidence_score": 78,
                         "confidence_level": "high",
-                        "quality_warnings": [],
+                        "source_conflicts": {
+                            "has_conflicts": True,
+                            "count": 1,
+                            "summary": "1 potenzielle Quellenkonflikte erkannt.",
+                        },
+                        "quality_warnings": [{"type": "source_conflict"}],
                     },
                     ensure_ascii=True,
                 ),
                 source_count=1,
-                confidence_score=84,
+                confidence_score=78,
                 confidence_level="high",
-                audit_event_id=audit_id,
             )
         )
         db.session.add(
+            ChatMessage(
+                user_id=user["id"],
+                message="Welche Ursache hat der unbekannte Fehler FU-000?",
+                response="Keine belegte Antwort vorhanden.",
+                response_type="assistant",
+                diagnostics_json=json.dumps(
+                    {
+                        "confidence_score": 18,
+                        "confidence_level": "low",
+                        "empty_retrieval": True,
+                        "hallucination_warning": True,
+                        "knowledge_gap_id": 321,
+                        "knowledge_gap_created": True,
+                        "quality_warnings": [
+                            {"type": "empty_retrieval"},
+                            {"type": "hallucination_risk"},
+                        ],
+                    },
+                    ensure_ascii=True,
+                ),
+                source_count=0,
+                confidence_score=18,
+                confidence_level="low",
+            )
+        )
+        db.session.flush()
+        db.session.add(
             AIFeedback(
                 user_id=user["id"],
-                chat_message_id=1,
+                chat_message_id=sourced_chat.id,
                 audit_event_id=audit_id,
                 prompt="Welche Dokumente helfen beim FU Fehler?",
                 response="Dokument Observability Motor FU nutzen.",
@@ -1638,22 +2478,593 @@ def test_ai_observability_dashboard_combines_logs_quality_and_retrieval(
                 source_count=1,
             )
         )
+        db.session.add(
+            AIFeedback(
+                user_id=user["id"],
+                prompt="Welche Dokumente helfen beim FU Fehler?",
+                response="Dokument Observability Motor FU nutzen.",
+                response_type="assistant",
+                rating="helpful",
+                sources_json="[]",
+                source_count=1,
+            )
+        )
+        db.session.add(
+            KnowledgeGap(
+                question="Welche FU Dokumentation fehlt?",
+                question_hash="b" * 64,
+                occurrence_count=2,
+                status="open",
+                machine="FU",
+                department="Produktion",
+                user_id=user["id"],
+            )
+        )
+        db.session.add(
+            RetrievalEvaluationRun(
+                query_count=4,
+                recall_at_k=0.75,
+                mrr=0.5,
+                ndcg_at_k=0.625,
+                keyword_query_count=2,
+                keyword_hit_rate=0.5,
+                permission_leak_count=1,
+                forbidden_source_hit_count=1,
+                no_result_count=1,
+                no_result_rate=0.25,
+                expected_no_result_count=1,
+                expected_no_result_success_count=1,
+                expected_no_result_success_rate=1.0,
+                unexpected_no_result_count=1,
+                unexpected_no_result_rate=0.3333,
+                min_source_count_fail_count=1,
+                min_source_count_pass_rate=0.75,
+                query_type_expected_count=3,
+                query_type_match_count=2,
+                query_type_accuracy=0.6667,
+                source_metadata_count=4,
+                source_id_coverage_rate=1.0,
+                source_type_coverage_rate=1.0,
+                source_pair_coverage_rate=0.75,
+                metadata_pair_coverage_rate=0.5,
+            )
+        )
+        db.session.commit()
+
+        dashboard = ai_observability_dashboard(
+            {"days": "30", "limit": "5", "chat_message_id": str(sourced_chat.id)}
+        )
+
+    assert dashboard["metrics"]["average_response_ms"] == 240
+    assert dashboard["metrics"]["p95_response_ms"] == 240
+    assert dashboard["metrics"]["average_retrieval_ms"] == 42
+    assert dashboard["metrics"]["p95_retrieval_ms"] == 42
+    assert dashboard["metrics"]["average_final_top_k"] == 1
+    assert dashboard["metrics"]["average_tokens"] == 320
+    assert dashboard["metrics"]["provider_ready"] is True
+    assert dashboard["metrics"]["provider_readiness_status"] == "ok"
+    assert dashboard["metrics"]["provider_degraded_component_count"] == 0
+    assert dashboard["metrics"]["provider_next_action_type"] == ""
+    assert dashboard["metrics"]["cost_windows"]["month"] == 0.012
+    assert dashboard["metrics"]["price_configuration"]["message"] == "Kosten nicht konfiguriert"
+    assert dashboard["metrics"]["failed_request_count"] == 0
+    assert dashboard["metrics"]["retrieval_hit_rate"] == 1
+    assert dashboard["metrics"]["source_freshness"]["stale_source_count"] == 1
+    assert dashboard["metrics"]["stale_source_count"] == 1
+    assert dashboard["metrics"]["stale_source_rate"] == 1
+    assert dashboard["metrics"]["undated_source_count"] == 1
+    assert dashboard["metrics"]["retrieval_action_count"] == 3
+    assert dashboard["metrics"]["retrieval_critical_action_count"] == 0
+    assert dashboard["metrics"]["retrieval_high_action_count"] == 1
+    assert dashboard["metrics"]["evaluation_action_count"] == 4
+    assert dashboard["metrics"]["evaluation_critical_action_count"] == 1
+    assert dashboard["metrics"]["evaluation_high_action_count"] == 1
+    assert dashboard["metrics"]["evaluation_quality_gate_status"] == "fail"
+    assert dashboard["metrics"]["evaluation_quality_gate_passed"] is False
+    assert dashboard["metrics"]["evaluation_blocking_count"] == 2
+    assert dashboard["metrics"]["evaluation_warning_count"] >= 1
+    assert dashboard["metrics"]["evaluation_quality_gate_issue_count"] == (
+        dashboard["metrics"]["evaluation_blocking_count"]
+        + dashboard["metrics"]["evaluation_warning_count"]
+    )
+    assert dashboard["metrics"]["source_metadata_gap_count"] == 2
+    assert dashboard["metrics"]["source_metadata_gap_fields"] == [
+        "source_pair",
+        "metadata_pair",
+    ]
+    assert dashboard["metrics"]["source_metadata_min_coverage_rate"] == 0.5
+    assert dashboard["metrics"]["empty_retrieval_count"] == 1
+    assert dashboard["metrics"]["no_answer_count"] == 1
+    assert dashboard["metrics"]["no_answer_rate"] == 0.3333
+    assert dashboard["metrics"]["source_conflict_count"] == 1
+    assert dashboard["metrics"]["source_conflict_rate"] == 0.3333
+    assert dashboard["metrics"]["answer_quality_distribution"] == {
+        "grounded": 1,
+        "conflicting_sources": 1,
+        "no_answer": 1,
+    }
+    answer_quality_rows = {
+        row["status"]: row
+        for row in dashboard["metrics"]["answer_quality_distribution_rows"]
+    }
+    assert answer_quality_rows["grounded"]["rate"] == 0.3333
+    assert answer_quality_rows["conflicting_sources"]["count"] == 1
+    assert dashboard["metrics"]["answer_quality_reason_distribution"] == {
+        "sources_available": 1,
+        "source_conflict_detected": 1,
+        "empty_retrieval_hallucination_guard": 1,
+    }
+    reason_rows = {
+        row["status_reason"]: row
+        for row in dashboard["metrics"]["answer_quality_reason_distribution_rows"]
+    }
+    assert reason_rows["source_conflict_detected"]["count"] == 1
+    assert reason_rows["empty_retrieval_hallucination_guard"]["rate"] == 0.3333
+    answer_quality_actions = {
+        action["type"]: action for action in dashboard["metrics"]["answer_quality_actions"]
+    }
+    assert dashboard["metrics"]["answer_quality_action_count"] == 2
+    assert (
+        answer_quality_actions["review_no_answer_guarded_questions"]["priority"]
+        == "high"
+    )
+    assert answer_quality_actions["review_no_answer_guarded_questions"]["count"] == 1
+    assert (
+        answer_quality_actions["review_conflicting_answer_sources"]["target"]
+        == "source_conflict_detected"
+    )
+    answer_quality_action_summary = dashboard["metrics"][
+        "answer_quality_action_summary"
+    ]
+    assert answer_quality_action_summary["total"] == 2
+    assert answer_quality_action_summary["high_priority_count"] == 1
+    assert (
+        answer_quality_action_summary["next_action_type"]
+        == "review_no_answer_guarded_questions"
+    )
+    assert dashboard["metrics"]["primary_warning_distribution"] == {
+        "none": 1,
+        "source_conflict": 1,
+        "hallucination_risk": 1,
+    }
+    primary_warning_rows = {
+        row["warning_type"]: row
+        for row in dashboard["metrics"]["primary_warning_distribution_rows"]
+    }
+    assert primary_warning_rows["source_conflict"]["count"] == 1
+    assert primary_warning_rows["hallucination_risk"]["rate"] == 0.3333
+    assert dashboard["metrics"]["uncertainty_distribution"] == {
+        "low": 1,
+        "medium": 1,
+        "high": 1,
+    }
+    uncertainty_rows = {
+        row["uncertainty"]: row
+        for row in dashboard["metrics"]["uncertainty_distribution_rows"]
+    }
+    assert uncertainty_rows["high"]["count"] == 1
+    assert uncertainty_rows["medium"]["rate"] == 0.3333
+    assert dashboard["metrics"]["high_uncertainty_count"] == 1
+    assert dashboard["metrics"]["high_uncertainty_rate"] == 0.3333
+    assert dashboard["metrics"]["uncertain_answer_count"] == 2
+    assert dashboard["metrics"]["uncertain_answer_rate"] == 0.6667
+    assert dashboard["metrics"]["reranking_request_count"] == 1
+    assert dashboard["metrics"]["average_rerank_candidate_limit"] == 20
+    assert dashboard["metrics"]["average_rerank_candidate_count"] == 12
+    assert dashboard["metrics"]["average_rerank_reduction_rate"] == 0.9167
+    assert dashboard["metrics"]["reranking"]["average_final_top_k"] == 4
+    assert dashboard["metrics"]["reranking"]["average_final_source_count"] == 1
+    assert dashboard["metrics"]["hallucination_warning_count"] == 1
+    assert dashboard["metrics"]["positive_feedback_count"] == 1
+    assert dashboard["metrics"]["negative_feedback_count"] == 1
+    assert dashboard["metrics"]["source_distribution"]["knowledge"] == 2
+    assert dashboard["metrics"]["source_kind_distribution"]["rag"] == 2
+    assert dashboard["metrics"]["top_questions"][0]["count"] == 1
+    assert dashboard["metrics"]["frequent_questions"][0]["count"] == 1
+    assert any(item["term"] == "fehler" for item in dashboard["metrics"]["frequent_search_terms"])
+    assert dashboard["metrics"]["most_used_documents"][0]["source_id"] == document.id
+    assert dashboard["metrics"]["knowledge_gaps"]["open_count"] == 1
+    assert dashboard["metrics"]["knowledge_gaps"]["recurring_count"] == 1
+    assert dashboard["metrics"]["knowledge_gaps"]["machine_gap_count"] == 1
+    assert dashboard["metrics"]["knowledge_gaps"]["error_gap_count"] == 1
+    assert dashboard["metrics"]["knowledge_gaps"]["uncovered_error_gap_count"] == 0
+    assert dashboard["metrics"]["knowledge_gaps"]["critical_uncovered_error_gap_count"] == 0
+    assert dashboard["metrics"]["knowledge_gaps"]["uncovered_machine_gap_count"] == 0
+    assert (
+        dashboard["metrics"]["knowledge_gaps"]["critical_uncovered_machine_gap_count"] == 0
+    )
+    assert dashboard["metrics"]["knowledge_gaps"]["uncovered_error_gaps"] == []
+    assert dashboard["metrics"]["knowledge_gaps"]["uncovered_machine_gaps"] == []
+    assert dashboard["metrics"]["knowledge_gaps"]["department_gap_count"] == 1
+    assert dashboard["metrics"]["knowledge_gaps"]["uncertain_question_gap_count"] == 1
+    assert dashboard["metrics"]["knowledge_gaps"]["high_uncertainty_answer_count"] == 1
+    uncertain_gap = dashboard["metrics"]["knowledge_gaps"]["uncertain_question_gaps"][0]
+    assert uncertain_gap["question"] == "Welche Ursache hat der unbekannte Fehler FU-000?"
+    assert uncertain_gap["answer_uncertainty"] == "high"
+    assert uncertain_gap["no_answer_count"] == 1
+    assert uncertain_gap["knowledge_gap_id"] == 321
+    uncertain_action = dashboard["metrics"]["knowledge_gaps"][
+        "uncertain_question_actions"
+    ][0]
+    assert dashboard["metrics"]["knowledge_gaps"]["uncertain_question_action_count"] == 1
+    assert uncertain_action["type"] == "review_uncertain_answer_gap"
+    assert uncertain_action["priority"] == "high"
+    assert uncertain_action["target"] == uncertain_gap["question"]
+    assert uncertain_action["target_id"] == 321
+    assert uncertain_action["next_steps"]
+    assert any(
+        action["type"] == "review_uncertain_answer_gap"
+        for action in dashboard["metrics"]["knowledge_gaps"]["recommended_actions"]
+    )
+    assert dashboard["metrics"]["knowledge_gaps"]["machine_gaps"][0]["machine"] == "FU"
+    error_gap = dashboard["metrics"]["knowledge_gaps"]["error_gaps"][0]
+    assert error_gap["error_code"] == "FU-000"
+    assert error_gap["machine"] == "FU"
+    assert error_gap["coverage"] == "thin"
+    department_gap = dashboard["metrics"]["knowledge_gaps"]["department_gaps"][0]
+    assert department_gap["department"] == "Produktion"
+    assert any(
+        item["term"] == "dokumentation"
+        for item in dashboard["metrics"]["knowledge_gaps"]["frequent_terms"]
+    )
+    assert dashboard["metrics"]["knowledge_gaps"]["recommended_actions"][0]["type"] in {
+        "thin_machine_documentation",
+        "missing_machine_documentation",
+    }
+    assert dashboard["metrics"]["knowledge_gaps"]["action_count"] >= 1
+    assert dashboard["metrics"]["knowledge_gaps"]["high_priority_action_count"] >= 0
+    action_priorities = {
+        item["key"] for item in dashboard["metrics"]["knowledge_gaps"][
+            "action_priority_distribution"
+        ]
+    }
+    action_types = {
+        item["key"] for item in dashboard["metrics"]["knowledge_gaps"][
+            "action_type_distribution"
+        ]
+    }
+    assert {"medium"} <= action_priorities or {"high"} <= action_priorities
+    assert {
+        dashboard["metrics"]["knowledge_gaps"]["recommended_actions"][0]["type"]
+    } <= action_types
+    assert dashboard["recommended_actions"][0]["type"] == "fix_permission_leaks"
+    assert dashboard["recommended_actions"][0]["action_source"] == "evaluation"
+    assert dashboard["recommended_actions"][0]["rank"] == 1
+    assert dashboard["recommended_actions"][0]["rank_label"] == "P1"
+    assert dashboard["next_best_action"]["type"] == "fix_permission_leaks"
+    assert dashboard["next_best_action"]["rank"] == 1
+    assert dashboard["recommended_actions"][1]["type"] == "improve_retrieval_coverage"
+    assert dashboard["recommended_actions"][1]["rank"] == 2
+    assert any(
+        action["action_source"] == "retrieval_quality"
+        and action["type"] == "review_low_quality_retrieval_hits"
+        for action in dashboard["recommended_actions"]
+    )
+    assert any(
+        action["action_source"] == "knowledge_gap"
+        for action in dashboard["recommended_actions"]
+    )
+    recommended_summary = dashboard["recommended_action_summary"]
+    assert recommended_summary["total"] == 5
+    assert recommended_summary["critical_priority_count"] == 1
+    assert recommended_summary["high_priority_count"] == 3
+    assert recommended_summary["medium_priority_count"] == 1
+    assert recommended_summary["next_action_type"] == "fix_permission_leaks"
+    assert recommended_summary["next_action_priority"] == "critical"
+    assert recommended_summary["next_action_source"] == "evaluation"
+    assert recommended_summary["answer_quality_action_count"] == 2
+    assert recommended_summary["answer_quality_high_action_count"] == 1
+    assert (
+        recommended_summary["answer_quality_next_action_type"]
+        == "review_no_answer_guarded_questions"
+    )
+    assert recommended_summary["answer_quality_next_action_priority"] == "high"
+    recommended_sources = {
+        item["key"] for item in recommended_summary["type_distribution"]
+    }
+    recommended_action_sources = {
+        item["key"]: item["count"]
+        for item in recommended_summary["source_distribution"]
+    }
+    assert {
+        "fix_permission_leaks",
+        "improve_retrieval_coverage",
+        "review_low_quality_retrieval_hits",
+    } <= recommended_sources
+    assert recommended_action_sources["evaluation"] == 3
+    assert recommended_action_sources["retrieval_quality"] == 1
+    assert recommended_action_sources["knowledge_gap"] == 1
+    assert dashboard["langfuse_metrics"]["available"] is False
+    assert dashboard["langfuse_metrics"]["status"] == "disabled"
+    assert dashboard["privacy"]["source_ids_visible"] is False
+    assert dashboard["privacy"]["source_metadata_aggregates_visible"] is True
+    assert dashboard["quality_metrics"]["retrieval_hit_rate"] == 1
+    assert dashboard["quality_metrics"]["average_similarity_score"] == 0.82
+    assert dashboard["quality_metrics"]["recall_at_k"] == 0.75
+    assert dashboard["quality_metrics"]["keyword_hit_rate"] == 0.5
+    assert dashboard["quality_metrics"]["keyword_query_count"] == 2
+    assert dashboard["quality_metrics"]["no_result_rate"] == 0.25
+    assert dashboard["quality_metrics"]["no_result_count"] == 1
+    assert dashboard["quality_metrics"]["expected_no_result_count"] == 1
+    assert dashboard["quality_metrics"]["expected_no_result_success_count"] == 1
+    assert dashboard["quality_metrics"]["expected_no_result_success_rate"] == 1.0
+    assert dashboard["quality_metrics"]["unexpected_no_result_count"] == 1
+    assert dashboard["quality_metrics"]["unexpected_no_result_rate"] == 0.3333
+    assert dashboard["quality_metrics"]["min_source_count_fail_count"] == 1
+    assert dashboard["quality_metrics"]["min_source_count_pass_rate"] == 0.75
+    assert dashboard["quality_metrics"]["query_type_expected_count"] == 3
+    assert dashboard["quality_metrics"]["query_type_match_count"] == 2
+    assert dashboard["quality_metrics"]["query_type_accuracy"] == 0.6667
+    assert dashboard["quality_metrics"]["permission_leak_count"] == 1
+    assert dashboard["quality_metrics"]["forbidden_source_hit_count"] == 1
+    assert dashboard["quality_metrics"]["evaluation_quality_gate"]["status"] == "fail"
+    assert dashboard["quality_metrics"]["evaluation_quality_gate"]["passed"] is False
+    assert dashboard["quality_metrics"]["evaluation_quality_gate"]["blocking"][0][
+        "metric"
+    ] == "permission_leak_count"
+    assert dashboard["quality_metrics"]["evaluation_blocking_count"] == 2
+    assert (
+        "permission_leak_count"
+        in dashboard["quality_metrics"]["evaluation_blocking_metrics"]
+    )
+    blocking_rows = {
+        item["metric"]: item
+        for item in dashboard["quality_metrics"]["evaluation_blocking_rows"]
+    }
+    assert blocking_rows["permission_leak_count"]["value"] == 1
+    assert blocking_rows["permission_leak_count"]["threshold"] == 0
+    assert (
+        blocking_rows["permission_leak_count"]["reason"]
+        == "retrieved_forbidden_or_invisible_source"
+    )
+    assert dashboard["quality_metrics"]["evaluation_warning_count"] >= 1
+    assert "keyword_hit_rate" in dashboard["quality_metrics"]["evaluation_warning_metrics"]
+    warning_rows = {
+        item["metric"]: item for item in dashboard["quality_metrics"]["evaluation_warning_rows"]
+    }
+    assert warning_rows["keyword_hit_rate"]["value"] == 0.5
+    assert warning_rows["keyword_hit_rate"]["threshold"] == 0.6
+    assert warning_rows["keyword_hit_rate"]["reason"] == "expected_keywords_missing"
+    evaluation_actions = {
+        item["type"]: item for item in dashboard["quality_metrics"]["evaluation_actions"]
+    }
+    assert evaluation_actions["fix_permission_leaks"]["priority"] == "critical"
+    assert evaluation_actions["fix_permission_leaks"]["count"] == 1
+    coverage_action = evaluation_actions["improve_retrieval_coverage"]
+    assert coverage_action["unexpected_no_result_count"] == 1
+    assert coverage_action["min_source_count_fail_count"] == 1
+    evaluation_action_summary = dashboard["quality_metrics"]["evaluation_action_summary"]
+    assert evaluation_action_summary["total"] == 4
+    assert evaluation_action_summary["critical_priority_count"] == 1
+    assert evaluation_action_summary["high_priority_count"] == 1
+    assert evaluation_action_summary["medium_priority_count"] == 2
+    assert evaluation_action_summary["next_action_type"] == "fix_permission_leaks"
+    assert evaluation_action_summary["next_action_priority"] == "critical"
+    evaluation_action_types = {
+        item["key"] for item in evaluation_action_summary["type_distribution"]
+    }
+    assert {
+        "fix_permission_leaks",
+        "improve_retrieval_coverage",
+        "complete_evaluation_source_metadata",
+        "review_evaluation_warnings",
+    } <= evaluation_action_types
+    warning_action = evaluation_actions["review_evaluation_warnings"]
+    assert warning_action["count"] >= 1
+    assert "keyword_hit_rate" in warning_action["warning_metrics"]
+    assert dashboard["quality_metrics"]["source_metadata_count"] == 4
+    assert dashboard["quality_metrics"]["source_id_coverage_rate"] == 1.0
+    assert dashboard["quality_metrics"]["source_type_coverage_rate"] == 1.0
+    assert dashboard["quality_metrics"]["source_pair_coverage_rate"] == 0.75
+    assert dashboard["quality_metrics"]["metadata_pair_coverage_rate"] == 0.5
+    metadata_gaps = {
+        item["field"]: item for item in dashboard["quality_metrics"]["source_metadata_gaps"]
+    }
+    assert "source_id" not in metadata_gaps
+    assert "source_type" not in metadata_gaps
+    assert metadata_gaps["source_pair"]["missing_rate"] == 0.25
+    assert metadata_gaps["metadata_pair"]["missing_rate"] == 0.5
+    metadata_action = evaluation_actions["complete_evaluation_source_metadata"]
+    assert metadata_action["fields"] == ["source_pair", "metadata_pair"]
+    top_hit = dashboard["retrieval_monitoring"]["top_hits"][0]
+    assert top_hit["title"] == "Observability Motor FU"
+    assert top_hit["source_record_id"] == 123
+    assert top_hit["source_kind"] == "rag"
+    assert top_hit["knowledge_source_type"] == "machine_manual"
+    assert top_hit["machine_id"] == 456
+    assert top_hit["role_visibility"] == "department:Produktion"
+    assert top_hit["source_created_at"] == "2000-01-01T00:00:00"
+    assert top_hit["source_age_days"] >= 180
+    assert top_hit["retrieved_at"]
+    assert top_hit["employee_access_level"] == "confidential"
+    source_freshness = dashboard["retrieval_monitoring"]["source_freshness"]
+    assert source_freshness["stale_threshold_days"] == 180
+    assert source_freshness["measured_source_count"] == 1
+    assert source_freshness["undated_source_count"] == 1
+    assert source_freshness["stale_source_count"] == 1
+    assert source_freshness["stale_source_rate"] == 1
+    assert source_freshness["oldest_source_age_days"] >= 180
+    stale_source = dashboard["retrieval_monitoring"]["stale_sources"][0]
+    assert stale_source["title"] == "Observability Motor FU"
+    assert stale_source["source_age_days"] >= 180
+    assert stale_source["stale_threshold_days"] == 180
+    undated_source = dashboard["retrieval_monitoring"]["undated_sources"][0]
+    assert undated_source["source_record_id"] == 124
+    assert undated_source["section_title"] == "FU ohne Datum"
+    assert undated_source["source_created_at"] == ""
+    assert undated_source["source_age_days"] is None
+    metadata_actions = {
+        item["type"]: item
+        for item in dashboard["retrieval_monitoring"]["metadata_quality_actions"]
+    }
+    stale_action = metadata_actions["review_stale_sources"]
+    assert stale_action["count"] == 1
+    assert stale_action["stale_threshold_days"] == 180
+    assert stale_action["sample_sources"][0]["title"] == "Observability Motor FU"
+    undated_action = metadata_actions["complete_source_dates"]
+    assert undated_action["count"] == 1
+    assert undated_action["sample_sources"][0]["source_record_id"] == 124
+    quality_action = dashboard["retrieval_monitoring"]["retrieval_quality_actions"][0]
+    assert quality_action["type"] == "review_low_quality_retrieval_hits"
+    assert quality_action["priority"] == "high"
+    assert quality_action["count"] == 2
+    assert quality_action["low_score_count"] == 1
+    assert quality_action["sample_sources"][0]["title"] == "Observability Motor FU"
+    action_summary = dashboard["retrieval_monitoring"]["action_summary"]
+    assert action_summary["total"] == 3
+    assert action_summary["critical_priority_count"] == 0
+    assert action_summary["high_priority_count"] == 1
+    assert action_summary["medium_priority_count"] == 2
+    assert action_summary["next_action_type"] == "review_low_quality_retrieval_hits"
+    assert action_summary["next_action_priority"] == "high"
+    action_types = {
+        item["key"] for item in action_summary["type_distribution"]
+    }
+    assert {
+        "review_low_quality_retrieval_hits",
+        "review_stale_sources",
+        "complete_source_dates",
+    } <= action_types
+    assert dashboard["retrieval_monitoring"]["top_hits"][0]["label"].startswith(
+        "Observability Motor FU",
+    )
+    sourced_log = next(
+        item
+        for item in dashboard["ai_logs"]
+        if item["user_question"] == "Welche Dokumente helfen beim FU Fehler?"
+    )
+    no_answer_log = next(
+        item
+        for item in dashboard["ai_logs"]
+        if item["user_question"] == "Welche Ursache hat der unbekannte Fehler FU-000?"
+    )
+    conflict_log = next(
+        item
+        for item in dashboard["ai_logs"]
+        if item["user_question"] == "Welche Quellen widersprechen sich beim FU Fehler?"
+    )
+    assert sourced_log["answer_quality"]["status"] == "grounded"
+    assert sourced_log["answer_quality"]["uncertainty"] == "low"
+    assert sourced_log["confidence"]["uncertainty"] == "low"
+    assert sourced_log["answer_quality"]["source_count"] == 1
+    assert sourced_log["answer_quality_label"] == "good"
+    assert sourced_log["sources"][0]["title"] == "Observability Motor FU"
+    assert sourced_log["sources"][0]["source_record_id"] == 123
+    assert sourced_log["sources"][0]["source_kind"] == "rag"
+    assert sourced_log["sources"][0]["knowledge_source_type"] == "machine_manual"
+    assert sourced_log["sources"][0]["machine_id"] == 456
+    assert sourced_log["sources"][0]["role_visibility"] == "department:Produktion"
+    assert sourced_log["sources"][0]["employee_access_level"] == "confidential"
+    assert no_answer_log["answer_quality"]["status"] == "no_answer"
+    assert no_answer_log["confidence"]["uncertainty"] == "high"
+    assert no_answer_log["answer_quality_label"] == "risk"
+    assert no_answer_log["knowledge_gap_id"] == 321
+    assert no_answer_log["knowledge_gap_created"] is True
+    assert conflict_log["answer_quality"]["status"] == "conflicting_sources"
+    assert conflict_log["answer_quality_label"] == "conflict"
+    assert conflict_log["answer_quality"]["uncertainty"] == "medium"
+    assert conflict_log["confidence"]["uncertainty"] == "medium"
+    assert dashboard["debug_tools"]["prompt_blueprint"]["system_prompt"]
+    assert dashboard["debug_tools"]["request_analysis"]["retrieval"]["source_count"] == 1
+    assert dashboard["debug_tools"]["request_analysis"]["answer_quality"]["status"] == (
+        "grounded"
+    )
+    assert dashboard["debug_tools"]["request_analysis"]["confidence"]["uncertainty"] == "low"
+    available = {
+        item["question"]: item for item in dashboard["debug_tools"]["available_requests"]
+    }
+    assert available["Welche Ursache hat der unbekannte Fehler FU-000?"][
+        "answer_uncertainty"
+    ] == "high"
+
+
+def test_ai_observability_dashboard_exposes_failed_requests_without_prompts(
+    app,
+    make_user,
+):
+    """Verify failed AI requests are visible as metadata-only admin rows."""
+    user = make_user(username="ai_observability_failed_user")
+    with app.app_context():
+        actor = type("UserStub", (), {"id": user["id"]})()
+        create_ai_audit_event(
+            user=actor,
+            workflow="general_chat",
+            diagnostics={
+                "status": "openai_error",
+                "error": "rate_limit",
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "model_tier": "balanced",
+                "fallback_used": True,
+                "latency_ms": 1800,
+                "total_tokens": 25,
+            },
+            source_count=0,
+        )
+        create_ai_audit_event(
+            user=actor,
+            workflow="general_chat",
+            diagnostics={
+                "status": "unsupported_provider",
+                "error": "AI_PROVIDER is not supported by a dedicated adapter yet",
+                "provider": "mock",
+                "fallback_used": True,
+                "latency_ms": 10,
+                "total_tokens": 0,
+            },
+            source_count=0,
+        )
+        create_ai_audit_event(
+            user=actor,
+            workflow="general_chat",
+            diagnostics={
+                "status": "base_url_missing",
+                "provider": "mock",
+                "fallback_used": True,
+                "latency_ms": 5,
+                "total_tokens": 0,
+            },
+            source_count=0,
+        )
         db.session.commit()
 
         dashboard = ai_observability_dashboard({"days": "30", "limit": "5"})
 
-    assert dashboard["metrics"]["average_response_ms"] == 240
-    assert dashboard["metrics"]["average_retrieval_ms"] == 42
-    assert dashboard["metrics"]["source_distribution"]["knowledge"] == 1
-    assert dashboard["metrics"]["top_questions"][0]["count"] == 1
-    assert dashboard["quality_metrics"]["retrieval_hit_rate"] == 1
-    assert dashboard["quality_metrics"]["average_similarity_score"] == 0.82
-    assert dashboard["retrieval_monitoring"]["top_hits"][0]["label"].startswith(
-        "Observability Motor FU",
+    failed = next(
+        item for item in dashboard["failed_requests"] if item["status"] == "openai_error"
     )
-    assert dashboard["ai_logs"][0]["user_question"] == "Welche Dokumente helfen beim FU Fehler?"
-    assert dashboard["debug_tools"]["prompt_blueprint"]["system_prompt"]
-    assert dashboard["debug_tools"]["request_analysis"]["retrieval"]["source_count"] == 1
+    unsupported = next(
+        item
+        for item in dashboard["failed_requests"]
+        if item["status"] == "unsupported_provider"
+    )
+    missing_base_url = next(
+        item for item in dashboard["failed_requests"] if item["status"] == "base_url_missing"
+    )
+    serialized = json.dumps(dashboard["failed_requests"], ensure_ascii=True)
+    reason_counts = {
+        item["reason"]: item["count"]
+        for item in dashboard["metrics"]["failure_reason_distribution"]
+    }
+    assert dashboard["metrics"]["failed_request_count"] == 3
+    assert reason_counts["rate_limit"] == 1
+    assert reason_counts["unsupported_provider"] == 1
+    assert reason_counts["base_url_missing"] == 1
+    assert failed["workflow"] == "general_chat"
+    assert failed["status"] == "openai_error"
+    assert failed["failure_reason"] == "rate_limit"
+    assert failed["error_category"] == "rate_limit"
+    assert failed["fallback_used"] is True
+    assert failed["latency_ms"] == 1800
+    assert unsupported["failure_reason"] == "unsupported_provider"
+    assert unsupported["error_category"] == (
+        "AI_PROVIDER is not supported by a dedicated adapter yet"
+    )
+    assert missing_base_url["failure_reason"] == "base_url_missing"
+    assert missing_base_url["error_category"] == ""
+    assert "prompt" not in serialized.lower()
+    assert "question" not in serialized.lower()
+    assert "answer" not in serialized.lower()
 
 
 def test_admin_ai_observability_endpoint_is_admin_only(
@@ -1682,12 +3093,165 @@ def test_admin_ai_observability_endpoint_is_admin_only(
     assert forbidden_response.status_code == 403
     assert admin_response.status_code == 200
     assert set(payload.keys()) >= {
+        "provider_readiness",
         "metrics",
         "retrieval_monitoring",
         "ai_logs",
+        "failed_requests",
         "quality_metrics",
+        "recommended_actions",
+        "next_best_action",
+        "recommended_action_summary",
         "debug_tools",
+        "langfuse_metrics",
+        "metric_catalog",
+        "privacy",
     }
+    catalog_keys = {item["key"] for item in payload["metric_catalog"]}
+    assert {
+        "frequent_questions",
+        "frequent_search_terms",
+        "average_final_top_k",
+        "average_tokens",
+        "cost_windows",
+        "provider_ready",
+        "provider_readiness_status",
+        "provider_degraded_component_count",
+        "provider_next_action_type",
+        "failed_request_count",
+        "retrieval_hit_rate",
+        "source_freshness",
+        "no_answer_rate",
+        "recall_at_k",
+        "mrr",
+        "keyword_hit_rate",
+        "no_result_rate",
+        "min_source_count_pass_rate",
+        "query_type_accuracy",
+        "permission_leak_count",
+        "evaluation_quality_gate_status",
+        "evaluation_quality_gate_issue_count",
+        "evaluation_blocking_count",
+        "evaluation_warning_count",
+        "source_metadata_gap_count",
+        "source_metadata_min_coverage_rate",
+        "answer_quality_reason_distribution",
+        "answer_quality_action_count",
+        "retrieval_action_count",
+        "evaluation_action_count",
+        "feedback",
+        "most_used_documents",
+        "knowledge_gaps",
+    } <= catalog_keys
+    assert payload["provider_readiness"]["provider_status"]["provider"] == "mock"
+    assert payload["provider_readiness"]["readiness"]["next_action"] is None
+    assert not any(
+        action["action_source"] == "provider_readiness"
+        for action in payload["recommended_actions"]
+    )
+    assert payload["privacy"]["raw_chunk_text_visible"] is False
+
+
+def test_ai_observability_includes_provider_readiness_actions(app):
+    """Verify observability exposes provider readiness remediation without secrets."""
+    with app.app_context():
+        app.config["AI_PROVIDER"] = "gemini"
+        app.config["OPENAI_API_KEY"] = "test-secret-key"
+        dashboard = ai_observability_dashboard({"days": "30", "limit": "5"})
+
+    provider_readiness = dashboard["provider_readiness"]
+    next_action = provider_readiness["readiness"]["next_action"]
+    serialized = str(provider_readiness)
+    assert provider_readiness["ready"] is False
+    assert provider_readiness["provider"] == "gemini"
+    assert provider_readiness["provider_status"]["effective_provider"] == "mock"
+    assert dashboard["metrics"]["provider_ready"] is False
+    assert dashboard["metrics"]["provider_readiness_status"] == "degraded"
+    assert dashboard["metrics"]["provider_degraded_component_count"] == 1
+    assert dashboard["metrics"]["provider_next_action_type"] == (
+        "select_supported_provider"
+    )
+    assert next_action["component"] == "provider"
+    assert next_action["configuration_action"] == "select_supported_provider"
+    assert "AI_PROVIDER" in next_action["recommended_action"]
+    assert dashboard["next_best_action"]["action_source"] == "provider_readiness"
+    assert dashboard["next_best_action"]["type"] == "select_supported_provider"
+    assert dashboard["next_best_action"]["priority"] == "critical"
+    assert dashboard["next_best_action"]["rank"] == 1
+    assert (
+        dashboard["recommended_action_summary"]["next_action_source"]
+        == "provider_readiness"
+    )
+    assert "test-secret-key" not in serialized
+    assert "api_key" not in serialized.lower().replace("api_key_configured", "")
+
+
+def test_ai_observability_provider_action_outranks_evaluation_action():
+    """Verify provider outages are ranked before other critical admin actions."""
+    provider_readiness = {
+        "ready": False,
+        "readiness": {
+            "next_action": {
+                "component": "provider",
+                "reason": "unsupported_provider",
+                "configuration_action": "select_supported_provider",
+                "recommended_action": "AI_PROVIDER korrigieren.",
+            }
+        },
+    }
+    quality_metrics = {
+        "evaluation_actions": [
+            {
+                "type": "fix_permission_leaks",
+                "priority": "critical",
+                "target": "permission_leak_count",
+            }
+        ]
+    }
+
+    actions = _observability_recommended_actions(
+        {"knowledge_gaps": {}},
+        {},
+        quality_metrics,
+        provider_readiness,
+        limit=5,
+    )
+
+    assert actions[0]["action_source"] == "provider_readiness"
+    assert actions[0]["type"] == "select_supported_provider"
+    assert actions[0]["rank"] == 1
+    assert actions[1]["action_source"] == "evaluation"
+    assert actions[1]["type"] == "fix_permission_leaks"
+    assert actions[1]["rank"] == 2
+
+
+def test_ai_observability_evaluation_warning_action_targets_chunk_structure():
+    """Verify chunk-structure evaluation warnings get specific admin guidance."""
+    actions = _evaluation_quality_actions(
+        latest_eval={"query_count": 1},
+        quality_gate={
+            "warnings": [
+                {
+                    "metric": "block_metadata_coverage_rate",
+                    "value": 0.5,
+                    "threshold": 0.8,
+                    "reason": "chunk_structure_metadata_incomplete",
+                }
+            ]
+        },
+        source_metadata_gaps=[],
+    )
+
+    warning_action = actions[0]
+    assert warning_action["type"] == "review_evaluation_warnings"
+    assert warning_action["warning_metrics"] == ["block_metadata_coverage_rate"]
+    assert warning_action["focus_areas"] == ["chunk_structure_metadata"]
+    assert "Chunk-Strukturmetadaten" in warning_action["recommended_action"]
+    assert any("chunk_block_count" in step for step in warning_action["next_steps"])
+    assert any(
+        "block_metadata_coverage_rate" in criterion
+        for criterion in warning_action["success_criteria"]
+    )
 
 
 def test_admin_retrieval_telemetry_endpoint_is_admin_only(
@@ -1771,10 +3335,18 @@ def test_ai_chat_history_is_user_scoped_and_admin_searchable(
     assert len(own_items) == 1
     assert own_items[0]["user_id"] == user["id"]
     assert own_items[0]["response_type"] == "general_chat"
+    assert own_items[0]["answer_quality"]["status"] in {
+        "fallback",
+        "low_confidence",
+        "unverified",
+    }
+    assert own_items[0]["answer_quality"]["source_count"] == 0
+    assert own_items[0]["answer_quality"]["recommended_user_action"]
     assert forbidden_response.status_code == 403
     assert admin_response.status_code == 200
     assert len(admin_items) == 1
     assert admin_items[0]["user"]["username"] == other["username"]
+    assert "answer_quality" in admin_items[0]
 
 
 def test_admin_ai_events_are_filterable(
@@ -1919,6 +3491,9 @@ def test_ai_chat_admin_exposes_retrieval_debug_counters(
     assert debug["candidate_counts"]["sql"] == debug["sql_candidates_found"]
     assert debug["candidate_counts"]["vector"] == debug["vector_candidates_found"]
     assert debug["filtered_by"]["score_anchor"] == debug["score_anchor_filtered"]
+    assert debug["reranking"]["candidate_limit"] >= debug["reranking"]["final_top_k"]
+    assert debug["reranking"]["candidate_count"] == debug["vector_candidates_found"]
+    assert debug["reranking"]["final_source_count"] == debug["final_visible_sources"]
     assert any(decision["step"] == "final_visible_sources" for decision in debug["decision_trace"])
     assert "DBG900" not in json.dumps(debug)
 
@@ -3183,7 +4758,7 @@ def test_ai_feedback_stores_source_and_chunk_metadata(
     assert stored_audit_event_id == event_id
 
 
-def test_ai_status_is_admin_only_and_redacted(client, make_user, auth_headers):
+def test_ai_status_is_admin_only_and_redacted(app, client, make_user, auth_headers):
     """Verify AI status requires admin access and never exposes API keys."""
     admin = make_user(
         username="ai_status_admin",
@@ -3191,6 +4766,12 @@ def test_ai_status_is_admin_only_and_redacted(client, make_user, auth_headers):
         department_name=None,
     )
     user = make_user(username="ai_status_user")
+    with app.app_context():
+        from app.ai import status as ai_status_module
+
+        app.config["AI_PROVIDER"] = "mock"
+        app.config["OPENAI_API_KEY"] = ""
+        ai_status_module.LAST_OPENAI_ERROR = None
 
     forbidden_response = client.get(
         "/api/v1/ai/status",
@@ -3207,7 +4788,85 @@ def test_ai_status_is_admin_only_and_redacted(client, make_user, auth_headers):
         "api_key_configured",
         "",
     )
-    assert admin_response.get_json()["api_key_configured"] is False
+    payload = admin_response.get_json()
+    assert payload["api_key_configured"] is False
+    assert payload["provider_status"]["provider"] == "mock"
+    assert payload["provider_status"]["configuration_action"] == "none"
+    assert "Provider" in payload["provider_status"]["recommended_action"]
+    assert any(
+        item["provider"] == "openai_compatible" and item["status"] == "supported"
+        for item in payload["provider_catalog"]
+    )
+    assert any(
+        item["provider"] == "gemini"
+        and item["status"] == "planned"
+        and item["effective_fallback"] == "mock"
+        for item in payload["provider_catalog"]
+    )
+    assert payload["embedding_provider_status"]["provider"] == "hashing"
+    assert payload["embedding_provider_status"]["configuration_action"] == "none"
+    assert "Embedding" in payload["embedding_provider_status"]["recommended_action"]
+    assert any(
+        item["provider"] == "hashing" and item["status"] == "supported"
+        for item in payload["embedding_provider_catalog"]
+    )
+    assert any(
+        item["provider"] == "openai_compatible"
+        and item["requires_base_url"] is True
+        and item["effective_fallback"] == "hashing"
+        for item in payload["embedding_provider_catalog"]
+    )
+    assert payload["readiness"]["ready"] is True
+    assert payload["readiness"]["degraded_components"] == []
+    assert payload["readiness"]["actions"] == []
+    assert payload["readiness"]["next_action"] is None
+
+
+def test_ai_status_reports_effective_provider_for_unsupported_provider(
+    app,
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify admin AI status shows safe fallback for unsupported providers."""
+    admin = make_user(
+        username="ai_status_unsupported_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    with app.app_context():
+        app.config["AI_PROVIDER"] = "gemini"
+        app.config["OPENAI_API_KEY"] = "test-key"
+
+    response = client.get(
+        "/api/v1/ai/status",
+        headers=auth_headers(admin["username"]),
+    )
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload["provider"] == "gemini"
+    assert payload["provider_status"]["provider"] == "gemini"
+    assert payload["provider_status"]["reason"] == "unsupported_provider"
+    assert payload["provider_status"]["effective_provider"] == "mock"
+    assert (
+        payload["provider_status"]["configuration_action"]
+        == "select_supported_provider"
+    )
+    assert "AI_PROVIDER" in payload["provider_status"]["recommended_action"]
+    gemini_entry = next(
+        item for item in payload["provider_catalog"] if item["provider"] == "gemini"
+    )
+    assert gemini_entry["status"] == "planned"
+    assert gemini_entry["mode"] == "unsupported"
+    assert payload["readiness"]["ready"] is False
+    assert "provider" in payload["readiness"]["degraded_components"]
+    assert payload["readiness"]["next_action"]["component"] == "provider"
+    assert (
+        payload["readiness"]["next_action"]["configuration_action"]
+        == "select_supported_provider"
+    )
+    assert "AI_PROVIDER" in payload["readiness"]["next_action"]["recommended_action"]
 
 
 def test_daily_briefing_respects_permissions_and_uses_local_fallback(
@@ -3701,6 +5360,213 @@ def test_admin_can_list_knowledge_gaps(app, client, make_user, auth_headers):
     assert response.status_code == 200
     assert payload["open_count"] == 1
     assert payload["items"][0]["question"] == "Wie behebe ich Fehler X?"
+
+
+def test_admin_knowledge_gaps_include_detection_summary(
+    app,
+    client,
+    make_user,
+    make_error_entry,
+    auth_headers,
+):
+    """Verify knowledge-gap admin data includes actionable coverage detection."""
+    admin = make_user(
+        username="knowledge_gap_detection_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    make_error_entry(
+        "Presse 42",
+        "P42-HYD",
+        "Hydraulikdruck faellt ab",
+        description="Presse 42 verliert Hydraulikdruck.",
+    )
+    uncovered_error_id = make_error_entry(
+        "Mixer 7",
+        "M7-TEMP",
+        "Temperatur zu hoch",
+        description="Mixer 7 ueberhitzt wiederholt.",
+    )
+    with app.app_context():
+        uncovered_error = db.session.get(ErrorEntry, uncovered_error_id)
+        uncovered_error.severity = "critical"
+        uncovered_error.repeat_count = 4
+        uncovered_error.downtime_minutes = 45
+        uncovered_machine = Machine(
+            name="Kritische Presse 77",
+            produced_item="Hydraulikteil",
+            required_employees=2,
+            criticality="critical",
+            status="offline",
+        )
+        db.session.add_all(
+            [
+                uncovered_machine,
+                KnowledgeGap(
+                    question="Wie behebe ich Druckverlust an Presse 42?",
+                    question_hash="gap-detect-1",
+                    context_text="Keine Quellen",
+                    machine="Presse 42",
+                    department="Instandhaltung",
+                    status="open",
+                    occurrence_count=3,
+                ),
+                KnowledgeGap(
+                    question="Welche Dichtung braucht Presse 42?",
+                    question_hash="gap-detect-2",
+                    context_text="Keine Quellen",
+                    machine="Presse 42",
+                    department="Instandhaltung",
+                    status="open",
+                    occurrence_count=1,
+                ),
+                KnowledgeDocument(
+                    source_type="machine_manual",
+                    title="Presse 99 Handbuch",
+                    original_filename="presse-99.pdf",
+                    department="Instandhaltung",
+                    status="indexed",
+                    is_public=True,
+                ),
+            ]
+        )
+        db.session.commit()
+
+    response = client.get(
+        "/api/v1/admin/ai/knowledge-gaps?limit=10",
+        headers=auth_headers(admin["username"]),
+    )
+
+    payload = response.get_json()["data"]
+    detection = payload["detection"]
+    machine_gap = detection["machine_gaps"][0]
+    error_gap = detection["error_gaps"][0]
+    action = detection["knowledge_gap_actions"][0]
+    assert response.status_code == 200
+    assert detection["summary"]["open_gap_count"] == 2
+    assert detection["summary"]["recurring_gap_count"] == 1
+    assert detection["summary"]["error_gap_count"] == 1
+    assert detection["summary"]["uncovered_error_gap_count"] == 1
+    assert detection["summary"]["critical_uncovered_error_gap_count"] == 1
+    assert detection["summary"]["uncovered_machine_gap_count"] == 1
+    assert detection["summary"]["critical_uncovered_machine_gap_count"] == 1
+    assert machine_gap["machine"] == "Presse 42"
+    assert machine_gap["coverage"] == "missing"
+    assert machine_gap["document_count"] == 0
+    assert machine_gap["related_error_count"] == 1
+    assert error_gap["error_code"] == "P42-HYD"
+    assert error_gap["machine"] == "Presse 42"
+    assert error_gap["coverage"] == "missing"
+    assert error_gap["open_gap_count"] == 2
+    assert action["type"] == "missing_machine_documentation"
+    assert action["priority"] == "high"
+    assert action["target_type"] == "machine"
+    assert action["machine"] == "Presse 42"
+    assert action["next_steps"]
+    assert "Fehlerhistorie" in " ".join(action["next_steps"])
+    assert action["success_criteria"]
+    assert any(
+        item["type"] == "missing_error_documentation"
+        and item["target"] == "P42-HYD"
+        and item["target_type"] == "error_entry"
+        and item["error_id"]
+        and item["title"] == "Hydraulikdruck faellt ab"
+        and item["next_steps"]
+        for item in detection["knowledge_gap_actions"]
+    )
+    uncovered_gap = detection["uncovered_error_gaps"][0]
+    assert uncovered_gap["error_code"] == "M7-TEMP"
+    assert uncovered_gap["priority"] == "high"
+    assert "kein passendes Fehler-Knowledge-Dokument" in uncovered_gap["reason"]
+    uncovered_machine_gap = detection["uncovered_machine_gaps"][0]
+    assert uncovered_machine_gap["machine"] == "Kritische Presse 77"
+    assert uncovered_machine_gap["priority"] == "high"
+    assert "maschinenspezifische Knowledge-Quelle" in uncovered_machine_gap["reason"]
+    assert any(
+        item["type"] == "missing_high_impact_error_documentation"
+        and item["target"] == "M7-TEMP"
+        and item["target_id"] == uncovered_error_id
+        and "High-Impact-Fehler" in item["next_steps"][0]
+        and item["success_criteria"]
+        for item in detection["knowledge_gap_actions"]
+    )
+    assert any(
+        item["type"] == "missing_high_impact_machine_documentation"
+        and item["target"] == "Kritische Presse 77"
+        and item["target_type"] == "machine"
+        and item["next_steps"]
+        and item["success_criteria"]
+        for item in detection["knowledge_gap_actions"]
+    )
+
+
+def test_admin_knowledge_gap_detection_respects_error_specific_documents(
+    app,
+    client,
+    make_user,
+    make_error_entry,
+    auth_headers,
+):
+    """Verify high-impact errors with specific knowledge docs are not flagged."""
+    admin = make_user(
+        username="knowledge_gap_error_coverage_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    error_id = make_error_entry(
+        "Ofen 3",
+        "O3-HEAT",
+        "Temperaturregelung instabil",
+        description="Ofen 3 faellt wegen instabiler Regelung aus.",
+    )
+    with app.app_context():
+        error_entry = db.session.get(ErrorEntry, error_id)
+        error_entry.severity = "high"
+        error_entry.repeat_count = 5
+        covered_machine = Machine(
+            name="Ofen 3",
+            produced_item="Waermebehandlung",
+            required_employees=1,
+            criticality="high",
+            status="running",
+        )
+        db.session.add(covered_machine)
+        db.session.flush()
+        db.session.add(
+            KnowledgeDocument(
+                source_type="error_catalog",
+                source_id=error_id,
+                title="O3-HEAT Fehlerleitfaden",
+                original_filename="o3-heat.md",
+                department="Produktion",
+                status="indexed",
+                is_public=True,
+            )
+        )
+        db.session.add(
+            KnowledgeDocument(
+                source_type="machine_manual",
+                source_id=covered_machine.id,
+                title="Ofen 3 Maschinenhandbuch",
+                original_filename="ofen-3.pdf",
+                department="Produktion",
+                status="indexed",
+                is_public=True,
+            )
+        )
+        db.session.commit()
+
+    response = client.get(
+        "/api/v1/admin/ai/knowledge-gaps?limit=10",
+        headers=auth_headers(admin["username"]),
+    )
+
+    detection = response.get_json()["data"]["detection"]
+    assert response.status_code == 200
+    assert detection["summary"]["uncovered_error_gap_count"] == 0
+    assert detection["summary"]["uncovered_machine_gap_count"] == 0
+    assert detection["uncovered_error_gaps"] == []
+    assert detection["uncovered_machine_gaps"] == []
 
 
 def test_document_path_rejects_storage_escape(app):

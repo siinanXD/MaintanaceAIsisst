@@ -27,13 +27,13 @@ import {
 /**
  * Load Prompt & FAQ data and expose write handlers.
  */
-export function useAdminAiPromptFaqData(adminAiView: AdminAiView) {
+export function useAdminAiPromptFaqData(adminAiView: AdminAiView, canUseAdminAiApi: boolean) {
   const [promptFaqState, setPromptFaqState] = useState<AdminAiPromptFaqState>(
     EMPTY_ADMIN_AI_PROMPT_FAQ_STATE
   );
 
   useEffect(() => {
-    if (adminAiView !== "prompt_faq") return undefined;
+    if (adminAiView !== "prompt_faq" || !canUseAdminAiApi) return undefined;
 
     const controller = new AbortController();
     void refreshPromptFaq(controller.signal);
@@ -41,7 +41,7 @@ export function useAdminAiPromptFaqData(adminAiView: AdminAiView) {
     return () => {
       controller.abort();
     };
-  }, [adminAiView]);
+  }, [adminAiView, canUseAdminAiApi]);
 
   /**
    * Load React-owned Prompt & FAQ data with partial failure handling.

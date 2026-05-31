@@ -25,6 +25,15 @@ export type DashboardKpiState = {
   readonly valueHook: string;
 };
 
+export type DashboardStatusChipState = {
+  readonly colorClass: string;
+  readonly label: string;
+  readonly meta: string;
+  readonly metaHook?: string;
+  readonly value: string;
+  readonly valueHook: string;
+};
+
 export const EMPTY_DASHBOARD_VIEW_STATE: DashboardViewState = {
   data: EMPTY_DASHBOARD_DATA,
   errorMessage: "",
@@ -204,6 +213,27 @@ export function dashboardKpiCards(state: DashboardViewState): readonly Dashboard
       valueHook: "data-dashboard-system-status"
     }
   ];
+}
+
+/**
+ * Build the four operational KPI cards for the first viewport cockpit.
+ */
+export function dashboardPrimaryKpiCards(state: DashboardViewState): readonly DashboardKpiState[] {
+  return dashboardKpiCards(state).slice(0, 4);
+}
+
+/**
+ * Build compact status chips for secondary dashboard signals.
+ */
+export function dashboardStatusChips(state: DashboardViewState): readonly DashboardStatusChipState[] {
+  return dashboardKpiCards(state).slice(4).map((kpi) => ({
+    colorClass: kpi.colorClass,
+    label: kpi.label,
+    meta: kpi.meta,
+    metaHook: kpi.metaHook,
+    value: kpi.value,
+    valueHook: kpi.valueHook
+  }));
 }
 
 /**

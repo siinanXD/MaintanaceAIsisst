@@ -1,14 +1,11 @@
 import { type ReactNode } from "react";
 
-import { DashboardAssetStatus } from "./DashboardAssetStatus";
+import { DashboardCockpitPanels } from "./DashboardCockpitPanels";
 import { DashboardHiddenForms } from "./DashboardHiddenForms";
 import { DashboardHero } from "./DashboardHero";
 import { DashboardKpis } from "./DashboardKpis";
-import { DashboardOperations } from "./DashboardOperations";
-import { DashboardShiftPeople } from "./DashboardShiftPeople";
-import { DashboardSideColumn } from "./DashboardSideColumn";
+import { DashboardSituationStrip } from "./DashboardSituationStrip";
 import { DashboardTaskDetailModal } from "./DashboardTaskDetailModal";
-import { DashboardTaskOverview } from "./DashboardTaskOverview";
 import { DashboardTechnicalDetails } from "./DashboardTechnicalDetails";
 import {
   type DashboardPayload,
@@ -16,7 +13,12 @@ import {
   type DashboardTaskMutation,
   type DashboardTaskReportPayload
 } from "./dashboardApi";
-import { dashboardKpiCards, dashboardLoadMessage, type DashboardViewState } from "./dashboardModel";
+import {
+  dashboardKpiCards,
+  dashboardLoadMessage,
+  dashboardStatusChips,
+  type DashboardViewState
+} from "./dashboardModel";
 
 type DashboardMarkupProps = {
   readonly activeTask: DashboardPayload | null;
@@ -32,12 +34,10 @@ type DashboardMarkupProps = {
   readonly onDraftChange: (payload: DashboardTaskMutation | null) => void;
   readonly onDraftSubmit: (payload: DashboardTaskMutation) => void;
   readonly onOpenTask: (taskId: number) => void;
-  readonly onShiftEmployeeChange: (employeeId: string) => void;
   readonly onStartTask: () => void;
   readonly onSuggestSubmit: (text: string) => void;
   readonly onSuggestTextChange: (text: string) => void;
   readonly onUpdateTask: (payload: DashboardTaskMutation) => void;
-  readonly selectedShiftEmployeeId: string;
   readonly shiftCalendar: DashboardShiftCalendar | null;
   readonly suggestText: string;
   readonly taskMessage: string;
@@ -60,12 +60,10 @@ export function DashboardMarkup({
   onDraftChange,
   onDraftSubmit,
   onOpenTask,
-  onShiftEmployeeChange,
   onStartTask,
   onSuggestSubmit,
   onSuggestTextChange,
   onUpdateTask,
-  selectedShiftEmployeeId,
   shiftCalendar,
   suggestText,
   taskMessage
@@ -75,42 +73,36 @@ export function DashboardMarkup({
       <span data-dashboard-react-status="" hidden>
         {dashboardLoadMessage(dashboardState)}
       </span>
-      <DashboardHero dashboardState={dashboardState} />
-      <DashboardKpis kpis={dashboardKpiCards(dashboardState)} />
-      <section className="control-center-grid" aria-label="Maintenance Control Center">
-        <DashboardTaskOverview dashboardState={dashboardState} onOpenTask={onOpenTask} />
-        <DashboardAssetStatus dashboardState={dashboardState} />
-        <DashboardShiftPeople
-          dashboardState={dashboardState}
-          isShiftCalendarLoading={isShiftCalendarLoading}
-          onShiftEmployeeChange={onShiftEmployeeChange}
-          selectedShiftEmployeeId={selectedShiftEmployeeId}
-          shiftCalendar={shiftCalendar}
-        />
-        <DashboardOperations dashboardState={dashboardState} />
-        <DashboardSideColumn dashboardState={dashboardState} />
-        <DashboardTechnicalDetails dashboardState={dashboardState} />
-        <DashboardHiddenForms
-          cockpitMessage={cockpitMessage}
-          draftTask={draftTask}
-          isDraftBusy={isDraftBusy}
-          onDraftCancel={onDraftCancel}
-          onDraftChange={onDraftChange}
-          onDraftSubmit={onDraftSubmit}
-          onSuggestSubmit={onSuggestSubmit}
-          onSuggestTextChange={onSuggestTextChange}
-          suggestText={suggestText}
-        />
-        <DashboardTaskDetailModal
-          activeTask={activeTask}
-          isBusy={isTaskBusy}
-          message={taskMessage}
-          onClose={onCloseTask}
-          onComplete={onCompleteTask}
-          onStart={onStartTask}
-          onUpdate={onUpdateTask}
-        />
-      </section>
+      <DashboardHero dashboardState={dashboardState} statusChips={dashboardStatusChips(dashboardState)} />
+      <DashboardSituationStrip dashboardState={dashboardState} onOpenTask={onOpenTask} />
+      <DashboardKpis kpis={dashboardKpiCards(dashboardState).slice(0, 4)} />
+      <DashboardCockpitPanels
+        dashboardState={dashboardState}
+        isShiftCalendarLoading={isShiftCalendarLoading}
+        onOpenTask={onOpenTask}
+        shiftCalendar={shiftCalendar}
+      />
+      <DashboardTechnicalDetails dashboardState={dashboardState} />
+      <DashboardHiddenForms
+        cockpitMessage={cockpitMessage}
+        draftTask={draftTask}
+        isDraftBusy={isDraftBusy}
+        onDraftCancel={onDraftCancel}
+        onDraftChange={onDraftChange}
+        onDraftSubmit={onDraftSubmit}
+        onSuggestSubmit={onSuggestSubmit}
+        onSuggestTextChange={onSuggestTextChange}
+        suggestText={suggestText}
+      />
+      <DashboardTaskDetailModal
+        activeTask={activeTask}
+        isBusy={isTaskBusy}
+        message={taskMessage}
+        onClose={onCloseTask}
+        onComplete={onCompleteTask}
+        onStart={onStartTask}
+        onUpdate={onUpdateTask}
+      />
     </div>
   );
 }

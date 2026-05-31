@@ -41,6 +41,41 @@ from app.services.langfuse_service import (
 
 logger = logging.getLogger(__name__)
 
+CHAT_PROVIDER_CATALOG = (
+    {
+        "provider": "mock",
+        "status": "supported",
+        "mode": "local_fallback",
+        "requires_credential": False,
+        "requires_base_url": False,
+        "effective_fallback": "mock",
+    },
+    {
+        "provider": "openai",
+        "status": "supported",
+        "mode": "external",
+        "requires_credential": True,
+        "requires_base_url": False,
+        "effective_fallback": "mock",
+    },
+    {
+        "provider": "openai_compatible",
+        "status": "supported",
+        "mode": "openai_compatible",
+        "requires_credential": True,
+        "requires_base_url": True,
+        "effective_fallback": "mock",
+    },
+    {
+        "provider": "gemini",
+        "status": "planned",
+        "mode": "unsupported",
+        "requires_credential": True,
+        "requires_base_url": False,
+        "effective_fallback": "mock",
+    },
+)
+
 
 def openai_error_code(error):
     """Return a safe stable category for an OpenAI SDK error."""
@@ -249,17 +284,26 @@ class OpenAIProvider(BaseAIProvider):
 
     name = "openai"
 
-    def __init__(self, api_key, model):
+    def __init__(self, api_key, model, provider_name="openai"):
         """Initialize the OpenAI provider."""
         client_class = openai_client_class()
-        self.client = client_class(api_key=api_key, **openai_client_options())
+        self.name = provider_name
+        self.client = client_class(
+            api_key=api_key,
+            **openai_client_options(allow_base_url=self.name == "openai_compatible"),
+        )
         self.legacy_model = model
         self.model = model
         self.last_call_metadata = {}
 
     def _client_for_profile(self, profile):
         """Return an OpenAI client configured for one workflow profile."""
-        return self.client.with_options(**openai_client_options(profile))
+        return self.client.with_options(
+            **openai_client_options(
+                profile,
+                allow_base_url=self.name == "openai_compatible",
+            )
+        )
 
     def suggest_task(self, text, user_context=None):
         """Return a structured task suggestion for free text."""
@@ -359,8 +403,11 @@ class OpenAIProvider(BaseAIProvider):
             },
             rules=[
                 "Nutze nur die bereitgestellten Tasks.",
+                "Beruecksichtige history nur als Kontext fuer Risiko und Begruendung.",
                 "Nutze keine Mitarbeiterdaten.",
                 "Jeder task_id-Wert muss aus der Eingabe stammen.",
+                "Erklaere hohe Scores mit konkreten Signalen wie Faelligkeit, "
+                "Historie oder Blockade.",
             ],
         )
         return self._json_completion(prompt, "task_prioritization")
@@ -578,17 +625,155 @@ class OpenAIProvider(BaseAIProvider):
 
 def get_ai_provider():
     """Return the configured AI provider with mock fallback."""
-    provider_name = current_app.config.get("AI_PROVIDER", "openai").lower()
-    api_key = current_app.config.get("OPENAI_API_KEY", "")
+    provider_name = _configured_provider_name()
+    api_key = _configured_api_key()
     model = current_app.config.get("OPENAI_MODEL", "gpt-4o-mini")
     if provider_name == "mock":
         return MockAIProvider()
-    if not api_key:
-        logger.warning("ai_fallback provider=openai reason=api_key_missing")
-        return MockAIProvider()
-    if provider_name == "openai":
-        return OpenAIProvider(api_key=api_key, model=model)
+    if provider_name in {"openai", "openai_compatible"}:
+        if not api_key:
+            logger.warning("ai_fallback provider=%s reason=api_key_missing", provider_name)
+            return MockAIProvider()
+        if provider_name == "openai_compatible" and not _configured_base_url():
+            logger.warning("ai_fallback provider=openai_compatible reason=base_url_missing")
+            return MockAIProvider()
+        return OpenAIProvider(api_key=api_key, model=model, provider_name=provider_name)
+    logger.warning("ai_fallback provider=%s reason=unsupported_provider", provider_name)
     return MockAIProvider()
+
+
+def ai_provider_fallback_reason(config=None):
+    """Return why the configured provider would fall back to mock, if any."""
+    config = config or current_app.config
+    provider_name = _configured_provider_name(config)
+    if provider_name == "mock":
+        return ""
+    if provider_name == "openai":
+        return "" if ai_api_key_configured(config) else "api_key_missing"
+    if provider_name == "openai_compatible":
+        if not ai_api_key_configured(config):
+            return "api_key_missing"
+        if not _configured_base_url(config):
+            return "base_url_missing"
+        return ""
+    return "unsupported_provider"
+
+
+def ai_provider_catalog():
+    """Return redacted chat-provider capabilities for admin status payloads."""
+    return [dict(item) for item in CHAT_PROVIDER_CATALOG]
+
+
+def ai_provider_status(provider, api_key_configured, config=None):
+    """Return a redacted readiness summary for the configured chat provider."""
+    config = config or current_app.config
+    provider_name = str(provider or "openai").strip().lower()
+    if provider_name == "mock":
+        return {
+            "provider": "mock",
+            "ready": True,
+            "mode": "local_fallback",
+            "reason": "",
+            "effective_provider": "mock",
+            "configuration_action": "none",
+            "recommended_action": "Keine Provider-Konfiguration erforderlich.",
+        }
+    if provider_name == "openai":
+        ready = bool(api_key_configured)
+        reason = "" if api_key_configured else "api_key_missing"
+        return {
+            "provider": "openai",
+            "ready": ready,
+            "mode": "external",
+            "reason": reason,
+            "effective_provider": "openai" if ready else "mock",
+            "configuration_action": _provider_configuration_action(reason),
+            "recommended_action": _provider_recommended_action(reason),
+        }
+    if provider_name == "openai_compatible":
+        base_url_configured = bool(_configured_base_url(config))
+        ready = bool(api_key_configured and base_url_configured)
+        reason = ""
+        if not api_key_configured:
+            reason = "api_key_missing"
+        elif not base_url_configured:
+            reason = "base_url_missing"
+        return {
+            "provider": "openai_compatible",
+            "ready": ready,
+            "mode": "openai_compatible",
+            "reason": reason,
+            "base_url_configured": base_url_configured,
+            "effective_provider": "openai_compatible" if ready else "mock",
+            "configuration_action": _provider_configuration_action(reason),
+            "recommended_action": _provider_recommended_action(reason),
+        }
+    reason = "unsupported_provider"
+    return {
+        "provider": provider_name,
+        "ready": False,
+        "mode": "unsupported",
+        "reason": reason,
+        "effective_provider": "mock",
+        "configuration_action": _provider_configuration_action(reason),
+        "recommended_action": _provider_recommended_action(reason),
+    }
+
+
+def _provider_configuration_action(reason):
+    """Return a stable admin action key for one provider readiness reason."""
+    actions = {
+        "": "none",
+        "api_key_missing": "set_openai_api_key",
+        "base_url_missing": "set_ai_base_url",
+        "unsupported_provider": "select_supported_provider",
+    }
+    return actions.get(str(reason or ""), "review_provider_configuration")
+
+
+def _provider_recommended_action(reason):
+    """Return a concise admin-facing provider remediation hint."""
+    actions = {
+        "": "Provider ist einsatzbereit.",
+        "api_key_missing": "OPENAI_API_KEY setzen oder AI_PROVIDER=mock verwenden.",
+        "base_url_missing": "AI_BASE_URL fuer den OpenAI-kompatiblen Endpoint setzen.",
+        "unsupported_provider": (
+            "AI_PROVIDER auf openai, openai_compatible oder mock setzen."
+        ),
+    }
+    return actions.get(str(reason or ""), "AI-Provider-Konfiguration pruefen.")
+
+
+def provider_fallback_error_message(reason):
+    """Return a safe user-facing configuration message for provider fallback."""
+    if reason == "base_url_missing":
+        return "AI_BASE_URL is required for AI_PROVIDER=openai_compatible"
+    if reason == "unsupported_provider":
+        return "AI_PROVIDER is not supported by a dedicated adapter yet"
+    return "OPENAI_API_KEY is not configured in .env"
+
+
+def _configured_provider_name(config=None):
+    """Return the normalized configured chat provider name."""
+    config = config or current_app.config
+    return str(config.get("AI_PROVIDER", "openai") or "openai").strip().lower()
+
+
+def ai_api_key_configured(config=None):
+    """Return whether the OpenAI API key is configured with non-blank text."""
+    return bool(_configured_api_key(config))
+
+
+def _configured_api_key(config=None):
+    """Return the normalized OpenAI API key, or an empty string when unset."""
+    config = config or current_app.config
+    return str(config.get("OPENAI_API_KEY") or "").strip()
+
+
+def _configured_base_url(config=None):
+    """Return the normalized AI base URL, or an empty string when unset."""
+    config = config or current_app.config
+    return str(config.get("AI_BASE_URL") or "").strip()
 
 
 def _contains_any(text, needles):
@@ -645,14 +830,19 @@ def _score_task_priority(task):
     score += priority_score
     reasons.append(priority_reason)
 
-    status_score, status_reason = _status_score(task.get("status"))
-    score += status_score
-    reasons.append(status_reason)
+    history_score, history_reason = _history_score(task.get("history"))
+    score += history_score
+    if history_reason:
+        reasons.append(history_reason)
 
     due_score, due_reason = _due_date_score(task.get("due_date"))
     score += due_score
     if due_reason:
         reasons.append(due_reason)
+
+    status_score, status_reason = _status_score(task.get("status"))
+    score += status_score
+    reasons.append(status_reason)
 
     keyword_score, keyword_reason = _keyword_score(text)
     score += keyword_score
@@ -665,8 +855,8 @@ def _score_task_priority(task):
         "task_id": task.get("id"),
         "score": normalized_score,
         "risk_level": risk_level,
-        "reason": "; ".join(reasons[:3]),
-        "recommended_action": _recommended_priority_action(risk_level),
+        "reason": "; ".join(reasons[:4]),
+        "recommended_action": _recommended_priority_action(risk_level, task.get("history")),
     }
 
 
@@ -726,6 +916,71 @@ def _keyword_score(text):
     return 0, ""
 
 
+def _history_score(history):
+    """Return score contribution and reason from maintenance history context."""
+    if not isinstance(history, dict):
+        return 0, ""
+
+    score = 0
+    signals = set(history.get("risk_signals") or [])
+    related_errors = history.get("recent_related_errors") or []
+    related_error_count = _safe_int(history.get("related_error_count"))
+    reports_count = _safe_int(history.get("maintenance_reports_count"))
+    reopened_count = _safe_int(history.get("reopened_count"))
+    reasons = []
+
+    if history.get("blocked"):
+        score += 20
+        reasons.append("Task ist blockiert")
+    if reopened_count:
+        score += min(15, reopened_count * 5)
+        reasons.append(f"{reopened_count} Wiedereroeffnung(en)")
+    if related_error_count:
+        score += min(20, related_error_count * 8)
+        reasons.append(f"{related_error_count} verwandte Stoerung(en)")
+    if "critical_error_history" in signals:
+        score += 12
+        reasons.append("kritische Fehlerhistorie")
+    if "recurring_error_history" in signals:
+        score += 8
+        reasons.append("wiederkehrende Fehlerhistorie")
+    if "downtime_history" in signals:
+        score += 6
+        reasons.append("Ausfallzeit in Historie")
+    if reports_count:
+        score += min(8, reports_count * 4)
+        reasons.append(f"{reports_count} Wartungsbericht(e)")
+
+    highest_severity = _highest_related_error_severity(related_errors)
+    if highest_severity and highest_severity not in {"low", "medium"}:
+        reasons.append(f"hoechste Stoerungsschwere {highest_severity}")
+
+    if not reasons:
+        return 0, ""
+    return score, "Historie: " + ", ".join(reasons[:3])
+
+
+def _safe_int(value):
+    """Return an integer value for scoring or zero for malformed input."""
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _highest_related_error_severity(errors):
+    """Return the highest severity label from related error payloads."""
+    severity_order = {"low": 1, "medium": 2, "high": 3, "critical": 4}
+    severities = [
+        str(error.get("severity") or "").lower()
+        for error in errors
+        if isinstance(error, dict)
+    ]
+    if not severities:
+        return ""
+    return max(severities, key=lambda severity: severity_order.get(severity, 0))
+
+
 def _risk_level(score):
     """Return the risk level for a numeric task score."""
     if score >= 85:
@@ -737,8 +992,16 @@ def _risk_level(score):
     return "low"
 
 
-def _recommended_priority_action(risk_level):
+def _recommended_priority_action(risk_level, history=None):
     """Return a German next-action recommendation for a risk level."""
+    signals = set(history.get("risk_signals") or []) if isinstance(history, dict) else set()
+    if "critical_error_history" in signals or "downtime_history" in signals:
+        return (
+            "Vor Start Stoerungshistorie pruefen, Anlage absichern und "
+            "naechste Massnahme dokumentieren."
+        )
+    if history and history.get("blocked"):
+        return "Blocker klaeren, Verantwortliche informieren und Termin neu bewerten."
     actions = {
         "critical": "Sofort pruefen, Anlage sichern und Instandhaltung informieren.",
         "high": "Zeitnah einplanen und Ursache vor Schichtende dokumentieren.",

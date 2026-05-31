@@ -5,7 +5,18 @@ from datetime import UTC, date, datetime, timedelta
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
-from app.models import ErrorEntry, Machine, MaintenancePlan, Priority, Role, Task, TaskStatus
+from app.handover.services import visible_handovers_query
+from app.models import (
+    ErrorEntry,
+    GeneratedDocument,
+    Machine,
+    MaintenancePlan,
+    Priority,
+    Role,
+    ShiftHandover,
+    Task,
+    TaskStatus,
+)
 from app.security import has_dashboard_permission
 from app.services.error_service import visible_errors_query
 from app.services.payload_parsing_service import parse_bool as parse_optional_bool
@@ -236,6 +247,11 @@ def recommend_preventive_maintenance(user, limit=5):
             "items": recommendations[:limit_value],
             "count": min(len(recommendations), limit_value),
             "total_candidates": len(recommendations),
+            "recommendation_type": "maintenance_recommendation_light",
+            "disclaimer": (
+                "Heuristische Empfehlung aus sichtbaren Fehlern, Wartungen, Tasks "
+                "und RAG-Quellen; keine Predictive-Maintenance-Prognose."
+            ),
             "recurring_issues": recurring_trends,
         },
         None,
@@ -248,22 +264,80 @@ def _machine_signal_map(user):
     signals = {}
     machines = Machine.query.order_by(Machine.name.asc()).all()
     for machine in machines:
-        signals[machine] = {"tasks": [], "errors": []}
+        signals[machine] = _empty_machine_signals()
 
     if has_dashboard_permission(user, "tasks", "view"):
         tasks = visible_tasks_query(user).order_by(Task.updated_at.desc()).limit(200).all()
         for task in tasks:
             machine = _matching_machine(task.title, task.description, machines=machines)
             if machine:
-                signals.setdefault(machine, {"tasks": [], "errors": []})["tasks"].append(task)
+                signals.setdefault(machine, _empty_machine_signals())["tasks"].append(task)
 
     if has_dashboard_permission(user, "errors", "view"):
         errors = visible_errors_query(user).order_by(ErrorEntry.created_at.desc()).limit(200).all()
         for entry in errors:
             machine = _matching_machine(entry.machine, entry.title, machines=machines)
             if machine:
-                signals.setdefault(machine, {"tasks": [], "errors": []})["errors"].append(entry)
+                signals.setdefault(machine, _empty_machine_signals())["errors"].append(entry)
+
+    for plan in visible_maintenance_plans_query(user).order_by(
+        MaintenancePlan.next_due_date.asc(),
+        MaintenancePlan.id.desc(),
+    ):
+        machine = plan.machine or _matching_machine(plan.title, plan.description, machines=machines)
+        if machine:
+            signals.setdefault(machine, _empty_machine_signals())["maintenance_plans"].append(
+                plan,
+            )
+
+    if has_dashboard_permission(user, "documents", "view"):
+        documents_query = GeneratedDocument.query.order_by(
+            GeneratedDocument.created_at.desc(),
+            GeneratedDocument.id.desc(),
+        )
+        if user.role != Role.MASTER_ADMIN and user.department:
+            documents_query = documents_query.filter(
+                GeneratedDocument.department == user.department.name,
+            )
+        for document in documents_query.limit(200).all():
+            machine = _document_machine(document, machines)
+            if machine:
+                signals.setdefault(machine, _empty_machine_signals())[
+                    "maintenance_reports"
+                ].append(document)
+
+    if has_dashboard_permission(user, "shiftplans", "view"):
+        handovers = (
+            visible_handovers_query(user)
+            .order_by(ShiftHandover.shift_date.desc(), ShiftHandover.id.desc())
+            .limit(200)
+            .all()
+        )
+        for handover in handovers:
+            machine = handover.machine or _matching_machine(
+                handover.area,
+                handover.content,
+                handover.open_tasks,
+                handover.machine_notes,
+                handover.next_notes,
+                machines=machines,
+            )
+            if machine:
+                signals.setdefault(machine, _empty_machine_signals())[
+                    "shift_handovers"
+                ].append(handover)
     return signals
+
+
+def _empty_machine_signals():
+    """Return an empty signal bucket for one machine."""
+    return {
+        "tasks": [],
+        "errors": [],
+        "maintenance_reports": [],
+        "maintenance_plans": [],
+        "shift_handovers": [],
+    }
 
 
 def _matching_machine(*values, machines):
@@ -272,9 +346,29 @@ def _matching_machine(*values, machines):
     return next((machine for machine in machines if machine.name.lower() in text), None)
 
 
+def _document_machine(document, machines):
+    """Return the machine referenced by a generated maintenance document."""
+    if document.machine_id:
+        match = next((machine for machine in machines if machine.id == document.machine_id), None)
+        if match:
+            return match
+    return _matching_machine(
+        document.machine,
+        document.title,
+        document.relative_path,
+        machines=machines,
+    )
+
+
 def _signal_score(signals):
     """Return a simple recurrence score for task and error signals."""
-    return len(signals["tasks"]) + (len(signals["errors"]) * 2)
+    return (
+        len(signals["tasks"])
+        + (len(signals["errors"]) * 2)
+        + len(signals["maintenance_reports"])
+        + len(signals["maintenance_plans"])
+        + len(signals["shift_handovers"])
+    )
 
 
 def _preventive_recommendation(machine, signals, user, recurring_trend=None):
@@ -283,21 +377,49 @@ def _preventive_recommendation(machine, signals, user, recurring_trend=None):
     score = min(100, (_signal_score(signals) * 20) + recurring_score)
     query = f"{machine.name} Wartung Stoerung Fehler wiederkehrend"
     _context, rag_sources = knowledge_context_for_chat(query, user, limit=3)
+    confidence = _preventive_confidence(signals, recurring_trend, rag_sources)
+    confidence_level = _preventive_confidence_level(confidence)
     return {
         "machine": machine.to_dict(),
         "score": score,
+        "confidence": confidence,
+        "confidence_level": confidence_level,
+        "confidence_uncertainty": _preventive_confidence_uncertainty(confidence_level),
+        "confidence_reason": _preventive_confidence_reason(
+            signals,
+            recurring_trend,
+            rag_sources,
+        ),
+        "recommendation_type": "maintenance_recommendation_light",
         "risk_level": _preventive_risk_level(score),
         "reason": _preventive_reason(signals, recurring_trend),
         "recommended_action": _preventive_action(machine, signals, recurring_trend),
+        "next_steps": _preventive_next_steps(machine, signals, recurring_trend, rag_sources),
         "source_counts": {
             "tasks": len(signals["tasks"]),
             "errors": len(signals["errors"]),
+            "maintenance_reports": len(signals["maintenance_reports"]),
+            "maintenance_plans": len(signals["maintenance_plans"]),
+            "shift_handovers": len(signals["shift_handovers"]),
             "rag_sources": len(rag_sources),
             "recurring_issues": 1 if recurring_trend else 0,
         },
+        "evidence_summary": _preventive_evidence_summary(
+            signals,
+            rag_sources,
+            recurring_trend,
+        ),
         "evidence": _preventive_evidence(signals),
         "sources": rag_sources,
         "recurring_issue": recurring_trend,
+        "assumptions": [
+            "Empfehlung basiert nur auf sichtbaren historischen Daten.",
+            "Keine Vorhersage von Ausfallzeit oder Restlebensdauer.",
+        ],
+        "limitations": [
+            "Keine Prognose von Ausfallzeit, Restlebensdauer oder Ausfallwahrscheinlichkeit.",
+            "Empfehlung ist ein leichter Wartungshinweis, keine automatische Freigabe.",
+        ],
     }
 
 
@@ -317,11 +439,18 @@ def _preventive_reason(signals, recurring_trend=None):
     if recurring_trend:
         return (
             f"{recurring_trend['occurrence_count']} Vorkommen im Fehlertrend plus "
-            f"{len(signals['tasks'])} Tasks und {len(signals['errors'])} Fehler."
+            f"{len(signals['tasks'])} Tasks, {len(signals['errors'])} Fehler, "
+            f"{len(signals['maintenance_reports'])} Wartungsberichte und "
+            f"{len(signals['maintenance_plans'])} Wartungsplaene sowie "
+            f"{len(signals['shift_handovers'])} Schichtuebergaben."
         )
     return (
         f"{len(signals['tasks'])} sichtbare Tasks und "
-        f"{len(signals['errors'])} Fehler deuten auf wiederkehrende Themen hin."
+        f"{len(signals['errors'])} Fehler, "
+        f"{len(signals['maintenance_reports'])} Wartungsberichte und "
+        f"{len(signals['maintenance_plans'])} Wartungsplaene sowie "
+        f"{len(signals['shift_handovers'])} Schichtuebergaben deuten auf "
+        "wiederkehrende Themen hin."
     )
 
 
@@ -338,6 +467,154 @@ def _preventive_action(machine, signals, recurring_trend=None):
         f"Tasks zu {machine.name} auswerten und bei wiederkehrenden Symptomen "
         "einen praeventiven Wartungsplan anlegen."
     )
+
+
+def _preventive_next_steps(machine, signals, recurring_trend=None, rag_sources=None):
+    """Return structured next steps derived from visible maintenance evidence."""
+    steps = []
+    if recurring_trend:
+        steps.append(
+            _preventive_step(
+                "recurring_issue_review",
+                "Wiederkehrenden Fehlertrend pruefen",
+                recurring_trend.get("recommendation")
+                or "Fehlertrend fachlich pruefen und Massnahme festlegen.",
+                "recurring_issue",
+                "high",
+            )
+        )
+    if signals["errors"]:
+        steps.append(
+            _preventive_step(
+                "error_history_review",
+                "Fehlerhistorie buendeln",
+                (
+                    f"{len(signals['errors'])} sichtbare Fehler an {machine.name} "
+                    "auf gemeinsame Ursachen und Ersatzteilbedarf pruefen."
+                ),
+                "error",
+                "high",
+            )
+        )
+    if signals["maintenance_plans"]:
+        steps.append(
+            _preventive_step(
+                "maintenance_plan_review",
+                "Wartungsplan abgleichen",
+                (
+                    "Intervall, naechsten Faelligkeitstermin und vorhandene "
+                    "Wartungsaufgaben gegen die aktuelle Historie pruefen."
+                ),
+                "maintenance_plan",
+                "medium",
+            )
+        )
+    if signals["tasks"]:
+        steps.append(
+            _preventive_step(
+                "task_follow_up",
+                "Offene Aufgaben priorisieren",
+                (
+                    f"{len(signals['tasks'])} sichtbare Tasks zu {machine.name} "
+                    "auf Wiederholungen und offene Pruefpunkte auswerten."
+                ),
+                "task",
+                "medium",
+            )
+        )
+    if signals["shift_handovers"]:
+        steps.append(
+            _preventive_step(
+                "handover_review",
+                "Schichtuebergaben pruefen",
+                "Uebergaben auf wiederkehrende Hinweise und naechste Massnahmen lesen.",
+                "shift_handover",
+                "medium",
+            )
+        )
+    if rag_sources:
+        steps.append(
+            _preventive_step(
+                "knowledge_check",
+                "Dokumentierte Quellen pruefen",
+                "Passende RAG-Quellen gegen den geplanten Wartungsschritt halten.",
+                "rag_source",
+                "low",
+            )
+        )
+    if not steps:
+        steps.append(
+            _preventive_step(
+                "monitor_history",
+                "Historie weiter beobachten",
+                "Noch keine belastbare Massnahme ableiten; neue Signale dokumentieren.",
+                "maintenance_history",
+                "low",
+            )
+        )
+    return steps[:4]
+
+
+def _preventive_step(step_type, title, detail, source_type, urgency):
+    """Return one bounded next-step payload for maintenance recommendations."""
+    return {
+        "type": str(step_type or "")[:80],
+        "title": str(title or "")[:160],
+        "detail": str(detail or "")[:500],
+        "source_type": str(source_type or "")[:80],
+        "urgency": str(urgency or "medium")[:40],
+    }
+
+
+def _preventive_confidence(signals, recurring_trend, rag_sources):
+    """Return a bounded confidence score for a light recommendation."""
+    evidence_count = (
+        len(signals["tasks"])
+        + len(signals["errors"])
+        + len(signals["maintenance_reports"])
+        + len(signals["maintenance_plans"])
+        + len(signals["shift_handovers"])
+    )
+    score = 30 + min(35, evidence_count * 8) + min(20, len(rag_sources) * 5)
+    if recurring_trend:
+        score += 15
+    return max(0, min(95, score))
+
+
+def _preventive_confidence_level(confidence):
+    """Return a coarse confidence level for a light maintenance recommendation."""
+    if confidence >= 75:
+        return "high"
+    if confidence >= 50:
+        return "medium"
+    return "low"
+
+
+def _preventive_confidence_uncertainty(confidence_level):
+    """Return uncertainty aligned with the light recommendation confidence level."""
+    if confidence_level == "high":
+        return "low"
+    if confidence_level == "medium":
+        return "medium"
+    return "high"
+
+
+def _preventive_confidence_reason(signals, recurring_trend, rag_sources):
+    """Return a concise reason explaining recommendation confidence."""
+    evidence_count = (
+        len(signals["tasks"])
+        + len(signals["errors"])
+        + len(signals["maintenance_reports"])
+        + len(signals["maintenance_plans"])
+        + len(signals["shift_handovers"])
+    )
+    if recurring_trend:
+        return "Wiederkehrender Fehlertrend plus sichtbare Wartungshistorie vorhanden."
+    if evidence_count >= 3 and rag_sources:
+        return "Mehrere sichtbare Wartungssignale und passende RAG-Quellen vorhanden."
+    if evidence_count >= 2:
+        return "Mehrere sichtbare Wartungssignale vorhanden, Quellenlage begrenzt."
+    return "Schwache Quellenlage; Empfehlung nur als leichter Wartungshinweis."
 
 
 def _preventive_evidence(signals):
@@ -362,7 +639,125 @@ def _preventive_evidence(signals):
         }
         for entry in signals["errors"][:3]
     ]
-    return task_items + error_items
+    report_items = [
+        {
+            "type": "maintenance_report",
+            "id": document.id,
+            "title": document.title,
+            "machine": document.machine,
+            "date": document.created_at.isoformat(),
+        }
+        for document in signals["maintenance_reports"][:3]
+    ]
+    plan_items = [
+        {
+            "type": "maintenance_plan",
+            "id": plan.id,
+            "title": plan.title,
+            "next_due_date": plan.next_due_date.isoformat(),
+            "is_active": plan.is_active,
+        }
+        for plan in signals["maintenance_plans"][:3]
+    ]
+    handover_items = [
+        {
+            "type": "shift_handover",
+            "id": handover.id,
+            "title": f"Schichtuebergabe {handover.shift_date.isoformat()}",
+            "status": handover.status,
+            "machine_id": handover.machine_id,
+            "shift_date": handover.shift_date.isoformat(),
+        }
+        for handover in signals["shift_handovers"][:3]
+    ]
+    return task_items + error_items + report_items + plan_items + handover_items
+
+
+def _preventive_evidence_summary(signals, rag_sources, recurring_trend=None):
+    """Return audit-friendly evidence metadata for a light recommendation."""
+    source_types = _preventive_source_types(signals, rag_sources, recurring_trend)
+    direct_source_count = sum(
+        len(signals[key])
+        for key in (
+            "tasks",
+            "errors",
+            "maintenance_reports",
+            "maintenance_plans",
+            "shift_handovers",
+        )
+    )
+    return {
+        "uses_only_visible_sources": True,
+        "source_types": source_types,
+        "direct_source_count": direct_source_count,
+        "rag_source_count": len(rag_sources),
+        "rag_sources": _preventive_rag_source_references(rag_sources),
+        "recurring_issue_window_days": 30,
+        "latest_signal_at": _latest_preventive_signal_at(signals),
+        "predictive_claim": False,
+    }
+
+
+def _preventive_rag_source_references(rag_sources):
+    """Return prompt-safe RAG source references for maintenance recommendations."""
+    references = []
+    for source in (rag_sources or [])[:3]:
+        references.append(
+            {
+                "type": source.get("type") or source.get("source_type") or "",
+                "id": source.get("id"),
+                "source_type": source.get("source_type") or source.get("type") or "",
+                "source_id": source.get("source_id") or source.get("id"),
+                "chunk_id": source.get("chunk_id"),
+                "title": str(source.get("title") or "")[:220],
+                "module": source.get("module") or "",
+                "machine_id": source.get("machine_id"),
+                "role_visibility": source.get("role_visibility") or "",
+                "created_at": source.get("created_at") or "",
+                "score": _safe_int(source.get("score") or source.get("relevance")),
+            }
+        )
+    return references
+
+
+def _preventive_source_types(signals, rag_sources, recurring_trend=None):
+    """Return sorted source type names contributing to a recommendation."""
+    source_types = [
+        source_type
+        for source_type, signal_key in (
+            ("task", "tasks"),
+            ("error", "errors"),
+            ("maintenance_report", "maintenance_reports"),
+            ("maintenance_plan", "maintenance_plans"),
+            ("shift_handover", "shift_handovers"),
+        )
+        if signals[signal_key]
+    ]
+    if rag_sources:
+        source_types.append("rag_source")
+    if recurring_trend:
+        source_types.append("recurring_issue")
+    return sorted(source_types)
+
+
+def _latest_preventive_signal_at(signals):
+    """Return the newest timestamp from direct recommendation evidence."""
+    timestamps = []
+    timestamps.extend(task.updated_at for task in signals["tasks"] if task.updated_at)
+    timestamps.extend(entry.created_at for entry in signals["errors"] if entry.created_at)
+    timestamps.extend(
+        document.created_at
+        for document in signals["maintenance_reports"]
+        if document.created_at
+    )
+    timestamps.extend(
+        datetime.combine(handover.shift_date, datetime.min.time())
+        for handover in signals["shift_handovers"]
+        if handover.shift_date
+    )
+    if not timestamps:
+        return None
+    return max(timestamps).isoformat()
 
 
 def _matching_recurring_trend(machine, trends):
@@ -374,3 +769,12 @@ def _matching_recurring_trend(machine, trends):
         if str(trend.get("affected_machine") or "").strip().lower() == machine_name:
             return trend
     return None
+
+
+def _safe_int(value):
+    """Return a non-negative integer from a source score-like value."""
+    try:
+        parsed = int(round(float(value or 0)))
+    except (TypeError, ValueError):
+        return 0
+    return max(parsed, 0)

@@ -1,17 +1,22 @@
 """Permission-aware retrieval helpers for AI assistant context."""
 
+from app.handover.services import visible_handovers_query
 from app.models import (
     Employee,
     ErrorEntry,
     GeneratedDocument,
     InventoryMaterial,
     Machine,
+    MaintenancePlan,
+    ShiftHandover,
     ShiftPlan,
     Task,
+    User,
 )
 from app.security import employee_access_level, has_dashboard_permission
 from app.services.document_service import visible_documents_query
 from app.services.error_service import visible_errors_query
+from app.services.query_classifier_service import TASK_ID_PATTERN
 from app.services.retrieval_candidate_service import (
     RetrievalCandidate,
     normalize_retrieval_score,
@@ -20,6 +25,9 @@ from app.services.retrieval_candidate_service import (
     structured_candidate_score,
 )
 from app.services.retrieval_debug_service import retrieval_debug_decision
+from app.services.structured_retrieval_metadata_service import (
+    structured_record_scope_metadata,
+)
 from app.services.task_service import visible_tasks_query
 from app.services.text_normalization_service import tokenize_text
 
@@ -46,6 +54,13 @@ def retrieve_ai_context(message, user, requested_scopes=None):
         machine_sources, machines = _machine_sources(message, requested_scopes)
         candidates.extend(machine_sources)
         data["machines"] = [machine.to_dict() for machine in machines]
+        maintenance_sources, maintenance_plans = _maintenance_plan_sources(
+            message,
+            user,
+            requested_scopes,
+        )
+        candidates.extend(maintenance_sources)
+        data["maintenance_plans"] = [plan.to_dict() for plan in maintenance_plans]
     if "inventory" in searchable_scopes:
         inventory_sources, materials = _inventory_sources(message, requested_scopes)
         candidates.extend(inventory_sources)
@@ -58,11 +73,18 @@ def retrieve_ai_context(message, user, requested_scopes=None):
         shift_sources, plans = _shiftplan_sources(message, user, requested_scopes)
         candidates.extend(shift_sources)
         data["shiftplans"] = [plan.to_dict(employee_access_level(user)) for plan in plans]
+        handover_sources, handovers = _handover_sources(message, user, requested_scopes)
+        candidates.extend(handover_sources)
+        data["shift_handovers"] = [handover.to_dict() for handover in handovers]
     if "employees" in searchable_scopes:
         employee_sources, employees = _employee_sources(message, user, requested_scopes)
         candidates.extend(employee_sources)
         access_level = employee_access_level(user)
         data["employees"] = [employee.to_dict(access_level) for employee in employees]
+    if "admin_users" in searchable_scopes:
+        admin_user_sources, admin_users = _admin_user_sources(message, requested_scopes)
+        candidates.extend(admin_user_sources)
+        data["admin_users"] = [_admin_user_payload(admin_user) for admin_user in admin_users]
 
     ranked_candidates = rank_candidates(candidates, MAX_SOURCES)
     debug = {
@@ -181,6 +203,38 @@ def _machine_sources(message, requested_scopes):
     ], [machine for machine, _score, _reason in ranked]
 
 
+def _maintenance_plan_sources(message, user, requested_scopes):
+    """Return ranked maintenance-plan sources visible to the user."""
+    query = MaintenancePlan.query.order_by(
+        MaintenancePlan.is_active.desc(),
+        MaintenancePlan.next_due_date.asc(),
+        MaintenancePlan.id.desc(),
+    )
+    if not user.is_admin:
+        query = query.filter(MaintenancePlan.department_id == user.department_id)
+    ranked = _rank_records(
+        query.limit(30).all(),
+        message,
+        _maintenance_plan_text,
+        "machines",
+        requested_scopes,
+    )
+    return [
+        _source(
+            "maintenance_plan",
+            plan.id,
+            plan.title,
+            "machines",
+            "/machines",
+            _maintenance_plan_context(plan),
+            score,
+            reason,
+            metadata=_safe_source_metadata(plan),
+        )
+        for plan, score, reason in ranked
+    ], [plan for plan, _score, _reason in ranked]
+
+
 def _inventory_sources(message, requested_scopes):
     """Return ranked inventory sources."""
     materials = (
@@ -269,6 +323,37 @@ def _shiftplan_sources(message, user, requested_scopes):
     ], [plan for plan, _score, _reason in ranked]
 
 
+def _handover_sources(message, user, requested_scopes):
+    """Return ranked shift-handover sources visible to the user."""
+    handovers = (
+        visible_handovers_query(user)
+        .order_by(ShiftHandover.shift_date.desc(), ShiftHandover.id.desc())
+        .limit(30)
+        .all()
+    )
+    ranked = _rank_records(
+        handovers,
+        message,
+        _handover_text,
+        "shiftplans",
+        requested_scopes,
+    )
+    return [
+        _source(
+            "shift_handover",
+            handover.id,
+            f"Schichtuebergabe {handover.shift_date.isoformat()} {handover.shift_type}",
+            "shiftplans",
+            "/handover",
+            _handover_context(handover),
+            score,
+            reason,
+            metadata=_safe_source_metadata(handover),
+        )
+        for handover, score, reason in ranked
+    ], [handover for handover, _score, _reason in ranked]
+
+
 def _employee_sources(message, user, requested_scopes):
     """Return ranked employee sources visible to the user access tier."""
     access_level = employee_access_level(user)
@@ -290,15 +375,42 @@ def _employee_sources(message, user, requested_scopes):
             _employee_context(employee, access_level),
             score,
             reason,
-            metadata={},
+            metadata=_employee_source_metadata(employee, access_level),
         )
         for employee, score, reason in ranked
     ], [employee for employee, _score, _reason in ranked]
 
 
+def _admin_user_sources(message, requested_scopes):
+    """Return ranked admin-user sources visible to master administrators."""
+    users = User.query.order_by(User.username.asc()).limit(30).all()
+    ranked = _rank_records(
+        users,
+        message,
+        _admin_user_text,
+        "admin_users",
+        requested_scopes,
+    )
+    return [
+        _source(
+            "admin_user",
+            admin_user.id,
+            admin_user.username,
+            "admin_users",
+            "/admin/users",
+            _admin_user_context(admin_user),
+            score,
+            reason,
+            metadata=_admin_user_source_metadata(admin_user),
+        )
+        for admin_user, score, reason in ranked
+    ], [admin_user for admin_user, _score, _reason in ranked]
+
+
 def _rank_records(records, message, text_fn, scope, requested_scopes):
     """Rank records by token overlap, using recency/order fallback for requested scopes."""
     query_tokens = _tokens(message)
+    explicit_task_ids = _explicit_task_ids(message)
     ranked = []
     for index, record in enumerate(records):
         record_tokens = _tokens(text_fn(record))
@@ -311,8 +423,30 @@ def _rank_records(records, message, text_fn, scope, requested_scopes):
         )
         if not score.allowed:
             continue
-        ranked.append((record, score.raw_score, score.explanation))
-    return ranked[:5]
+        raw_score = score.raw_score
+        explanation = score.explanation
+        if _matches_explicit_task_id(record, scope, explicit_task_ids):
+            raw_score += 120
+            explanation = f"{explanation}; explizite Task-ID"
+        ranked.append((record, raw_score, explanation, index))
+    ranked.sort(key=lambda item: (item[1], -item[3]), reverse=True)
+    return [(record, score, reason) for record, score, reason, _index in ranked[:5]]
+
+
+def _explicit_task_ids(message):
+    """Return task ids explicitly referenced in the user message."""
+    return {int(match.group(1)) for match in TASK_ID_PATTERN.finditer(str(message or ""))}
+
+
+def _matches_explicit_task_id(record, scope, task_ids):
+    """Return whether a structured record is the explicitly referenced task."""
+    if scope != "tasks" or not task_ids:
+        return False
+    try:
+        record_id = int(getattr(record, "id", 0) or 0)
+    except (TypeError, ValueError):
+        return False
+    return record_id in task_ids
 
 
 def _tokens(value):
@@ -331,7 +465,13 @@ def _candidate_count_by_scope(candidates):
 
 def _source(item_type, item_id, title, module, url, context, score, reason, metadata=None):
     """Return one internal source object."""
-    safe_metadata = {"source_kind": "structured"}
+    safe_metadata = {
+        "source_kind": "structured",
+        "source_type": item_type,
+        "source_id": item_id,
+        "module": module,
+        "source_record_id": item_id,
+    }
     safe_metadata.update(metadata or {})
     return RetrievalCandidate(
         source_type=item_type,
@@ -350,22 +490,62 @@ def _source(item_type, item_id, title, module, url, context, score, reason, meta
 
 def _safe_source_metadata(record):
     """Return display-safe metadata for a structured source."""
+    metadata = structured_record_scope_metadata(record)
     if isinstance(record, Task):
-        return {"department": record.department.name if record.department else ""}
+        metadata.update({"department": record.department.name if record.department else ""})
+        return metadata
     if isinstance(record, ErrorEntry):
-        return {
-            "machine": record.machine,
-            "department": record.department.name if record.department else "",
-        }
+        metadata.update(
+            {
+                "machine": record.machine,
+                "department": record.department.name if record.department else "",
+            }
+        )
+        return metadata
     if isinstance(record, Machine):
-        return {"machine": record.name}
+        metadata.update({"machine": record.name})
+        return metadata
+    if isinstance(record, MaintenancePlan):
+        metadata.update(
+            {
+                "department": record.department.name if record.department else "",
+                "machine": record.machine.name if record.machine else "",
+            }
+        )
+        return metadata
     if isinstance(record, InventoryMaterial):
-        return {"machine": record.machine.name if record.machine else ""}
+        metadata.update({"machine": record.machine.name if record.machine else ""})
+        return metadata
     if isinstance(record, GeneratedDocument):
-        return {"machine": record.machine, "department": record.department}
+        metadata.update({"machine": record.machine, "department": record.department})
+        return metadata
     if isinstance(record, ShiftPlan):
-        return {"department": record.department}
-    return {}
+        metadata.update({"department": record.department})
+        return metadata
+    if isinstance(record, ShiftHandover):
+        metadata.update(
+            {
+                "department": record.department,
+                "machine": record.machine.name if record.machine else "",
+            }
+        )
+        return metadata
+    return metadata
+
+
+def _employee_source_metadata(employee, access_level):
+    """Return display-safe metadata for an employee source access tier."""
+    metadata = _safe_source_metadata(employee)
+    metadata["employee_access_level"] = str(access_level or "none")
+    return metadata
+
+
+def _admin_user_source_metadata(admin_user):
+    """Return display-safe metadata for an admin-user structured source."""
+    metadata = _safe_source_metadata(admin_user)
+    metadata["role_visibility"] = "admin_only"
+    metadata["role"] = admin_user.role.value
+    return metadata
 
 
 def _context_from_sources(sources):
@@ -433,6 +613,37 @@ def _machine_context(machine):
     )
 
 
+def _maintenance_plan_text(plan):
+    """Return searchable maintenance-plan text."""
+    return " ".join(
+        str(value or "")
+        for value in (
+            plan.title,
+            plan.description,
+            plan.priority.value,
+            plan.department.name if plan.department else "",
+            plan.machine.name if plan.machine else "",
+            plan.next_due_date.isoformat(),
+            "aktiv" if plan.is_active else "inaktiv",
+            "wartung wartungsplan maintenance",
+        )
+    )
+
+
+def _maintenance_plan_context(plan):
+    """Return compact maintenance-plan context without predictive claims."""
+    machine_name = plan.machine.name if plan.machine else "nicht zugeordnet"
+    department_name = plan.department.name if plan.department else ""
+    status = "aktiv" if plan.is_active else "inaktiv"
+    return (
+        f"Wartungsplan: {plan.title} | Maschine: {machine_name} | "
+        f"Bereich: {department_name} | Intervall: {plan.interval_days} Tage | "
+        f"Naechste Faelligkeit: {plan.next_due_date.isoformat()} | "
+        f"Prioritaet: {plan.priority.value} | Status: {status} | "
+        f"Beschreibung: {plan.description}"
+    )
+
+
 def _material_text(material):
     """Return searchable inventory text."""
     machine_name = material.machine.name if material.machine else ""
@@ -481,6 +692,45 @@ def _shiftplan_context(plan):
     )
 
 
+def _handover_text(handover):
+    """Return searchable shift-handover text."""
+    return " ".join(
+        str(value or "")
+        for value in (
+            handover.department,
+            handover.area,
+            handover.machine.name if handover.machine else "",
+            handover.shift_type,
+            handover.status,
+            handover.production_status,
+            handover.machine_status,
+            handover.problem_category,
+            handover.content,
+            handover.open_tasks,
+            handover.machine_notes,
+            handover.next_notes,
+            handover.safety_notes,
+            handover.material_notes,
+            handover.cause,
+            handover.action_taken,
+            handover.follow_up_task,
+        )
+    )
+
+
+def _handover_context(handover):
+    """Return compact shift-handover context for assistant grounding."""
+    machine_name = handover.machine.name if handover.machine else handover.area
+    return (
+        f"Schichtuebergabe: {handover.shift_date.isoformat()} {handover.shift_type} | "
+        f"Bereich: {handover.department} | Maschine/Bereich: {machine_name} | "
+        f"Status: {handover.status} | Produktion: {handover.production_status} | "
+        f"Maschine: {handover.machine_status} | Kategorie: {handover.problem_category} | "
+        f"Inhalt: {handover.content} | Offene Punkte: {handover.open_tasks} | "
+        f"Maschinenhinweise: {handover.machine_notes} | Naechste Schritte: {handover.next_notes}"
+    )
+
+
 def _employee_text(employee, access_level):
     """Return searchable employee text for the user's access level."""
     data = employee.to_dict(access_level)
@@ -512,3 +762,83 @@ def _employee_context(employee, access_level):
             ]
         )
     return " | ".join(parts)
+
+
+def _admin_user_text(admin_user):
+    """Return searchable admin-user and role text."""
+    return " ".join(
+        [
+            admin_user.username,
+            admin_user.email,
+            admin_user.role.value,
+            admin_user.department.name if admin_user.department else "",
+            _admin_user_permission_text(admin_user),
+        ]
+    )
+
+
+def _admin_user_context(admin_user):
+    """Return compact admin-user context without authentication secrets."""
+    payload = _admin_user_payload(admin_user)
+    permissions = payload["permission_summary"]
+    return (
+        f"User: {payload['username']} | Rolle: {payload['role']} | "
+        f"Bereich: {payload['department'] or ''} | Aktiv: {payload['is_active']} | "
+        f"Sichtbare Module: {', '.join(permissions['view']) or 'keine'} | "
+        f"Schreibrechte: {', '.join(permissions['write']) or 'keine'} | "
+        f"Mitarbeiterzugriff: {permissions['employee_access_level']}"
+    )
+
+
+def _admin_user_payload(admin_user):
+    """Return a prompt-safe admin-user payload without authentication secrets."""
+    return {
+        "id": admin_user.id,
+        "username": admin_user.username,
+        "email": admin_user.email,
+        "role": admin_user.role.value,
+        "department": admin_user.department.name if admin_user.department else None,
+        "employee_id": admin_user.employee_id,
+        "is_active": bool(admin_user.is_active),
+        "created_at": admin_user.created_at.isoformat(),
+        "permission_summary": _admin_user_permission_summary(admin_user),
+    }
+
+
+def _admin_user_permission_text(admin_user):
+    """Return searchable permission text for an admin user."""
+    summary = _admin_user_permission_summary(admin_user)
+    return " ".join(
+        [
+            "rollen rolle berechtigungen permissions user admin",
+            " ".join(summary["view"]),
+            " ".join(summary["write"]),
+            summary["employee_access_level"],
+        ]
+    )
+
+
+def _admin_user_permission_summary(admin_user):
+    """Return compact dashboard permission labels for one admin-user source."""
+    permissions = admin_user.to_dict().get("permissions") or {}
+    view = sorted(
+        dashboard
+        for dashboard, values in permissions.items()
+        if isinstance(values, dict) and values.get("can_view")
+    )
+    write = sorted(
+        dashboard
+        for dashboard, values in permissions.items()
+        if isinstance(values, dict) and values.get("can_write")
+    )
+    employees = permissions.get("employees")
+    employee_access = (
+        employees.get("employee_access_level", "none")
+        if isinstance(employees, dict)
+        else "none"
+    )
+    return {
+        "view": view,
+        "write": write,
+        "employee_access_level": employee_access,
+    }

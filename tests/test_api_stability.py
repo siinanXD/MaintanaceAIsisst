@@ -1862,10 +1862,13 @@ def test_dashboard_react_markup_replaces_fallback_clone():
     assert "/api/v1/admin/ai/retrieval-telemetry?days=7&limit=5" in dashboard_api
     assert "/api/v1/admin/ai/knowledge/status" in dashboard_api
     assert "/api/v1/admin/ai/knowledge-gaps?status=open&limit=5" in dashboard_api
-    assert "DashboardOperations" in dashboard_markup
+    assert "DashboardOperations" in dashboard_markup or "DashboardCockpitPanels" in dashboard_markup
     assert "operationCards" in dashboard_react_sources
     assert "operationDrilldownRows" in dashboard_react_sources
-    assert "DashboardShiftPeople" in dashboard_markup
+    assert (
+        "DashboardShiftPeople" in dashboard_markup
+        or "DashboardCockpitPanels" in dashboard_markup
+    )
     assert "handoverTitle" in dashboard_react_sources
     assert "handoverStatusValue" in dashboard_react_sources
     assert "peopleStatusValue" in dashboard_react_sources
@@ -1873,17 +1876,23 @@ def test_dashboard_react_markup_replaces_fallback_clone():
     assert "employeesToShiftCalendar" in dashboard_react_sources
     assert "dashboardShiftRows" in dashboard_react_sources
     assert "shiftCalendarMessage" in dashboard_react_sources
-    assert "DashboardSideColumn" in dashboard_markup
+    assert "DashboardSideColumn" in dashboard_markup or "DashboardCockpitPanels" in dashboard_markup
     assert "briefingItems" in dashboard_react_sources
     assert "activityItems" in dashboard_react_sources
     assert "inventoryMetrics" in dashboard_react_sources
-    assert "DashboardTaskOverview" in dashboard_markup
+    assert (
+        "DashboardTaskOverview" in dashboard_markup
+        or "DashboardSituationStrip" in dashboard_markup
+    )
     assert "activeDashboardIncidents" in dashboard_react_sources
     assert "frequentIncidentCodes" in dashboard_react_sources
     assert "machineStatusSeverity" in dashboard_react_sources
     assert "dashboardTaskGroups" in dashboard_react_sources
     assert "dashboardCriticalTasks" in dashboard_react_sources
-    assert "DashboardAssetStatus" in dashboard_markup
+    assert (
+        "DashboardAssetStatus" in dashboard_markup
+        or "DashboardCockpitPanels" in dashboard_markup
+    )
     assert "DashboardTechnicalDetails" in dashboard_markup
     assert "dashboardHeroStatus" in dashboard_react_sources
     assert "prioritySignals" in dashboard_react_sources

@@ -117,11 +117,32 @@ function sourceTestSourcePayloads(result: AdminAiPayload): readonly Record<strin
 }
 
 /**
+ * Return the best available source count, including metadata-only source references.
+ */
+function sourceTestReportedSourceCount(result: AdminAiPayload): number {
+  const visibleSourceCount = sourceTestSourcePayloads(result).length;
+  const diagnostics = sourceTestDiagnostics(result);
+  const answerQuality = objectField(result, "answer_quality");
+  const candidates = [
+    diagnostics.source_count,
+    diagnostics.final_visible_sources,
+    answerQuality.source_count,
+    result.source_count,
+    visibleSourceCount
+  ];
+  const numericCounts = candidates
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value >= 0);
+
+  return Math.max(visibleSourceCount, ...numericCounts);
+}
+
+/**
  * Build Source Check KPI values from one result.
  */
 function sourceTestKpis(result: AdminAiPayload): AdminAiSourceTestKpis {
   const diagnostics = sourceTestDiagnostics(result);
-  const sourceCount = sourceTestSourcePayloads(result).length;
+  const sourceCount = sourceTestReportedSourceCount(result);
   const confidenceScore = diagnostics.confidence_score;
   const confidenceLevel = diagnostics.confidence_level;
   const latency = diagnostics.latency_ms || diagnostics.duration_ms || 0;
@@ -184,6 +205,7 @@ export function sourceCheckDryRunState(
     latestTest: { mode: "dry", question, result: dryResult },
     promptMeta: `Prompt-Zeichen: ${numberText(dryRunPayload.estimated_prompt_characters || 0)}`,
     promptPreview,
+    reportedSourceCount: 0,
     stateClassName: "status-pill is-muted",
     stateLabel: "Dry-run",
     testMeta: "Dry-run ausgeführt. Kein Modellaufruf und keine Kosten."
@@ -203,6 +225,7 @@ export function sourceCheckLiveState(
     answerText: sourceTestAnswerText(result),
     kpis: sourceTestKpis(result),
     latestTest: { mode: "live", question, result },
+    reportedSourceCount: sourceTestReportedSourceCount(result),
     sources: sourceTestSources(result),
     stateClassName: "status-pill is-active",
     stateLabel: "Live",

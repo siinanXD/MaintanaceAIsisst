@@ -40,3 +40,20 @@ def test_local_development_schema_adds_missing_ai_feedback_columns(app):
         status = database_schema_status()
 
     assert status["missing_columns"].get("ai_feedback") is None
+
+
+def test_local_development_schema_adds_missing_retrieval_evaluation_columns(app):
+    """Verify local startup repairs additive retrieval evaluation metric columns."""
+    with app.app_context():
+        db.session.execute(
+            db.text(
+                "ALTER TABLE retrieval_evaluation_run "
+                "DROP COLUMN query_type_accuracy"
+            )
+        )
+        db.session.commit()
+
+        ensure_local_development_schema()
+        status = database_schema_status()
+
+    assert status["missing_columns"].get("retrieval_evaluation_run") is None

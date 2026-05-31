@@ -105,7 +105,7 @@ export function ShellTopbar({ currentPath, title }: ShellTopbarProps): ReactNode
         <ShellMobileNavigation currentPath={currentPath} />
       </div>
       <div className="desktop-topbar">
-        <h1>{title}</h1>
+        <div className="topbar-title" aria-label={`Aktuelle Seite: ${title}`}>{title}</div>
         <div className="topbar-actions">
           <ShellGlobalSearch inputId="global-search-desktop-react" />
           <button

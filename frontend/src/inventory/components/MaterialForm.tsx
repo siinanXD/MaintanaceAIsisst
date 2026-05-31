@@ -8,6 +8,7 @@ import type { Machine } from "../inventoryTypes";
 import { inventoryErrorMessage, type MessageState } from "../inventoryUtils";
 
 type MaterialFormProps = {
+  readonly drawerMode?: boolean;
   readonly machines: readonly Machine[];
   readonly onCreated: () => Promise<void>;
 };
@@ -31,14 +32,23 @@ const EMPTY_FORM: MaterialFormState = {
 /**
  * Render the material creation form.
  */
-export function MaterialForm({ machines, onCreated }: MaterialFormProps): ReactNode {
+export function MaterialForm({ drawerMode = false, machines, onCreated }: MaterialFormProps): ReactNode {
   const [formState, setFormState] = useState<MaterialFormState>(EMPTY_FORM);
   const [message, setMessage] = useState<MessageState>({ text: "", error: false });
   const [open, setOpen] = useState(() => (
-    typeof window.matchMedia === "function"
-      ? !window.matchMedia("(max-width: 639px)").matches
-      : true
+    drawerMode || typeof window.matchMedia !== "function"
+      ? true
+      : !window.matchMedia("(max-width: 639px)").matches
   ));
+
+  /**
+   * Update the disclosure state unless the drawer owns visibility.
+   */
+  function handleToggle(openState: boolean): void {
+    if (!drawerMode) {
+      setOpen(openState);
+    }
+  }
   const [busy, setBusy] = useState(false);
 
   /**
@@ -91,8 +101,8 @@ export function MaterialForm({ machines, onCreated }: MaterialFormProps): ReactN
       data-mobile-collapsible
       data-default-collapsed="true"
       data-permission-write="inventory"
-      onToggle={(event) => setOpen(event.currentTarget.open)}
-      open={open}
+      onToggle={(event) => handleToggle(event.currentTarget.open)}
+      open={drawerMode || open}
     >
       <summary className="mobile-action-summary">
         <span>

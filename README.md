@@ -22,9 +22,9 @@ API key, and keeps sensitive employee or admin data behind permissions.
   Jinja/Tailwind UI, vanilla JS page modules and Docker deployment.
 - **SaaS-grade access control:** JWT authentication, role-based navigation,
   per-dashboard permissions and audit logs for critical admin actions.
-- **AI-readiness without lock-in:** OpenAI provider integration, deterministic
-  local fallback, RAG indexing, source visibility policies and retrieval
-  diagnostics.
+- **AI-readiness without lock-in:** OpenAI and OpenAI-compatible provider
+  integration, deterministic local fallback, RAG indexing, source visibility
+  policies and retrieval diagnostics.
 - **Operational workflows:** tasks, errors, machines, documents, inventory,
   shift planning, handover, vacations, notifications and backups.
 - **Quality baseline:** 417 passing tests with 83.58% coverage on the current
@@ -175,6 +175,13 @@ curl http://127.0.0.1:5050/health
 curl http://127.0.0.1:5050/health/ready
 ```
 
+`/health/ready` returns a redacted JSON payload with `ready`,
+`degraded_components`, and `components` for `database`, `ai`, and `rag`. The
+AI component checks both chat provider readiness and embedding provider
+readiness without external API calls. Provider or embedding misconfiguration is
+reported through safe reasons such as `base_url_missing`,
+`unsupported_provider`, or `embedding_base_url_missing`.
+
 Production containers should set `AUTO_CREATE_DATABASE=false` and run
 `flask --app run:app db upgrade` during release before starting Gunicorn.
 Persistent volumes are configured for PostgreSQL, data, documents, manuals,
@@ -193,9 +200,12 @@ DATABASE_URL=sqlite:///data/maintenance.db
 # DATABASE_URL=postgresql+psycopg://maintenance:${POSTGRES_PASSWORD}@db:5432/maintenance
 POSTGRES_PASSWORD=
 AUTO_CREATE_DATABASE=true  # set false in production and run migrations
-AI_PROVIDER=openai          # or "mock" for local-only mode
+AI_PROVIDER=openai          # openai, openai_compatible, or mock
 OPENAI_API_KEY=             # leave empty to use local fallback
+AI_BASE_URL=                # set for OpenAI-compatible local APIs, e.g. http://127.0.0.1:11434/v1
 OPENAI_MODEL=gpt-4o-mini
+AI_TASK_PRIORITIZATION_TIMEOUT_SECONDS=6
+AI_TASK_PRIORITIZATION_MAX_RETRIES=0
 LANGFUSE_ENABLED=false      # set true to trace OpenAI calls in Langfuse
 LANGFUSE_PUBLIC_KEY=
 LANGFUSE_SECRET_KEY=
@@ -215,8 +225,40 @@ RAG_SEMANTIC_MIN_CHUNK_CHARS=600
 RAG_SEMANTIC_TARGET_CHUNK_CHARS=1200
 RAG_SEMANTIC_MAX_CHUNK_CHARS=1800
 RAG_TOP_K=4
-EMBEDDING_PROVIDER=hashing  # hashing now, openai later
+RAG_RERANK_CANDIDATE_LIMIT=20
+RAG_SCAN_LIMIT=300
+RAG_MIN_SCORE=1
+RAG_SCORE_DEBUG=false       # true exposes score components to admins/tests only
+RAG_SCORE_SEMANTIC_WEIGHT=70
+RAG_SCORE_LEXICAL_WEIGHT=60
+RAG_SCORE_QUALITY_WEIGHT=30
+RAG_SCORE_RECENCY_WEIGHT=15
+RAG_SCORE_MACHINE_WEIGHT=50
+RAG_SCORE_FEEDBACK_WEIGHT=20
+RAG_SCORE_USAGE_WEIGHT=15
+RAG_SCORE_SOURCE_PRIORITY_WEIGHT=15
+RAG_RECENCY_WINDOW_DAYS=90
+RAG_AGING_OUTDATED_MULTIPLIER=0.55
+RAG_AGING_STALE_MULTIPLIER=0.65
+RAG_AGING_OLD_MULTIPLIER=0.78
+RAG_FEEDBACK_SCAN_LIMIT=300
+RAG_SEMANTIC_ONLY_MIN_SIMILARITY=0.78
+KNOWLEDGE_GAP_DEDUP_HOURS=24
+KNOWLEDGE_GAP_LOW_CONFIDENCE_SCORE=35
+KNOWLEDGE_AGING_STALE_DAYS=180
+KNOWLEDGE_AGING_UNCONFIRMED_DAYS=60
+KNOWLEDGE_AGING_STABLE_CONFIRMATIONS=3
+KNOWLEDGE_AGING_STABLE_HELPFUL_FEEDBACK=3
+AI_SESSION_CONTEXT_MESSAGES=4
+AI_SESSION_CONTEXT_TTL_MINUTES=120
+AI_SESSION_CONTEXT_MAX_CHARS=1400
+RETRIEVAL_TELEMETRY_WINDOW_DAYS=30
+RETRIEVAL_TELEMETRY_LIMIT=10
+RETRIEVAL_TELEMETRY_LOW_CONFIDENCE_SCORE=35
+RETRIEVAL_TELEMETRY_LOW_SOURCE_SCORE=20
+EMBEDDING_PROVIDER=hashing  # hashing, openai, or openai_compatible
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+RAG_HASH_EMBEDDING_DIMENSIONS=384
 KNOWLEDGE_FOLDER=knowledge
 BACKUP_FOLDER=backups
 DOCUMENTS_FOLDER=documents
@@ -231,6 +273,7 @@ MAIL_USE_TLS=true
 MAIL_DRY_RUN=true
 WORKER_RAG_REINDEX_ENABLED=false
 WORKER_POLL_SECONDS=60
+WORKER_JOB_LEASE_SECONDS=900
 ```
 
 `.env` is excluded from version control. Never commit real secrets.
@@ -352,14 +395,16 @@ flowchart LR
     Embeddings --> VectorStore["vector_store_service.py"]
     VectorStore --> Retrieval["retrieval_service.py"]
     Retrieval --> RAG["rag_service.py"]
-    RAG --> Provider["ai_service.py\nOpenAI, mock, future Gemini/local"]
+    RAG --> Provider["ai_service.py\nOpenAI, OpenAI-compatible, mock"]
     Provider --> Answer["Answer with sources"]
 ```
 
 Current implementation:
 - `chunking_service.py` provides structure-aware and hybrid semantic chunking with metadata-ready chunk payloads.
-- `embedding_service.py` abstracts embeddings. It defaults to deterministic local hashing and can switch to OpenAI embeddings by config.
+- `embedding_service.py` abstracts embeddings. It defaults to deterministic local hashing and can switch to OpenAI or OpenAI-compatible embeddings by config.
 - `vector_store_service.py` abstracts vector backends. It uses PostgreSQL pgvector when available, with local SQLAlchemy and optional Chroma fallbacks.
+- Vector retrieval fetches a larger rerank candidate pool via `RAG_RERANK_CANDIDATE_LIMIT` and exposes only the final answer context via `RAG_TOP_K`.
+- RAG scoring weights (`RAG_SCORE_*`), recency, aging and feedback windows are configuration-only tuning knobs; keep `RAG_SCORE_DEBUG=false` outside diagnostics because score details are admin-facing explainability, not user answer text.
 - `retrieval_service.py` combines permission-aware structured retrieval with RAG knowledge chunks.
 - `rag_service.py` owns the high-level RAG context pipeline so future LangChain or LangGraph orchestration can be added without changing API routes.
 - `knowledge_gap_service.py` records open `KnowledgeGap` entries when AI chat cannot find reliable RAG/source context; recent duplicate questions are folded into one gap.
@@ -370,11 +415,25 @@ Current implementation:
 - `POST /api/v1/admin/ai/knowledge/{id}/reindex` reindexes one document for granular admin recovery.
 - `GET/POST/PUT/DELETE /api/v1/admin/ai/training` lets master admins maintain manual Q&A training entries that are indexed as `manual_training` knowledge and marked stale on changes.
 - `POST /api/v1/machines/{machine_id}/assistant` enriches the machine-specific history with matching RAG sources and returns source metadata alongside the answer.
-- `POST /api/v1/ai/error-assistant` returns catalog matches, RAG sources, and a read-only task draft for fault-to-task workflows.
+- `POST /api/v1/ai/error-assistant` returns catalog matches, RAG sources, a read-only task draft and evidence-based root-cause analysis.
+- `GET /api/v1/handover/{id}/summary` returns a read-only shift-handover summary from the handover, visible open tasks and visible disruptions.
 - `POST /api/v1/tasks/suggest` can attach RAG source metadata to AI task drafts without persisting anything.
-- `GET /api/v1/admin/ai/knowledge-gaps` lists unanswered or low-confidence AI questions for admin documentation follow-up.
+- `POST /api/v1/tasks/prioritize` can use visible task history, maintenance reports and related fault signals for read-only priority recommendations.
+- `GET /api/v1/admin/ai/knowledge-gaps` lists unanswered or low-confidence AI questions and includes read-only gap detection for machines, departments, search terms and missing documentation actions.
+- `GET /api/v1/admin/ai/observability` exposes AI Admin metrics for frequent questions and search terms, tokens, cost windows, latency, failed requests, retrieval hit rate, no-answer rate, feedback, most-used documents and knowledge gaps.
+- AI observability includes answer-quality distributions, primary warning types, uncertainty rates and per-request confidence uncertainty so admins can distinguish grounded answers from no-answer, conflict and high-uncertainty cases.
+- Retrieval evaluation history includes a prompt-safe quality gate. Permission leaks fail the gate; weak Recall@K, MRR, keyword coverage, no-result handling, query-type accuracy or source metadata coverage create warnings.
+- AI observability also returns prioritized recommended actions. Root-level `next_best_action`, `recommended_actions` and `recommended_action_summary` combine evaluation failures, weak retrieval hits, stale or undated source metadata, and knowledge-gap remediation into one admin-ready action queue with priority, rank and source distribution.
+- High-uncertainty answer clusters are surfaced as potential knowledge gaps with `review_uncertain_answer_gap` actions, next steps and success criteria.
 - `GET /api/v1/ai/daily-briefing` can include an `AI-Wissenskontext` section from visible RAG sources.
-- `GET /api/v1/machines/maintenance-recommendations` returns read-only preventive maintenance recommendations from visible task/error history.
+- `GET /api/v1/machines/maintenance-recommendations` returns read-only Maintenance Recommendation Light results from visible task, error, maintenance-plan, report and RAG history. It is heuristic and explicitly not a predictive-maintenance forecast.
+
+Provider behavior:
+- `AI_PROVIDER=openai` uses the official OpenAI-compatible client with `OPENAI_API_KEY`.
+- `AI_PROVIDER=openai_compatible` uses the same client with `AI_BASE_URL` for local OpenAI-compatible endpoints.
+- `EMBEDDING_PROVIDER=openai_compatible` also uses `AI_BASE_URL` for local OpenAI-compatible embedding APIs and falls back to hashing when required config is missing.
+- `AI_PROVIDER=mock` keeps all standard tests and local fallback workflows offline.
+- Unsupported providers such as `gemini` currently fall back visibly to `mock` until a dedicated adapter is implemented.
 
 ### Automated Knowledge Lifecycle
 
@@ -443,6 +502,21 @@ python -m pytest tests --cov=app --cov-report=term-missing --cov-fail-under=75
 
 Tests use an in-memory SQLite database and a mock AI provider. No `.env` or
 external services are required for the standard test suite.
+
+Focused AI/RAG checks:
+
+```bash
+python -m pytest tests/test_rag_services.py
+python -m pytest tests/test_ai_features.py
+python -m pytest tests/test_retrieval_evaluation_service.py
+python -m pytest tests/test_ai_retrieval_golden_questions.py
+```
+
+The retrieval evaluation harness uses golden questions with expected sources,
+expected source types, expected keywords, Recall@K, MRR, nDCG, no-result rate
+permission-leak checks, and query-type accuracy for the local query
+understanding layer. Persisted evaluation history stores only aggregate
+metrics, not raw query text, expected sources or retrieved chunk text.
 
 ## License
 

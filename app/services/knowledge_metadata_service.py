@@ -133,6 +133,11 @@ def _safe_chunk_metadata(metadata):
     for key in (
         "chunk_index",
         "chunk_order",
+        "chunk_char_count",
+        "chunk_line_count",
+        "chunk_token_count",
+        "chunk_block_count",
+        "chunk_block_kinds",
         "source_offset",
         "source_section",
         "section_title",
@@ -144,7 +149,16 @@ def _safe_chunk_metadata(metadata):
         value = metadata.get(key)
         if value in (None, ""):
             continue
-        if key in {"chunk_index", "chunk_order", "source_offset", "semantic_group"}:
+        if key in {
+            "chunk_index",
+            "chunk_order",
+            "chunk_char_count",
+            "chunk_line_count",
+            "chunk_token_count",
+            "chunk_block_count",
+            "source_offset",
+            "semantic_group",
+        }:
             safe[key] = _optional_int(value)
             continue
         if key == "semantic_break_distance":
@@ -190,6 +204,8 @@ def _source_entity_metadata(document):
         return _generated_document_entity_metadata(document.source_id)
     if document.source_type == "error_entry":
         return _error_entry_entity_metadata(document.source_id)
+    if document.source_type == "task":
+        return _task_entity_metadata(document.source_id)
     if document.source_type == "machine":
         return _machine_entity_metadata(document.source_id)
     if document.source_type == "inventory_material":
@@ -198,9 +214,52 @@ def _source_entity_metadata(document):
         return _maintenance_plan_entity_metadata(document.source_id)
     if document.source_type == "machine_manual":
         return _machine_manual_entity_metadata(document.source_id)
+    if document.source_type == "shift_handover":
+        return _shift_handover_entity_metadata(document.source_id)
     if document.source_type == "manual_training":
         return _manual_training_entity_metadata(document.source_id)
     return {}
+
+
+def structured_source_record(document):
+    """Return the structured source row for metadata enrichment."""
+    if not getattr(document, "source_id", None):
+        return None
+    model_by_type = {
+        "generated_document": GeneratedDocument,
+        "error_entry": ErrorEntry,
+        "machine": Machine,
+        "task": Task,
+        "inventory_material": InventoryMaterial,
+        "maintenance_plan": MaintenancePlan,
+        "machine_manual": MachineManual,
+        "shift_handover": ShiftHandover,
+    }
+    model = model_by_type.get(str(getattr(document, "source_type", "") or ""))
+    if model is None:
+        return None
+    return db.session.get(model, document.source_id)
+
+
+def structured_source_created_at(document):
+    """Return source creation time for structured sources when available."""
+    source = structured_source_record(document)
+    created_at = getattr(source, "created_at", None) if source else None
+    return created_at.isoformat() if created_at else ""
+
+
+def structured_source_machine_id(document):
+    """Return the source-linked machine id when the source model exposes one."""
+    source = structured_source_record(document)
+    if not source:
+        return None
+    if str(getattr(document, "source_type", "") or "") == "machine":
+        return _optional_int(getattr(source, "id", None))
+    machine_id = getattr(source, "machine_id", None)
+    if machine_id not in (None, ""):
+        return _optional_int(machine_id)
+    machine = getattr(source, "machine", None)
+    return _optional_int(getattr(machine, "id", None))
 
 
 def _generated_document_entity_metadata(document_id):
@@ -224,6 +283,18 @@ def _error_entry_entity_metadata(error_id):
         "machine": entry.machine,
         "error_code": entry.error_code,
         "department": entry.department.name if entry.department else "",
+    }
+
+
+def _task_entity_metadata(task_id):
+    """Return entity metadata for a task source."""
+    task = db.session.get(Task, task_id)
+    if not task:
+        return {}
+    return {
+        "department": task.department.name if task.department else "",
+        "task_status": task.status.value if task.status else "",
+        "task_priority": task.priority.value if task.priority else "",
     }
 
 
@@ -272,6 +343,18 @@ def _machine_manual_entity_metadata(manual_id):
     }
 
 
+def _shift_handover_entity_metadata(handover_id):
+    """Return entity metadata for a shift handover source."""
+    handover = db.session.get(ShiftHandover, handover_id)
+    if not handover:
+        return {}
+    return {
+        "machine": handover.machine.name if handover.machine else "",
+        "department": handover.department,
+        "shift_type": handover.shift_type,
+    }
+
+
 def _manual_training_entity_metadata(entry_id):
     """Return entity metadata for manual assistant training."""
     entry = db.session.get(AssistantTrainingEntry, entry_id)
@@ -294,11 +377,16 @@ __all__ = [
     "_optional_int",
     "document_entity_metadata",
     "_source_entity_metadata",
+    "structured_source_record",
+    "structured_source_created_at",
+    "structured_source_machine_id",
     "_generated_document_entity_metadata",
     "_error_entry_entity_metadata",
+    "_task_entity_metadata",
     "_machine_entity_metadata",
     "_inventory_entity_metadata",
     "_maintenance_plan_entity_metadata",
     "_machine_manual_entity_metadata",
+    "_shift_handover_entity_metadata",
     "_manual_training_entity_metadata",
 ]

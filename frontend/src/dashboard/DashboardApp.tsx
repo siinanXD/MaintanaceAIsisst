@@ -6,7 +6,6 @@ import {
   completeDashboardTask,
   createDashboardTask,
   loadDashboardRuntimeData,
-  loadDashboardShiftCalendar,
   loadDashboardTask,
   startDashboardTask,
   suggestDashboardTask,
@@ -47,7 +46,6 @@ export function DashboardApp(): ReactNode {
   const [activeTask, setActiveTask] = useState<DashboardPayload | null>(null);
   const [isTaskBusy, setIsTaskBusy] = useState(false);
   const [isShiftCalendarLoading, setIsShiftCalendarLoading] = useState(true);
-  const [selectedShiftEmployeeId, setSelectedShiftEmployeeId] = useState("");
   const [shiftCalendar, setShiftCalendar] = useState<DashboardShiftCalendar | null>(null);
   const [taskMessage, setTaskMessage] = useState("");
   const [cockpitMessage, setCockpitMessage] = useState("");
@@ -102,11 +100,7 @@ export function DashboardApp(): ReactNode {
     async function refreshShiftCalendar(): Promise<void> {
       setIsShiftCalendarLoading(true);
       try {
-        if (selectedShiftEmployeeId) {
-          setShiftCalendar(await loadDashboardShiftCalendar(selectedShiftEmployeeId, controller.signal));
-        } else {
-          setShiftCalendar(employeesToShiftCalendar(dashboardState.data.employees));
-        }
+        setShiftCalendar(employeesToShiftCalendar(dashboardState.data.employees));
       } catch (error) {
         if (!controller.signal.aborted) {
           setShiftCalendar({ entries: [], message: safeErrorMessage(error, "Schichtkalender konnte nicht geladen werden.") });
@@ -127,7 +121,7 @@ export function DashboardApp(): ReactNode {
       controller.abort();
       window.clearInterval(intervalId);
     };
-  }, [dashboardState.data.employees, selectedShiftEmployeeId]);
+  }, [dashboardState.data.employees]);
 
   /**
    * Open one task in the React dashboard detail modal.
@@ -267,7 +261,6 @@ export function DashboardApp(): ReactNode {
         onCompleteTask={handleCompleteTask}
         onOpenTask={handleOpenTask}
         onStartTask={handleStartTask}
-        onShiftEmployeeChange={setSelectedShiftEmployeeId}
         onUpdateTask={handleUpdateTask}
         cockpitMessage={cockpitMessage}
         draftTask={draftTask}
@@ -277,7 +270,6 @@ export function DashboardApp(): ReactNode {
         onDraftSubmit={(payload) => void handleDraftSubmit(payload)}
         onSuggestSubmit={(text) => void handleSuggestSubmit(text)}
         onSuggestTextChange={setSuggestText}
-        selectedShiftEmployeeId={selectedShiftEmployeeId}
         shiftCalendar={shiftCalendar}
         suggestText={suggestText}
         taskMessage={taskMessage}

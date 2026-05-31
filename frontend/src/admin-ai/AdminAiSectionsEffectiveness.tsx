@@ -38,7 +38,7 @@ const SAFETY_FIELDS = [
     "Viele Ausweichbetriebe deuten auf Anbieter-, Quellen- oder Prompt-Probleme hin."
   ],
   ["safety_risk_count", "Sicherheitsrisiken", "Riskante Aussagen müssen fachlich kontrolliert werden."],
-  ["no_source_rate", "Ohne Quellen", "Antworten ohne Quellen brauchen Datenpflege oder klarere Prompts."],
+  ["no_source_rate", "Antworten ohne Quellen", "Antworten ohne Quellen brauchen Datenpflege oder klarere Prompts."],
   [
     "low_confidence_rate",
     "Niedrige Sicherheit",
@@ -66,7 +66,7 @@ export function AdminAiEffectiveness({ effectivenessState }: AdminAiEffectivenes
             <span className="section-kicker">4. Kosten & Effektivität</span>
             <h3>Was kostet die KI und wie gut wirkt sie?</h3>
             <p className="panel-meta">
-              Kosten pro App-Nutzer werden mit Feedback, Quellenabdeckung und No-Source-Rate
+              Kosten pro App-Nutzer werden mit Feedback, Quellenabdeckung und Antworten ohne Quellen
               zusammengeführt.
             </p>
           </div>

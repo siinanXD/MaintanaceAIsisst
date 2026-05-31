@@ -2,7 +2,7 @@ import { type ReactNode } from "react";
 
 import type { AdminAiOverviewLoadState } from "./adminAiOverviewModel";
 import { AdminAiOverviewActivity } from "./AdminAiOverviewActivity";
-import { AdminAiOverviewIntro, AdminAiOverviewStatus } from "./AdminAiOverviewStatus";
+import { AdminAiOverviewStatus } from "./AdminAiOverviewStatus";
 import { AdminAiOverviewProvider } from "./AdminAiOverviewProvider";
 
 type AdminAiOverviewProps = {
@@ -24,19 +24,16 @@ export function AdminAiOverview({
   overviewState
 }: AdminAiOverviewProps): ReactNode {
   return (
-    <>
-      <AdminAiOverviewIntro />
-      <section className="ai-admin-area" id="ai-models" data-ai-admin-area="overview">
-        <AdminAiOverviewStatus overviewState={overviewState} />
-        <AdminAiOverviewActivity
-          onChatQueryChange={onChatQueryChange}
-          onEventErrorChange={onEventErrorChange}
-          overviewChatQuery={overviewChatQuery}
-          overviewEventError={overviewEventError}
-          overviewState={overviewState}
-        />
-        <AdminAiOverviewProvider overviewState={overviewState} />
-      </section>
-    </>
+    <section className="ai-admin-area" id="ai-models" data-ai-admin-area="overview">
+      <AdminAiOverviewStatus overviewState={overviewState} />
+      <AdminAiOverviewActivity
+        onChatQueryChange={onChatQueryChange}
+        onEventErrorChange={onEventErrorChange}
+        overviewChatQuery={overviewChatQuery}
+        overviewEventError={overviewEventError}
+        overviewState={overviewState}
+      />
+      <AdminAiOverviewProvider overviewState={overviewState} />
+    </section>
   );
 }

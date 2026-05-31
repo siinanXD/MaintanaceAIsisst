@@ -155,7 +155,8 @@ def error_assistant():
         matches      — scored catalog entries (entry, score, reason)
         causes       — deduplicated list of possible-cause strings
         fixes        — deduplicated list of solution strings
-        diagnostics  — search metadata and ai_enhanced flag
+        root_cause_analysis — possible causes, similar cases, next steps and confidence
+        diagnostics  — search metadata, ai_enhanced flag and RCA confidence
     """
     user = current_user()
     if not has_dashboard_permission(user, "errors", "view"):

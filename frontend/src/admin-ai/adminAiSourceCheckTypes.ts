@@ -1,4 +1,4 @@
-import { type AdminAiPayload } from "./adminAiApi";
+﻿import { type AdminAiPayload } from "./adminAiApi";
 
 export type AdminAiSourceTestMode = "dry" | "live";
 
@@ -30,6 +30,7 @@ export type AdminAiSourceCheckState = {
   readonly latestTest: AdminAiSourceTestRecord | null;
   readonly promptMeta: string;
   readonly promptPreview: string;
+  readonly reportedSourceCount: number;
   readonly sources: readonly AdminAiSourceTestSource[];
   readonly stateClassName: string;
   readonly stateLabel: string;
@@ -46,18 +47,18 @@ const EMPTY_SOURCE_KPIS: AdminAiSourceTestKpis = {
 
 export const EMPTY_ADMIN_AI_SOURCE_CHECK_STATE: AdminAiSourceCheckState = {
   actionsVisible: false,
-  answerText:
-    "Wähle Dry-run für Prompt/Kosten-Nähe oder Live-Test für echte Antwort mit Quellen.",
+  answerText: "Waehle Dry-run für Prompt/Kosten-Naehe oder Live-Test für echte Antwort mit Quellen.",
   errorMessage: "",
   isRunning: false,
   isSaving: false,
   kpis: EMPTY_SOURCE_KPIS,
   latestTest: null,
   promptMeta: "Noch kein Dry-run",
-  promptPreview: "Wähle Workflow und Frage.",
+  promptPreview: "Waehle Workflow und Frage.",
+  reportedSourceCount: 0,
   sources: [],
   stateClassName: "status-pill is-muted",
   stateLabel: "Bereit",
   statusMessage: "",
-  testMeta: "Noch keine Testfrage ausgeführt"
+  testMeta: "Noch keine Testfrage ausgefuehrt"
 };

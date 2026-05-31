@@ -28,13 +28,13 @@ import {
 /**
  * Load RAG Board data and expose filter and mutation helpers.
  */
-export function useAdminAiRagBoardData(adminAiView: AdminAiView) {
+export function useAdminAiRagBoardData(adminAiView: AdminAiView, canUseAdminAiApi: boolean) {
   const [ragBoardState, setRagBoardState] = useState<AdminAiRagBoardState>(
     EMPTY_ADMIN_AI_RAG_BOARD_STATE
   );
 
   useEffect(() => {
-    if (adminAiView !== "rag_board") return undefined;
+    if (adminAiView !== "rag_board" || !canUseAdminAiApi) return undefined;
 
     const controller = new AbortController();
     void refreshRagBoard(controller.signal);
@@ -42,7 +42,7 @@ export function useAdminAiRagBoardData(adminAiView: AdminAiView) {
     return () => {
       controller.abort();
     };
-  }, [adminAiView, ragBoardState.filters]);
+  }, [adminAiView, canUseAdminAiApi, ragBoardState.filters]);
 
   /**
    * Load all React-owned RAG Board datasets with partial failure handling.

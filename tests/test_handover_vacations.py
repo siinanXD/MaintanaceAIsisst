@@ -1,7 +1,16 @@
 """Tests for handover and vacation workflows."""
 
+from datetime import date
+
 from app.extensions import db
-from app.models import Employee, EmployeeMachineQualification, Role
+from app.models import (
+    Department,
+    Employee,
+    EmployeeMachineQualification,
+    MaintenancePlan,
+    Priority,
+    Role,
+)
 
 
 def _add_machine_qualifications(app, employee_ids, machine_ids, level="trained"):
@@ -215,6 +224,205 @@ def test_handover_list_filters_by_department(client, make_user, auth_headers):
     assert resp.status_code == 200
     data = resp.get_json()["data"]
     assert all(h["department"] == "Produktion" for h in data)
+
+
+def test_handover_summary_combines_tasks_errors_and_next_actions(
+    app,
+    client,
+    make_user,
+    make_machine,
+    make_task,
+    make_error_entry,
+    auth_headers,
+):
+    """Handover summaries combine the logbook with visible tasks and disruptions."""
+    admin = make_user(username="ho_summary_admin", role=Role.MASTER_ADMIN, department_name=None)
+    machine_id = make_machine(name="Handover Presse", produced_item="Gehaeuse")
+    make_task(
+        "Hydraulikdruck Handover Presse pruefen",
+        creator_username=admin["username"],
+        department_name="Produktion",
+        priority=Priority.URGENT,
+        description="Druck schwankt seit der Fruehschicht.",
+    )
+    make_error_entry(
+        machine="Handover Presse",
+        error_code="HO-77",
+        title="Druck schwankt",
+        department_name="Produktion",
+        possible_causes="Hydraulikfilter verschmutzt",
+        solution="Filter pruefen und Druckmessung wiederholen",
+    )
+    with app.app_context():
+        department = Department.query.filter_by(name="Produktion").one()
+        db.session.add(
+            MaintenancePlan(
+                title="Handover Presse Hydraulik Wartung",
+                description="Druckschwankung und Filtereinsatz nach Schicht pruefen.",
+                interval_days=14,
+                next_due_date=date.today(),
+                priority=Priority.URGENT,
+                is_active=True,
+                machine_id=machine_id,
+                department=department,
+                created_by=admin["id"],
+            )
+        )
+        db.session.commit()
+    headers = auth_headers(admin["username"])
+    create_resp = client.post(
+        "/api/v1/handover",
+        headers=headers,
+        json={
+            "department": "Produktion",
+            "machine_id": machine_id,
+            "shift_date": "2026-07-04",
+            "shift_type": "Spaet",
+            "production_status": "reduced",
+            "machine_status": "warning",
+            "problem_category": "Hydraulik",
+            "machine_notes": "Druckabfall bei Lastwechsel beobachtet.",
+            "next_notes": "Druck im ersten Auftrag beobachten.",
+            "follow_up_task": "Filtereinsatz vor Nachtschicht pruefen.",
+        },
+    )
+    handover_id = create_resp.get_json()["data"]["id"]
+
+    response = client.get(f"/api/v1/handover/{handover_id}/summary", headers=headers)
+
+    payload = response.get_json()["data"]
+    assert response.status_code == 200
+    assert payload["handover"]["machine_id"] == machine_id
+    assert payload["diagnostics"]["status"] == "local_handover_summary"
+    assert payload["diagnostics"]["open_task_count"] >= 1
+    assert payload["diagnostics"]["disruption_count"] >= 1
+    assert payload["diagnostics"]["maintenance_plan_count"] >= 1
+    assert "tasks" in payload["diagnostics"]["scopes"]
+    assert "errors" in payload["diagnostics"]["scopes"]
+    assert "machines" in payload["diagnostics"]["scopes"]
+    assert payload["confidence"]["score"] >= 50
+    assert payload["confidence"]["uncertainty"] in {"low", "medium", "high"}
+    assert payload["source_counts"]["handover_fields"] >= 2
+    assert payload["source_counts"]["open_tasks"] >= 1
+    assert payload["source_counts"]["disruptions"] >= 1
+    assert payload["source_counts"]["maintenance_plans"] >= 1
+    assert payload["source_counts"]["uses_only_visible_sources"] is True
+    evidence_summary = payload["evidence_summary"]
+    assert evidence_summary["workflow"] == "shift_handover_summary"
+    assert evidence_summary["provider"] == "local_rules"
+    assert evidence_summary["uses_only_visible_sources"] is True
+    assert evidence_summary["llm_call"] is False
+    assert evidence_summary["has_open_task_context"] is True
+    assert evidence_summary["has_disruption_context"] is True
+    assert evidence_summary["has_maintenance_plan_context"] is True
+    assert {"shift_handover", "task", "error", "maintenance_plan"} <= set(
+        evidence_summary["source_types"]
+    )
+    assert evidence_summary["direct_source_count"] >= 4
+    assert evidence_summary["latest_signal_at"]
+    source_references = evidence_summary["source_references"]
+    assert {source["type"] for source in source_references} >= {
+        "shift_handover",
+        "task",
+        "error",
+        "maintenance_plan",
+    }
+    task_reference = next(source for source in source_references if source["type"] == "task")
+    error_reference = next(source for source in source_references if source["type"] == "error")
+    plan_reference = next(
+        source for source in source_references if source["type"] == "maintenance_plan"
+    )
+    assert task_reference["title"]
+    assert task_reference["role_visibility"] == "department:Produktion"
+    assert task_reference["created_at"]
+    assert error_reference["error_code"] == "HO-77"
+    assert error_reference["machine"] == "Handover Presse"
+    assert any(source["machine_id"] == machine_id for source in source_references)
+    assert plan_reference["due_date"] == date.today().isoformat()
+    assert all("solution" not in source for source in source_references)
+    assert any("Druckabfall" in point["text"] for point in payload["critical_points"])
+    assert any("Hydraulikdruck" in task["title"] for task in payload["open_tasks"])
+    assert any(item["error_code"] == "HO-77" for item in payload["disruptions"])
+    assert payload["maintenance_plans"][0]["title"] == "Handover Presse Hydraulik Wartung"
+    assert any("Filter" in action["text"] for action in payload["next_actions"])
+    assert any(action["source"] == "maintenance_plan" for action in payload["next_actions"])
+    task_action = next(action for action in payload["next_actions"] if action["source"] == "task")
+    error_action = next(
+        action for action in payload["next_actions"] if action["source"] == "error_solution"
+    )
+    plan_action = next(
+        action for action in payload["next_actions"] if action["source"] == "maintenance_plan"
+    )
+    assert task_action["source_id"]
+    assert task_action["title"]
+    assert task_action["due_date"]
+    assert error_action["error_code"] == "HO-77"
+    assert error_action["source_id"]
+    assert plan_action["source_id"]
+    assert plan_action["due_date"]
+
+
+def test_handover_summary_respects_task_and_error_permissions(
+    client,
+    make_user,
+    make_task,
+    make_error_entry,
+    auth_headers,
+    set_dashboard_permission,
+):
+    """Summary context does not include task or error data without those scopes."""
+    user = make_user(
+        username="ho_summary_limited",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+    set_dashboard_permission(user["username"], "shiftplans", can_view=True, can_write=True)
+    set_dashboard_permission(user["username"], "tasks", can_view=False)
+    set_dashboard_permission(user["username"], "errors", can_view=False)
+    set_dashboard_permission(user["username"], "machines", can_view=False)
+    make_task(
+        "Nicht sichtbarer Task",
+        creator_username=user["username"],
+        department_name="Produktion",
+        priority=Priority.URGENT,
+    )
+    make_error_entry(
+        machine="Nicht sichtbare Anlage",
+        error_code="NO-1",
+        title="Nicht sichtbarer Fehler",
+        department_name="Produktion",
+    )
+    headers = auth_headers(user["username"])
+    create_resp = client.post(
+        "/api/v1/handover",
+        headers=headers,
+        json={
+            "department": "Produktion",
+            "shift_date": "2026-07-05",
+            "shift_type": "Nacht",
+            "content": "Nur Uebergabetext sichtbar.",
+        },
+    )
+    handover_id = create_resp.get_json()["data"]["id"]
+
+    response = client.get(f"/api/v1/handover/{handover_id}/summary", headers=headers)
+
+    payload = response.get_json()["data"]
+    assert response.status_code == 200
+    assert payload["open_tasks"] == []
+    assert payload["disruptions"] == []
+    assert payload["source_counts"]["open_tasks"] == 0
+    assert payload["source_counts"]["disruptions"] == 0
+    assert payload["source_counts"]["uses_only_visible_sources"] is True
+    assert payload["confidence"]["uncertainty"] == "high"
+    assert payload["evidence_summary"]["source_types"] == ["shift_handover"]
+    assert [
+        source["type"] for source in payload["evidence_summary"]["source_references"]
+    ] == ["shift_handover"]
+    assert payload["evidence_summary"]["has_open_task_context"] is False
+    assert payload["evidence_summary"]["has_disruption_context"] is False
+    assert payload["evidence_summary"]["llm_call"] is False
+    assert payload["diagnostics"]["scopes"] == ["handover"]
 
 
 def test_vacation_request_pending_flow(client, make_user, make_employee, auth_headers):

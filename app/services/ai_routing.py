@@ -81,17 +81,22 @@ def workflow_profile(workflow, legacy_model=None):
     )
 
 
-def openai_client_options(profile=None):
-    """Return OpenAI client options for timeout and retry control."""
+def openai_client_options(profile=None, allow_base_url=True):
+    """Return OpenAI client options for timeout, retry, and optional base URL control."""
     if profile is not None:
-        return {
+        options = {
             "timeout": profile.timeout_seconds,
             "max_retries": profile.max_retries,
         }
-    return {
-        "timeout": float(current_app.config.get("AI_TIMEOUT_SECONDS", 10)),
-        "max_retries": int(current_app.config.get("AI_MAX_RETRIES", 1)),
-    }
+    else:
+        options = {
+            "timeout": float(current_app.config.get("AI_TIMEOUT_SECONDS", 10)),
+            "max_retries": int(current_app.config.get("AI_MAX_RETRIES", 1)),
+        }
+    base_url = str(current_app.config.get("AI_BASE_URL") or "").strip()
+    if allow_base_url and base_url:
+        options["base_url"] = base_url
+    return options
 
 
 def call_timer():
@@ -181,20 +186,25 @@ def ai_price_configuration_status():
 def _workflow_model(workflow):
     """Return an optional workflow-specific model override."""
     key = f"OPENAI_MODEL_{_safe_price_key(workflow)}"
-    return current_app.config.get(key) or os.getenv(key)
+    return _configured_text(current_app.config.get(key)) or _configured_text(os.getenv(key))
 
 
 def _tier_model(tier, legacy_model=None):
     """Return the configured model for a routing tier."""
     key = f"OPENAI_MODEL_{tier.upper()}"
     return (
-        current_app.config.get(key)
-        or legacy_model
-        or current_app.config.get("OPENAI_MODEL")
-        or os.getenv(key)
-        or os.getenv("OPENAI_MODEL")
+        _configured_text(current_app.config.get(key))
+        or _configured_text(legacy_model)
+        or _configured_text(current_app.config.get("OPENAI_MODEL"))
+        or _configured_text(os.getenv(key))
+        or _configured_text(os.getenv("OPENAI_MODEL"))
         or DEFAULT_MODELS[tier]
     )
+
+
+def _configured_text(value):
+    """Return stripped config text, or an empty string when unset."""
+    return str(value or "").strip()
 
 
 def _workflow_default_timeout(workflow):

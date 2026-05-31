@@ -152,6 +152,14 @@ def _scores(sources, explainability):
             {
                 "type": source.get("type"),
                 "id": source.get("id"),
+                "source_type": _bounded(source.get("source_type"), 80),
+                "source_id": _optional_int(source.get("source_id")),
+                "source_record_id": _optional_int(source.get("source_record_id")),
+                "source_kind": _bounded(source.get("source_kind"), 80),
+                "knowledge_source_type": _bounded(source.get("knowledge_source_type"), 80),
+                "module": _bounded(source.get("module"), 80),
+                "machine_id": _optional_int(source.get("machine_id")),
+                "role_visibility": _bounded(source.get("role_visibility"), 140),
                 "chunk_id": source.get("chunk_id"),
                 "score": source.get("score"),
                 "final_score": (source.get("explainability") or {}).get("final_score"),
@@ -187,6 +195,15 @@ def _flow_source(source, rank):
         "rank": rank,
         "type": source.get("type") or "knowledge",
         "id": source.get("id"),
+        "source_type": _bounded(source.get("source_type"), 80),
+        "source_id": _optional_int(source.get("source_id")),
+        "source_record_id": _optional_int(source.get("source_record_id")),
+        "source_kind": _bounded(source.get("source_kind"), 80),
+        "knowledge_source_type": _bounded(source.get("knowledge_source_type"), 80),
+        "module": _bounded(source.get("module"), 80),
+        "machine_id": _optional_int(source.get("machine_id")),
+        "role_visibility": _bounded(source.get("role_visibility"), 140),
+        "created_at": _bounded(source.get("created_at"), 40),
         "chunk_id": source.get("chunk_id"),
         "section_title": source.get("section_title") or source.get("source_section") or "",
         "chunk_order": source.get("chunk_order"),
@@ -466,6 +483,9 @@ def _machine_references(explainability, diagnostics):
                 {
                     "source_type": source.get("type"),
                     "source_id": source.get("id"),
+                    "source_record_id": _optional_int(source.get("source_record_id")),
+                    "knowledge_source_type": _bounded(source.get("knowledge_source_type"), 80),
+                    "machine_id": _optional_int(source.get("machine_id")),
                     "chunk_id": source.get("chunk_id"),
                     "reasons": reasons,
                     "machine_match": details.get("machine_match"),
@@ -498,5 +518,15 @@ def _optional_float(value):
         return None
     try:
         return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _optional_int(value):
+    """Return an optional integer value."""
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
     except (TypeError, ValueError):
         return None

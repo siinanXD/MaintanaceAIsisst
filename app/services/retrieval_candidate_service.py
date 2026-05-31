@@ -57,12 +57,19 @@ class RetrievalCandidate:
             "relevance": round(max(self.normalized_score, 0), 2),
         }
         _copy_optional(source, self.metadata, "chunk_id")
+        _copy_optional(source, self.metadata, "source_type")
+        _copy_optional(source, self.metadata, "source_id")
         _copy_optional(source, self.metadata, "source_kind")
         _copy_optional(source, self.metadata, "knowledge_source_type")
         _copy_optional(source, self.metadata, "source_record_id")
         _copy_optional(source, self.metadata, "document_type")
         _copy_optional(source, self.metadata, "department")
         _copy_optional(source, self.metadata, "machine")
+        _copy_optional(source, self.metadata, "machine_id")
+        _copy_optional(source, self.metadata, "role_visibility")
+        _copy_optional(source, self.metadata, "role")
+        _copy_optional(source, self.metadata, "employee_access_level")
+        _copy_optional(source, self.metadata, "created_at")
         _copy_optional(source, self.metadata, "machine_match")
         _copy_optional(source, self.metadata, "machine_match_reasons")
         _copy_optional(source, self.metadata, "explainability")
@@ -70,6 +77,8 @@ class RetrievalCandidate:
         _copy_optional(source, self.metadata, "section_title")
         _copy_optional(source, self.metadata, "source_offset")
         _copy_optional(source, self.metadata, "chunk_order")
+        _copy_optional(source, self.metadata, "chunk_block_count")
+        _copy_optional(source, self.metadata, "chunk_block_kinds")
         _copy_optional(source, self.metadata, "chunking_mode")
         _copy_optional(source, self.metadata, "semantic_group")
         _copy_optional(source, self.metadata, "semantic_break_distance")
@@ -153,12 +162,17 @@ def vector_result_candidate(result, include_score_debug=False):
     )
     candidate_metadata = {
         "chunk_id": metadata.get("chunk_id"),
+        "source_type": metadata.get("source_type"),
+        "source_id": metadata.get("source_id"),
         "source_kind": "rag",
         "knowledge_source_type": metadata.get("source_type"),
         "source_record_id": metadata.get("source_id"),
         "document_type": metadata.get("document_type"),
         "department": metadata.get("department"),
         "machine": metadata.get("machine"),
+        "machine_id": metadata.get("machine_id"),
+        "role_visibility": metadata.get("role_visibility"),
+        "created_at": metadata.get("created_at"),
         "machine_match": explainability.get("machine_match", 0),
         "machine_match_reasons": explainability.get("machine_match_reasons", []),
         "explainability": explainability,
@@ -167,6 +181,12 @@ def vector_result_candidate(result, include_score_debug=False):
     _copy_optional(candidate_metadata, metadata, "section_title")
     _copy_optional(candidate_metadata, metadata, "source_offset")
     _copy_optional(candidate_metadata, metadata, "chunk_order")
+    chunk_block_count = _optional_int(metadata.get("chunk_block_count"))
+    if chunk_block_count is not None:
+        candidate_metadata["chunk_block_count"] = chunk_block_count
+    chunk_block_kinds = _chunk_block_kinds(metadata.get("chunk_block_kinds"))
+    if chunk_block_kinds:
+        candidate_metadata["chunk_block_kinds"] = chunk_block_kinds
     _copy_optional(candidate_metadata, metadata, "chunking_mode")
     _copy_optional(candidate_metadata, metadata, "semantic_group")
     _copy_optional(candidate_metadata, metadata, "semantic_break_distance")
@@ -201,6 +221,19 @@ def _copy_optional(target, source, key):
     value = source.get(key)
     if value not in (None, ""):
         target[key] = value
+
+
+def _chunk_block_kinds(value):
+    """Return prompt-safe chunk block kinds from vector metadata."""
+    if isinstance(value, list):
+        raw_values = value
+    else:
+        raw_values = str(value or "").split(",")
+    return [
+        str(kind).strip()[:40]
+        for kind in raw_values
+        if str(kind or "").strip()
+    ]
 
 
 def _positive_int(value, default):

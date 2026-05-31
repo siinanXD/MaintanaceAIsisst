@@ -59,6 +59,7 @@ export function ShiftplansApp(): ReactNode {
   const [savingEntry, setSavingEntry] = useState(false);
   const [selectedMachineIds, setSelectedMachineIds] = useState<ReadonlySet<number>>(new Set());
   const [selectedPlanIndex, setSelectedPlanIndex] = useState(0);
+  const [showGenerateDrawer, setShowGenerateDrawer] = useState(false);
   const [warnings, setWarnings] = useState<ShiftplanWarning[]>([]);
 
   const currentPlan = plans[selectedPlanIndex] || null;
@@ -112,6 +113,9 @@ export function ShiftplansApp(): ReactNode {
     refreshInitialData().catch((error: unknown) => {
       setFormMessage({ text: shiftplansErrorMessage(error, "Schichtplanung konnte nicht geladen werden."), isError: true });
     });
+    if (window.location.hash === "#shiftplan-generate") {
+      setShowGenerateDrawer(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -155,6 +159,9 @@ export function ShiftplansApp(): ReactNode {
       setFormMessage({ text: mode === "preview" ? "Vorschau erstellt. Noch nicht gespeichert." : "Plan erfolgreich generiert." });
       setWarnings([...(plan.warnings || [])]);
       await refreshInitialData(plan.id, plan);
+      if (mode === "generate") {
+        setShowGenerateDrawer(false);
+      }
     } catch (error) {
       setFormMessage({ text: `Fehler: ${shiftplansErrorMessage(error)}`, isError: true });
     } finally {
@@ -271,6 +278,8 @@ export function ShiftplansApp(): ReactNode {
       onDraftChange={setDraft}
       onEditEntry={setDialogEntry}
       onGenerate={() => submitPlan("generate")}
+      onGenerateClose={() => setShowGenerateDrawer(false)}
+      onGenerateOpen={() => setShowGenerateDrawer(true)}
       onMachineToggle={toggleMachine}
       onMoveEntryToEntry={moveToEntry}
       onMoveEntryToSlot={moveToSlot}
@@ -287,6 +296,7 @@ export function ShiftplansApp(): ReactNode {
       selectedPlanIndex={selectedPlanIndex}
       setDialogEntry={setDialogEntry}
       setDialogMessage={setDialogMessage}
+      showGenerateDrawer={showGenerateDrawer}
       warnings={warnings}
       writable={writable}
     />

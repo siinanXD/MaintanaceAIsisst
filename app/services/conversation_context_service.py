@@ -50,6 +50,7 @@ SOLUTION_LABEL_TERMS = (
 )
 RESPONSE_TYPE_SCOPES = {
     "tasks_today": {"tasks"},
+    "tasks_status": {"tasks"},
     "employee_count": {"employees"},
     "error_help": {"errors"},
     "order_plan": {"tasks", "machines", "inventory", "employees"},
@@ -73,6 +74,7 @@ class ConversationContext:
     previous_question: str = ""
     context_text: str = ""
     suggested_scopes: frozenset[str] = field(default_factory=frozenset)
+    recent_scopes: tuple[str, ...] = ()
 
     @property
     def applied(self):
@@ -116,6 +118,7 @@ class ConversationContext:
             "machine_names": list(self.machine_names),
             "error_codes": list(self.error_codes),
             "suggested_scopes": sorted(self.suggested_scopes),
+            "recent_scopes": list(self.recent_scopes),
         }
 
 
@@ -153,6 +156,7 @@ def conversation_context_for_chat(user, message, session_id=""):
     previous_solution = _previous_solution(scoped_messages)
     previous_question = _bounded_text(scoped_messages[-1].message, 220)
     suggested_scopes = _suggested_scopes(reference_detected, machine_names, error_codes)
+    recent_scopes = _recent_scopes(scoped_messages)
     context_text = _context_text(
         scoped_messages=scoped_messages,
         machine_names=machine_names,
@@ -170,6 +174,7 @@ def conversation_context_for_chat(user, message, session_id=""):
         previous_question=previous_question,
         context_text=context_text,
         suggested_scopes=frozenset(suggested_scopes),
+        recent_scopes=recent_scopes,
     )
 
 
@@ -219,6 +224,14 @@ def _chat_scopes(chat):
         scope = response_type.removesuffix("_count")
         return {"employees" if scope == "employee" else scope}
     return set()
+
+
+def _recent_scopes(messages):
+    """Return the union of scoped modules from recent allowed chat messages."""
+    scopes = set()
+    for chat in messages:
+        scopes |= _chat_scopes(chat)
+    return tuple(sorted(scopes))
 
 
 def _context_text(

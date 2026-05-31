@@ -4,6 +4,7 @@ import type { DocumentFilters, MessageState } from "../documentTypes";
 import { emptyDocumentFilters } from "../documentUtils";
 
 type DocumentFilterPanelProps = {
+  readonly drawerMode?: boolean;
   readonly filters: DocumentFilters;
   readonly message: MessageState;
   readonly onFiltersChange: (filters: DocumentFilters) => void;
@@ -20,7 +21,7 @@ function inputValue(event: ChangeEvent<HTMLInputElement>): string {
 /**
  * Render generated document filter controls.
  */
-export function DocumentFilterPanel({ filters, message, onFiltersChange, onSubmit }: DocumentFilterPanelProps): ReactNode {
+export function DocumentFilterPanel({ drawerMode = false, filters, message, onFiltersChange, onSubmit }: DocumentFilterPanelProps): ReactNode {
   /**
    * Submit the current filters.
    */
@@ -30,7 +31,7 @@ export function DocumentFilterPanel({ filters, message, onFiltersChange, onSubmi
   }
 
   return (
-    <details className="card app-card mobile-action-section lg:order-3 lg:col-span-12" data-default-collapsed="true" data-mobile-collapsible>
+    <details className="card app-card mobile-action-section lg:order-3 lg:col-span-12" data-default-collapsed="true" data-mobile-collapsible open={drawerMode}>
       <summary className="mobile-action-summary">
         <span>
           <span className="mobile-action-title">Filter</span>

@@ -64,6 +64,7 @@ export function HandoverApp(): ReactNode {
   const [listMessage, setListMessage] = useState<HandoverMessage>({ text: "Einträge werden geladen." });
   const [machines, setMachines] = useState<Machine[]>([]);
   const [savingDialog, setSavingDialog] = useState(false);
+  const [showCreateDrawer, setShowCreateDrawer] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const visibleHandovers = useMemo(
@@ -118,6 +119,7 @@ export function HandoverApp(): ReactNode {
       form.reset();
       setFormMessage({ text: "Übergabe gespeichert." });
       await refreshHandovers(filters);
+      setShowCreateDrawer(false);
     } catch (error) {
       setFormMessage({ text: `Fehler: ${handoverErrorMessage(error, "Übergabe konnte nicht gespeichert werden.")}`, isError: true });
     } finally {
@@ -211,6 +213,9 @@ export function HandoverApp(): ReactNode {
     loadInitialData().catch((error: unknown) => {
       setListMessage({ text: handoverErrorMessage(error), isError: true });
     });
+    if (window.location.hash === "#handover-workflow") {
+      setShowCreateDrawer(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -244,6 +249,8 @@ export function HandoverApp(): ReactNode {
         machines={machines}
         onCloseDialog={() => setEditHandover(null)}
         onComplete={completeSelectedHandover}
+        onCreateClose={() => setShowCreateDrawer(false)}
+        onCreateOpen={() => setShowCreateDrawer(true)}
         onEdit={openEditDialog}
         onFilter={applyFilters}
         onFilterChange={setFilters}
@@ -252,6 +259,7 @@ export function HandoverApp(): ReactNode {
         onSaveDialog={saveDialog}
         onSubmit={submitForm}
         savingDialog={savingDialog}
+        showCreateDrawer={showCreateDrawer}
         stats={stats}
         submitting={submitting}
         writable={writable}

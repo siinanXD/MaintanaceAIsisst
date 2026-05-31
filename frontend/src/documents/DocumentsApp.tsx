@@ -6,6 +6,8 @@ import {
 
 import { markIslandMounted } from "../app/islandMount";
 import { canWriteDashboard } from "../auth/permissions";
+import { ActionDrawer } from "../components/ui/ActionDrawer";
+import { createActionDefinition } from "../components/ui/createActionSchema";
 import { loadGeneratedDocuments, loadMachineManuals, loadMachines } from "./documentApi";
 import { DocumentFilterPanel } from "./components/DocumentFilterPanel";
 import { DocumentHeader } from "./components/DocumentHeader";
@@ -38,6 +40,7 @@ const DOCUMENTS_ISLAND = {
  */
 export function DocumentsApp(): ReactNode {
   const writable = canWriteDashboard("documents");
+  const [activeDrawer, setActiveDrawer] = useState<"filter" | "manual" | "upload-check" | null>(null);
   const [documents, setDocuments] = useState<GeneratedDocument[]>([]);
   const [filters, setFilters] = useState<DocumentFilters>(emptyDocumentFilters());
   const [manuals, setManuals] = useState<MachineManual[]>([]);
@@ -94,17 +97,14 @@ export function DocumentsApp(): ReactNode {
 
   return (
     <>
-      <DocumentHeader />
+      <DocumentHeader
+        onFilterOpen={() => setActiveDrawer("filter")}
+        onManualUploadOpen={() => setActiveDrawer("manual")}
+        onUploadCheckOpen={() => setActiveDrawer("upload-check")}
+        writable={writable}
+      />
       <DocumentStats documents={documents} manuals={manuals} />
       <section className="dashboard-grid">
-        <DocumentFilterPanel
-          filters={filters}
-          message={message}
-          onFiltersChange={setFilters}
-          onSubmit={submitFilters}
-        />
-        <UploadCheckPanel onReview={setReview} />
-        <ManualUploadPanel machines={machines} onUploaded={refreshManuals} />
         <ReviewPanel review={review} />
         <SummaryPanel summary={summary} />
         <GeneratedDocumentList
@@ -122,6 +122,45 @@ export function DocumentsApp(): ReactNode {
           writable={writable}
         />
       </section>
+      <ActionDrawer
+        definition={createActionDefinition("documentFilter")}
+        isOpen={activeDrawer === "filter"}
+        onClose={() => setActiveDrawer(null)}
+      >
+        <DocumentFilterPanel
+          drawerMode
+          filters={filters}
+          message={message}
+          onFiltersChange={setFilters}
+          onSubmit={async () => {
+            await submitFilters();
+            setActiveDrawer(null);
+          }}
+        />
+      </ActionDrawer>
+      <ActionDrawer
+        definition={createActionDefinition("documentUploadCheck")}
+        isOpen={activeDrawer === "upload-check"}
+        onClose={() => setActiveDrawer(null)}
+      >
+        <UploadCheckPanel onReview={(nextReview) => {
+          setReview(nextReview);
+          setActiveDrawer(null);
+        }} />
+      </ActionDrawer>
+      <ActionDrawer
+        definition={createActionDefinition("documentManualUpload")}
+        isOpen={activeDrawer === "manual"}
+        onClose={() => setActiveDrawer(null)}
+      >
+        <ManualUploadPanel
+          machines={machines}
+          onUploaded={async () => {
+            await refreshManuals();
+            setActiveDrawer(null);
+          }}
+        />
+      </ActionDrawer>
     </>
   );
 }

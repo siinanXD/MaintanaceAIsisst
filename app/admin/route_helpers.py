@@ -71,7 +71,7 @@ from app.services.database_schema_service import (
     database_schema_error_payload,
     database_schema_status as _default_database_schema_status,
 )
-from app.services.knowledge_gap_service import list_knowledge_gaps
+from app.services.knowledge_gap_service import knowledge_gap_detection, list_knowledge_gaps
 from app.services.knowledge_network_service import knowledge_network
 from app.services.knowledge_quality_service import change_knowledge_quality_status
 from app.services.knowledge_service import (

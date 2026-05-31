@@ -5,6 +5,7 @@ import type { MachineDraft, MessageState } from "../machineTypes";
 import { EMPTY_MACHINE_DRAFT, machineErrorMessage } from "../machineUtils";
 
 type MachineFormPanelProps = {
+  readonly drawerMode?: boolean;
   readonly hidden: boolean;
   readonly onCreated: () => Promise<void>;
 };
@@ -12,15 +13,24 @@ type MachineFormPanelProps = {
 /**
  * Render the create machine form.
  */
-export function MachineFormPanel({ hidden, onCreated }: MachineFormPanelProps): ReactNode {
+export function MachineFormPanel({ drawerMode = false, hidden, onCreated }: MachineFormPanelProps): ReactNode {
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState<MachineDraft>(EMPTY_MACHINE_DRAFT);
   const [message, setMessage] = useState<MessageState>({ text: "", error: false });
   const [open, setOpen] = useState(() => (
-    typeof window.matchMedia === "function"
-      ? !window.matchMedia("(max-width: 639px)").matches
-      : true
+    drawerMode || typeof window.matchMedia !== "function"
+      ? true
+      : !window.matchMedia("(max-width: 639px)").matches
   ));
+
+  /**
+   * Keep the machine form expanded in drawer mode.
+   */
+  function handleToggle(openState: boolean): void {
+    if (!drawerMode) {
+      setOpen(openState);
+    }
+  }
 
   /**
    * Update one machine draft field.
@@ -56,8 +66,8 @@ export function MachineFormPanel({ hidden, onCreated }: MachineFormPanelProps): 
       data-mobile-collapsible
       data-permission-write="machines"
       hidden={hidden}
-      onToggle={(event) => setOpen(event.currentTarget.open)}
-      open={open}
+      onToggle={(event) => handleToggle(event.currentTarget.open)}
+      open={drawerMode || open}
     >
       <summary className="mobile-action-summary">
         <span>
