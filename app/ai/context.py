@@ -39,10 +39,11 @@ from app.services.ai_safety_service import (
     enforce_post_generation_safety,
 )
 from app.services.ai_service import AIServiceError, MockAIProvider, get_ai_provider
+from app.services.ai_structured_source_service import module_count_source_card
 from app.services.conversation_context_service import conversation_context_for_chat
 from app.services.document_service import visible_documents_query
 from app.services.empty_retrieval_response_service import build_empty_retrieval_answer
-from app.services.error_service import search_errors
+from app.services.error_service import search_errors, visible_errors_query
 from app.services.incident_timeline_service import daily_briefing_timeline_section
 from app.services.knowledge_service import knowledge_sources_for_chat
 from app.services.order_planning_service import (
@@ -63,6 +64,12 @@ from app.services.retrieval_debug_service import (
 from app.services.retrieval_explainability_service import retrieval_explainability_summary
 from app.services.retrieval_service import knowledge_context_for_chat
 from app.services.task_service import visible_tasks_query
+from app.services.visibility_query_service import (
+    visible_employees_query,
+    visible_inventory_materials_query,
+    visible_machines_query,
+    visible_shiftplans_query,
+)
 
 LAST_OPENAI_ERROR = None
 OPENAI_PROVIDER = "OpenAI"
@@ -240,9 +247,7 @@ def build_catalog_context(user, preferred_entries):
 
     entries = list(preferred_entries)
     seen = {entry.id for entry in entries}
-    query = ErrorEntry.query
-    if not user.is_admin:
-        query = query.filter(ErrorEntry.department_id == user.department_id)
+    query = visible_errors_query(user)
     for entry in query.order_by(ErrorEntry.created_at.desc()).limit(20).all():
         if entry.id not in seen:
             entries.append(entry)
@@ -256,7 +261,7 @@ def build_employee_context(user):
         return permission_denied_context("Mitarbeiter", "employees"), []
 
     access_level = employee_access_level(user)
-    employees = Employee.query.order_by(Employee.name.asc()).limit(30).all()
+    employees = visible_employees_query(user).order_by(Employee.name.asc()).limit(30).all()
     if not employees:
         return "Keine sichtbaren Mitarbeiterdaten vorhanden.", []
 
@@ -296,7 +301,7 @@ def build_machine_context(user):
     if not has_dashboard_permission(user, "machines", "view"):
         return permission_denied_context("Maschinen", "machines"), []
 
-    machines = Machine.query.order_by(Machine.name.asc()).limit(30).all()
+    machines = visible_machines_query(user).order_by(Machine.name.asc()).limit(30).all()
     if not machines:
         return "Keine sichtbaren Maschinen vorhanden.", []
 
@@ -320,7 +325,8 @@ def build_inventory_context(user):
         return permission_denied_context("Lager", "inventory"), []
 
     materials = (
-        InventoryMaterial.query.order_by(
+        visible_inventory_materials_query(user)
+        .order_by(
             InventoryMaterial.quantity.asc(),
             InventoryMaterial.name.asc(),
         )
@@ -378,9 +384,7 @@ def build_shiftplan_context(user):
     if not has_dashboard_permission(user, "shiftplans", "view"):
         return permission_denied_context("Schichtplanung", "shiftplans"), []
 
-    query = ShiftPlan.query.order_by(ShiftPlan.created_at.desc())
-    if not user.is_admin:
-        query = query.filter(ShiftPlan.status == "published")
+    query = visible_shiftplans_query(user).order_by(ShiftPlan.created_at.desc())
     plans = query.limit(10).all()
     if not plans:
         return "Keine sichtbaren Schichtplaene vorhanden.", []
@@ -407,7 +411,7 @@ def format_employee_count(user):
     if not can_read_employee_context(user):
         return permission_denied_answer("Mitarbeiter"), []
 
-    count = Employee.query.count()
+    count = visible_employees_query(user).count()
     answer = "## Mitarbeiter\n" f"- **Gesamt:** {count}\n" "- **Quelle:** Mitarbeiterdatenbank"
     return answer, {"count": count}
 
@@ -428,19 +432,11 @@ def format_module_count(user, scope):
 
     count_query_map = {
         "tasks": visible_tasks_query(user),
-        "errors": ErrorEntry.query
-        if user.is_admin
-        else ErrorEntry.query.filter(
-            ErrorEntry.department_id == user.department_id,
-        ),
-        "machines": Machine.query,
-        "inventory": InventoryMaterial.query,
+        "errors": visible_errors_query(user),
+        "machines": visible_machines_query(user),
+        "inventory": visible_inventory_materials_query(user),
         "documents": visible_documents_query(user),
-        "shiftplans": ShiftPlan.query
-        if user.is_admin
-        else ShiftPlan.query.filter(
-            ShiftPlan.status == "published",
-        ),
+        "shiftplans": visible_shiftplans_query(user),
     }
     query = count_query_map.get(scope)
     if query is None:
@@ -449,6 +445,15 @@ def format_module_count(user, scope):
     label = DASHBOARD_SCOPE_LABELS[scope]
     answer = f"## {label}\n" f"- **Gesamt:** {count}\n" f"- **Quelle:** {label}"
     return answer, {"count": count}
+
+
+def count_answer_sources(scope, data, user):
+    """Return aggregate source cards for successful module count answers."""
+    if not isinstance(data, dict):
+        return []
+
+    source = module_count_source_card(scope, data.get("count"), user)
+    return [source] if source else []
 
 
 def answer_count_question(message, user, requested_scopes, allowed_scopes):
@@ -476,6 +481,7 @@ def answer_count_question(message, user, requested_scopes, allowed_scopes):
     if answer is None:
         return None
     status = "local_answer" if data else "permission_denied"
+    sources = count_answer_sources(scope, data, user)
     return attach_audit_metadata(
         user,
         {
@@ -483,7 +489,7 @@ def answer_count_question(message, user, requested_scopes, allowed_scopes):
             "answer": answer,
             "diagnostics": ai_diagnostics(status),
             "data": data or [],
-            "sources": [],
+            "sources": sources,
         },
         requested_scopes or {scope},
         allowed_scopes,
@@ -539,6 +545,7 @@ __all__ = [
     "build_shiftplan_context",
     "format_employee_count",
     "format_module_count",
+    "count_answer_sources",
     "answer_count_question",
     "should_use_general_hybrid_mode",
     "fallback_error_answer",

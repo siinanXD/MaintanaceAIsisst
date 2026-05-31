@@ -69,12 +69,47 @@ FORBIDDEN_INCIDENT_SOURCE_FIELDS = {
     "solution",
     "symptoms",
 }
+AGGREGATE_SOURCE_FIELDS = {
+    "count",
+    "created_at",
+    "id",
+    "module",
+    "role_visibility",
+    "source_id",
+    "source_kind",
+    "source_record_id",
+    "source_type",
+    "title",
+    "type",
+    "url",
+}
 
 
 def _assert_no_forbidden_source_fields(source, forbidden_fields):
     """Verify a source card does not expose fields reserved for data payloads."""
     for field in forbidden_fields:
         assert field not in source
+
+
+def _assert_aggregate_count_source(
+    source,
+    module,
+    url,
+    count,
+    extra_fields=frozenset(),
+):
+    """Verify one compact aggregate source card for a module count answer."""
+    assert set(source) == AGGREGATE_SOURCE_FIELDS | set(extra_fields)
+    assert source["type"] == "aggregate"
+    assert source["id"] is None
+    assert source["module"] == module
+    assert source["url"] == url
+    assert source["source_type"] == "module_count"
+    assert source["source_id"] is None
+    assert source["source_record_id"] is None
+    assert source["source_kind"] == "structured_aggregate"
+    assert source["created_at"]
+    assert source["count"] == count
 
 
 def test_ai_chat_returns_today_tasks_without_openai(
@@ -157,6 +192,70 @@ def test_ai_chat_answers_yesterday_closed_tasks_from_structured_data(
     assert titles == ["Gestern geschlossen sichtbar"]
     assert "Heute geschlossen nicht gestern" not in payload["answer"]
     assert "Gestern geschlossen fremd" not in payload["answer"]
+
+
+def test_ai_chat_task_status_answers_return_safe_source_cards(
+    client,
+    make_user,
+    make_task,
+    auth_headers,
+):
+    """Verify task-status answers expose source cards for visible task rows."""
+    user = make_user(username="ai_task_status_source_cards_user")
+    visible_id = make_task(
+        "Offener sichtbarer Status Task",
+        creator_username=user["username"],
+        status=TaskStatus.OPEN,
+        description="Interne Statusbeschreibung darf nicht in Source Cards stehen",
+    )
+    make_task(
+        "Offener fremder Status Task",
+        creator_username=user["username"],
+        department_name="IT",
+        status=TaskStatus.OPEN,
+    )
+    make_task(
+        "Erledigter sichtbarer Status Task",
+        creator_username=user["username"],
+        status=TaskStatus.DONE,
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Tasks sind offen?"},
+    )
+
+    payload = response.get_json()
+    sources = payload["sources"]
+    assert response.status_code == 200
+    assert payload["type"] == "tasks_status"
+    assert payload["data"]["status"] == TaskStatus.OPEN.value
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["items"][0]["id"] == visible_id
+    assert len(sources) == 1
+    source = sources[0]
+    assert source["type"] == "task"
+    assert source["id"] == visible_id
+    assert source["title"] == "Offener sichtbarer Status Task"
+    assert source["module"] == "tasks"
+    assert source["url"] == "/tasks"
+    assert source["source_type"] == "task"
+    assert source["source_id"] == visible_id
+    assert source["source_record_id"] == visible_id
+    assert source["source_kind"] == "structured"
+    assert source["department"] == "Produktion"
+    assert source["role_visibility"] == "department:Produktion"
+    assert source["created_at"]
+    assert source["status"] == TaskStatus.OPEN.value
+    assert source["priority"]
+    assert source["due_date"]
+    _assert_no_forbidden_source_fields(source, FORBIDDEN_TASK_SOURCE_FIELDS)
+    assert "Offener fremder Status Task" not in json.dumps(payload["data"], ensure_ascii=True)
+    assert "Offener fremder Status Task" not in json.dumps(sources, ensure_ascii=True)
+    assert payload["diagnostics"]["source_count"] == len(sources)
+    assert payload["diagnostics"]["source_count"] > 0
+    assert payload["answer_quality"]["source_count"] == len(sources)
 
 
 def test_ai_chat_counts_done_tasks_from_structured_data(
@@ -1561,7 +1660,155 @@ def test_ai_chat_answers_machine_count_without_action_preview(
     assert payload["type"] == "machines_count"
     assert payload["data"]["count"] == 2
     assert "Gesamt" in payload["answer"]
+    assert len(payload["sources"]) == 1
+    _assert_aggregate_count_source(payload["sources"][0], "machines", "/machines", 2)
+    assert payload["diagnostics"]["source_count"] == 1
+    assert payload["answer_quality"]["source_count"] == 1
     assert "action_preview" not in payload
+
+
+@pytest.mark.parametrize(
+    ("scope", "expected_type", "module", "url"),
+    [
+        ("tasks", "tasks_count", "tasks", "/tasks"),
+        ("errors", "errors_count", "errors", "/errors"),
+        ("documents", "documents_count", "documents", "/documents"),
+        ("inventory", "inventory_count", "inventory", "/inventory"),
+    ],
+)
+def test_ai_count_answers_return_safe_aggregate_source_cards(
+    app,
+    make_user,
+    make_task,
+    make_error_entry,
+    make_material,
+    make_document,
+    set_dashboard_permission,
+    scope,
+    expected_type,
+    module,
+    url,
+):
+    """Verify count answers expose one aggregate source card, not row details."""
+    from app.ai.services import answer_count_question
+
+    user = make_user(username=f"ai_{scope}_aggregate_count_user")
+    set_dashboard_permission(user["username"], scope, can_view=True)
+    task_id = make_task("Aggregate Count Task", creator_username=user["username"])
+    if scope == "errors":
+        make_error_entry("Aggregate Anlage", "AGG-1", "Aggregate Stoerung")
+    elif scope == "documents":
+        make_document(task_id, created_by=user["id"])
+    elif scope == "inventory":
+        make_material("Aggregate Lagerteil", 12.5, 3)
+
+    with app.app_context():
+        current_user = User.query.filter_by(username=user["username"]).one()
+        result = answer_count_question(
+            "Wie viele Eintraege gibt es?",
+            current_user,
+            {scope},
+            {scope},
+        )
+
+    assert result["type"] == expected_type
+    assert result["data"]["count"] == 1
+    assert len(result["sources"]) == 1
+    _assert_aggregate_count_source(result["sources"][0], module, url, 1)
+    assert "description" not in result["sources"][0]
+    assert "creator" not in result["sources"][0]
+    assert result["diagnostics"]["source_count"] == 1
+    assert result["answer_quality"]["source_count"] == 1
+
+
+def test_ai_chat_employee_count_returns_access_level_aggregate_source(
+    client,
+    make_user,
+    make_employee,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify employee count sources include access level and stay scoped."""
+    user = make_user(username="ai_employee_count_source_user")
+    denied_user = make_user(username="ai_employee_count_denied_user")
+    make_employee(
+        personnel_number="P-COUNT-1",
+        name="Anna Count Produktion",
+        department="Produktion",
+    )
+    make_employee(
+        personnel_number="P-COUNT-2",
+        name="Bernd Count IT",
+        department="IT",
+    )
+    set_dashboard_permission(
+        user["username"],
+        "employees",
+        can_view=True,
+        employee_access_level="basic",
+    )
+    set_dashboard_permission(denied_user["username"], "employees", can_view=False)
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Wie viele Mitarbeiter gibt es?"},
+    )
+    denied_response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(denied_user["username"]),
+        json={"message": "Wie viele Mitarbeiter gibt es?"},
+    )
+
+    payload = response.get_json()
+    denied_payload = denied_response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "employee_count"
+    assert payload["data"]["count"] == 1
+    assert len(payload["sources"]) == 1
+    _assert_aggregate_count_source(
+        payload["sources"][0],
+        "employees",
+        "/employees",
+        1,
+        extra_fields={"employee_access_level"},
+    )
+    assert payload["sources"][0]["employee_access_level"] == "basic"
+    assert payload["sources"][0]["role_visibility"] == "department:Produktion"
+    assert denied_response.status_code == 200
+    assert denied_payload["type"] == "permission_denied"
+    assert denied_payload["sources"] == []
+
+
+def test_ai_count_answer_only_redacts_aggregate_sources_for_normal_users(
+    client,
+    make_user,
+    make_machine,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify answer-only mode redacts aggregate count evidence for normal users."""
+    user = make_user(username="ai_count_answer_only_user")
+    make_machine(name="Answer Only Count Anlage")
+    set_dashboard_permission(user["username"], "machines", can_view=True)
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={
+            "message": "Wie viele Maschinen gibt es?",
+            "response_mode": "answer_only",
+        },
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "machines_count"
+    assert payload["sources"] == []
+    assert payload["data"] == {}
+    assert payload["evidence_visible"] is False
+    assert payload["diagnostics"]["evidence_visible"] is False
+    assert payload["answer_quality"]["evidence_visible"] is False
 
 
 def test_ai_chat_answers_admin_user_count_permission_aware(
@@ -1593,8 +1840,17 @@ def test_ai_chat_answers_admin_user_count_permission_aware(
     assert admin_response.status_code == 200
     assert admin_payload["type"] == "admin_users_count"
     assert admin_payload["data"]["count"] == 2
+    assert len(admin_payload["sources"]) == 1
+    _assert_aggregate_count_source(
+        admin_payload["sources"][0],
+        "admin_users",
+        "/admin/users",
+        2,
+    )
+    assert admin_payload["sources"][0]["role_visibility"] == "admin_only"
     assert user_response.status_code == 200
     assert user_payload["type"] == "permission_denied"
+    assert user_payload["sources"] == []
     assert "Admin" in user_payload["answer"]
 
 

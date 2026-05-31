@@ -39,6 +39,7 @@ from app.services.ai_safety_service import (
     enforce_post_generation_safety,
 )
 from app.services.ai_service import AIServiceError, MockAIProvider, get_ai_provider
+from app.services.ai_structured_scope_answer_service import answer_structured_scope_question
 from app.services.ai_task_status_answer_service import answer_task_status_question
 from app.services.conversation_context_service import conversation_context_for_chat
 from app.services.document_service import visible_documents_query
@@ -341,6 +342,28 @@ def answer_chat(message, user, session_id=""):
             message=message,
         )
 
+    structured_scope_result = answer_structured_scope_question(
+        message,
+        user,
+        conversation_context=conversation_context,
+    )
+    if structured_scope_result:
+        status = (
+            "permission_denied"
+            if structured_scope_result.get("type") == "permission_denied"
+            else "local_answer"
+        )
+        structured_scope_result["diagnostics"] = ai_diagnostics(status)
+        result_scope = structured_scope_result.get("scope")
+        return attach_audit_metadata(
+            user,
+            structured_scope_result,
+            requested_scopes or ({result_scope} if result_scope else set()),
+            allowed_scopes,
+            message=message,
+            conversation_context=conversation_context,
+        )
+
     task_status_result = answer_task_status_question(
         message,
         user,
@@ -365,6 +388,7 @@ def answer_chat(message, user, session_id=""):
     if looks_like_employee_count_question(message):
         answer, data = format_employee_count(user)
         status = "local_answer" if data else "permission_denied"
+        sources = count_answer_sources("employees", data, user)
         return attach_audit_metadata(
             user,
             {
@@ -372,7 +396,7 @@ def answer_chat(message, user, session_id=""):
                 "answer": answer,
                 "diagnostics": ai_diagnostics(status),
                 "data": data,
-                "sources": [],
+                "sources": sources,
             },
             requested_scopes or {"employees"},
             allowed_scopes,
