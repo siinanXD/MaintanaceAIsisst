@@ -2,23 +2,22 @@
 
 from __future__ import annotations
 
-import re
 from datetime import date, datetime, time, timedelta
 
 from app.models import Task, TaskStatus
 from app.security import has_dashboard_permission
 from app.services.ai_prompting import permission_denied_answer
+from app.services.ai_question_normalizer import (
+    TASK_STATUS_TERMS,
+    detect_status,
+    detect_time_range,
+    normalize_text,
+)
 from app.services.task_service import visible_tasks_query
 
 TASK_TERMS = ("task", "tasks", "aufgabe", "aufgaben")
 COUNT_TERMS = ("wie viele", "wieviele", "anzahl", "count")
 LIST_TERMS = ("welche", "zeige", "liste", "auflisten", "anzeigen")
-YESTERDAY_TERMS = ("gestern",)
-STATUS_TERMS = (
-    (TaskStatus.IN_PROGRESS, ("in bearbeitung", "in arbeit")),
-    (TaskStatus.DONE, ("beendet", "geschlossen", "erledigt", "abgeschlossen")),
-    (TaskStatus.OPEN, ("offen",)),
-)
 STATUS_LABELS = {
     TaskStatus.OPEN: "offen",
     TaskStatus.IN_PROGRESS: "in Bearbeitung",
@@ -30,7 +29,7 @@ MAX_ANSWER_ITEMS = 10
 
 def answer_task_status_question(message, user, conversation_context=None):
     """Return a structured task-status answer or None for unrelated messages."""
-    text = _lookup_text(message)
+    text = normalize_text(message)
     status = _requested_status(text)
     if not status:
         return None
@@ -140,10 +139,8 @@ def _starts_with_task_list_request(text):
 
 def _requested_status(text):
     """Return the requested task status, if the wording is supported."""
-    for status, terms in STATUS_TERMS:
-        if any(term in text for term in terms):
-            return status
-    return None
+    status = detect_status(text, terms=TASK_STATUS_TERMS)
+    return _task_status(status) if status else None
 
 
 def _has_task_reference(text):
@@ -171,7 +168,7 @@ def _is_list_question(text):
 
 def _mentions_yesterday(text):
     """Return whether the message asks for yesterday."""
-    return any(term in text for term in YESTERDAY_TERMS)
+    return detect_time_range(text) == "yesterday"
 
 
 def _timeframe_label(status, text):
@@ -188,20 +185,11 @@ def _yesterday_bounds():
     return datetime.combine(yesterday, time.min), datetime.combine(yesterday, time.max)
 
 
-def _lookup_text(value):
-    """Return lowercase lookup text normalized for German variants."""
-    text = " ".join(str(value or "").lower().split())
-    replacements = {
-        "\u00e4": "ae",
-        "\u00f6": "oe",
-        "\u00fc": "ue",
-        "\u00df": "ss",
-        "\u00c3\u00a4": "ae",
-        "\u00c3\u00b6": "oe",
-        "\u00c3\u00bc": "ue",
-        "\u00c3\u009f": "ss",
+def _task_status(status):
+    """Return a TaskStatus for a normalized task status value."""
+    mapping = {
+        "open": TaskStatus.OPEN,
+        "in_progress": TaskStatus.IN_PROGRESS,
+        "done": TaskStatus.DONE,
     }
-    for source, target in replacements.items():
-        text = text.replace(source, target)
-    text = re.sub(r"[^\w\s-]+", " ", text)
-    return " ".join(text.split())
+    return mapping.get(status)

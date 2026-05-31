@@ -11,6 +11,13 @@ from flask import current_app, has_app_context
 from app.domain_models.common import utc_now
 from app.extensions import db
 from app.models import ChatMessage
+from app.services.ai_question_normalizer import (
+    detect_department,
+    detect_status,
+    detect_time_range,
+    is_structured_follow_up,
+    normalize_text,
+)
 from app.services.ai_retrieval import allowed_ai_scopes
 
 DEFAULT_CONTEXT_MESSAGES = 4
@@ -33,6 +40,28 @@ REFERENCE_PATTERNS = (
     "antwort von eben",
     "von eben",
 )
+STRUCTURED_CONTEXT_KEYS = (
+    "entity_type",
+    "department",
+    "status",
+    "time_range",
+    "machine",
+)
+ENTITY_TYPE_SCOPES = {
+    "tasks": "tasks",
+    "incidents": "errors",
+    "maintenance": "tasks",
+    "employees": "employees",
+    "documents": "documents",
+}
+SCOPE_ENTITY_TYPES = {
+    "tasks": "tasks",
+    "errors": "incidents",
+    "employees": "employees",
+    "documents": "documents",
+    "machines": "maintenance",
+    "shiftplans": "maintenance",
+}
 MACHINE_PATTERN = re.compile(
     r"\b(?:maschine|anlage|presse|linie|station|roboter|ofen)\s*[a-z0-9-]+\b",
     re.IGNORECASE,
@@ -75,6 +104,7 @@ class ConversationContext:
     context_text: str = ""
     suggested_scopes: frozenset[str] = field(default_factory=frozenset)
     recent_scopes: tuple[str, ...] = ()
+    structured_scope: dict = field(default_factory=dict)
 
     @property
     def applied(self):
@@ -119,6 +149,7 @@ class ConversationContext:
             "error_codes": list(self.error_codes),
             "suggested_scopes": sorted(self.suggested_scopes),
             "recent_scopes": list(self.recent_scopes),
+            "structured_scope": dict(self.structured_scope),
         }
 
 
@@ -155,7 +186,13 @@ def conversation_context_for_chat(user, message, session_id=""):
     )
     previous_solution = _previous_solution(scoped_messages)
     previous_question = _bounded_text(scoped_messages[-1].message, 220)
-    suggested_scopes = _suggested_scopes(reference_detected, machine_names, error_codes)
+    structured_scope = _structured_scope(scoped_messages)
+    suggested_scopes = _suggested_scopes(
+        reference_detected,
+        machine_names,
+        error_codes,
+        structured_scope,
+    )
     recent_scopes = _recent_scopes(scoped_messages)
     context_text = _context_text(
         scoped_messages=scoped_messages,
@@ -175,13 +212,32 @@ def conversation_context_for_chat(user, message, session_id=""):
         context_text=context_text,
         suggested_scopes=frozenset(suggested_scopes),
         recent_scopes=recent_scopes,
+        structured_scope=structured_scope,
     )
 
 
 def has_context_reference(message):
     """Return whether a message refers to previous chat context."""
-    text = _normalized_lookup_text(message)
-    return any(pattern in text for pattern in REFERENCE_PATTERNS)
+    text = _conversation_lookup_text(message)
+    return any(pattern in text for pattern in REFERENCE_PATTERNS) or is_structured_follow_up(text)
+
+
+def structured_scope_to_dashboard_scope(structured_scope):
+    """Return the dashboard permission scope for a structured memory payload."""
+    entity_type = str((structured_scope or {}).get("entity_type") or "").strip()
+    return ENTITY_TYPE_SCOPES.get(entity_type)
+
+
+def build_structured_context_metadata(message, result, requested_scopes=None):
+    """Return compact structured scope metadata to persist with chat diagnostics."""
+    explicit = _safe_structured_context(result.get("structured_context") if result else None)
+    inferred = _structured_context_from_message(message, requested_scopes or set())
+    context = {**inferred, **explicit}
+    if not context.get("entity_type"):
+        return {}
+    return {
+        key: value for key, value in context.items() if key in STRUCTURED_CONTEXT_KEYS and value
+    }
 
 
 def _recent_session_messages(user, session_id):
@@ -232,6 +288,31 @@ def _recent_scopes(messages):
     for chat in messages:
         scopes |= _chat_scopes(chat)
     return tuple(sorted(scopes))
+
+
+def _structured_scope(messages):
+    """Return the most recent structured scope memory from allowed chat messages."""
+    for chat in reversed(messages):
+        context = _safe_structured_context(chat.diagnostics().get("structured_context"))
+        if context:
+            return context
+    return {}
+
+
+def _safe_structured_context(value):
+    """Return a sanitized structured context dictionary."""
+    if not isinstance(value, dict):
+        return {}
+    context = {}
+    for key in STRUCTURED_CONTEXT_KEYS:
+        raw_value = value.get(key)
+        if raw_value in (None, ""):
+            continue
+        context[key] = _bounded_text(raw_value, 120)
+    entity_type = context.get("entity_type")
+    if entity_type and entity_type not in ENTITY_TYPE_SCOPES:
+        return {}
+    return context
 
 
 def _context_text(
@@ -297,20 +378,68 @@ def _solution_summary(response):
 
 def _has_solution_label(value):
     """Return whether a line contains a normalized solution-like label."""
-    text = _normalized_lookup_text(value)
+    text = _conversation_lookup_text(value)
     return any(term in text for term in SOLUTION_LABEL_TERMS)
 
 
-def _suggested_scopes(reference_detected, machine_names, error_codes):
+def _suggested_scopes(reference_detected, machine_names, error_codes, structured_scope=None):
     """Return scopes that should be searched when the new message is referential."""
     if not reference_detected:
         return set()
     scopes = set()
+    structured_dashboard_scope = structured_scope_to_dashboard_scope(structured_scope)
+    if structured_dashboard_scope:
+        scopes.add(structured_dashboard_scope)
     if machine_names:
         scopes.add("machines")
     if error_codes:
         scopes.add("errors")
     return scopes
+
+
+def _structured_context_from_message(message, requested_scopes):
+    """Infer structured context fields from the current user message."""
+    text = _conversation_lookup_text(message)
+    entity_type = _entity_type_from_scopes(requested_scopes) or _entity_type_from_text(text)
+    context = {}
+    if entity_type:
+        context["entity_type"] = entity_type
+    status = detect_status(text)
+    if status:
+        context["status"] = status
+    time_range = detect_time_range(text)
+    if time_range:
+        context["time_range"] = time_range
+    department = detect_department(text)
+    if department:
+        context["department"] = department
+    machine_names = _unique_limited(_extract_machines(message), limit=1)
+    if machine_names:
+        context["machine"] = machine_names[0]
+    return context
+
+
+def _entity_type_from_scopes(scopes):
+    """Return the structured entity type for explicit requested scopes."""
+    for scope in ("tasks", "errors", "employees", "documents", "machines", "shiftplans"):
+        if scope in set(scopes or []):
+            return SCOPE_ENTITY_TYPES.get(scope)
+    return ""
+
+
+def _entity_type_from_text(text):
+    """Return a structured entity type from normalized user wording."""
+    if any(term in text for term in ("task", "tasks", "aufgabe", "aufgaben")):
+        return "tasks"
+    if any(term in text for term in ("stoerung", "stoerungen", "fehler", "incident")):
+        return "incidents"
+    if any(term in text for term in ("wartung", "maintenance")):
+        return "maintenance"
+    if any(term in text for term in ("mitarbeiter", "personal", "employee")):
+        return "employees"
+    if any(term in text for term in ("dokument", "dokumente", "document")):
+        return "documents"
+    return ""
 
 
 def _empty_context(session_id, reference_detected):
@@ -349,18 +478,9 @@ def _clean_markdown(value):
     return " ".join(text.split())
 
 
-def _normalized_lookup_text(value):
+def _conversation_lookup_text(value):
     """Return lowercase text normalized for German umlaut variants."""
-    text = " ".join(str(value or "").lower().split())
-    replacements = {
-        "ä": "ae",
-        "ö": "oe",
-        "ü": "ue",
-        "ß": "ss",
-    }
-    for source, target in replacements.items():
-        text = text.replace(source, target)
-    return text
+    return normalize_text(value, strip_punctuation=False)
 
 
 def _bounded_text(value, max_chars):
