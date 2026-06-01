@@ -198,6 +198,8 @@ Before releasing to production, use
 [`docs/PRODUCTION_DEPLOYMENT_CHECKLIST.md`](docs/PRODUCTION_DEPLOYMENT_CHECKLIST.md)
 to verify configuration, secrets, migrations, health checks, observability,
 governance, reindexing, backups and rollback readiness.
+The short final RC summary is tracked in
+[`docs/FINAL_RELEASE_CANDIDATE.md`](docs/FINAL_RELEASE_CANDIDATE.md).
 
 ## Configuration
 
