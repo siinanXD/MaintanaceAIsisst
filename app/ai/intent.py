@@ -80,10 +80,12 @@ DASHBOARD_SCOPE_LABELS = {
 }
 
 SCOPE_KEYWORDS = {
-    "tasks": ["task", "tasks", "aufgabe", "aufgaben", "todo"],
+    "tasks": ["task", "tasks", "aufgabe", "aufgaben", "arbeit", "arbeiten", "todo"],
     "errors": [
         "fehler",
         "stoerung",
+        "problem",
+        "probleme",
         "störung",
         "error",
         "fehlercode",
@@ -111,7 +113,16 @@ SCOPE_KEYWORDS = {
         "maintenance",
     ],
     "inventory": ["lager", "bestand", "material", "ersatzteil", "inventory"],
-    "documents": ["dokument", "dokumente", "bericht", "berichte", "report"],
+    "documents": [
+        "dokument",
+        "dokumente",
+        "unterlage",
+        "unterlagen",
+        "doku",
+        "bericht",
+        "berichte",
+        "report",
+    ],
     "shiftplans": [
         "schichtplan",
         "schichtplanung",
@@ -176,6 +187,8 @@ APP_DATA_INTENT_PHRASES = (
     "heute",
     "morgen",
     "anstehend",
+    "dringend",
+    "eilig",
     "zeige",
     "liste",
     "auflisten",
@@ -193,8 +206,8 @@ APP_DATA_INTENT_PHRASES = (
 def looks_like_today_tasks_question(message):
     """Check whether a message asks for today's visible tasks."""
     text = message.lower()
-    task_words = ["task", "tasks", "aufgabe", "aufgaben"]
-    today_words = ["heute", "today", "anstehend"]
+    task_words = ["task", "tasks", "aufgabe", "aufgaben", "arbeit", "arbeiten", "todo"]
+    today_words = ["heute", "heutige", "heutigen", "today", "anstehend"]
     return any(word in text for word in task_words) and any(word in text for word in today_words)
 
 
@@ -236,6 +249,38 @@ def looks_like_employee_count_question(message):
     )
 
 
+def looks_like_natural_task_data_question(message):
+    """Check whether natural wording asks for task data without saying task."""
+    text = message.lower()
+    return any(
+        phrase in text
+        for phrase in (
+            "muss noch erledigt",
+            "müssen noch erledigt",
+            "muessen noch erledigt",
+            "mussen noch erledigt",
+            "noch erledigt werden",
+            "noch zu erledigen",
+            "steht noch aus",
+            "stehen noch aus",
+            "steht aus",
+            "stehen aus",
+            "was wurde erledigt",
+            "was ist erledigt",
+            "was wurde abgeschlossen",
+            "was ist abgeschlossen",
+            "was ist dringend",
+            "was ist eilig",
+        )
+    )
+
+
+def looks_like_problem_incident_question(message):
+    """Check whether generic problem wording asks for incident data."""
+    text = message.lower()
+    return "gibt es" in text and any(word in text for word in ("problem", "probleme"))
+
+
 def looks_like_count_question(message):
     """Check whether a message asks for a count of a visible module."""
     text = message.lower()
@@ -274,6 +319,10 @@ def detect_requested_scopes(message):
         scopes.add("errors")
     if looks_like_today_tasks_question(message):
         scopes.add("tasks")
+    if looks_like_natural_task_data_question(message):
+        scopes.add("tasks")
+    if looks_like_problem_incident_question(message):
+        scopes.add("errors")
     if looks_like_employee_question(message):
         scopes.add("employees")
     return scopes
@@ -315,6 +364,8 @@ __all__ = [
     "extract_error_query",
     "looks_like_employee_question",
     "looks_like_employee_count_question",
+    "looks_like_natural_task_data_question",
+    "looks_like_problem_incident_question",
     "looks_like_count_question",
     "looks_like_error_question",
     "looks_like_general_knowledge_question",

@@ -16,9 +16,31 @@ from app.services.ai_question_normalizer import (
 from app.services.ai_structured_source_service import module_count_source_card, task_source_cards
 from app.services.task_service import visible_tasks_query
 
-TASK_TERMS = ("task", "tasks", "aufgabe", "aufgaben")
+TASK_TERMS = ("task", "tasks", "aufgabe", "aufgaben", "arbeit", "arbeiten", "todo")
 COUNT_TERMS = ("wie viele", "wieviele", "anzahl", "count")
-LIST_TERMS = ("welche", "zeige", "liste", "auflisten", "anzeigen")
+LIST_TERMS = ("welche", "zeige", "zeig", "liste", "auflisten", "anzeigen")
+OPEN_TASK_REQUEST_PATTERNS = (
+    "muss noch erledigt",
+    "muessen noch erledigt",
+    "mussen noch erledigt",
+    "noch erledigt werden",
+    "noch zu erledigen",
+    "steht noch aus",
+    "stehen noch aus",
+    "steht aus",
+    "stehen aus",
+    "was bleibt",
+    "was fehlt noch",
+    "unerledigt",
+)
+DONE_TASK_REQUEST_PATTERNS = (
+    "was wurde erledigt",
+    "was ist erledigt",
+    "was wurde abgeschlossen",
+    "was ist abgeschlossen",
+    "was wurde beendet",
+    "was ist beendet",
+)
 STATUS_LABELS = {
     TaskStatus.OPEN: "offen",
     TaskStatus.IN_PROGRESS: "in Bearbeitung",
@@ -132,6 +154,8 @@ def _is_task_status_question(text, status):
         return True
     if _is_list_question(text) and _starts_with_task_list_request(text):
         return True
+    if _is_natural_task_status_request(text):
+        return True
     return status == TaskStatus.DONE and _mentions_yesterday(text)
 
 
@@ -140,23 +164,46 @@ def _starts_with_task_list_request(text):
     prefixes = (
         "welche task",
         "welche aufgabe",
+        "welche arbeit",
         "zeige task",
         "zeige aufgabe",
+        "zeige arbeit",
+        "zeig task",
+        "zeig aufgabe",
+        "zeig arbeit",
         "liste task",
         "liste aufgabe",
+        "liste arbeit",
     )
     return any(text.startswith(prefix) for prefix in prefixes)
 
 
 def _requested_status(text):
     """Return the requested task status, if the wording is supported."""
+    natural_status = _natural_requested_status(text)
+    if natural_status:
+        return natural_status
     status = detect_status(text, terms=TASK_STATUS_TERMS)
     return _task_status(status) if status else None
 
 
 def _has_task_reference(text):
     """Return whether the message explicitly references tasks."""
-    return any(term in text for term in TASK_TERMS)
+    return any(term in text for term in TASK_TERMS) or _is_natural_task_status_request(text)
+
+
+def _natural_requested_status(text):
+    """Return a task status inferred from natural task-progress wording."""
+    if any(pattern in text for pattern in OPEN_TASK_REQUEST_PATTERNS):
+        return TaskStatus.OPEN
+    if any(pattern in text for pattern in DONE_TASK_REQUEST_PATTERNS):
+        return TaskStatus.DONE
+    return None
+
+
+def _is_natural_task_status_request(text):
+    """Return whether the text asks about task progress without saying task."""
+    return bool(_natural_requested_status(text))
 
 
 def _has_task_followup(text, conversation_context):

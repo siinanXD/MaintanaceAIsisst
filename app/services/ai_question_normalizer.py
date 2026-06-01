@@ -20,14 +20,31 @@ FOLLOW_UP_PATTERNS = (
     "noch offen",
 )
 STATUS_TERMS = {
-    "open": ("offen", "offene", "offenen", "open"),
+    "open": (
+        "offen",
+        "offene",
+        "offenen",
+        "open",
+        "ausstehend",
+        "ausstehende",
+        "steht aus",
+        "stehen aus",
+        "unerledigt",
+    ),
     "in_progress": ("in bearbeitung", "in arbeit", "aktive", "aktiv"),
     "done": ("beendet", "geschlossen", "erledigt", "abgeschlossen", "closed", "done"),
 }
 TASK_STATUS_TERMS = {
     "in_progress": ("in bearbeitung", "in arbeit"),
     "done": ("beendet", "geschlossen", "erledigt", "abgeschlossen"),
-    "open": ("offen",),
+    "open": (
+        "offen",
+        "ausstehend",
+        "ausstehende",
+        "steht aus",
+        "stehen aus",
+        "unerledigt",
+    ),
 }
 SEVERITY_TERMS = {
     "critical": ("kritisch", "kritische", "critical"),

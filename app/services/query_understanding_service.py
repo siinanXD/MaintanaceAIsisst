@@ -41,6 +41,9 @@ KEYWORDS = {
     QUERY_ERROR_ANALYSIS: (
         "fehler",
         "stoerung",
+        "stoerfall",
+        "problem",
+        "probleme",
         "störung",
         "ursache",
         "analyse",
@@ -69,11 +72,15 @@ KEYWORDS = {
     QUERY_TASK: (
         "task",
         "aufgabe",
+        "arbeit",
+        "arbeiten",
         "todo",
         "wartung",
         "fällig",
         "faellig",
         "erledigt",
+        "ausstehend",
+        "unerledigt",
     ),
     QUERY_DOCUMENT: (
         "dokument",

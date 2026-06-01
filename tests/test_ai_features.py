@@ -819,6 +819,83 @@ def test_ai_chat_counts_done_tasks_from_structured_data(
     assert "Anzahl:** 2" in payload["answer"]
 
 
+@pytest.mark.parametrize(
+    "message",
+    (
+        "Was muss noch erledigt werden?",
+        "Welche Arbeiten stehen noch aus?",
+    ),
+)
+def test_ai_chat_detects_natural_open_task_questions(
+    client,
+    make_user,
+    make_task,
+    auth_headers,
+    message,
+):
+    """Verify natural open-work wording uses structured task status data."""
+    user = make_user(username=f"ai_natural_open_task_user_{len(message)}")
+    open_task_id = make_task(
+        f"Natuerlich offener Task {len(message)}",
+        creator_username=user["username"],
+        status=TaskStatus.OPEN,
+    )
+    make_task(
+        f"Natuerlich erledigter Task {len(message)}",
+        creator_username=user["username"],
+        status=TaskStatus.DONE,
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": message},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "tasks_status"
+    assert payload["data"]["status"] == TaskStatus.OPEN.value
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["items"][0]["id"] == open_task_id
+    assert "Keine belastbare Quelle" not in payload["answer"]
+    assert payload["answer_quality"]["status"] == "grounded"
+
+
+def test_ai_chat_detects_natural_done_task_question(
+    client,
+    make_user,
+    make_task,
+    auth_headers,
+):
+    """Verify natural done-work wording uses structured task status data."""
+    user = make_user(username="ai_natural_done_task_user")
+    done_task_id = make_task(
+        "Natuerlich erledigter Task",
+        creator_username=user["username"],
+        status=TaskStatus.DONE,
+    )
+    make_task(
+        "Natuerlich offener Task",
+        creator_username=user["username"],
+        status=TaskStatus.OPEN,
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Was wurde erledigt?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "tasks_status"
+    assert payload["data"]["status"] == TaskStatus.DONE.value
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["items"][0]["id"] == done_task_id
+    assert "Keine belastbare Quelle" not in payload["answer"]
+
+
 def test_ai_chat_counts_open_tasks_only_as_task_followup(
     client,
     make_user,
@@ -1039,6 +1116,41 @@ def test_ai_chat_lists_urgent_tasks_from_structured_data(
     assert payload["data"]["items"][0]["id"] == urgent_id
     assert "Keine belastbare Quelle" not in payload["answer"]
     assert payload["diagnostics"]["source_count"] > 0
+
+
+def test_ai_chat_detects_natural_urgent_task_question(
+    client,
+    make_user,
+    make_task,
+    auth_headers,
+):
+    """Verify short urgent wording uses structured urgent task filters."""
+    user = make_user(username="ai_natural_urgent_task_user")
+    urgent_task_id = make_task(
+        "Natuerlich dringender Task",
+        creator_username=user["username"],
+        priority=Priority.URGENT,
+    )
+    make_task(
+        "Natuerlich normaler Task",
+        creator_username=user["username"],
+        priority=Priority.NORMAL,
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Was ist dringend?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "structured_scope"
+    assert payload["data"]["entity_type"] == "tasks"
+    assert payload["data"]["filters"]["priority"] == "urgent"
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["items"][0]["id"] == urgent_task_id
+    assert "Keine belastbare Quelle" not in payload["answer"]
 
 
 def test_ai_chat_structured_followup_inherits_incident_scope(
@@ -1276,6 +1388,48 @@ def test_ai_chat_critical_incident_exists_question_uses_structured_data(
     assert payload["data"]["items"][0]["id"] == critical_id
     assert "Keine belastbare Quelle" not in payload["answer"]
     assert payload["diagnostics"]["source_count"] > 0
+
+
+def test_ai_chat_detects_problem_wording_as_open_incidents(
+    app,
+    client,
+    make_user,
+    make_error_entry,
+    auth_headers,
+):
+    """Verify generic problem wording uses visible structured incidents."""
+    user = make_user(username="ai_problem_incident_user")
+    open_incident_id = make_error_entry(
+        "Presse Problem",
+        "PROB-OPEN",
+        "Offenes Problem",
+        department_name="Produktion",
+    )
+    closed_incident_id = make_error_entry(
+        "Presse Problem",
+        "PROB-CLOSED",
+        "Geschlossenes Problem",
+        department_name="Produktion",
+    )
+    with app.app_context():
+        db.session.get(ErrorEntry, open_incident_id).status = "open"
+        db.session.get(ErrorEntry, closed_incident_id).status = "closed"
+        db.session.commit()
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Gibt es Probleme?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "structured_scope"
+    assert payload["data"]["entity_type"] == "incidents"
+    assert payload["data"]["filters"]["status"] == "open"
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["items"][0]["id"] == open_incident_id
+    assert "Keine belastbare Quelle" not in payload["answer"]
 
 
 def test_ai_chat_filters_incidents_reported_today_from_structured_data(
@@ -2841,6 +2995,59 @@ def test_ai_chat_outdated_documents_zero_result_stays_structured(
     assert payload["diagnostics"]["source_count"] == 1
     _assert_aggregate_count_source(payload["sources"][0], "documents", "/documents", 0)
     assert payload["answer_quality"]["status"] == "grounded"
+
+
+def test_ai_chat_detects_outdated_document_synonyms(
+    app,
+    client,
+    make_user,
+    make_task,
+    make_document,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify natural outdated-document wording uses structured metadata."""
+    user = make_user(username="ai_document_outdated_synonym_user")
+    stale_task_id = make_task("Doku Nicht Aktuell", creator_username=user["username"])
+    fresh_task_id = make_task("Doku Aktuell", creator_username=user["username"])
+    stale_document_id = make_document(
+        stale_task_id,
+        created_by=user["id"],
+        relative_path="2026/05/document-not-current.html",
+        department="Produktion",
+        machine="Anlage Doku Synonym",
+    )
+    fresh_document_id = make_document(
+        fresh_task_id,
+        created_by=user["id"],
+        relative_path="2026/05/document-current.html",
+        department="Produktion",
+        machine="Anlage Doku Synonym",
+    )
+    _update_generated_document(
+        app,
+        stale_document_id,
+        title="Unterlage Nicht Aktuell",
+        quality_status="outdated",
+    )
+    _update_generated_document(app, fresh_document_id, title="Unterlage Aktuell")
+    set_dashboard_permission(user["username"], "documents", can_view=True)
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Unterlagen sind nicht aktuell?"},
+    )
+
+    payload = response.get_json()
+    serialized_payload = json.dumps(payload, ensure_ascii=True)
+    assert response.status_code == 200
+    assert payload["type"] == "document_outdated"
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["items"][0]["id"] == stale_document_id
+    assert "Unterlage Nicht Aktuell" in serialized_payload
+    assert "Unterlage Aktuell" not in serialized_payload
+    assert "Keine belastbare Quelle" not in payload["answer"]
 
 
 def test_ai_chat_document_this_week_uses_visible_created_metadata(
@@ -8388,6 +8595,72 @@ def test_ai_chat_daily_briefing_answers_what_is_today(
     assert "Neuer Chat Briefing Fehler" in payload["answer"]
     assert "Keine belastbare Quelle" not in payload["answer"]
     assert payload["diagnostics"]["source_count"] >= 1
+
+
+def test_ai_chat_daily_briefing_detects_priority_wording(
+    client,
+    make_user,
+    make_error_entry,
+    auth_headers,
+):
+    """Verify natural priority wording uses the daily briefing service."""
+    user = make_user(
+        username="chat_briefing_priority_user",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+    make_error_entry(
+        "Anlage Chat Prioritaet",
+        "BRIEF-PRIO",
+        "Prioritaet Chat Briefing Fehler",
+        department_name="Produktion",
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Was hat heute Priorität?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "daily_briefing"
+    assert payload["data"]["count"] >= 1
+    assert "Prioritaet Chat Briefing Fehler" in payload["answer"]
+    assert "Keine belastbare Quelle" not in payload["answer"]
+
+
+def test_ai_chat_today_tasks_detects_natural_today_task_wording(
+    client,
+    make_user,
+    make_task,
+    auth_headers,
+):
+    """Verify natural today-task wording stays on structured task data."""
+    user = make_user(
+        username="chat_today_task_natural_user",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+    task_id = make_task(
+        "Heutige natuerliche Aufgabe",
+        creator_username=user["username"],
+        department_name="Produktion",
+        due_date_value=date.today(),
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche heutigen Aufgaben gibt es?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "tasks_today"
+    assert payload["data"][0]["id"] == task_id
+    assert "Heutige natuerliche Aufgabe" in payload["answer"]
+    assert "Keine belastbare Quelle" not in payload["answer"]
 
 
 def test_ai_chat_daily_briefing_empty_result_stays_structured(

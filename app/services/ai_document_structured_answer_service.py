@@ -285,7 +285,18 @@ def _week_start():
 
 def _is_document_question(text):
     """Return whether the text is a supported document metadata question."""
-    return any(term in text for term in ("dokument", "dokumente", "manual", "handbuch"))
+    return any(
+        term in text
+        for term in (
+            "dokument",
+            "dokumente",
+            "unterlage",
+            "unterlagen",
+            "doku",
+            "manual",
+            "handbuch",
+        )
+    )
 
 
 def _is_content_question(text):
@@ -300,7 +311,20 @@ def _is_recent_question(text):
 
 def _is_outdated_question(text):
     """Return whether the text asks for outdated documents."""
-    return any(term in text for term in ("veraltet", "stale", "outdated"))
+    return any(
+        term in text
+        for term in (
+            "veraltet",
+            "stale",
+            "outdated",
+            "nicht aktuell",
+            "ueberholt",
+            "abgelaufen",
+            "alt",
+            "alte",
+            "aeltere",
+        )
+    )
 
 
 def _is_this_week_question(text):

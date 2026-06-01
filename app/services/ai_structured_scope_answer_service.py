@@ -28,8 +28,30 @@ from app.services.task_service import visible_tasks_query
 
 COUNT_TERMS = ("wie viele", "wieviele", "anzahl", "count")
 LIST_TERMS = ("welche", "zeige", "zeig", "liste", "auflisten", "anzeigen")
-TASK_ENTITY_TERMS = ("task", "tasks", "aufgabe", "aufgaben")
-INCIDENT_ENTITY_TERMS = ("stoerung", "stoerungen", "fehler", "incident", "incidents")
+TASK_ENTITY_TERMS = ("task", "tasks", "aufgabe", "aufgaben", "arbeit", "arbeiten", "todo")
+INCIDENT_ENTITY_TERMS = (
+    "stoerung",
+    "stoerungen",
+    "stoerfall",
+    "stoerfaelle",
+    "fehler",
+    "problem",
+    "probleme",
+    "incident",
+    "incidents",
+)
+TASK_PROGRESS_PATTERNS = (
+    "muss noch erledigt",
+    "muessen noch erledigt",
+    "mussen noch erledigt",
+    "noch erledigt werden",
+    "noch zu erledigen",
+    "steht noch aus",
+    "stehen noch aus",
+    "steht aus",
+    "stehen aus",
+    "unerledigt",
+)
 SUPPORTED_ENTITIES = {"tasks", "incidents"}
 MAX_ITEMS = 20
 ANSWER_ITEMS = 10
@@ -345,6 +367,8 @@ def _merged_filters(base_context, text, entity_type):
     severity = detect_severity(text)
     if entity_type == "incidents" and severity:
         filters["severity"] = severity
+    if entity_type == "incidents" and _is_current_problem_question(text):
+        filters.setdefault("status", "open")
     return filters
 
 
@@ -388,11 +412,12 @@ def _has_structured_signal(text, entity_type):
     """Return whether explicit entity wording asks for structured filtering."""
     common_signal = bool(detect_status(text)) or bool(detect_department(text))
     if entity_type == "tasks":
-        return common_signal or _mentions_urgent(text)
+        return common_signal or _mentions_urgent(text) or _mentions_task_progress(text)
     if entity_type == "incidents":
         return (
             common_signal
             or _is_count_question(text)
+            or _is_existence_question(text)
             or any(term in text for term in LIST_TERMS)
             or bool(detect_time_range(text))
             or bool(detect_severity(text))
@@ -421,7 +446,7 @@ def _should_defer_task_status_answer(text, explicit_entity, follow_up):
     """Return whether the existing task-status answer should handle the question."""
     if explicit_entity != "tasks" or follow_up:
         return False
-    if not detect_status(text):
+    if not detect_status(text) and not _mentions_task_progress(text):
         return False
     return not any(
         (
@@ -438,10 +463,10 @@ def _entity_type_from_text(text):
         return "incidents"
     if text.startswith(("welche maschine", "welche anlage")):
         return ""
-    if any(term in text for term in TASK_ENTITY_TERMS):
-        return "tasks"
     if any(term in text for term in INCIDENT_ENTITY_TERMS):
         return "incidents"
+    if any(term in text for term in TASK_ENTITY_TERMS) or _looks_like_natural_task_request(text):
+        return "tasks"
     return ""
 
 
@@ -456,7 +481,40 @@ def _machine_from_text(text):
 
 def _mentions_urgent(text):
     """Return whether the message asks for urgent task priority."""
-    return any(term in text for term in ("dringend", "dringende", "urgent"))
+    return any(
+        term in text
+        for term in (
+            "dringend",
+            "dringende",
+            "eilig",
+            "eiliger",
+            "prioritaet",
+            "prioritaer",
+            "urgent",
+        )
+    )
+
+
+def _mentions_task_progress(text):
+    """Return whether the text uses natural open-task progress wording."""
+    return any(pattern in text for pattern in TASK_PROGRESS_PATTERNS)
+
+
+def _looks_like_natural_task_request(text):
+    """Return whether a message implies tasks without naming them directly."""
+    return _mentions_task_progress(text) or (
+        _mentions_urgent(text) and not any(term in text for term in INCIDENT_ENTITY_TERMS)
+    )
+
+
+def _is_existence_question(text):
+    """Return whether the text asks if matching structured entries exist."""
+    return any(phrase in text for phrase in ("gibt es", "haben wir", "existieren"))
+
+
+def _is_current_problem_question(text):
+    """Return whether problem wording asks for currently open incidents."""
+    return _is_existence_question(text) and any(term in text for term in ("problem", "probleme"))
 
 
 def _is_count_question(message):
