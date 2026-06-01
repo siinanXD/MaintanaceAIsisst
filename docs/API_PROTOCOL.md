@@ -19,6 +19,11 @@ Base URL: http://127.0.0.1:5050
 
 Die interaktive Swagger UI ist lokal unter `/swagger/` verfuegbar. Die
 OpenAPI-Spezifikation kann direkt unter `/api/swagger.json` gelesen werden.
+In Produktion ist API-Dokumentation standardmaessig deaktiviert
+(`ENABLE_API_DOCS=false`). Das schuetzt `/swagger/`, `/api/swagger.json`,
+`/api/v1/swagger.json` und `/apispec_1.json`. Wenn Dokumentation in Produktion
+bewusst aktiviert wird, sollte `API_DOCS_REQUIRE_MASTER_ADMIN=true` gesetzt
+bleiben, damit nur Master Admins mit JWT darauf zugreifen koennen.
 `/api/v1` ist die stabile Version; Breaking Changes werden erst unter einem
 neuen Prefix wie `/api/v2` eingefuehrt.
 

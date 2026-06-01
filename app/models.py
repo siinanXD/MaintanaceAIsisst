@@ -1,6 +1,7 @@
 """Compatibility exports for SQLAlchemy domain models."""
 
 from app.domain_models.ai import (
+    AIAnswerTrace,
     AIAuditEvent,
     AIFAQEntry,
     AIFeedback,
@@ -44,6 +45,7 @@ from app.domain_models.workforce import (
 
 __all__ = [
     "AIAuditEvent",
+    "AIAnswerTrace",
     "AIFeedback",
     "AIFAQEntry",
     "AIPromptTemplate",

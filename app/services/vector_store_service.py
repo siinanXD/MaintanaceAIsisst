@@ -4,6 +4,7 @@ import logging
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from time import perf_counter
 
 from flask import current_app, has_app_context
 from sqlalchemy import or_
@@ -26,6 +27,7 @@ from app.services.knowledge_quality_service import retrieval_quality_gate_for_do
 from app.services.knowledge_service import (
     can_user_read_knowledge_document,
     document_entity_metadata,
+    source_url,
     stored_chunk_metadata,
     structured_source_created_at,
     structured_source_machine_id,
@@ -40,6 +42,12 @@ from app.services.source_visibility_policy import (
     source_visibility_decision,
 )
 from app.services.technical_entity_service import entities_from_json, entities_to_json
+from app.services.vector_sync_status_service import (
+    record_atlas_error,
+    record_atlas_fallback,
+    record_atlas_query,
+    set_atlas_vector_count,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +57,8 @@ DEFAULT_RAG_SCAN_LIMIT = 300
 DEFAULT_RAG_KEYWORD_SCAN_LIMIT = 500
 DEFAULT_RAG_MAX_KEYWORD_TERMS = 8
 DEFAULT_RAG_MIN_SCORE = 1
+ATLAS_VECTOR_FIELD = "embedding"
+ATLAS_EMBEDDING_DIMENSIONS = 1536
 RETRIEVAL_STOPWORDS = {
     "aber",
     "alle",
@@ -94,6 +104,7 @@ class VectorRecord:
     text: str
     metadata: dict = field(default_factory=dict)
     record_id: str = ""
+    embedding: list[float] | None = None
 
 
 @dataclass(frozen=True)
@@ -511,6 +522,41 @@ class PgVectorKnowledgeVectorStore(BaseVectorStore):
         }
 
 
+class FallbackVectorStore(SqlAlchemyKnowledgeVectorStore):
+    """Local vector store that preserves diagnostics for configured fallbacks."""
+
+    def __init__(self, configured_store, fallback_reason, embedding_provider=None):
+        """Initialize the local fallback with prompt-safe fallback metadata."""
+        super().__init__(embedding_provider=embedding_provider)
+        self.configured_store = str(configured_store or "")
+        self.fallback_reason = str(fallback_reason or "fallback")
+        self._annotate_debug()
+
+    def similarity_search(self, query_text, user=None, limit=None, filters=None):
+        """Run local retrieval and mark the configured-store fallback in debug."""
+        results = super().similarity_search(
+            query_text,
+            user=user,
+            limit=limit,
+            filters=filters,
+        )
+        self._annotate_debug()
+        return results
+
+    def _annotate_debug(self):
+        """Attach fallback diagnostics to the latest local retrieval debug payload."""
+        if not isinstance(self._last_debug, dict):
+            return
+        self._last_debug["fallback_active"] = True
+        self._last_debug["fallback_reason"] = self.fallback_reason
+        self._last_debug["vector_store_diagnostics"] = {
+            "configured_store": self.configured_store,
+            "active_store": self.name,
+            "fallback_active": True,
+            "fallback_reason": self.fallback_reason,
+        }
+
+
 class ChromaVectorStore(BaseVectorStore):
     """Use Chroma as a persistent vector-store backend."""
 
@@ -612,6 +658,234 @@ class ChromaVectorStore(BaseVectorStore):
         return results
 
 
+class MongoAtlasVectorStore(BaseVectorStore):
+    """Use MongoDB Atlas Vector Search as an external candidate store."""
+
+    name = "mongodb_atlas"
+
+    def __init__(self, embedding_provider=None):
+        """Initialize the Atlas Vector Search adapter from Flask config."""
+        self.embedding_provider = embedding_provider or get_embedding_provider()
+        self.uri = str(_config_value("MONGODB_ATLAS_URI", "") or "").strip()
+        self.database_name = str(_config_value("MONGODB_ATLAS_DATABASE", "") or "").strip()
+        self.collection_name = str(
+            _config_value("MONGODB_ATLAS_VECTOR_COLLECTION", "") or ""
+        ).strip()
+        self.index_name = str(_config_value("MONGODB_ATLAS_VECTOR_INDEX", "") or "").strip()
+        self.timeout_ms = _positive_int(
+            _config_value("MONGODB_ATLAS_TIMEOUT_MS", 3000),
+            3000,
+        )
+        self._last_debug = empty_retrieval_debug(vector_store=self.name)
+        self._validate_configuration()
+        self.client = self._build_client()
+        self.collection = self.client[self.database_name][self.collection_name]
+
+    def add_documents(self, records):
+        """Upsert vector records into Atlas using existing chunk embeddings."""
+        safe_records = [record for record in records if str(record.text or "").strip()]
+        if not safe_records:
+            return []
+
+        stored_ids = []
+        try:
+            for record in safe_records:
+                record_id = record.record_id or uuid.uuid4().hex
+                metadata = _safe_vector_metadata(record.metadata)
+                embedding = _atlas_embedding(record.embedding)
+                payload = {
+                    "record_id": record_id,
+                    "document_id": metadata.get("id"),
+                    "chunk_id": metadata.get("chunk_id"),
+                    "text": record.text,
+                    ATLAS_VECTOR_FIELD: embedding,
+                    "metadata": metadata,
+                }
+                self.collection.replace_one(
+                    {"record_id": record_id},
+                    payload,
+                    upsert=True,
+                )
+                stored_ids.append(record_id)
+            return stored_ids
+        except Exception as exc:
+            record_atlas_error(exc)
+            raise VectorStoreError("atlas_upsert_failed") from exc
+
+    def delete_document(self, document_id):
+        """Delete all Atlas records for one knowledge document id."""
+        parsed_id = _optional_int(document_id)
+        if parsed_id is None:
+            return 0
+        try:
+            response = self.collection.delete_many({"document_id": parsed_id})
+            return int(getattr(response, "deleted_count", 0) or 0)
+        except Exception as exc:
+            record_atlas_error(exc)
+            raise VectorStoreError("atlas_delete_failed") from exc
+
+    def document_vector_count(self, document_id):
+        """Return the Atlas vector count for one knowledge document."""
+        parsed_id = _optional_int(document_id)
+        if parsed_id is None:
+            return None
+        try:
+            return int(self.collection.count_documents({"document_id": parsed_id}))
+        except Exception as exc:
+            record_atlas_error(exc)
+            raise VectorStoreError("atlas_document_count_failed") from exc
+
+    def collection_vector_count(self):
+        """Return the Atlas vector count for the collection."""
+        try:
+            vector_count = int(self.collection.count_documents({}))
+            set_atlas_vector_count(vector_count)
+            return vector_count
+        except Exception as exc:
+            record_atlas_error(exc)
+            raise VectorStoreError("atlas_collection_count_failed") from exc
+
+    def similarity_search(self, query_text, user=None, limit=None, filters=None):
+        """Return Atlas candidates after applying SQL permissions and quality gates."""
+        self._last_debug = empty_retrieval_debug(vector_store=self.name, filters=filters or {})
+        if not query_text:
+            return []
+        limit_value = _positive_int(limit, _config_value("RAG_TOP_K", DEFAULT_RAG_TOP_K))
+        candidate_limit = _rerank_candidate_limit(limit_value)
+        try:
+            query_embedding = _atlas_embedding(self.embedding_provider.embed_text(query_text))
+            pipeline = self._vector_search_pipeline(query_embedding, candidate_limit)
+            started_at = perf_counter()
+            documents = list(self.collection.aggregate(pipeline))
+            record_atlas_query((perf_counter() - started_at) * 1000)
+        except Exception as exc:
+            record_atlas_error(exc)
+            return self._fallback_similarity_search(
+                "query_failed",
+                query_text=query_text,
+                user=user,
+                limit=limit_value,
+                filters=filters,
+            )
+
+        raw_results = [_atlas_result(document) for document in documents]
+        debug = empty_retrieval_debug(
+            vector_candidates_found=len(raw_results),
+            vector_store=self.name,
+            filters=filters or {},
+            top_k=limit_value,
+            rerank_candidate_limit=candidate_limit,
+            fallback_active=False,
+            fallback_reason="",
+            vector_store_diagnostics={
+                "configured_store": self.name,
+                "active_store": self.name,
+                "fallback_active": False,
+            },
+            decision_trace=[
+                retrieval_debug_decision(
+                    "vector_candidate_scan",
+                    "ok" if raw_results else "empty",
+                    "mongodb_atlas_similarity_candidates_returned",
+                    {"unique_candidates": len(raw_results)},
+                )
+            ],
+        )
+        results = _filter_visible_results(
+            raw_results,
+            query_text=query_text,
+            user=user,
+            filters=filters,
+            limit=limit_value,
+            debug=debug,
+        )
+        self._last_debug = debug
+        return results
+
+    def _validate_configuration(self):
+        """Validate required Atlas settings without exposing secret values."""
+        missing = []
+        if not self.uri:
+            missing.append("MONGODB_ATLAS_URI")
+        if not self.database_name:
+            missing.append("MONGODB_ATLAS_DATABASE")
+        if not self.collection_name:
+            missing.append("MONGODB_ATLAS_VECTOR_COLLECTION")
+        if not self.index_name:
+            missing.append("MONGODB_ATLAS_VECTOR_INDEX")
+        if missing:
+            raise VectorStoreError(f"missing_config:{','.join(missing)}")
+
+    def _build_client(self):
+        """Create and ping a pymongo client without logging connection details."""
+        try:
+            from pymongo import MongoClient
+        except ImportError as exc:
+            raise VectorStoreError("pymongo_missing") from exc
+
+        try:
+            client = MongoClient(
+                self.uri,
+                serverSelectionTimeoutMS=self.timeout_ms,
+                connectTimeoutMS=self.timeout_ms,
+                socketTimeoutMS=self.timeout_ms,
+            )
+            client.admin.command("ping")
+            return client
+        except Exception as exc:
+            record_atlas_error(exc)
+            raise VectorStoreError("connection_failed") from exc
+
+    def _vector_search_pipeline(self, query_embedding, candidate_limit):
+        """Return the Atlas Vector Search pipeline for candidate retrieval only."""
+        return [
+            {
+                "$vectorSearch": {
+                    "index": self.index_name,
+                    "path": ATLAS_VECTOR_FIELD,
+                    "queryVector": query_embedding,
+                    "numCandidates": candidate_limit,
+                    "limit": candidate_limit,
+                }
+            },
+            {
+                "$project": {
+                    "_id": 0,
+                    "record_id": 1,
+                    "document_id": 1,
+                    "chunk_id": 1,
+                    "text": 1,
+                    "metadata": 1,
+                    "score": {"$meta": "vectorSearchScore"},
+                }
+            },
+        ]
+
+    def _fallback_similarity_search(self, reason, query_text, user, limit, filters):
+        """Run the local SQL vector store and mark the Atlas fallback explicitly."""
+        record_atlas_fallback(reason)
+        logger.warning("vector_store_fallback store=mongodb_atlas reason=%s", reason)
+        fallback = SqlAlchemyKnowledgeVectorStore(self.embedding_provider)
+        results = fallback.similarity_search(
+            query_text,
+            user=user,
+            limit=limit,
+            filters=filters,
+        )
+        debug = fallback.last_debug()
+        if isinstance(debug, dict):
+            debug["fallback_active"] = True
+            debug["fallback_reason"] = reason
+            debug["vector_store_diagnostics"] = {
+                "configured_store": self.name,
+                "active_store": fallback.name,
+                "fallback_active": True,
+                "fallback_reason": reason,
+            }
+        self._last_debug = debug
+        return results
+
+
 def get_vector_store():
     """Return the configured vector store with a local fallback."""
     store_name = _config_value("RAG_VECTOR_STORE", "pgvector").lower()
@@ -631,6 +905,14 @@ def get_vector_store():
         except VectorStoreError:
             logger.exception("vector_store_fallback store=chroma")
             return SqlAlchemyKnowledgeVectorStore()
+    if store_name in {"mongodb_atlas", "mongo_atlas", "atlas"}:
+        try:
+            return MongoAtlasVectorStore()
+        except VectorStoreError as exc:
+            reason = _safe_fallback_reason(exc)
+            record_atlas_fallback(reason)
+            logger.warning("vector_store_fallback store=mongodb_atlas reason=%s", reason)
+        return FallbackVectorStore("mongodb_atlas", reason)
     logger.warning("vector_store_fallback store=%s reason=unsupported_store", store_name)
     return SqlAlchemyKnowledgeVectorStore()
 
@@ -653,7 +935,7 @@ def _knowledge_metadata(document, chunk, score=None):
         "machine_id": structured_source_machine_id(document),
         "role_visibility": source_role_visibility_label(document),
         "created_at": source_created_at or document.created_at.isoformat(),
-        "url": _source_url(document),
+        "url": source_url(document),
         "updated_at": document.updated_at.isoformat(),
         "technical_entities": entities,
         "technical_entities_json": entities_to_json(entities),
@@ -686,29 +968,6 @@ def _chunk_entities(chunk):
     if hasattr(chunk, "entities"):
         return chunk.entities()
     return entities_from_json(getattr(chunk, "entities_json", "{}"))
-
-
-def _source_url(document):
-    """Return a route hint for a knowledge document source."""
-    if document.relative_path and document.relative_path.startswith("/"):
-        return document.relative_path
-    if document.source_type == "upload":
-        return "/admin/ai"
-    if document.source_type == "generated_document":
-        return "/documents"
-    if document.source_type == "error_entry":
-        return "/errors"
-    if document.source_type == "task":
-        return "/tasks"
-    if document.source_type == "maintenance_plan":
-        return "/machines"
-    if document.source_type == "machine_manual":
-        return "/documents"
-    if document.source_type == "shift_handover":
-        return "/handover"
-    if document.source_type == "manual_training":
-        return "/admin/ai"
-    return "/admin/ai"
 
 
 def _document_type(document):
@@ -909,6 +1168,62 @@ def _flat_metadata(metadata):
     return flat
 
 
+def _safe_vector_metadata(metadata):
+    """Return flat vector metadata without secret-like keys."""
+    blocked_fragments = ("password", "secret", "token", "api_key", "connection", "uri")
+    flat = {}
+    for key, value in _flat_metadata(metadata).items():
+        normalized_key = str(key).lower()
+        if any(fragment in normalized_key for fragment in blocked_fragments):
+            continue
+        flat[str(key)] = value
+    return flat
+
+
+def _atlas_embedding(embedding):
+    """Return a validated Atlas embedding vector."""
+    if not isinstance(embedding, list) or not embedding:
+        raise VectorStoreError("atlas_embedding_missing")
+    if len(embedding) != ATLAS_EMBEDDING_DIMENSIONS:
+        raise VectorStoreError(
+            f"atlas_embedding_dimensions_expected_{ATLAS_EMBEDDING_DIMENSIONS}"
+        )
+    try:
+        return [float(value) for value in embedding]
+    except (TypeError, ValueError) as exc:
+        raise VectorStoreError("atlas_embedding_invalid") from exc
+
+
+def _atlas_result(document):
+    """Return one Atlas document as a normalized vector-search result."""
+    metadata = dict(document.get("metadata") or {})
+    if document.get("document_id") not in (None, ""):
+        metadata.setdefault("id", document.get("document_id"))
+    if document.get("chunk_id") not in (None, ""):
+        metadata.setdefault("chunk_id", document.get("chunk_id"))
+    if document.get("record_id") not in (None, ""):
+        metadata.setdefault("record_id", document.get("record_id"))
+    return VectorSearchResult(
+        text=str(document.get("text") or ""),
+        score=float(document.get("score") or 0.0),
+        metadata=metadata,
+    )
+
+
+def _safe_fallback_reason(error):
+    """Return a bounded fallback reason that cannot include secrets."""
+    reason = str(error or "").splitlines()[0].strip()
+    allowed_prefixes = (
+        "missing_config",
+        "pymongo_missing",
+        "connection_failed",
+        "atlas_",
+    )
+    if not reason.startswith(allowed_prefixes):
+        return "adapter_unavailable"
+    return reason[:160]
+
+
 def _chroma_results(response):
     """Return normalized Chroma query results."""
     documents = (response.get("documents") or [[]])[0]
@@ -1084,6 +1399,7 @@ def _chunk_for_metadata(result):
             "semantic_group",
             "semantic_break_distance",
             "embedding_model",
+            "embedding_dimensions",
         )
         if result.metadata.get(key) not in (None, "")
     }

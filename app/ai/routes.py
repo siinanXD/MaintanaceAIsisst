@@ -15,6 +15,11 @@ from app.services.ai_response_visibility_service import (
     redact_chat_history_result,
     wants_answer_only_response,
 )
+from app.services.ai_traceability_service import (
+    answer_trace_for_chat_message,
+    answer_trace_for_user,
+    create_answer_trace,
+)
 from app.services.chat_template_service import chat_templates_for_user
 from app.services.conversation_context_service import normalize_session_id
 from app.services.error_assistant_service import run_error_assistant
@@ -42,6 +47,7 @@ def chat():
     chat_message = save_chat_message(user, message, result, session_id=session_id)
     if chat_message:
         result["chat_message_id"] = chat_message.id
+        create_answer_trace(chat_message, result)
     maybe_track_knowledge_gap(message, user, result)
     diagnostics = result.get("diagnostics") or {}
     record_event(
@@ -65,6 +71,26 @@ def chat():
         answer_only=wants_answer_only_response(data),
     )
     return success_response(visible_result, message="AI response generated")
+
+
+@ai_bp.get("/answers/<answer_id>/trace")
+@jwt_required()
+def answer_trace(answer_id):
+    """Return a prompt-safe trace for one AI answer."""
+    payload, error, status = answer_trace_for_user(answer_id, current_user())
+    if error:
+        return service_error_response(error, status)
+    return success_response(payload, message="Answer trace loaded")
+
+
+@ai_bp.get("/chat/<int:chat_message_id>/trace")
+@jwt_required()
+def chat_message_trace(chat_message_id):
+    """Return a prompt-safe answer trace for one chat message."""
+    payload, error, status = answer_trace_for_chat_message(chat_message_id, current_user())
+    if error:
+        return service_error_response(error, status)
+    return success_response(payload, message="Answer trace loaded")
 
 
 @ai_bp.get("/chat/history")

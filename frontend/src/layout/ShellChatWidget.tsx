@@ -5,18 +5,58 @@ import { hasStoredToken } from "../auth/session";
 
 type ChatMessageRole = "assistant" | "user";
 
+type ShellChatSource = {
+  readonly count?: number;
+  readonly module?: string;
+  readonly source_type?: string;
+  readonly title?: string;
+  readonly type?: string;
+  readonly url?: string;
+};
+
+type ShellChatAnswerQuality = {
+  readonly no_answer?: boolean;
+  readonly source_count?: number;
+  readonly status?: string;
+  readonly uncertainty?: string;
+};
+
+type ShellChatDiagnostics = {
+  readonly answer_origin?: string;
+  readonly evidence_visible?: boolean;
+  readonly fallback_used?: boolean;
+  readonly source_count?: number;
+  readonly status?: string;
+};
+
 type ShellChatMessage = {
   readonly id: string;
   readonly isLoading?: boolean;
+  readonly meta?: ShellChatAnswerMeta;
   readonly role: ChatMessageRole;
   readonly text: string;
 };
 
 type ShellChatResponse = {
   readonly answer?: string;
+  readonly answer_quality?: ShellChatAnswerQuality;
   readonly data?: ShellChatResponse;
-  readonly diagnostics?: Record<string, unknown>;
+  readonly diagnostics?: ShellChatDiagnostics;
+  readonly evidence_visible?: boolean;
+  readonly sources?: readonly ShellChatSource[];
   readonly success?: boolean;
+  readonly type?: string;
+};
+
+type ShellChatAnswerMeta = {
+  readonly answerType: string;
+  readonly evidenceLabel: string;
+  readonly sourceCount: number;
+  readonly sourceLabel: string;
+  readonly sourceItems: readonly string[];
+  readonly structured: boolean;
+  readonly uncertaintyLabel: string;
+  readonly zeroResult: boolean;
 };
 
 const CHAT_OPEN_KEY = "maintenance_chat_open";
@@ -61,14 +101,21 @@ function chatMessageId(prefix: string): string {
 }
 
 /**
- * Normalize the backend chat response into the answer text shown in the shell widget.
+ * Normalize wrapped and direct backend chat payloads.
  */
-function answerFromPayload(payload: ShellChatResponse): string {
-  const data = payload.answer
+function responseData(payload: ShellChatResponse): ShellChatResponse {
+  return payload.answer
     ? payload
     : payload.success === true && payload.data
       ? payload.data
       : payload;
+}
+
+/**
+ * Normalize the backend chat response into the answer text shown in the shell widget.
+ */
+function answerFromPayload(payload: ShellChatResponse): string {
+  const data = responseData(payload);
   const diagnostics = data.diagnostics || {};
   let answer = data.answer || "Ich habe keine Antwort erhalten.";
 
@@ -86,16 +133,276 @@ function answerFromPayload(payload: ShellChatResponse): string {
 }
 
 /**
+ * Return compact display metadata for one chat answer.
+ */
+function metaFromPayload(payload: ShellChatResponse): ShellChatAnswerMeta {
+  const data = responseData(payload);
+  const diagnostics = data.diagnostics || {};
+  const answerQuality = data.answer_quality || {};
+  const sources = data.sources || [];
+  const sourceItems = sources.map(sourceItemLabel).filter(Boolean).slice(0, 3);
+  const sourceCount = sourceCountFromPayload(data, sourceItems.length);
+  const answerType = answerTypeLabel(data.type);
+  const structured = isStructuredAnswer(data.type);
+  const sourceLabel = sourceLabelFromPayload(data, sourceItems, answerType);
+  const zeroResult = isZeroResult(data.answer || "", data, sourceCount);
+
+  return {
+    answerType,
+    evidenceLabel: evidenceLabel(data.evidence_visible, diagnostics.evidence_visible),
+    sourceCount,
+    sourceLabel,
+    sourceItems,
+    structured,
+    uncertaintyLabel: uncertaintyLabel(answerQuality.uncertainty, answerQuality.status),
+    zeroResult
+  };
+}
+
+/**
+ * Return a human-readable answer type label.
+ */
+function answerTypeLabel(typeValue: unknown): string {
+  const key = String(typeValue || "").trim();
+  const labels: Record<string, string> = {
+    daily_briefing: "Daily Briefing",
+    document_outdated: "Dokumente",
+    document_recent: "Dokumente",
+    document_this_week: "Dokumente",
+    error_help: "Fehlerhilfe",
+    general_chat: "AI-Antwort",
+    structured_scope: "App-Daten",
+    tasks_status: "Task-Status",
+    tasks_today: "Heutige Tasks"
+  };
+  return labels[key] || (key ? "App-Daten" : "Antwort");
+}
+
+/**
+ * Return whether a response type represents structured app data.
+ */
+function isStructuredAnswer(typeValue: unknown): boolean {
+  const key = String(typeValue || "");
+  return (
+    key === "daily_briefing"
+    || key === "structured_scope"
+    || key.startsWith("document_")
+    || key.startsWith("employee_")
+    || key.startsWith("inventory_")
+    || key.startsWith("machine_")
+    || key.startsWith("shiftplan_")
+    || key.startsWith("tasks_")
+    || key.endsWith("_count")
+  );
+}
+
+/**
+ * Return the best available source count from response metadata.
+ */
+function sourceCountFromPayload(data: ShellChatResponse, visibleSourceCount: number): number {
+  const diagnosticsCount = numericValue(data.diagnostics?.source_count);
+  const qualityCount = numericValue(data.answer_quality?.source_count);
+  return Math.max(visibleSourceCount, diagnosticsCount, qualityCount);
+}
+
+/**
+ * Return a display label for the source backing the answer.
+ */
+function sourceLabelFromPayload(
+  data: ShellChatResponse,
+  sourceItems: readonly string[],
+  answerType: string
+): string {
+  const moduleLabel = firstSourceModuleLabel(data.sources || []);
+  if (moduleLabel) return `Quelle: ${moduleLabel}`;
+  const answerSource = sourceLabelFromAnswer(data.answer || "");
+  if (answerSource) return `Quelle: ${normalizedSourceLabel(answerSource)}`;
+  if (answerType === "Daily Briefing") return "Quelle: Daily Briefing";
+  if (answerType !== "Antwort") return `Quelle: ${answerType}`;
+  return sourceItems.length ? "Quelle: freigegebene App-Daten" : "Quelle: geprueft";
+}
+
+/**
+ * Return one source module label from visible source cards.
+ */
+function firstSourceModuleLabel(sources: readonly ShellChatSource[]): string {
+  const first = sources.find((source) => source.module || source.type || source.source_type);
+  if (!first) return "";
+  const key = String(first.module || first.type || first.source_type || "");
+  const labels: Record<string, string> = {
+    daily_briefing: "Daily Briefing",
+    documents: "Dokumente",
+    errors: "Stoerungen",
+    inventory: "Lager",
+    knowledge: "Wissensdatenbank",
+    machines: "Maschinen",
+    shiftplans: "Schichtplanung",
+    tasks: "Tasks"
+  };
+  return labels[key] || first.title || key;
+}
+
+/**
+ * Return a user-facing source label for known structured source phrases.
+ */
+function normalizedSourceLabel(sourceLabel: string): string {
+  const normalized = sourceLabel.toLowerCase();
+  if (normalized.includes("daily-briefing") || normalized.includes("daily briefing")) {
+    return "Daily Briefing";
+  }
+  if (normalized.includes("task")) return "Tasks";
+  if (normalized.includes("dokument")) return "Dokumente";
+  if (normalized.includes("fehler") || normalized.includes("stoerung")) return "Stoerungen";
+  if (normalized.includes("lager") || normalized.includes("material")) return "Lager";
+  if (normalized.includes("mitarbeiter")) return "Mitarbeiter";
+  if (normalized.includes("maschine")) return "Maschinen";
+  return sourceLabel;
+}
+
+/**
+ * Return the source label embedded in structured answer text.
+ */
+function sourceLabelFromAnswer(answer: string): string {
+  const lines = answer.split("\n");
+  const sourceLine = lines.find((line) => line.includes("Quelle"));
+  const headingLine = lines.find((line) => line.startsWith("## "));
+  if (!sourceLine) return headingLine ? normalizedSourceLabel(headingLine.replace(/^##\s+/, "")) : "";
+  const sourceLabel = sourceLine
+    .replace(/^[-\s]*/, "")
+    .replace(/\*\*/g, "")
+    .replace(/^Quelle:\s*/i, "")
+    .trim();
+  if (sourceLabel.toLowerCase() === "strukturierte daten" && headingLine) {
+    return normalizedSourceLabel(headingLine.replace(/^##\s+/, ""));
+  }
+  return sourceLabel;
+}
+
+/**
+ * Return a compact source item label for visible source cards.
+ */
+function sourceItemLabel(source: ShellChatSource): string {
+  const title = String(source.title || source.module || source.type || "").trim();
+  const count = numericValue(source.count);
+  if (title && source.count !== undefined) return `${title}: ${count}`;
+  return title;
+}
+
+/**
+ * Return whether the answer is a checked zero-result response.
+ */
+function isZeroResult(answer: string, data: ShellChatResponse, sourceCount: number): boolean {
+  const lowerAnswer = answer.toLowerCase();
+  if (sourceCount > 0 && (lowerAnswer.includes("keine ") || lowerAnswer.includes("anzahl:** 0"))) {
+    return true;
+  }
+  return data.answer_quality?.no_answer === false && lowerAnswer.includes("0");
+}
+
+/**
+ * Return an evidence visibility label without exposing hidden details.
+ */
+function evidenceLabel(evidenceVisible: unknown, diagnosticEvidenceVisible: unknown): string {
+  if (evidenceVisible === false || diagnosticEvidenceVisible === false) {
+    return "Details ausgeblendet";
+  }
+  return "Details sichtbar";
+}
+
+/**
+ * Return a localized uncertainty label.
+ */
+function uncertaintyLabel(uncertainty: unknown, status: unknown): string {
+  const value = String(uncertainty || "").trim();
+  const labels: Record<string, string> = {
+    high: "Unsicherheit: hoch",
+    low: "Unsicherheit: niedrig",
+    medium: "Unsicherheit: mittel"
+  };
+  if (labels[value]) return labels[value];
+  if (String(status || "") === "grounded") return "Unsicherheit: niedrig";
+  return "Unsicherheit: geprueft";
+}
+
+/**
+ * Return a numeric value or zero.
+ */
+function numericValue(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * Render simple Markdown-like answer text into readable blocks.
+ */
+function renderAnswerText(text: string): ReactNode {
+  return text.split("\n").map((line, index) => {
+    const key = `${line}-${index}`;
+    if (line.startsWith("## ")) {
+      return <strong className="chat-answer-heading" key={key}>{line.replace(/^##\s+/, "")}</strong>;
+    }
+    if (line.startsWith("- ")) {
+      return <span className="chat-answer-line" key={key}>{cleanAnswerLine(line)}</span>;
+    }
+    if (!line.trim()) {
+      return <span className="chat-answer-gap" key={key} aria-hidden="true" />;
+    }
+    return <span className="chat-answer-line" key={key}>{cleanAnswerLine(line)}</span>;
+  });
+}
+
+/**
+ * Return answer text without lightweight Markdown decoration.
+ */
+function cleanAnswerLine(line: string): string {
+  return line.replace(/^-\s*/, "").replace(/\*\*/g, "");
+}
+
+/**
  * Render one React-owned chat message bubble.
  */
 function ShellChatMessageBubble({ message }: { readonly message: ShellChatMessage }): ReactNode {
   const className = [
     "chat-message",
     message.role === "assistant" ? "is-assistant" : "is-user",
+    message.meta?.structured ? "chat-answer-card" : "",
     message.isLoading ? "is-loading" : ""
   ].filter(Boolean).join(" ");
 
-  return <div className={className}>{message.text}</div>;
+  if (message.role !== "assistant" || !message.meta) {
+    return <div className={className}>{message.text}</div>;
+  }
+
+  return (
+    <article className={className}>
+      <div className="chat-answer-meta" aria-label="Antwort-Metadaten">
+        <span>{message.meta.answerType}</span>
+        <span>{message.meta.sourceLabel}</span>
+        <span>{sourceStatusLabel(message.meta)}</span>
+      </div>
+      <div className="chat-answer-body">{renderAnswerText(message.text)}</div>
+      <div className="chat-answer-footnote">
+        <span>{message.meta.uncertaintyLabel}</span>
+        <span>{message.meta.evidenceLabel}</span>
+      </div>
+      {message.meta.sourceItems.length ? (
+        <div className="chat-source-chips" aria-label="Sichtbare Quellen">
+          {message.meta.sourceItems.map((sourceLabel) => (
+            <span key={sourceLabel}>{sourceLabel}</span>
+          ))}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+/**
+ * Return the source status shown in the compact answer metadata row.
+ */
+function sourceStatusLabel(meta: ShellChatAnswerMeta): string {
+  if (meta.zeroResult) return "0 Treffer geprueft";
+  if (meta.sourceCount > 0) return `${meta.sourceCount} Quellen`;
+  return "App-Daten geprueft";
 }
 
 /**
@@ -169,8 +476,9 @@ export function ShellChatWidget(): ReactNode {
         method: "POST"
       });
       const answer = answerFromPayload(payload);
+      const meta = metaFromPayload(payload);
       setMessages((currentMessages) => currentMessages.map((item) => (
-        item.id === loadingId ? { id: loadingId, role: "assistant", text: answer } : item
+        item.id === loadingId ? { id: loadingId, meta, role: "assistant", text: answer } : item
       )));
     } catch (error) {
       const fallbackMessage = error instanceof Error

@@ -11,11 +11,23 @@ from app.models import KnowledgeChunk, KnowledgeDocument
 MAX_SYNC_FAILURES = 20
 MAX_STATUS_REFERENCES = 25
 PENDING_REINDEX_STATUSES = {"pending", "stale"}
+ATLAS_VECTOR_STORE_NAMES = {"mongodb_atlas", "mongo_atlas", "atlas"}
 
 _vector_sync_state = {
     "last_successful_sync": None,
     "last_failed_sync": None,
     "failures": [],
+}
+_atlas_observability_state = {
+    "queries": 0,
+    "errors": 0,
+    "latency_total_ms": 0.0,
+    "latency_count": 0,
+    "fallbacks": 0,
+    "fallback_reasons": set(),
+    "sync_failures": 0,
+    "vector_count": None,
+    "reindex_required": False,
 }
 
 
@@ -31,6 +43,8 @@ def record_vector_sync_success(document_id, store_name, chunk_count):
 
 def record_vector_sync_failure(document_id, store_name, error):
     """Record a prompt-safe external vector-store synchronization failure."""
+    if _is_atlas_store(store_name):
+        record_atlas_sync_failure(error)
     event = {
         "document_id": _optional_int(document_id),
         "store": str(store_name or ""),
@@ -42,6 +56,95 @@ def record_vector_sync_failure(document_id, store_name, error):
     _vector_sync_state["failures"] = ([event] + list(_vector_sync_state.get("failures") or []))[
         :MAX_SYNC_FAILURES
     ]
+
+
+def record_atlas_query(latency_ms=0):
+    """Record one MongoDB Atlas Vector Search query without request content."""
+    _atlas_observability_state["queries"] += 1
+    latency = _safe_float(latency_ms)
+    if latency >= 0:
+        _atlas_observability_state["latency_total_ms"] += latency
+        _atlas_observability_state["latency_count"] += 1
+
+
+def record_atlas_error(error=None):
+    """Record one MongoDB Atlas Vector Search error without sensitive details."""
+    _atlas_observability_state["errors"] += 1
+
+
+def record_atlas_fallback(reason="fallback"):
+    """Record that Atlas fell back to another vector-store path."""
+    reason_key = _bounded_string(reason, 120) or "fallback"
+    fallback_reasons = _atlas_observability_state.setdefault("fallback_reasons", set())
+    if reason_key in fallback_reasons:
+        return
+    fallback_reasons.add(reason_key)
+    _atlas_observability_state["fallbacks"] += 1
+
+
+def record_atlas_sync_failure(error=None):
+    """Record one Atlas synchronization failure without document content."""
+    _atlas_observability_state["sync_failures"] += 1
+
+
+def set_atlas_vector_count(vector_count):
+    """Store the latest Atlas collection vector count for observability."""
+    parsed_count = _optional_int(vector_count)
+    _atlas_observability_state["vector_count"] = parsed_count
+
+
+def set_atlas_reindex_required(required=True):
+    """Record whether Atlas requires a reindex or sync repair."""
+    _atlas_observability_state["reindex_required"] = bool(required)
+
+
+def atlas_observability_snapshot(
+    configured_store=None,
+    store_name=None,
+    actual_vector_count=None,
+    reindex_required=False,
+    fallback_active=False,
+):
+    """Return prompt-safe MongoDB Atlas Vector Search observability metrics."""
+    configured_atlas = _is_atlas_store(configured_store)
+    active_atlas = _is_atlas_store(store_name)
+    derived_fallback = bool(configured_atlas and (fallback_active or not active_atlas))
+    if derived_fallback and not _safe_int(_atlas_observability_state.get("fallbacks")):
+        record_atlas_fallback("configured_store_fallback")
+    vector_count = (
+        _optional_int(actual_vector_count)
+        if active_atlas and actual_vector_count is not None
+        else _atlas_observability_state.get("vector_count")
+    )
+    if vector_count is not None:
+        _atlas_observability_state["vector_count"] = vector_count
+    derived_reindex_required = bool(
+        reindex_required
+        or _atlas_observability_state.get("reindex_required")
+        or (configured_atlas and derived_fallback)
+    )
+    latency_count = _safe_int(_atlas_observability_state.get("latency_count"))
+    average_latency = (
+        round(float(_atlas_observability_state.get("latency_total_ms") or 0.0) / latency_count, 2)
+        if latency_count
+        else 0
+    )
+    return {
+        "configured": configured_atlas,
+        "active": active_atlas,
+        "queries": _safe_int(_atlas_observability_state.get("queries")),
+        "errors": _safe_int(_atlas_observability_state.get("errors")),
+        "latency": average_latency,
+        "fallbacks": _safe_int(_atlas_observability_state.get("fallbacks")),
+        "sync_failures": _safe_int(_atlas_observability_state.get("sync_failures")),
+        "vector_count": vector_count,
+        "reindex_required": derived_reindex_required,
+        "privacy": {
+            "stores_query_text": False,
+            "stores_chunk_text": False,
+            "stores_secrets": False,
+        },
+    }
 
 
 def vector_sync_observability_snapshot():
@@ -58,6 +161,15 @@ def clear_vector_sync_observability():
     _vector_sync_state["last_successful_sync"] = None
     _vector_sync_state["last_failed_sync"] = None
     _vector_sync_state["failures"] = []
+    _atlas_observability_state["queries"] = 0
+    _atlas_observability_state["errors"] = 0
+    _atlas_observability_state["latency_total_ms"] = 0.0
+    _atlas_observability_state["latency_count"] = 0
+    _atlas_observability_state["fallbacks"] = 0
+    _atlas_observability_state["fallback_reasons"] = set()
+    _atlas_observability_state["sync_failures"] = 0
+    _atlas_observability_state["vector_count"] = None
+    _atlas_observability_state["reindex_required"] = False
 
 
 def vector_store_drift_status(documents=None):
@@ -68,8 +180,15 @@ def vector_store_drift_status(documents=None):
     store_name = getattr(store, "name", "unavailable")
     configured_store = _configured_vector_store()
     store_error = getattr(store, "_status_error", "")
-    external_sync_required = store_name == "chroma"
-    fallback_active = configured_store == "chroma" and store_name != "chroma"
+    external_sync_required = (
+        store_name == "chroma"
+        or configured_store == "chroma"
+        or _is_atlas_store(store_name)
+        or _is_atlas_store(configured_store)
+    )
+    fallback_active = (configured_store == "chroma" and store_name != "chroma") or (
+        _is_atlas_store(configured_store) and not _is_atlas_store(store_name)
+    )
 
     indexed_documents = [document for document in document_list if document.status == "indexed"]
     stale_documents = [document for document in document_list if document.status == "stale"]
@@ -109,6 +228,13 @@ def vector_store_drift_status(documents=None):
         store_error=store_error,
         fallback_active=fallback_active,
     )
+    atlas_metrics = atlas_observability_snapshot(
+        configured_store=configured_store,
+        store_name=store_name,
+        actual_vector_count=actual_vector_count,
+        reindex_required=bool(reindex_reasons),
+        fallback_active=fallback_active,
+    )
 
     return {
         "store": store_name,
@@ -138,6 +264,14 @@ def vector_store_drift_status(documents=None):
         "store_error": store_error,
         "reindex_recommended": bool(reindex_reasons),
         "reindex_reasons": reindex_reasons,
+        "atlas": atlas_metrics,
+        "atlas_queries": atlas_metrics["queries"],
+        "atlas_errors": atlas_metrics["errors"],
+        "atlas_latency": atlas_metrics["latency"],
+        "atlas_fallbacks": atlas_metrics["fallbacks"],
+        "atlas_sync_failures": atlas_metrics["sync_failures"],
+        "atlas_vector_count": atlas_metrics["vector_count"],
+        "atlas_reindex_required": atlas_metrics["reindex_required"],
         "privacy": {
             "stores_document_text": False,
             "exposes_document_text": False,
@@ -336,6 +470,14 @@ def _safe_int(value):
         return 0
 
 
+def _safe_float(value):
+    """Return a float value, falling back to zero for invalid input."""
+    try:
+        return float(value or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _optional_int(value):
     """Return an optional integer for ids used in status payloads."""
     if value in (None, ""):
@@ -349,6 +491,11 @@ def _optional_int(value):
 def _bounded_string(value, max_length):
     """Return a stripped string bounded for status payloads."""
     return str(value or "").strip()[:max_length]
+
+
+def _is_atlas_store(store_name):
+    """Return whether a vector-store name refers to MongoDB Atlas Vector Search."""
+    return str(store_name or "").strip().lower() in ATLAS_VECTOR_STORE_NAMES
 
 
 class _UnavailableVectorStore:

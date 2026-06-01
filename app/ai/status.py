@@ -2,36 +2,13 @@
 # ruff: noqa: F401, F821
 
 import logging
-import re
-from datetime import date, timedelta
 
 from flask import current_app
-from sqlalchemy.exc import SQLAlchemyError
 
-from app.extensions import db
-from app.inventory.services import forecast_inventory_risks
-from app.models import (
-    Employee,
-    ErrorEntry,
-    GeneratedDocument,
-    InventoryMaterial,
-    Machine,
-    ShiftPlan,
-    Task,
-    TaskStatus,
-    User,
-)
-from app.security import employee_access_level, has_dashboard_permission
 from app.services.ai_answer_quality_service import answer_quality_from_result
 from app.services.ai_audit_service import ai_analytics_summary, create_ai_audit_event
 from app.services.ai_confidence_service import attach_confidence_to_result
-from app.services.ai_history_service import save_chat_exchange
-from app.services.ai_prompting import (
-    permission_denied_answer,
-    permission_denied_context,
-)
 from app.services.ai_provider_readiness_service import ai_provider_readiness_snapshot
-from app.services.ai_retrieval import allowed_ai_scopes, retrieve_ai_context
 from app.services.ai_routing import local_metadata, workflow_profile
 from app.services.ai_safety_service import (
     apply_post_generation_safety_to_result,
@@ -42,7 +19,6 @@ from app.services.ai_safety_service import (
 )
 from app.services.ai_service import (
     AIServiceError,
-    MockAIProvider,
     ai_provider_catalog,
     ai_provider_fallback_reason,
     get_ai_provider,
@@ -50,33 +26,16 @@ from app.services.ai_service import (
 )
 from app.services.conversation_context_service import (
     build_structured_context_metadata,
-    conversation_context_for_chat,
 )
-from app.services.document_service import visible_documents_query
 from app.services.embedding_service import embedding_provider_catalog
 from app.services.empty_retrieval_response_service import build_empty_retrieval_answer
-from app.services.error_service import search_errors
-from app.services.incident_timeline_service import daily_briefing_timeline_section
-from app.services.knowledge_service import knowledge_sources_for_chat
 from app.services.langfuse_service import langfuse_status
-from app.services.order_planning_service import (
-    REQUIRED_SCOPES as REQUIRED_ORDER_PLANNING_SCOPES,
-)
-from app.services.order_planning_service import (
-    format_order_plan_answer,
-    order_planning_payload_from_message,
-    plan_order,
-)
 from app.services.query_understanding_service import classify_query
-from app.services.rag_service import build_rag_context
-from app.services.recurring_issue_service import analyze_recurring_issues
 from app.services.retrieval_debug_service import (
     is_retrieval_debug_visible,
     public_retrieval_debug,
 )
 from app.services.retrieval_explainability_service import retrieval_explainability_summary
-from app.services.retrieval_service import knowledge_context_for_chat
-from app.services.task_service import visible_tasks_query
 
 LAST_OPENAI_ERROR = None
 OPENAI_PROVIDER = "OpenAI"

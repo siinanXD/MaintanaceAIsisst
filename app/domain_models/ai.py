@@ -444,6 +444,84 @@ class AIAuditEvent(db.Model):
         }
 
 
+class AIAnswerTrace(db.Model):
+    """Stored metadata trace for one generated AI answer."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    answer_id = db.Column(db.String(64), nullable=False, unique=True, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    chat_message_id = db.Column(
+        db.Integer,
+        db.ForeignKey("chat_message.id"),
+        nullable=False,
+        unique=True,
+    )
+    audit_event_id = db.Column(db.Integer, db.ForeignKey("ai_audit_event.id"))
+    workflow = db.Column(db.String(80), nullable=False, default="")
+    provider = db.Column(db.String(80), nullable=False, default="")
+    model = db.Column(db.String(120), nullable=False, default="")
+    model_tier = db.Column(db.String(40), nullable=False, default="")
+    input_tokens = db.Column(db.Integer, nullable=False, default=0)
+    output_tokens = db.Column(db.Integer, nullable=False, default=0)
+    cached_tokens = db.Column(db.Integer, nullable=False, default=0)
+    total_tokens = db.Column(db.Integer, nullable=False, default=0)
+    estimated_cost_usd = db.Column(db.Float, nullable=False, default=0.0)
+    confidence_score = db.Column(db.Integer)
+    confidence_level = db.Column(db.String(40), nullable=False, default="")
+    source_count = db.Column(db.Integer, nullable=False, default=0)
+    chunk_count = db.Column(db.Integer, nullable=False, default=0)
+    sources_json = db.Column(db.Text, nullable=False, default="[]")
+    chunks_json = db.Column(db.Text, nullable=False, default="[]")
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False, index=True)
+
+    user = db.relationship("User", foreign_keys=[user_id])
+    chat_message = db.relationship("ChatMessage", foreign_keys=[chat_message_id])
+    audit_event = db.relationship("AIAuditEvent", foreign_keys=[audit_event_id])
+
+    __table_args__ = (
+        db.Index("ix_ai_answer_trace_user_created", "user_id", "created_at"),
+        db.Index("ix_ai_answer_trace_audit_event", "audit_event_id"),
+    )
+
+    def sources(self):
+        """Return stored prompt-safe source trace entries."""
+        return _loads_json_list(self.sources_json)
+
+    def chunks(self):
+        """Return stored prompt-safe chunk trace entries."""
+        return _loads_json_list(self.chunks_json)
+
+    def to_dict(self):
+        """Return a JSON-serializable answer trace without prompts or raw chunks."""
+        return {
+            "id": self.id,
+            "answer_id": self.answer_id,
+            "user_id": self.user_id,
+            "chat_message_id": self.chat_message_id,
+            "audit_event_id": self.audit_event_id,
+            "workflow": self.workflow,
+            "provider": self.provider,
+            "model": self.model,
+            "model_tier": self.model_tier,
+            "timestamp": self.created_at.isoformat(),
+            "token_usage": {
+                "input_tokens": self.input_tokens,
+                "output_tokens": self.output_tokens,
+                "cached_tokens": self.cached_tokens,
+                "total_tokens": self.total_tokens,
+            },
+            "estimated_cost_usd": round(float(self.estimated_cost_usd or 0.0), 6),
+            "confidence": {
+                "score": self.confidence_score,
+                "level": self.confidence_level,
+            },
+            "source_count": self.source_count,
+            "chunk_count": self.chunk_count,
+            "sources": self.sources(),
+            "chunks": self.chunks(),
+        }
+
+
 class KnowledgeDocument(db.Model):
     """Searchable document registered in the local AI knowledge base."""
 

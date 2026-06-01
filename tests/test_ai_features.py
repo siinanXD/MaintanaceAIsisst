@@ -9,6 +9,7 @@ import pytest
 
 from app.extensions import db
 from app.models import (
+    AIAnswerTrace,
     AIAuditEvent,
     AIFeedback,
     AssistantTrainingEntry,
@@ -3637,6 +3638,7 @@ def test_ai_chat_returns_sources_and_audit_metadata(
 ):
     """Verify chat responses include sources and metadata-only audit records."""
     user = make_user(username="ai_sources_user", role=Role.INSTANDHALTUNG)
+    it_user = make_user(username="ai_trace_it_user", role=Role.IT)
     make_machine(name="Anlage Quelle", produced_item="Deckel")
 
     response = client.post(
@@ -3649,6 +3651,8 @@ def test_ai_chat_returns_sources_and_audit_metadata(
     audit_id = payload["diagnostics"]["audit_event_id"]
     assert response.status_code == 200
     assert payload["chat_message_id"]
+    assert payload["answer_id"].startswith("ans_")
+    assert payload["answer_trace_id"]
     source = payload["sources"][0]
     assert source["type"] == "machine"
     assert source["source_type"] == "machine"
@@ -3676,8 +3680,10 @@ def test_ai_chat_returns_sources_and_audit_metadata(
     with app.app_context():
         event = db.session.get(AIAuditEvent, audit_id)
         chat_message = db.session.get(ChatMessage, payload["chat_message_id"])
+        trace = AIAnswerTrace.query.filter_by(answer_id=payload["answer_id"]).first()
         assert event is not None
         assert chat_message is not None
+        assert trace is not None
         assert event.workflow == "assistant"
         assert event.source_count == len(payload["sources"])
         assert event.confidence_score == payload["confidence"]["score"]
@@ -3687,8 +3693,48 @@ def test_ai_chat_returns_sources_and_audit_metadata(
         assert chat_message.source_count == len(payload["sources"])
         assert chat_message.confidence_score == payload["confidence"]["score"]
         assert chat_message.confidence_level == payload["confidence"]["level"]
+        assert chat_message.diagnostics()["answer_id"] == payload["answer_id"]
+        assert chat_message.diagnostics()["answer_trace_id"] == payload["answer_trace_id"]
+        assert trace.chat_message_id == chat_message.id
+        assert trace.audit_event_id == audit_id
+        assert trace.model == event.model
+        assert trace.source_count == len(payload["sources"])
+        assert trace.confidence_score == payload["confidence"]["score"]
+        assert trace.sources()[0]["type"] == "machine"
+        assert "content" not in json.dumps(trace.sources(), ensure_ascii=True)
+        assert "relative_path" not in json.dumps(trace.sources(), ensure_ascii=True)
         assert not hasattr(event, "prompt")
         assert not hasattr(event, "response")
+
+    denied_trace_response = client.get(
+        f"/api/v1/ai/answers/{payload['answer_id']}/trace",
+        headers=auth_headers(user["username"]),
+    )
+    assert denied_trace_response.status_code == 403
+
+    trace_response = client.get(
+        f"/api/v1/ai/answers/{payload['answer_id']}/trace",
+        headers=auth_headers(it_user["username"]),
+    )
+    trace_payload = trace_response.get_json()
+    assert trace_response.status_code == 200
+    assert trace_payload["answer_id"] == payload["answer_id"]
+    assert trace_payload["chat_message_id"] == payload["chat_message_id"]
+    assert trace_payload["audit_event_id"] == audit_id
+    assert trace_payload["timestamp"]
+    assert trace_payload["token_usage"]["total_tokens"] >= 0
+    assert trace_payload["estimated_cost_usd"] >= 0
+    assert trace_payload["confidence"]["score"] == payload["confidence"]["score"]
+    assert trace_payload["sources"][0]["similarity_score"] >= 0
+    assert "content" not in json.dumps(trace_payload, ensure_ascii=True)
+    assert "relative_path" not in json.dumps(trace_payload, ensure_ascii=True)
+
+    chat_trace_response = client.get(
+        f"/api/v1/ai/chat/{payload['chat_message_id']}/trace",
+        headers=auth_headers(it_user["username"]),
+    )
+    assert chat_trace_response.status_code == 200
+    assert chat_trace_response.get_json()["answer_id"] == payload["answer_id"]
 
 
 def test_ai_chat_bubble_redacts_evidence_for_non_it_users(
@@ -5979,13 +6025,38 @@ def test_ai_observability_dashboard_combines_logs_quality_and_retrieval(
     assert dashboard["metrics"]["p95_response_ms"] == 240
     assert dashboard["metrics"]["average_retrieval_ms"] == 42
     assert dashboard["metrics"]["p95_retrieval_ms"] == 42
+    assert dashboard["metrics"]["latency"] == {
+        "average_response_ms": 240,
+        "p95_response_ms": 240,
+        "average_retrieval_ms": 42,
+        "p95_retrieval_ms": 42,
+    }
+    assert dashboard["metrics"]["total_requests"] == 1
+    assert dashboard["metrics"]["successful_requests"] == 1
+    assert dashboard["metrics"]["failed_requests"] == 0
+    assert dashboard["metrics"]["request_success_rate"] == 1
     assert dashboard["metrics"]["average_final_top_k"] == 1
     assert dashboard["metrics"]["average_tokens"] == 320
+    assert dashboard["metrics"]["token_usage"] == {
+        "input_tokens": 200,
+        "output_tokens": 120,
+        "cached_tokens": 0,
+        "total_tokens": 320,
+        "average_tokens": 320,
+        "cache_rate": 0.0,
+    }
     assert dashboard["metrics"]["provider_ready"] is True
     assert dashboard["metrics"]["provider_readiness_status"] == "ok"
     assert dashboard["metrics"]["provider_degraded_component_count"] == 0
     assert dashboard["metrics"]["provider_next_action_type"] == ""
     assert dashboard["metrics"]["cost_windows"]["month"] == 0.012
+    assert dashboard["metrics"]["costs"] == {
+        "day": 0.012,
+        "week": 0.012,
+        "month": 0.012,
+        "estimated_cost_usd": 0.012,
+        "cost_per_1k_tokens": 0.0375,
+    }
     assert dashboard["metrics"]["price_configuration"]["message"] == "Kosten nicht konfiguriert"
     assert dashboard["metrics"]["failed_request_count"] == 0
     assert dashboard["metrics"]["retrieval_hit_rate"] == 1
@@ -6078,6 +6149,9 @@ def test_ai_observability_dashboard_combines_logs_quality_and_retrieval(
     assert dashboard["metrics"]["high_uncertainty_rate"] == 0.3333
     assert dashboard["metrics"]["uncertain_answer_count"] == 2
     assert dashboard["metrics"]["uncertain_answer_rate"] == 0.6667
+    assert dashboard["metrics"]["low_confidence_answers"] == 1
+    assert dashboard["metrics"]["low_confidence_answer_count"] == 1
+    assert dashboard["metrics"]["low_confidence_rate"] == 0.3333
     assert dashboard["metrics"]["reranking_request_count"] == 1
     assert dashboard["metrics"]["average_rerank_candidate_limit"] == 20
     assert dashboard["metrics"]["average_rerank_candidate_count"] == 12
@@ -6567,6 +6641,8 @@ def test_ai_observability_dashboard_tracks_structured_and_rag_answer_metrics(
     assert metrics["rag_answer_rate"] == 0.0833
     assert metrics["no_source_count"] == 3
     assert metrics["no_source_rate"] == 0.25
+    assert metrics["no_source_answers"] == 3
+    assert metrics["no_source_answer_rate"] == 0.25
     assert metrics["no_source_permission_denied_count"] == 1
     assert metrics["no_source_no_data_count"] == 1
     assert metrics["no_source_answer_count"] == 1
@@ -6671,6 +6747,12 @@ def test_ai_observability_dashboard_exposes_failed_requests_without_prompts(
         for item in dashboard["metrics"]["failure_reason_distribution"]
     }
     assert dashboard["metrics"]["failed_request_count"] == 3
+    assert dashboard["metrics"]["total_requests"] == 3
+    assert dashboard["metrics"]["successful_requests"] == 0
+    assert dashboard["metrics"]["failed_requests"] == 3
+    assert dashboard["metrics"]["request_success_rate"] == 0
+    assert dashboard["metrics"]["token_usage"]["total_tokens"] == 25
+    assert dashboard["metrics"]["latency"]["p95_response_ms"] == 1800
     assert reason_counts["rate_limit"] == 1
     assert reason_counts["unsupported_provider"] == 1
     assert reason_counts["base_url_missing"] == 1

@@ -1,5 +1,12 @@
 """Tests for OpenAPI documentation and demo setup entry points."""
 
+from pathlib import Path
+
+from app import create_app
+from app.extensions import db
+from app.models import Role, User
+from app.permissions import upsert_default_permissions
+
 
 def test_openapi_json_documents_core_endpoints(client):
     """Verify the OpenAPI JSON exposes the documented production endpoints."""
@@ -226,6 +233,8 @@ def test_openapi_examples_are_present(client):
         ]
     )
     assert provider_status_schema["properties"]["effective_provider"]["example"] == "mock"
+    assert provider_status_schema["properties"]["fallback_active"]["example"] is True
+    assert provider_status_schema["properties"]["production_default"]["example"] is False
     assert (
         provider_status_schema["properties"]["configuration_action"]["example"] == "set_ai_base_url"
     )
@@ -385,6 +394,20 @@ def test_openapi_examples_are_present(client):
     assert (
         observability_metrics["provider_next_action_type"]["example"] == "select_supported_provider"
     )
+    assert observability_metrics["atlas_queries"]["example"] == 24
+    assert observability_metrics["atlas_errors"]["example"] == 1
+    assert observability_metrics["atlas_latency"]["example"] == 35.5
+    assert observability_metrics["atlas_fallbacks"]["example"] == 1
+    assert observability_metrics["atlas_sync_failures"]["example"] == 1
+    assert observability_metrics["atlas_vector_count"]["example"] == 1280
+    assert observability_metrics["atlas_reindex_required"]["example"] is True
+    assert observability_metrics["governance_alert_count"]["example"] == 2
+    assert observability_metrics["governance_status"]["example"] == "warning"
+    governance_schema = observability_schema["properties"]["governance"]
+    assert governance_schema["properties"]["alerts"]["items"]["properties"]["rule"]["example"] == (
+        "high_no_source_rate"
+    )
+    assert "alerts" in observability_schema["properties"]
     assert observability_metrics["source_conflict_count"]["example"] == 1
     assert observability_metrics["source_conflict_rate"]["example"] == 0.04
     assert (
@@ -624,3 +647,138 @@ def test_api_docs_page_links_to_swagger(client):
     body = response.get_data(as_text=True)
     assert "/swagger/" in body
     assert "/api/swagger.json" in body
+
+
+def test_api_docs_are_disabled_by_default_in_production(tmp_path):
+    """Verify production deployments do not expose API docs by default."""
+    application = _api_docs_test_app(tmp_path, flask_env="production")
+
+    with application.app_context():
+        client = application.test_client()
+        protected_paths = (
+            "/swagger/",
+            "/api/swagger.json",
+            "/api/v1/swagger.json",
+            "/apispec_1.json",
+        )
+        for path in protected_paths:
+            response = client.get(path)
+            assert response.status_code == 404, path
+
+
+def test_enabled_production_api_docs_require_master_admin(tmp_path):
+    """Verify explicitly enabled production API docs are master-admin only."""
+    application = _api_docs_test_app(
+        tmp_path,
+        flask_env="production",
+        enable_api_docs=True,
+        require_master_admin=True,
+    )
+
+    with application.app_context():
+        master_headers = _create_user_headers(application, "docs_master", Role.MASTER_ADMIN)
+        user_headers = _create_user_headers(application, "docs_user", Role.PRODUKTION)
+        client = application.test_client()
+
+        protected_paths = (
+            "/swagger/",
+            "/api/swagger.json",
+            "/api/v1/swagger.json",
+            "/apispec_1.json",
+        )
+        for path in protected_paths:
+            assert client.get(path).status_code == 401, path
+            assert client.get(path, headers=user_headers).status_code == 403, path
+
+        master_responses = {
+            path: client.get(path, headers=master_headers) for path in protected_paths
+        }
+
+    spec_response = master_responses["/api/swagger.json"]
+    legacy_response = master_responses["/api/v1/swagger.json"]
+    swagger_response = master_responses["/swagger/"]
+    flasgger_spec_response = master_responses["/apispec_1.json"]
+    assert spec_response.status_code == 200
+    assert spec_response.get_json()["openapi"].startswith("3.")
+    assert legacy_response.status_code == 308
+    assert legacy_response.headers["Location"] == "/api/swagger.json"
+    assert swagger_response.status_code == 200
+    assert b"Swagger" in swagger_response.data
+    assert flasgger_spec_response.status_code == 200
+
+
+def test_development_api_docs_preserve_current_public_behavior(tmp_path):
+    """Verify development deployments keep API docs public unless configured otherwise."""
+    application = _api_docs_test_app(tmp_path, flask_env="development")
+
+    with application.app_context():
+        client = application.test_client()
+        spec_response = client.get("/api/swagger.json")
+        swagger_response = client.get("/swagger/")
+
+    assert spec_response.status_code == 200
+    assert spec_response.get_json()["openapi"].startswith("3.")
+    assert swagger_response.status_code == 200
+    assert b"Swagger" in swagger_response.data
+
+
+def _api_docs_test_app(
+    tmp_path,
+    flask_env,
+    enable_api_docs=None,
+    require_master_admin=None,
+):
+    """Create a minimal app configured for API documentation security tests."""
+
+    class ApiDocsSecurityConfig:
+        """Provide deterministic app settings for API documentation tests."""
+
+        TESTING = True
+        FLASK_ENV = flask_env
+        SECRET_KEY = "test-secret-key-with-enough-length"
+        JWT_SECRET_KEY = "test-jwt-secret-key-with-enough-length"
+        SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
+        SQLALCHEMY_TRACK_MODIFICATIONS = False
+        AUTO_CREATE_DATABASE = True
+        AI_PROVIDER = "mock"
+        EMBEDDING_PROVIDER = "hashing"
+        OPENAI_API_KEY = ""
+        OPENAI_MODEL = "test-model"
+        MAIL_DRY_RUN = True
+        MAIL_ENABLED = False
+        MAIL_FROM = "noreply@example.test"
+        UPLOAD_FOLDER = str(Path(tmp_path) / "uploads")
+        DOCUMENTS_FOLDER = str(Path(tmp_path) / "documents")
+        MANUALS_FOLDER = str(Path(tmp_path) / "manuals")
+        KNOWLEDGE_FOLDER = str(Path(tmp_path) / "knowledge")
+        BACKUP_FOLDER = str(Path(tmp_path) / "backups")
+        LOG_DIR = str(Path(tmp_path) / "logs")
+
+    if enable_api_docs is not None:
+        ApiDocsSecurityConfig.ENABLE_API_DOCS = enable_api_docs
+    if require_master_admin is not None:
+        ApiDocsSecurityConfig.API_DOCS_REQUIRE_MASTER_ADMIN = require_master_admin
+    return create_app(ApiDocsSecurityConfig)
+
+
+def _create_user_headers(application, username, role):
+    """Create a user in the provided app and return JWT authorization headers."""
+    user = User(
+        username=username,
+        email=f"{username}@example.test",
+        role=role,
+        is_active=True,
+    )
+    user.set_password("password")
+    db.session.add(user)
+    db.session.flush()
+    upsert_default_permissions(user)
+    db.session.commit()
+
+    response = application.test_client().post(
+        "/api/v1/auth/login",
+        json={"login": username, "password": "password"},
+    )
+    assert response.status_code == 200, response.get_json()
+    token = response.get_json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}

@@ -3,6 +3,8 @@
 import json
 import math
 from datetime import timedelta
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -27,7 +29,14 @@ from app.models import (
     User,
 )
 from app.services.chunking_service import ChunkingConfig, chunk_text
-from app.services.embedding_service import HashingEmbeddingProvider, get_embedding_provider
+from app.services.embedding_service import (
+    EmbeddingServiceError,
+    HashingEmbeddingProvider,
+    OpenAIEmbeddingProvider,
+    embedding_dimensions_for_provider,
+    embedding_provider_status,
+    get_embedding_provider,
+)
 from app.services.knowledge_aging_service import (
     knowledge_aging_state,
     mark_outdated_knowledge_by_age,
@@ -35,7 +44,11 @@ from app.services.knowledge_aging_service import (
 from app.services.knowledge_quality_service import (
     retrieval_quality_gate_for_status,
 )
-from app.services.knowledge_service import chunk_vector_metadata, rebuild_chunks
+from app.services.knowledge_service import (
+    chunk_vector_metadata,
+    rebuild_chunks,
+    search_knowledge_chunks,
+)
 from app.services.knowledge_source_quality_service import (
     chunk_quality_reasons,
     has_bad_ocr_signature,
@@ -43,6 +56,7 @@ from app.services.knowledge_source_quality_service import (
     reset_chunk_quality_reports,
 )
 from app.services.retrieval_candidate_service import (
+    RetrievalCandidate,
     public_sources_from_candidates,
     vector_result_candidate,
 )
@@ -92,6 +106,25 @@ def test_validate_runtime_config_rejects_invalid_chunking_mode():
                 "RAG_SEMANTIC_ONLY_MIN_SIMILARITY": 0.78,
             }
         )
+
+
+def test_validate_runtime_config_accepts_legacy_fixed_chunking_mode():
+    """Verify the migration fallback chunking mode is accepted."""
+    validate_runtime_config(
+        {
+            "TESTING": True,
+            "RAG_CHUNKING_MODE": "legacy_fixed",
+            "RAG_CHUNK_SIZE": 1400,
+            "RAG_CHUNK_OVERLAP": 160,
+            "RAG_SEMANTIC_BREAKPOINT_THRESHOLD": 0.35,
+            "RAG_SEMANTIC_MIN_CHUNK_CHARS": 600,
+            "RAG_SEMANTIC_TARGET_CHUNK_CHARS": 1200,
+            "RAG_SEMANTIC_MAX_CHUNK_CHARS": 1800,
+            "RAG_TOP_K": 4,
+            "RAG_RERANK_CANDIDATE_LIMIT": 20,
+            "RAG_SEMANTIC_ONLY_MIN_SIMILARITY": 0.78,
+        }
+    )
 
 
 def test_validate_runtime_config_rejects_invalid_semantic_threshold():
@@ -191,6 +224,63 @@ def test_chunk_text_preserves_section_headings_steps_and_tables():
     )
 
 
+def test_semantic_chunk_text_stores_section_hierarchy_metadata():
+    """Verify heading hierarchy is stored for future re-indexing and auditing."""
+    text = "\n".join(
+        (
+            "# Hydrauliksystem",
+            "Allgemeine Hinweise zur Anlage.",
+            "",
+            "## Sicherheit",
+            "Anlage abschalten und Druck ablassen.",
+            "",
+            "## Wartung",
+            "- Filter pruefen.",
+            "- Dichtung tauschen.",
+        )
+    )
+
+    chunks = chunk_text(
+        text,
+        metadata={"document_type": "manual"},
+        config=ChunkingConfig(max_chars=400, overlap=40, max_chunks=8),
+    )
+
+    safety_chunk = next(chunk for chunk in chunks if "Druck ablassen" in chunk["text"])
+    maintenance_chunk = next(chunk for chunk in chunks if "Filter pruefen" in chunk["text"])
+    assert safety_chunk["metadata"]["chunk_schema_version"] == "semantic_structure_v1"
+    assert safety_chunk["metadata"]["section_title"] == "Sicherheit"
+    assert safety_chunk["metadata"]["parent_section_title"] == "Hydrauliksystem"
+    assert safety_chunk["metadata"]["section_level"] == 2
+    assert safety_chunk["metadata"]["chunk_hierarchy"] == ["Hydrauliksystem", "Sicherheit"]
+    assert safety_chunk["metadata"]["hierarchy_path"] == "Hydrauliksystem > Sicherheit"
+    assert maintenance_chunk["metadata"]["semantic_chunk_type"] == "maintenance_instruction"
+    assert maintenance_chunk["metadata"]["document_type"] == "manual"
+
+
+def test_semantic_chunk_text_marks_procedures_and_maintenance_instructions():
+    """Verify procedures and maintenance instructions become explicit semantic chunks."""
+    text = "\n".join(
+        (
+            "Wartungsanweisung:",
+            "Schritt 1: Hauptschalter ausschalten.",
+            "Schritt 2: Sensor S12 reinigen.",
+            "Schritt 3: Testlauf dokumentieren.",
+        )
+    )
+
+    chunks = chunk_text(
+        text,
+        config=ChunkingConfig(max_chars=300, overlap=40, max_chunks=4),
+    )
+
+    assert len(chunks) == 1
+    assert chunks[0]["metadata"]["section_title"] == "Wartungsanweisung"
+    assert chunks[0]["metadata"]["chunk_block_kinds"] == "list"
+    assert chunks[0]["metadata"]["semantic_chunk_type"] == "procedure"
+    assert chunks[0]["metadata"]["semantic_boundary"] == "procedure"
+
+
 def test_hybrid_semantic_chunking_splits_topic_changes():
     """Verify hybrid semantic chunking can split paragraph-level topic changes."""
     text = "\n\n".join(
@@ -246,6 +336,8 @@ def test_chunk_text_keeps_error_code_block_together():
     assert "Fehlercode E-410" in chunks[0]["text"]
     assert "Ursache: Naeherungsschalter" in chunks[0]["text"]
     assert "Abhilfe: Sensorposition" in chunks[0]["text"]
+    assert chunks[0]["metadata"]["semantic_chunk_type"] == "error_catalog_entry"
+    assert chunks[0]["metadata"]["semantic_boundary"] == "error_catalog_entry"
 
 
 def test_chunk_text_keeps_slightly_oversized_error_code_block_intact():
@@ -298,6 +390,67 @@ def test_chunk_text_repeats_table_header_when_splitting_large_tables():
     assert any("TB-104" in chunk["text"] for chunk in table_chunks)
 
 
+def test_legacy_fixed_chunking_remains_available_as_migration_fallback():
+    """Verify fixed-size character chunking can still be selected during migration."""
+    text = "Hydraulikfilter X900 taeglich pruefen. " * 25
+
+    chunks = chunk_text(
+        text,
+        metadata={"document_type": "manual"},
+        config=ChunkingConfig(
+            max_chars=240,
+            overlap=40,
+            max_chunks=10,
+            mode="legacy_fixed",
+        ),
+    )
+
+    assert len(chunks) > 1
+    assert chunks[0]["metadata"]["document_type"] == "manual"
+    assert chunks[0]["metadata"]["chunk_index"] == 0
+    assert "semantic_strategy" not in chunks[0]["metadata"]
+    assert "Hydraulikfilter" in chunks[1]["text"]
+
+
+def test_semantic_chunking_failure_falls_back_to_structured_chunks(monkeypatch):
+    """Verify semantic chunking failures keep the existing structured fallback usable."""
+    from app.services import semantic_chunking_service
+
+    def failing_semantic_chunk_text(*_args, **_kwargs):
+        """Raise like a broken semantic chunker during migration."""
+        raise RuntimeError("semantic chunking unavailable")
+
+    monkeypatch.setattr(
+        semantic_chunking_service,
+        "semantic_chunk_text",
+        failing_semantic_chunk_text,
+    )
+    text = "\n".join(
+        (
+            "Wartungsschritte:",
+            "1. Anlage stoppen.",
+            "2. Filter X900 pruefen.",
+            "",
+            "Ersatzteile:",
+            "| Teil | Menge |",
+            "| Filter X900 | 1 |",
+        )
+    )
+
+    chunks = chunk_text(
+        text,
+        metadata={"document_type": "manual"},
+        config=ChunkingConfig(max_chars=220, overlap=40, max_chunks=5),
+    )
+
+    assert chunks
+    assert chunks[0]["metadata"]["document_type"] == "manual"
+    assert chunks[0]["metadata"]["section_title"] == "Wartungsschritte"
+    assert chunks[0]["metadata"]["chunk_block_kinds"] == "list"
+    assert "chunk_schema_version" not in chunks[0]["metadata"]
+    assert any(chunk["metadata"].get("chunk_block_kinds") == "table" for chunk in chunks)
+
+
 def test_chunk_text_rejects_invalid_overlap():
     """Verify invalid chunking settings fail explicitly."""
     with pytest.raises(ValueError, match="overlap"):
@@ -308,7 +461,7 @@ def test_chunk_text_rejects_invalid_overlap():
 
 
 def test_hashing_embedding_provider_is_stable_and_normalized():
-    """Verify local embeddings are deterministic and normalized."""
+    """Verify test/fallback embeddings are deterministic and normalized."""
     provider = HashingEmbeddingProvider(dimensions=64)
 
     first = provider.embed_text("Hydraulikfilter X900 pruefen")
@@ -317,6 +470,107 @@ def test_hashing_embedding_provider_is_stable_and_normalized():
     assert first == second
     assert len(first) == 64
     assert math.isclose(sum(value * value for value in first), 1.0)
+
+
+def test_embedding_provider_status_defaults_to_openai():
+    """Verify OpenAI embeddings are the RAG default provider."""
+    status = embedding_provider_status({})
+
+    assert status["provider"] == "openai"
+    assert status["mode"] == "external"
+    assert status["model"] == "text-embedding-3-small"
+    assert status["dimensions"] == 1536
+    assert status["effective_provider"] == "hashing"
+    assert status["fallback_active"] is True
+    assert status["production_default"] is True
+    assert status["reindex_required_on_provider_change"] is True
+
+
+def test_get_embedding_provider_uses_openai_as_primary_when_configured(app):
+    """Verify configured OpenAI embeddings are the primary production provider."""
+    with app.app_context():
+        app.config["EMBEDDING_PROVIDER"] = "openai"
+        app.config["OPENAI_API_KEY"] = "test-key"
+        app.config["OPENAI_EMBEDDING_MODEL"] = "text-embedding-3-small"
+        provider = get_embedding_provider()
+
+    assert isinstance(provider, OpenAIEmbeddingProvider)
+    assert provider.name == "openai"
+    assert provider.model == "text-embedding-3-small"
+    assert provider.expected_dimensions == 1536
+
+
+def test_get_embedding_provider_falls_back_to_hashing_without_openai_key(app):
+    """Verify missing OpenAI credentials fall back locally without hiding the reason."""
+    with app.app_context():
+        app.config["EMBEDDING_PROVIDER"] = "openai"
+        app.config["OPENAI_API_KEY"] = ""
+        provider = get_embedding_provider()
+
+    assert isinstance(provider, HashingEmbeddingProvider)
+    assert provider.configured_provider == "openai"
+    assert provider.fallback_reason == "api_key_missing"
+
+
+def test_hashing_embedding_provider_is_explicit_test_fallback():
+    """Verify hashing remains available only as explicit test/offline fallback."""
+    status = embedding_provider_status({"EMBEDDING_PROVIDER": "hashing"})
+
+    assert status["provider"] == "hashing"
+    assert status["effective_provider"] == "hashing"
+    assert status["fallback_active"] is False
+    assert status["production_default"] is False
+    assert status["dimensions"] == 384
+    assert "Tests/offline Fallback" in status["recommended_action"]
+
+
+def test_embedding_dimension_metadata_for_supported_providers():
+    """Verify known embedding dimensions are explicit for provider changes."""
+    assert embedding_dimensions_for_provider("hashing", hash_dimensions=384) == 384
+    assert embedding_dimensions_for_provider("openai", "text-embedding-3-small") == 1536
+
+
+def test_openai_embedding_provider_rejects_unexpected_dimensions(app):
+    """Verify known OpenAI embedding models validate returned vector dimensions."""
+    with app.app_context():
+        provider = OpenAIEmbeddingProvider(
+            api_key="test-key",
+            model="text-embedding-3-small",
+        )
+    provider.client = SimpleNamespace(
+        embeddings=SimpleNamespace(
+            create=lambda **_kwargs: SimpleNamespace(
+                data=[SimpleNamespace(embedding=[0.0] * 384)]
+            )
+        )
+    )
+
+    with pytest.raises(EmbeddingServiceError, match="expected 1536"):
+        provider.embed_text("Hydraulikfilter X900 pruefen")
+
+
+def test_reindex_notice_is_documented_for_embedding_provider_changes():
+    """Verify docs tell admins to reindex after embedding provider changes."""
+    readme = Path("README.md").read_text(encoding="utf-8")
+
+    assert (
+        "Nach Änderung des Embedding Providers müssen Knowledge-Dokumente neu indexiert werden."
+        in readme
+    )
+
+
+def test_embedding_provider_configuration_documentation_is_current():
+    """Verify configuration docs describe OpenAI default and hashing fallback."""
+    config_doc = Path("docs/EMBEDDING_PROVIDER_CONFIGURATION.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "EMBEDDING_PROVIDER=openai" in config_doc
+    assert "text-embedding-3-small" in config_doc
+    assert "1536-dimensional" in config_doc
+    assert "hashing" in config_doc
+    assert "tests, CI and offline fallback only" in config_doc
+    assert "Knowledge documents must be reindexed" in config_doc
 
 
 def test_openai_compatible_embedding_provider_uses_configured_base_url(app):
@@ -352,6 +606,22 @@ def test_openai_compatible_embedding_provider_falls_back_without_base_url(app):
         provider = get_embedding_provider()
 
     assert isinstance(provider, HashingEmbeddingProvider)
+    assert provider.configured_provider == "openai_compatible"
+    assert provider.fallback_reason == "base_url_missing"
+
+
+def test_embedding_api_calls_are_centralized_in_embedding_service():
+    """Verify retrieval/indexing code does not call embedding APIs directly."""
+    service_dir = Path("app/services")
+    direct_callers = []
+    for path in service_dir.glob("*.py"):
+        if path.name == "embedding_service.py":
+            continue
+        source = path.read_text(encoding="utf-8")
+        if ".embeddings.create" in source:
+            direct_callers.append(path.name)
+
+    assert direct_callers == []
 
 
 def test_technical_entity_extraction_combines_catalog_and_rules(app):
@@ -485,6 +755,10 @@ def test_rebuild_chunks_persists_section_metadata(app):
     assert chunk_metadata["chunk_order"] == 0
     assert chunk_metadata["chunk_block_count"] == 1
     assert chunk_metadata["chunk_block_kinds"] == "list"
+    assert chunk_metadata["chunk_schema_version"] == "semantic_structure_v1"
+    assert chunk_metadata["semantic_chunk_type"] == "procedure"
+    assert chunk_metadata["chunk_hierarchy"] == ["Wartungsschritte"]
+    assert chunk_metadata["hierarchy_path"] == "Wartungsschritte"
     assert chunk_metadata["chunk_char_count"] == len(chunk.text)
     assert chunk_metadata["chunk_line_count"] == 4
     assert chunk_metadata["chunk_token_count"] >= 8
@@ -916,6 +1190,46 @@ def test_local_hybrid_retrieval_finds_keyword_match_beyond_recent_scan(
     assert sources[0]["id"] == old_document.id
     assert sources[0]["title"] == "KWS900 Pumpenlager Wartung"
     assert "Pumpenlager" in context
+
+
+def test_legacy_knowledge_chunk_search_uses_shared_retrieval_pipeline():
+    """Verify old knowledge search no longer performs keyword-only retrieval."""
+    user = object()
+    candidate = RetrievalCandidate(
+        source_type="knowledge",
+        source_id=42,
+        title="Pipeline Quelle",
+        content="Hydraulikfilter Pipeline Kontext",
+        module="knowledge",
+        url="/admin/ai",
+        raw_score=88,
+        normalized_score=70,
+        explanation="88 RAG-Trefferpunkte",
+        metadata={"chunk_id": 7, "source_kind": "rag", "section_title": "Wartung"},
+    )
+
+    with patch(
+        "app.services.retrieval_service.retrieve_knowledge_candidates",
+        return_value=[candidate],
+    ) as shared_retrieval:
+        results = search_knowledge_chunks("Hydraulikfilter", user=user, limit=1)
+
+    shared_retrieval.assert_called_once_with("Hydraulikfilter", user, limit=1)
+    assert results == [
+        {
+            "type": "knowledge",
+            "id": 42,
+            "chunk_id": 7,
+            "title": "Pipeline Quelle",
+            "module": "knowledge",
+            "url": "/admin/ai",
+            "reason": "88 RAG-Trefferpunkte",
+            "score": 88,
+            "context": "Hydraulikfilter Pipeline Kontext",
+            "source_kind": "rag",
+            "section_title": "Wartung",
+        }
+    ]
 
 
 def test_retrieve_context_keeps_structured_data_when_rag_disabled(

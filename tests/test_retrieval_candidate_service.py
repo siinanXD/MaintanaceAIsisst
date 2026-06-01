@@ -3,6 +3,7 @@
 from app.domain_models.common import utc_now
 from app.extensions import db
 from app.models import KnowledgeChunk, KnowledgeDocument, Role, User
+from app.services.retrieval_candidate_service import RetrievalCandidate, rank_candidates
 from app.services.retrieval_service import retrieve_context
 
 
@@ -225,6 +226,36 @@ def test_candidate_ranking_is_stable_for_repeated_retrieval(
         for source in second["sources"]
     ]
     assert first_keys == second_keys
+
+
+def test_candidate_ranking_uses_quality_as_score_tiebreaker():
+    """Verify equal-score candidates prefer stronger quality-gated sources."""
+    weak = RetrievalCandidate(
+        source_type="knowledge",
+        source_id=1,
+        title="Outdated",
+        content="A",
+        module="knowledge",
+        url="/admin/ai",
+        raw_score=50,
+        normalized_score=50,
+        quality_status="outdated",
+        metadata={"source_kind": "rag", "created_at": "2026-01-01T00:00:00"},
+    )
+    strong = RetrievalCandidate(
+        source_type="knowledge",
+        source_id=2,
+        title="Approved",
+        content="B",
+        module="knowledge",
+        url="/admin/ai",
+        raw_score=50,
+        normalized_score=50,
+        quality_status="admin_approved",
+        metadata={"source_kind": "rag", "created_at": "2025-01-01T00:00:00"},
+    )
+
+    assert rank_candidates([weak, strong]) == [strong, weak]
 
 
 def _create_candidate_knowledge_document(

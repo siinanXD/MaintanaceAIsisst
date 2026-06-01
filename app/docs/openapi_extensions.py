@@ -94,6 +94,8 @@ ADDITIONAL_SCHEMAS = {
             "mode": {"type": "string", "example": "openai_compatible"},
             "reason": {"type": "string", "example": "base_url_missing"},
             "effective_provider": {"type": "string", "example": "mock"},
+            "fallback_active": {"type": "boolean", "example": True},
+            "production_default": {"type": "boolean", "example": False},
             "configuration_action": {
                 "type": "string",
                 "example": "set_ai_base_url",
@@ -1258,6 +1260,10 @@ ADDITIONAL_SCHEMAS = {
             "metrics": {
                 "type": "object",
                 "properties": {
+                    "total_requests": {"type": "integer", "example": 42},
+                    "successful_requests": {"type": "integer", "example": 39},
+                    "failed_requests": {"type": "integer", "example": 3},
+                    "request_success_rate": {"type": "number", "example": 0.9286},
                     "frequent_questions": {"type": "array", "items": {"type": "object"}},
                     "frequent_search_terms": {
                         "type": "array",
@@ -1265,7 +1271,38 @@ ADDITIONAL_SCHEMAS = {
                     },
                     "average_final_top_k": {"type": "number", "example": 4},
                     "average_tokens": {"type": "number", "example": 640},
+                    "token_usage": {
+                        "type": "object",
+                        "properties": {
+                            "input_tokens": {"type": "integer", "example": 12000},
+                            "output_tokens": {"type": "integer", "example": 4800},
+                            "cached_tokens": {"type": "integer", "example": 900},
+                            "total_tokens": {"type": "integer", "example": 16800},
+                            "average_tokens": {"type": "number", "example": 400},
+                            "cache_rate": {"type": "number", "example": 0.075},
+                        },
+                    },
                     "cost_windows": {"type": "object"},
+                    "costs": {
+                        "type": "object",
+                        "properties": {
+                            "day": {"type": "number", "example": 0.12},
+                            "week": {"type": "number", "example": 0.64},
+                            "month": {"type": "number", "example": 2.31},
+                            "estimated_cost_usd": {"type": "number", "example": 2.31},
+                            "cost_per_1k_tokens": {"type": "number", "example": 0.1375},
+                        },
+                    },
+                    "governance_status": {"type": "string", "example": "warning"},
+                    "governance_alert_count": {"type": "integer", "example": 2},
+                    "governance_critical_alert_count": {
+                        "type": "integer",
+                        "example": 1,
+                    },
+                    "governance_warning_alert_count": {
+                        "type": "integer",
+                        "example": 1,
+                    },
                     "provider_ready": {"type": "boolean", "example": False},
                     "provider_readiness_status": {
                         "type": "string",
@@ -1281,6 +1318,22 @@ ADDITIONAL_SCHEMAS = {
                     },
                     "p95_response_ms": {"type": "number", "example": 850},
                     "p95_retrieval_ms": {"type": "number", "example": 120},
+                    "atlas_queries": {"type": "integer", "example": 24},
+                    "atlas_errors": {"type": "integer", "example": 1},
+                    "atlas_latency": {"type": "number", "example": 35.5},
+                    "atlas_fallbacks": {"type": "integer", "example": 1},
+                    "atlas_sync_failures": {"type": "integer", "example": 1},
+                    "atlas_vector_count": {"type": "integer", "example": 1280},
+                    "atlas_reindex_required": {"type": "boolean", "example": True},
+                    "latency": {
+                        "type": "object",
+                        "properties": {
+                            "average_response_ms": {"type": "number", "example": 420},
+                            "p95_response_ms": {"type": "number", "example": 850},
+                            "average_retrieval_ms": {"type": "number", "example": 80},
+                            "p95_retrieval_ms": {"type": "number", "example": 120},
+                        },
+                    },
                     "failed_request_count": {"type": "integer", "example": 1},
                     "retrieval_hit_rate": {"type": "number", "example": 0.92},
                     "source_freshness": {
@@ -1351,6 +1404,10 @@ ADDITIONAL_SCHEMAS = {
                         "example": 0.5,
                     },
                     "no_answer_rate": {"type": "number", "example": 0.08},
+                    "no_source_answers": {"type": "integer", "example": 3},
+                    "no_source_answer_rate": {"type": "number", "example": 0.12},
+                    "low_confidence_answers": {"type": "integer", "example": 4},
+                    "low_confidence_rate": {"type": "number", "example": 0.16},
                     "source_conflict_count": {"type": "integer", "example": 1},
                     "source_conflict_rate": {"type": "number", "example": 0.04},
                     "answer_quality_distribution": {
@@ -2272,6 +2329,49 @@ ADDITIONAL_SCHEMAS = {
                         ),
                     },
                 },
+            },
+            "governance": {
+                "type": "object",
+                "properties": {
+                    "status": {"type": "string", "example": "warning"},
+                    "alert_count": {"type": "integer", "example": 2},
+                    "critical_count": {"type": "integer", "example": 1},
+                    "warning_count": {"type": "integer", "example": 1},
+                    "alerts": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "rule": {
+                                    "type": "string",
+                                    "example": "high_no_source_rate",
+                                },
+                                "metric": {"type": "string", "example": "no_source_rate"},
+                                "severity": {"type": "string", "example": "warning"},
+                                "title": {
+                                    "type": "string",
+                                    "example": "Hohe No-Source-Rate",
+                                },
+                                "value": {"type": "number", "example": 0.25},
+                                "threshold": {"type": "number", "example": 0.2},
+                                "recommended_action": {
+                                    "type": "string",
+                                    "example": (
+                                        "Knowledge-Gaps, Berechtigungen und "
+                                        "strukturierte Datenabdeckung pruefen."
+                                    ),
+                                },
+                            },
+                        },
+                    },
+                    "rules": {"type": "array", "items": {"type": "object"}},
+                    "config": {"type": "object"},
+                    "privacy": {"type": "object"},
+                },
+            },
+            "alerts": {
+                "type": "array",
+                "items": {"type": "object"},
             },
             "recommended_action_summary": {
                 "type": "object",

@@ -194,6 +194,11 @@ Persistent volumes are configured for PostgreSQL, data, documents, manuals,
 knowledge, logs, and backups. Secrets must come from `.env`, never from the
 image.
 
+Before releasing to production, use
+[`docs/PRODUCTION_DEPLOYMENT_CHECKLIST.md`](docs/PRODUCTION_DEPLOYMENT_CHECKLIST.md)
+to verify configuration, secrets, migrations, health checks, observability,
+governance, reindexing, backups and rollback readiness.
+
 ## Configuration
 
 Copy `.env.example` to `.env` and set these values:
@@ -201,6 +206,8 @@ Copy `.env.example` to `.env` and set these values:
 ```env
 SECRET_KEY=                  # set in .env; keep empty in examples
 JWT_SECRET_KEY=              # set in .env; keep empty in examples
+ENABLE_API_DOCS=true         # default is false when FLASK_ENV=production
+API_DOCS_REQUIRE_MASTER_ADMIN=false  # default is true when FLASK_ENV=production
 DATABASE_URL=sqlite:///data/maintenance.db
 # Docker/Postgres:
 # DATABASE_URL=postgresql+psycopg://maintenance:${POSTGRES_PASSWORD}@db:5432/maintenance
@@ -222,7 +229,12 @@ GITHUB_REPOSITORY=siinanXD/MaintanaceAIsisst
 GITHUB_SHA=
 GITHUB_REF_NAME=
 RAG_ENABLED=true
-RAG_VECTOR_STORE=pgvector   # pgvector primary, local/chroma optional
+RAG_VECTOR_STORE=pgvector   # pgvector primary; local, chroma or mongodb_atlas optional
+MONGODB_ATLAS_URI=          # required only when RAG_VECTOR_STORE=mongodb_atlas
+MONGODB_ATLAS_DATABASE=maintenance_ai
+MONGODB_ATLAS_VECTOR_COLLECTION=knowledge_vectors
+MONGODB_ATLAS_VECTOR_INDEX=knowledge_vector_index
+MONGODB_ATLAS_TIMEOUT_MS=3000
 RAG_CHUNKING_MODE=hybrid_semantic
 RAG_CHUNK_SIZE=1400
 RAG_CHUNK_OVERLAP=160
@@ -262,9 +274,39 @@ RETRIEVAL_TELEMETRY_WINDOW_DAYS=30
 RETRIEVAL_TELEMETRY_LIMIT=10
 RETRIEVAL_TELEMETRY_LOW_CONFIDENCE_SCORE=35
 RETRIEVAL_TELEMETRY_LOW_SOURCE_SCORE=20
-EMBEDDING_PROVIDER=hashing  # hashing, openai, or openai_compatible
+AI_GOVERNANCE_ALERTS_ENABLED=true
+AI_GOVERNANCE_HIGH_NO_SOURCE_RATE_WARNING=0.2
+AI_GOVERNANCE_HIGH_NO_SOURCE_RATE_CRITICAL=0.4
+AI_GOVERNANCE_RETRIEVAL_DEGRADATION_WARNING=0.8
+AI_GOVERNANCE_RETRIEVAL_DEGRADATION_CRITICAL=0.6
+AI_GOVERNANCE_RETRIEVAL_LATENCY_WARNING=1200
+AI_GOVERNANCE_RETRIEVAL_LATENCY_CRITICAL=3000
+AI_GOVERNANCE_EXCESSIVE_TOKEN_USAGE_WARNING=100000
+AI_GOVERNANCE_EXCESSIVE_TOKEN_USAGE_CRITICAL=250000
+AI_GOVERNANCE_HALLUCINATION_RISK_WARNING=1
+AI_GOVERNANCE_HALLUCINATION_RISK_CRITICAL=5
+AI_GOVERNANCE_SYNC_FAILURES_WARNING=1
+AI_GOVERNANCE_SYNC_FAILURES_CRITICAL=3
+AI_GOVERNANCE_ATLAS_ERRORS_WARNING=1
+AI_GOVERNANCE_ATLAS_ERRORS_CRITICAL=3
+AI_GOVERNANCE_ATLAS_UNAVAILABLE_WARNING=1
+AI_GOVERNANCE_ATLAS_UNAVAILABLE_CRITICAL=1
+AI_GOVERNANCE_ATLAS_FALLBACKS_WARNING=1
+AI_GOVERNANCE_ATLAS_FALLBACKS_CRITICAL=1
+AI_GOVERNANCE_ATLAS_SYNC_FAILURES_WARNING=1
+AI_GOVERNANCE_ATLAS_SYNC_FAILURES_CRITICAL=3
+AI_GOVERNANCE_ATLAS_SYNC_DRIFT_WARNING=1
+AI_GOVERNANCE_ATLAS_SYNC_DRIFT_CRITICAL=1
+AI_GOVERNANCE_ATLAS_LATENCY_DEGRADATION_WARNING=500
+AI_GOVERNANCE_ATLAS_LATENCY_DEGRADATION_CRITICAL=1500
+AI_GOVERNANCE_ATLAS_RETRIEVAL_DEGRADATION_WARNING=0.8
+AI_GOVERNANCE_ATLAS_RETRIEVAL_DEGRADATION_CRITICAL=0.6
+AI_GOVERNANCE_COST_SPIKE_MIN_USD=0.01
+AI_GOVERNANCE_COST_SPIKE_MULTIPLIER_WARNING=2.0
+AI_GOVERNANCE_COST_SPIKE_MULTIPLIER_CRITICAL=3.0
+EMBEDDING_PROVIDER=openai  # production default; requires OPENAI_API_KEY
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
-RAG_HASH_EMBEDDING_DIMENSIONS=384
+RAG_HASH_EMBEDDING_DIMENSIONS=384  # hashing fallback/test dimensions
 KNOWLEDGE_FOLDER=knowledge
 BACKUP_FOLDER=backups
 OPERATIONS_HASH_SECRET=     # optional; defaults to SECRET_KEY
@@ -297,9 +339,13 @@ Keep both folders on persistent storage in production.
 AI costs are calculated from OpenAI token usage and optional `AI_PRICE_*`
 settings in `.env`. Values are USD per 1M tokens. If no price keys are set,
 admin dashboards keep costs at `$0.0000` and show `Kosten nicht konfiguriert`
-instead of inventing prices. Langfuse receives only pseudonymous app user IDs
-such as `user:3` plus GitHub repository/commit metadata; GitHub accounts are
-not linked to application users. For the default models, configure keys such as
+instead of inventing prices. Langfuse is optional and remains an external
+observability sink; the internal `AIAnswerTrace` table is the system of record
+for answer evidence. Langfuse receives only sanitized metadata such as
+pseudonymous app user IDs (`user:3`), role, session ID, chat/answer trace IDs,
+source/chunk counts, workflow/model labels, and GitHub repository/commit
+metadata. Raw prompts, raw answers, raw chunk text, private paths and secrets
+are not sent. For the default models, configure keys such as
 `AI_PRICE_GPT_4O_MINI_INPUT_PER_1M`, `AI_PRICE_GPT_4O_MINI_OUTPUT_PER_1M`,
 `AI_PRICE_GPT_5_MINI_INPUT_PER_1M`, and `AI_PRICE_GPT_5_MINI_OUTPUT_PER_1M`.
 
@@ -412,13 +458,27 @@ flowchart LR
 ```
 
 Current implementation:
-- `chunking_service.py` provides structure-aware and hybrid semantic chunking with metadata-ready chunk payloads.
-- `embedding_service.py` abstracts embeddings. It defaults to deterministic local hashing and can switch to OpenAI or OpenAI-compatible embeddings by config.
-- `vector_store_service.py` abstracts vector backends. It uses PostgreSQL pgvector when available, with local SQLAlchemy and optional Chroma fallbacks.
+- `chunking_service.py` delegates the default `hybrid_semantic` mode to `semantic_chunking_service.py`, which chunks by headings, sections, tables, procedures, maintenance instructions and error catalog entries while preserving hierarchy metadata. `legacy_fixed` remains available as a temporary migration fallback.
+- `embedding_service.py` abstracts embeddings. It defaults to OpenAI embeddings (`text-embedding-3-small`) for RAG, while deterministic local hashing remains available for tests and offline fallback.
+- Embedding dimensions are provider-dependent: hashing uses 384 dimensions by default, while OpenAI `text-embedding-3-small` uses 1536 dimensions. The indexing path validates known provider dimensions and stores chunk metadata for the embedding model and dimension count.
+- Missing OpenAI embedding credentials activate a visible hashing fallback for tests, CI and offline development; production deployments should set `OPENAI_API_KEY` and reindex knowledge.
+- Nach Änderung des Embedding Providers müssen Knowledge-Dokumente neu indexiert werden.
+- Nach Änderung von Chunking-Modus oder Chunking-Schema müssen Knowledge-Dokumente neu indexiert werden.
+- See `docs/RAG_SEMANTIC_CHUNKING_MIGRATION.md` for the semantic chunking rollout and fallback plan.
+- `vector_store_service.py` abstracts vector backends. It uses PostgreSQL pgvector when available, with local SQLAlchemy, optional Chroma and optional MongoDB Atlas Vector Search fallbacks.
+- `RAG_VECTOR_STORE=mongodb_atlas` enables Atlas as an external candidate store. Atlas stores synchronized Knowledge chunks only: `record_id`, `document_id`, `chunk_id`, `text`, `embedding` and safe flat metadata. SQL remains the source of record for permissions, document status, visibility, quality gates and source cards.
+- Atlas Vector Search requires an infrastructure-managed index: collection `knowledge_vectors`, path `embedding`, dimensions `1536`, similarity `cosine`. The app does not create this index on startup.
+- Atlas retrieval uses OpenAI `text-embedding-3-small` vectors. If Atlas is unavailable, missing `pymongo`, misconfigured or timing out, retrieval falls back visibly to the local SQL vector path and exposes `fallback_active`, `fallback_reason`, `vector_store_diagnostics` and Atlas observability counters.
 - Vector retrieval fetches a larger rerank candidate pool via `RAG_RERANK_CANDIDATE_LIMIT` and exposes only the final answer context via `RAG_TOP_K`.
+- Nach Änderung von Embedding Provider, Embedding Modell oder Vector Store müssen Knowledge-Dokumente vollständig neu indexiert werden.
 - RAG scoring weights (`RAG_SCORE_*`), recency, aging and feedback windows are configuration-only tuning knobs; keep `RAG_SCORE_DEBUG=false` outside diagnostics because score details are admin-facing explainability, not user answer text.
 - `retrieval_service.py` combines permission-aware structured retrieval with RAG knowledge chunks.
-- `rag_service.py` owns the high-level RAG context pipeline so future LangChain or LangGraph orchestration can be added without changing API routes.
+- `rag_service.py` exposes the stable RAG facade; `langgraph_rag_workflow.py` contains the modular LangGraph orchestration with a deterministic fallback runner. See `docs/LANGGRAPH_RAG_WORKFLOW.md`.
+- `retrieval_service.py` remains the single retrieval orchestration layer. Structured SQL retrieval, vector retrieval and keyword fallback stay separated as components; see `docs/AI_RAG_ARCHITECTURE.md`.
+- See `docs/MONGODB_ATLAS_VECTOR_SEARCH.md` for Atlas Vector Search setup, index configuration and fallback behavior.
+- The latest conservative AI/RAG cleanup report is in `docs/AI_RAG_CLEANUP_REPORT.md`.
+- `ai_traceability_service.py` stores metadata-only answer traces connected to chat messages and AI audit events. See `docs/AI_ANSWER_TRACEABILITY.md`.
+- `ai_observability_service.py` aggregates existing audit, chat and retrieval telemetry for the AI Admin dashboard. See `docs/AI_OBSERVABILITY.md`.
 - `knowledge_gap_service.py` records open `KnowledgeGap` entries when AI chat cannot find reliable RAG/source context; recent duplicate questions are folded into one gap.
 - `maintenance_tag_service.py` provides the seeded maintenance taxonomy for Fehlerarten, Ursachen, Loesungen, Maschinenbereiche and Risiko/Prioritaet, and returns local keyword-based tag suggestions without requiring an AI key.
 - Generated maintenance reports and uploaded machine manuals are processed automatically into `KnowledgeDocument` rows, summaries, metadata hints and searchable `KnowledgeChunk` records.
@@ -434,6 +494,7 @@ Current implementation:
 - `GET /api/v1/admin/ai/knowledge-gaps` lists unanswered or low-confidence AI questions and includes read-only gap detection for machines, departments, search terms and missing documentation actions.
 - `GET /api/v1/admin/ai/observability` exposes AI Admin metrics for frequent questions and search terms, tokens, cost windows, latency, failed requests, retrieval hit rate, no-answer rate, feedback, most-used documents and knowledge gaps.
 - AI observability includes answer-quality distributions, primary warning types, uncertainty rates and per-request confidence uncertainty so admins can distinguish grounded answers from no-answer, conflict and high-uncertainty cases.
+- AI governance alerts are integrated into observability and the Admin AI technical dashboard. They flag high no-source rates, retrieval degradation, cost spikes, excessive token usage, hallucination risk, sync failures and vector-store failures; see `docs/AI_GOVERNANCE_ALERTING.md`.
 - Retrieval evaluation history includes a prompt-safe quality gate. Permission leaks fail the gate; weak Recall@K, MRR, keyword coverage, no-result handling, query-type accuracy or source metadata coverage create warnings.
 - AI observability also returns prioritized recommended actions. Root-level `next_best_action`, `recommended_actions` and `recommended_action_summary` combine evaluation failures, weak retrieval hits, stale or undated source metadata, and knowledge-gap remediation into one admin-ready action queue with priority, rank and source distribution.
 - High-uncertainty answer clusters are surfaced as potential knowledge gaps with `review_uncertain_answer_gap` actions, next steps and success criteria.
@@ -444,6 +505,8 @@ Provider behavior:
 - `AI_PROVIDER=openai` uses the official OpenAI-compatible client with `OPENAI_API_KEY`.
 - `AI_PROVIDER=openai_compatible` uses the same client with `AI_BASE_URL` for local OpenAI-compatible endpoints.
 - `EMBEDDING_PROVIDER=openai_compatible` also uses `AI_BASE_URL` for local OpenAI-compatible embedding APIs and falls back to hashing when required config is missing.
+- `EMBEDDING_PROVIDER=hashing` is retained for tests/offline fallback, not as the primary development or production default.
+- See `docs/EMBEDDING_PROVIDER_CONFIGURATION.md` for provider selection, dimensions, fallback and reindex rules.
 - `AI_PROVIDER=mock` keeps all standard tests and local fallback workflows offline.
 - Unsupported providers such as `gemini` currently fall back visibly to `mock` until a dedicated adapter is implemented.
 
@@ -492,6 +555,12 @@ Interactive docs available after starting the app:
 
 - **Swagger UI:** `http://127.0.0.1:5050/swagger/`
 - **OpenAPI JSON:** `http://127.0.0.1:5050/api/swagger.json`
+
+API documentation is intended for development by default. In production,
+`ENABLE_API_DOCS` defaults to `false`, which disables `/swagger/`,
+`/api/swagger.json`, `/api/v1/swagger.json`, and `/apispec_1.json`. If these
+routes are explicitly enabled in production, `API_DOCS_REQUIRE_MASTER_ADMIN`
+defaults to `true` and requires a Master Admin JWT.
 
 All protected endpoints require:
 ```http

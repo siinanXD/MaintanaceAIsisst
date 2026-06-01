@@ -71,89 +71,16 @@ def retrieve_context(
         query_classification_sources=_classification_sources(query_classification),
     )
 
-    if not is_rag_enabled():
-        sources = _deduplicate_sources(
-            public_sources_from_candidates(rank_candidates(structured_candidates))
-        )
-        fallback = _sql_keyword_fallback(
-            retrieval_message,
-            user,
-            sources,
-            structured_candidates,
-            [],
-            query_classification,
-        )
-        if fallback["candidates"]:
-            structured_candidates = [*structured_candidates, *fallback["candidates"]]
-            sources = _deduplicate_sources(
-                public_sources_from_candidates(rank_candidates(structured_candidates))
-            )
-            structured_context = _join_context(
-                structured_context,
-                _candidate_context(fallback["candidates"]),
-            )
-            _merge_data(data, fallback["data"])
-            retrieval_debug = merge_retrieval_debug(retrieval_debug, fallback["debug"])
-        conflicts = detect_source_conflicts(sources, data)
-        safety = assess_ai_safety(retrieval_message, understanding, sources)
-        dynamic_context = build_dynamic_context(
-            retrieval_message,
-            {
-                "structured_context": structured_context,
-                "vector_context": "",
-                "sources": sources,
-                "knowledge_sources": [],
-                "knowledge_links": {"links": []},
-            },
-            understanding,
-            safety_assessment=safety,
-            conflicts=conflicts,
-            conversation_context=conversation_context,
-        )
-        duration_ms = _duration_ms(started_at)
-        final_debug = _final_retrieval_debug(
-            retrieval_debug,
-            rag_enabled=False,
-            sources=sources,
-            duration_ms=duration_ms,
-        )
-        _log_retrieval_summary(final_debug)
-        return _retrieval_payload(
-            context=dynamic_context["context"],
-            sources=sources,
-            data=data,
-            structured=structured,
-            understanding=understanding,
-            safety=safety,
-            conflicts=conflicts,
-            context_builder=dynamic_context,
-            retrieval_duration_ms=duration_ms,
-            knowledge_links={"links": []},
-            timeline_context={"context": "", "sources": [], "summary": {}},
-            retrieval_debug=final_debug,
-            query_classification=_classification_payload(query_classification),
-        )
-
-    vector_results, vector_debug = _retrieve_vector_chunks_with_debug(
+    knowledge_stage = _knowledge_retrieval_stage(
         retrieval_message,
         user,
         limit=strategy.get("top_k"),
         filters=filters,
     )
-    vector_candidates = rank_candidates(
-        [
-            vector_result_candidate(
-                result,
-                include_score_debug=_score_debug_enabled(),
-            )
-            for result in vector_results
-        ]
-    )
-    vector_context = _vector_context(vector_candidates) if vector_candidates else ""
-    vector_sources = public_sources_from_candidates(
-        vector_candidates,
-        include_score_debug=_score_debug_enabled(),
-    )
+    vector_candidates = knowledge_stage["candidates"]
+    vector_context = knowledge_stage["context"]
+    vector_sources = knowledge_stage["sources"]
+    vector_debug = knowledge_stage["debug"]
     ranked_sources = public_sources_from_candidates(
         _rank_candidates_for_query(
             structured_candidates,
@@ -163,14 +90,12 @@ def retrieve_context(
         include_score_debug=_score_debug_enabled(),
     )
     sources = _deduplicate_sources(ranked_sources)
-    data["knowledge"] = vector_sources
-    knowledge_links = linked_knowledge_for_sources(vector_sources, user=user)
-    data["knowledge_links"] = knowledge_links.get("links", [])
-    timeline_context = timeline_context_for_query(
-        retrieval_message,
-        user,
-        query_understanding=understanding,
-    )
+    knowledge_links = {"links": []}
+    if is_rag_enabled():
+        data["knowledge"] = vector_sources
+        knowledge_links = linked_knowledge_for_sources(vector_sources, user=user)
+        data["knowledge_links"] = knowledge_links.get("links", [])
+    timeline_context = _timeline_context_stage(retrieval_message, user, understanding)
     if timeline_context.get("sources"):
         sources = _deduplicate_sources(sources + timeline_context["sources"])
         data["incident_timeline"] = timeline_context.get("summary", {})
@@ -224,7 +149,7 @@ def retrieve_context(
     final_debug = _final_retrieval_debug(
         retrieval_debug,
         vector_debug,
-        rag_enabled=True,
+        rag_enabled=is_rag_enabled(),
         sources=sources,
         duration_ms=duration_ms,
     )
@@ -250,6 +175,41 @@ def retrieve_vector_chunks(message, user, limit=None, filters=None):
     """Return vector-store knowledge chunks visible to the user."""
     results, _debug = _retrieve_vector_chunks_with_debug(message, user, limit, filters)
     return results
+
+
+def retrieve_knowledge_candidates(message, user, limit=None, filters=None):
+    """Return ranked knowledge candidates from the shared retrieval pipeline."""
+    return _knowledge_retrieval_stage(message, user, limit=limit, filters=filters)["candidates"]
+
+
+def _knowledge_retrieval_stage(message, user, limit=None, filters=None):
+    """Return one normalized Knowledge/RAG retrieval stage result."""
+    vector_results, vector_debug = _retrieve_vector_chunks_with_debug(
+        message,
+        user,
+        limit=limit,
+        filters=filters,
+    )
+    vector_candidates = rank_candidates(
+        [
+            vector_result_candidate(
+                result,
+                include_score_debug=_score_debug_enabled(),
+            )
+            for result in vector_results
+        ],
+        limit,
+    )
+    vector_sources = public_sources_from_candidates(
+        vector_candidates,
+        include_score_debug=_score_debug_enabled(),
+    )
+    return {
+        "candidates": vector_candidates,
+        "sources": vector_sources,
+        "context": _vector_context(vector_candidates) if vector_candidates else "",
+        "debug": vector_debug,
+    }
 
 
 def _retrieve_vector_chunks_with_debug(message, user, limit=None, filters=None):
@@ -321,25 +281,16 @@ def knowledge_context_for_chat(message, user, limit=None, conversation_context=N
     retrieval_message = _retrieval_message(message, conversation_context)
     understanding = classify_query(retrieval_message)
     strategy_limit = limit or understanding.retrieval_strategy.get("top_k")
-    vector_results = retrieve_vector_chunks(retrieval_message, user, limit=strategy_limit)
-    vector_candidates = rank_candidates(
-        [
-            vector_result_candidate(
-                result,
-                include_score_debug=_score_debug_enabled(),
-            )
-            for result in vector_results
-        ],
-        strategy_limit,
+    knowledge_stage = _knowledge_retrieval_stage(
+        retrieval_message,
+        user,
+        limit=strategy_limit,
     )
-    if not vector_candidates:
+    if not knowledge_stage["candidates"]:
         return _prompt_context("", conversation_context), []
-    return _prompt_context(_vector_context(vector_candidates), conversation_context), (
-        public_sources_from_candidates(
-            vector_candidates,
-            include_score_debug=_score_debug_enabled(),
-        )
-    )
+    return _prompt_context(knowledge_stage["context"], conversation_context), knowledge_stage[
+        "sources"
+    ]
 
 
 def is_rag_enabled():
@@ -532,6 +483,17 @@ def _rank_candidates_for_query(
     if classification_type == QUERY_TYPE_HYBRID:
         return rank_candidates([*structured_candidates, *vector_candidates])
     return rank_candidates([*structured_candidates, *vector_candidates])
+
+
+def _timeline_context_stage(retrieval_message, user, understanding):
+    """Return timeline context only for the RAG-enabled unified pipeline."""
+    if not is_rag_enabled():
+        return {"context": "", "sources": [], "summary": {}}
+    return timeline_context_for_query(
+        retrieval_message,
+        user,
+        query_understanding=understanding,
+    )
 
 
 def _classification_scope_hints(query_classification):

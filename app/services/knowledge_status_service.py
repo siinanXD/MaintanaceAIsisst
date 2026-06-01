@@ -161,7 +161,7 @@ def knowledge_index_status():
         "diagnostics": {
             "rag_enabled": bool(current_app.config.get("RAG_ENABLED", True)),
             "vector_store": current_app.config.get("RAG_VECTOR_STORE", "local"),
-            "embedding_provider": current_app.config.get("EMBEDDING_PROVIDER", "hashing"),
+            "embedding_provider": current_app.config.get("EMBEDDING_PROVIDER", "openai"),
             "chunk_size": current_app.config.get("RAG_CHUNK_SIZE", 1400),
             "chunk_overlap": current_app.config.get("RAG_CHUNK_OVERLAP", 160),
             "top_k": current_app.config.get("RAG_TOP_K", 4),

@@ -138,6 +138,9 @@ def rank_candidates(candidates, limit=None):
         key=lambda candidate: (
             candidate.normalized_score,
             candidate.raw_score,
+            _quality_rank(candidate),
+            _source_kind_rank(candidate),
+            _recency_rank(candidate),
             candidate.source_type,
             candidate.title,
         ),
@@ -146,6 +149,42 @@ def rank_candidates(candidates, limit=None):
     if limit is None:
         return ranked
     return ranked[: _positive_int(limit, len(ranked))]
+
+
+def _quality_rank(candidate):
+    """Return a secondary rank for retrieval quality states."""
+    quality = str(candidate.quality_status or candidate.metadata.get("quality_status") or "")
+    ranks = {
+        "admin_approved": 8,
+        "technician_confirmed": 7,
+        "ai_suggested": 5,
+        "draft": 4,
+        "outdated": 3,
+        "low_quality": 2,
+        "duplicate": 1,
+        "rejected": 0,
+    }
+    return ranks.get(quality, 4)
+
+
+def _source_kind_rank(candidate):
+    """Return a secondary rank for hybrid source kinds."""
+    source_kind = str(candidate.metadata.get("source_kind") or "")
+    ranks = {
+        "rag": 3,
+        "structured": 2,
+        "sql_keyword_fallback": 1,
+    }
+    return ranks.get(source_kind, 2)
+
+
+def _recency_rank(candidate):
+    """Return a lexicographic recency hint from candidate metadata."""
+    return str(
+        candidate.metadata.get("updated_at")
+        or candidate.metadata.get("created_at")
+        or ""
+    )
 
 
 def vector_result_candidate(result, include_score_debug=False):

@@ -37,6 +37,10 @@ SLO_THRESHOLDS = {
     "vector_sync_failure_count": {"warning": 1, "critical": 3},
     "stale_index_count": {"warning": 1, "critical": 5},
     "source_metadata_missing_rate": {"warning": 0.1, "critical": 0.25},
+    "atlas_errors": {"warning": 1, "critical": 3},
+    "atlas_fallbacks": {"warning": 1, "critical": 1},
+    "atlas_sync_failures": {"warning": 1, "critical": 3},
+    "atlas_reindex_required": {"warning": 1, "critical": 2},
 }
 ESSENTIAL_SOURCE_METADATA_FIELDS = (
     "source_type",
@@ -292,6 +296,13 @@ def _slo_metric_values(events, feedback_entries, drift_status=None):
         ),
         "vector_sync_failure_count": int(drift.get("vector_sync_failure_count") or 0),
         "stale_index_count": int(drift.get("stale_document_count") or 0),
+        "atlas_queries": int(drift.get("atlas_queries") or 0),
+        "atlas_errors": int(drift.get("atlas_errors") or 0),
+        "atlas_latency": _optional_float(drift.get("atlas_latency")) or 0,
+        "atlas_fallbacks": int(drift.get("atlas_fallbacks") or 0),
+        "atlas_sync_failures": int(drift.get("atlas_sync_failures") or 0),
+        "atlas_vector_count": _optional_int(drift.get("atlas_vector_count")) or 0,
+        "atlas_reindex_required": 1 if drift.get("atlas_reindex_required") else 0,
         "source_metadata_missing_rate": _source_metadata_missing_rate(events),
         "source_metadata_missing_fields": _source_metadata_missing_fields(events),
     }

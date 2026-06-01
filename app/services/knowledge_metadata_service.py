@@ -142,9 +142,18 @@ def _safe_chunk_metadata(metadata):
         "source_section",
         "section_title",
         "chunking_mode",
+        "chunk_schema_version",
+        "semantic_strategy",
         "semantic_group",
+        "semantic_chunk_type",
+        "semantic_boundary",
         "semantic_break_distance",
+        "section_level",
+        "parent_section_title",
+        "chunk_hierarchy",
+        "hierarchy_path",
         "embedding_model",
+        "embedding_dimensions",
     ):
         value = metadata.get(key)
         if value in (None, ""):
@@ -158,14 +167,29 @@ def _safe_chunk_metadata(metadata):
             "chunk_block_count",
             "source_offset",
             "semantic_group",
+            "section_level",
+            "embedding_dimensions",
         }:
             safe[key] = _optional_int(value)
             continue
         if key == "semantic_break_distance":
             safe[key] = _optional_float(value)
             continue
+        if key == "chunk_hierarchy":
+            safe[key] = _safe_string_list(value)
+            continue
         safe[key] = str(value)[:180]
     return {key: value for key, value in safe.items() if value is not None}
+
+
+def _safe_string_list(value):
+    """Return a bounded list of safe metadata strings."""
+    if isinstance(value, list | tuple):
+        values = value
+    else:
+        values = str(value or "").split(">")
+    safe_values = [str(item or "").strip()[:120] for item in values]
+    return [item for item in safe_values if item][:8]
 
 
 def _optional_int(value):

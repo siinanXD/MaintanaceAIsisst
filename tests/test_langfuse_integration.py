@@ -1,9 +1,11 @@
 """Tests for optional Langfuse AI tracing integration."""
 
 import base64
+import json
 import os
 import sys
 import types
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from app.ai.status import ai_diagnostics, ai_status
@@ -17,6 +19,7 @@ from app.services.langfuse_service import (
     langfuse_observation,
     langfuse_status,
     langfuse_trace_context,
+    link_langfuse_answer_trace,
     openai_langfuse_kwargs,
 )
 
@@ -51,6 +54,7 @@ class FakeUser:
     """Minimal user object for Langfuse context tests."""
 
     id = 42
+    role = types.SimpleNamespace(value="it")
 
 
 def test_langfuse_status_is_safe_when_disabled(app):
@@ -375,6 +379,7 @@ def test_langfuse_kwargs_follow_best_practices_when_ready(app, monkeypatch):
         "chat",
     ]
     assert kwargs["metadata"]["langfuse_user_id"] == "user:42"
+    assert kwargs["metadata"]["langfuse_user_role"] == "it"
     assert kwargs["metadata"]["langfuse_session_id"] == "session-123"
     assert kwargs["metadata"]["sourcecount"] == "2"
     assert kwargs["metadata"]["repository"] == "siinanXD/MaintanaceAIsisst"
@@ -461,6 +466,183 @@ def test_langfuse_propagates_user_before_root_span(app, monkeypatch):
     propagation = calls[ordered_names.index("propagate_enter")][1]
     assert propagation["user_id"] == "user:42"
     assert propagation["session_id"] == "session-123"
+    assert propagation["metadata"]["userrole"] == "it"
+
+
+def test_langfuse_metadata_drops_sensitive_fields(app, monkeypatch):
+    """Verify Langfuse metadata never carries prompt, answer, chunk text or secrets."""
+    monkeypatch.setattr("app.services.langfuse_service._langfuse_available", lambda: True)
+
+    with app.app_context():
+        app.config["LANGFUSE_ENABLED"] = True
+        app.config["LANGFUSE_PUBLIC_KEY"] = LANGFUSE_TEST_PUBLIC_KEY
+        app.config["LANGFUSE_SECRET_KEY"] = LANGFUSE_TEST_SECRET_KEY
+        profile = workflow_profile("chat")
+        with langfuse_trace_context(
+            "chat",
+            user=FakeUser(),
+            session_id="session-123",
+            metadata={
+                "source_count": 2,
+                "raw_prompt": "Wie repariere ich E104?",
+                "raw_answer": "Geheime Antwort",
+                "chunk_text": "Privater Chunktext",
+                "private_path": "C:/secret/private.txt",
+                "api_secret": "sk-secret",
+            },
+        ):
+            kwargs = openai_langfuse_kwargs("chat", profile)
+
+    serialized = json.dumps(kwargs["metadata"], ensure_ascii=True).lower()
+    assert kwargs["metadata"]["sourcecount"] == "2"
+    assert "prompt" not in serialized
+    assert "antwort" not in serialized
+    assert "chunktext" not in serialized
+    assert "private.txt" not in serialized
+    assert "sk-secret" not in serialized
+
+
+def test_langfuse_answer_trace_link_sends_only_safe_references(app, monkeypatch):
+    """Verify answer trace references are linked to Langfuse without raw content."""
+    calls = []
+
+    class FakeSpan:
+        """Minimal Langfuse span for answer trace linking."""
+
+        def update(self, **kwargs):
+            """Record metadata updates."""
+            calls.append(("span_update", kwargs))
+
+    class FakeSpanContext:
+        """Context manager for a fake answer trace link span."""
+
+        def __enter__(self):
+            """Return a fake span."""
+            calls.append(("span_enter", None))
+            return FakeSpan()
+
+        def __exit__(self, exc_type, exc, traceback):
+            """Record span exit."""
+            calls.append(("span_exit", None))
+
+    class FakeClient:
+        """Minimal Langfuse client for answer trace link tests."""
+
+        def start_as_current_observation(self, **kwargs):
+            """Record the created span arguments."""
+            calls.append(("start_span", kwargs))
+            return FakeSpanContext()
+
+    fake_langfuse = types.SimpleNamespace(get_client=lambda: FakeClient())
+    monkeypatch.setitem(sys.modules, "langfuse", fake_langfuse)
+    monkeypatch.setattr("app.services.langfuse_service._langfuse_available", lambda: True)
+
+    chat_message = types.SimpleNamespace(
+        id=77,
+        user_id=42,
+        session_id="session-123",
+        audit_event_id=12,
+        user=FakeUser(),
+    )
+    answer_trace = types.SimpleNamespace(
+        id=5,
+        answer_id="ans_public123",
+        audit_event=types.SimpleNamespace(latency_ms=321),
+        workflow="chat",
+        model="gpt-4o-mini",
+        model_tier="balanced",
+        input_tokens=120,
+        output_tokens=40,
+        cached_tokens=10,
+        total_tokens=170,
+        estimated_cost_usd=0.0123456,
+        confidence_score=87,
+        confidence_level="high",
+        source_count=3,
+        chunk_count=2,
+    )
+    diagnostics = {
+        "langfuse_trace_id": "1234567890abcdef1234567890abcdef",
+        "langfuse_observation_id": "fedcba0987654321",
+        "prompt": "do not send",
+        "answer": "do not send",
+    }
+
+    with app.app_context():
+        app.config["LANGFUSE_ENABLED"] = True
+        app.config["LANGFUSE_PUBLIC_KEY"] = LANGFUSE_TEST_PUBLIC_KEY
+        app.config["LANGFUSE_SECRET_KEY"] = LANGFUSE_TEST_SECRET_KEY
+        linked = link_langfuse_answer_trace(diagnostics, chat_message, answer_trace)
+
+    assert linked is True
+    start_span = next(value for name, value in calls if name == "start_span")
+    assert start_span["name"] == "maintenance-ai.answer_trace_link"
+    assert start_span["input"] == {"kind": "answer_trace_link"}
+    assert start_span["trace_context"] == {
+        "trace_id": "1234567890abcdef1234567890abcdef",
+        "parent_span_id": "fedcba0987654321",
+    }
+    update = next(value for name, value in calls if name == "span_update")
+    metadata = update["metadata"]
+    assert metadata["answerid"] == "ans_public123"
+    assert metadata["answertraceid"] == "5"
+    assert metadata["chatmessageid"] == "77"
+    assert metadata["userid"] == "user:42"
+    assert metadata["userrole"] == "it"
+    assert metadata["sessionid"] == "session-123"
+    assert metadata["sourcecount"] == "3"
+    assert metadata["chunkcount"] == "2"
+    assert metadata["model"] == "gpt-4o-mini"
+    assert metadata["inputtokens"] == "120"
+    assert metadata["outputtokens"] == "40"
+    assert metadata["cachedtokens"] == "10"
+    assert metadata["totaltokens"] == "170"
+    assert metadata["estimatedcostusd"] == "0.012346"
+    assert metadata["latencyms"] == "321"
+    assert metadata["retrievalused"] == "True"
+    assert metadata["confidencescore"] == "87"
+    assert metadata["confidencelevel"] == "high"
+    serialized = json.dumps(update, ensure_ascii=True).lower()
+    assert "do not send" not in serialized
+    assert "prompt" not in serialized
+    assert "raw" not in serialized
+
+
+def test_langfuse_answer_trace_link_is_optional_without_config(app):
+    """Verify missing Langfuse configuration does not break answer processing."""
+    chat_message = types.SimpleNamespace(id=77, user_id=42, session_id="session-123")
+    answer_trace = types.SimpleNamespace(id=5, answer_id="ans_public123")
+
+    with app.app_context():
+        app.config["LANGFUSE_ENABLED"] = False
+        linked = link_langfuse_answer_trace(
+            {"langfuse_trace_id": "1234567890abcdef1234567890abcdef"},
+            chat_message,
+            answer_trace,
+        )
+
+    assert linked is False
+
+
+def test_langfuse_tracking_documentation_lists_safe_metadata():
+    """Verify docs describe Langfuse as a safe external observability sink."""
+    root = Path(__file__).resolve().parents[1]
+    docs = (root / "docs" / "AI_ANSWER_TRACEABILITY.md").read_text(encoding="utf-8")
+
+    for value in (
+        "inputtokens",
+        "outputtokens",
+        "cachedtokens",
+        "totaltokens",
+        "estimatedcostusd",
+        "latencyms",
+        "retrievalused",
+        "confidencescore",
+        "confidencelevel",
+    ):
+        assert value in docs
+    assert "Langfuse ist ein externer Observability-Sink" in docs
+    assert "`AIAnswerTrace` bleibt System of Record" in docs
 
 
 def test_langfuse_environment_uses_current_base_url_names(app, monkeypatch):

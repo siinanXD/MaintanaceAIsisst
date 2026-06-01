@@ -25,6 +25,7 @@ class LangfuseTraceContext:
 
     workflow: str
     user_id: str = ""
+    user_role: str = ""
     session_id: str = ""
     metadata: dict[str, str] = field(default_factory=dict)
     tags: tuple[str, ...] = ()
@@ -74,6 +75,7 @@ def langfuse_trace_context(
     context = LangfuseTraceContext(
         workflow=_safe_attribute(workflow, default="chat"),
         user_id=_safe_user_id(user),
+        user_role=_safe_user_role(user),
         session_id=_safe_session_id(session_id),
         metadata=_safe_metadata(metadata or {}),
         tags=tuple(_safe_tags(tags or ())),
@@ -200,6 +202,50 @@ def normalize_observation_metadata(observation):
     return metadata
 
 
+def link_langfuse_answer_trace(diagnostics, chat_message, answer_trace):
+    """Attach internal answer trace references to Langfuse without sensitive content."""
+    if not langfuse_is_ready():
+        return False
+    if chat_message is None or answer_trace is None:
+        return False
+    trace_id = _safe_attribute((diagnostics or {}).get("langfuse_trace_id"))
+    if not trace_id:
+        return False
+
+    try:
+        from langfuse import get_client
+    except ImportError:
+        logger.warning("langfuse_answer_trace_link_skipped reason=package_missing")
+        return False
+
+    metadata = _answer_trace_metadata(chat_message, answer_trace)
+    if not metadata:
+        return False
+    trace_context = {"trace_id": trace_id}
+    parent_span_id = _safe_parent_span_id((diagnostics or {}).get("langfuse_observation_id"))
+    if parent_span_id:
+        trace_context["parent_span_id"] = parent_span_id
+
+    try:
+        client = get_client()
+        with client.start_as_current_observation(
+            as_type="span",
+            name="maintenance-ai.answer_trace_link",
+            trace_context=trace_context,
+            input={"kind": "answer_trace_link"},
+        ) as span:
+            updater = getattr(span, "update", None)
+            if callable(updater):
+                updater(metadata=metadata, output={"status": "linked"})
+    except AttributeError:
+        logger.warning("langfuse_answer_trace_link_skipped reason=sdk_context_manager_missing")
+        return False
+    except Exception as exc:  # pragma: no cover - external observability guard
+        logger.warning("langfuse_answer_trace_link_failed error=%s", exc.__class__.__name__)
+        return False
+    return True
+
+
 def _active_trace_context(workflow):
     """Return the active context, falling back to workflow-only metadata."""
     context = _LANGFUSE_CONTEXT.get()
@@ -225,6 +271,8 @@ def _openai_metadata(workflow, profile, context):
     metadata.update(_repository_metadata())
     if context.user_id:
         metadata["langfuse_user_id"] = context.user_id
+    if context.user_role:
+        metadata["langfuse_user_role"] = context.user_role
     if context.session_id:
         metadata["langfuse_session_id"] = context.session_id
     metadata.update(context.metadata)
@@ -267,6 +315,8 @@ def _propagated_metadata(workflow, profile, context):
         ),
     }
     metadata.update(_repository_metadata())
+    if context.user_role:
+        metadata["userrole"] = context.user_role
     metadata.update(context.metadata)
     return _safe_metadata(metadata)
 
@@ -371,6 +421,13 @@ def _safe_user_id(user):
     return _safe_attribute(f"user:{user_id}")
 
 
+def _safe_user_role(user):
+    """Return a non-PII user role label for Langfuse filtering."""
+    role = getattr(user, "role", "")
+    role_value = getattr(role, "value", role)
+    return _safe_attribute(role_value)
+
+
 def _safe_session_id(value):
     """Return a Langfuse-compatible optional session identifier."""
     text = re.sub(r"[^a-zA-Z0-9_.:-]+", "-", str(value or "").strip())
@@ -381,11 +438,53 @@ def _safe_metadata(values):
     """Return metadata with Langfuse-compatible keys and values."""
     safe_values = {}
     for key, value in dict(values).items():
-        safe_key = re.sub(r"[^a-zA-Z0-9]+", "", str(key or ""))
+        safe_key = _safe_metadata_key(key)
         safe_value = _safe_attribute(value)
         if safe_key and safe_value:
             safe_values[safe_key[:MAX_LANGFUSE_ATTRIBUTE_LENGTH]] = safe_value
     return safe_values
+
+
+def _safe_metadata_key(key):
+    """Return a Langfuse-safe metadata key or an empty string for sensitive fields."""
+    raw_key = str(key or "").strip()
+    lowered = raw_key.lower()
+    normalized = re.sub(r"[^a-zA-Z0-9]+", "", raw_key)
+    normalized_lower = normalized.lower()
+    allowed_reference_keys = {
+        "answerid",
+        "answertraceid",
+        "cachedtokens",
+        "chatmessageid",
+        "confidencescore",
+        "inputtokens",
+        "outputtokens",
+        "totaltokens",
+    }
+    if normalized_lower in allowed_reference_keys:
+        return normalized
+    forbidden_parts = (
+        "answer",
+        "apikey",
+        "chunktext",
+        "content",
+        "filepath",
+        "message",
+        "password",
+        "path",
+        "private",
+        "prompt",
+        "raw",
+        "relativepath",
+        "response",
+        "secret",
+        "solution",
+        "text",
+        "token",
+    )
+    if any(part in lowered or part in normalized_lower for part in forbidden_parts):
+        return ""
+    return normalized
 
 
 def _safe_tags(values):
@@ -400,6 +499,62 @@ def _safe_attribute(value, default=""):
     """Return a compact string accepted by Langfuse attribute propagation."""
     text = " ".join(str(value or default or "").strip().split())
     return text[:MAX_LANGFUSE_ATTRIBUTE_LENGTH]
+
+
+def _answer_trace_metadata(chat_message, answer_trace):
+    """Return sanitized Langfuse metadata linking external traces to internal records."""
+    user = getattr(chat_message, "user", None)
+    audit_event = _answer_trace_audit_event(answer_trace)
+    metadata = {
+        "answerid": getattr(answer_trace, "answer_id", ""),
+        "answertraceid": getattr(answer_trace, "id", ""),
+        "chatmessageid": getattr(chat_message, "id", ""),
+        "audit_event_id": getattr(chat_message, "audit_event_id", ""),
+        "workflow": getattr(answer_trace, "workflow", ""),
+        "model": getattr(answer_trace, "model", ""),
+        "modeltier": getattr(answer_trace, "model_tier", ""),
+        "sourcecount": getattr(answer_trace, "source_count", ""),
+        "chunkcount": getattr(answer_trace, "chunk_count", ""),
+        "retrievalused": bool(getattr(answer_trace, "source_count", 0) or 0),
+        "inputtokens": getattr(answer_trace, "input_tokens", ""),
+        "outputtokens": getattr(answer_trace, "output_tokens", ""),
+        "cachedtokens": getattr(answer_trace, "cached_tokens", ""),
+        "totaltokens": getattr(answer_trace, "total_tokens", ""),
+        "estimatedcostusd": _safe_cost(getattr(answer_trace, "estimated_cost_usd", "")),
+        "latencyms": getattr(audit_event, "latency_ms", ""),
+        "confidencescore": getattr(answer_trace, "confidence_score", ""),
+        "confidencelevel": getattr(answer_trace, "confidence_level", ""),
+        "userrole": _safe_user_role(user),
+    }
+    if getattr(chat_message, "session_id", ""):
+        metadata["sessionid"] = _safe_session_id(chat_message.session_id)
+    if getattr(chat_message, "user_id", None):
+        metadata["userid"] = _safe_attribute(f"user:{chat_message.user_id}")
+    return _safe_metadata(metadata)
+
+
+def _answer_trace_audit_event(answer_trace):
+    """Return an optional audit event attached to an answer trace."""
+    try:
+        return getattr(answer_trace, "audit_event", None)
+    except Exception:  # pragma: no cover - defensive lazy-load guard
+        return None
+
+
+def _safe_cost(value):
+    """Return a compact cost estimate string for external metadata."""
+    try:
+        return f"{float(value or 0.0):.6f}"
+    except (TypeError, ValueError):
+        return "0.000000"
+
+
+def _safe_parent_span_id(value):
+    """Return a valid Langfuse parent observation id when available."""
+    text = _safe_attribute(value).lower()
+    if re.fullmatch(r"[0-9a-f]{16}", text):
+        return text
+    return ""
 
 
 def _langfuse_available():

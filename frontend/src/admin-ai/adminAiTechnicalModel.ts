@@ -98,15 +98,32 @@ export function retrievalSloValue(key: string, value: unknown): string {
  */
 export function metricLabel(key: string): string {
   const labels: Record<string, string> = {
+    atlas_errors: "Atlas Fehler",
+    atlas_fallbacks: "Atlas Fallbacks",
+    atlas_latency: "Atlas Latenz",
+    atlas_queries: "Atlas Queries",
+    atlas_reindex_required: "Atlas Reindex erforderlich",
+    atlas_sync_failures: "Atlas Sync-Fehler",
+    atlas_vector_count: "Atlas Vektoren",
     average_response_ms: "Antwortzeit",
     average_retrieval_ms: "Quellenabruf",
+    cached_tokens: "Cache Tokens",
+    costs: "Kosten",
     empty_retrieval_rate: "Leere Abrufe",
     error_rate: "Fehlerquote",
     fallback_rate: "Ausweichantworten",
+    failed_requests: "Fehlgeschlagene Requests",
+    governance_alert_count: "Governance Alerts",
+    governance_critical_alert_count: "Kritische Governance Alerts",
+    governance_status: "Governance Status",
+    governance_warning_alert_count: "Governance Warnungen",
     hallucination_warning_count: "Halluzinationswarnungen",
     index_sync_risks: "Index/Sync Risiken",
+    latency: "Latenz",
+    low_confidence_answers: "Niedrige Sicherheit",
     low_confidence_rate: "Niedrige Sicherheit",
     negative_feedback_rate: "Negatives Feedback",
+    no_source_answers: "Antworten ohne Quellen",
     no_source_answer_count: "Beantwortet ohne Quellen",
     no_source_no_data_count: "Keine Daten gefunden",
     no_source_permission_denied_count: "Fehlende Berechtigung",
@@ -117,6 +134,9 @@ export function metricLabel(key: string): string {
     safety_risk_count: "Sicherheitsrisiken",
     source_count_average_answered: "Quellen je beantworteter Frage",
     structured_domain_distribution: "Strukturierte Bereiche",
+    successful_requests: "Erfolgreiche Requests",
+    token_usage: "Token-Nutzung",
+    total_requests: "Requests gesamt",
     total_tokens: "Tokenverbrauch"
   };
   return labels[key] || key;
@@ -126,6 +146,8 @@ export function metricLabel(key: string): string {
  * Format observability metric values.
  */
 export function monitoringValue(key: string, value: unknown): string {
+  if (key === "atlas_reindex_required") return value ? "ja" : "nein";
+  if (key === "atlas_latency") return `${numberText(value)} ms`;
   if (key.includes("rate") || key.includes("score")) return percentText(value);
   if (key.includes("ms")) return `${numberText(value)} ms`;
   if (key.includes("cost") || key.includes("usd")) return moneyText(value);

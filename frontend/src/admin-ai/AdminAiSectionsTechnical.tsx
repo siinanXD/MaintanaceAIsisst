@@ -41,13 +41,26 @@ const RETRIEVAL_SLO_KPIS = [
 ] as const;
 
 const MONITORING_KPIS = [
+  ["total_requests", "Requests", "0"],
+  ["successful_requests", "Erfolgreich", "0"],
+  ["failed_requests", "Fehlgeschlagen", "0"],
   ["average_response_ms", "Antwortzeit Ø", "0 ms"],
   ["average_retrieval_ms", "Quellenabruf Ø", "0 ms"],
   ["total_tokens", "Tokenverbrauch", "0"],
-  ["error_rate", "Fehlerquote", "0%"],
+  ["request_success_rate", "Erfolgsquote", "0%"],
   ["structured_answer_count", "Strukturierte Antworten", "0"],
   ["rag_answer_count", "RAG-Antworten", "0"],
-  ["no_source_count", "Ohne Quellen", "0"],
+  ["no_source_answers", "Ohne Quellen", "0"],
+  ["low_confidence_answers", "Niedrige Sicherheit", "0"],
+  ["governance_alert_count", "Governance Alerts", "0"],
+  ["governance_critical_alert_count", "Kritische Alerts", "0"],
+  ["atlas_queries", "Atlas Queries", "0"],
+  ["atlas_errors", "Atlas Fehler", "0"],
+  ["atlas_latency", "Atlas Latenz Ø", "0 ms"],
+  ["atlas_fallbacks", "Atlas Fallbacks", "0"],
+  ["atlas_sync_failures", "Atlas Sync-Fehler", "0"],
+  ["atlas_vector_count", "Atlas Vektoren", "0"],
+  ["atlas_reindex_required", "Atlas Reindex", "nein"],
   ["source_count_average", "Quellen Ø", "0"],
   ["empty_retrieval_rate", "Leere Abrufe", "0%"],
   ["hallucination_warning_count", "Halluzinationswarnungen", "0"],
@@ -274,6 +287,12 @@ function DiagnosticsSection({ onRefresh, technicalState }: AdminAiTechnicalProps
   const observability = technicalState.observability || {};
   const metrics = objectPayload(observability.metrics);
   const quality = objectPayload(observability.quality_metrics);
+  const governance = objectPayload(observability.governance);
+  const governanceAlerts = Array.isArray(observability.alerts)
+    ? observability.alerts.filter(isPayload)
+    : Array.isArray(governance.alerts)
+      ? governance.alerts.filter(isPayload)
+      : [];
   const retrieval = objectPayload(observability.retrieval_monitoring);
   const debugTools = objectPayload(observability.debug_tools);
   const logs = Array.isArray(observability.logs) ? observability.logs.filter(isPayload) : technicalItems(observability);
@@ -312,6 +331,20 @@ function DiagnosticsSection({ onRefresh, technicalState }: AdminAiTechnicalProps
         <div className="content-grid two-columns mt-4"><StatsList dataAttr="data-ai-top-questions" rows={topList(topQuestions)} empty={["Fragen", "keine Daten"]} /><StatsList dataAttr="data-ai-source-distribution" rows={topList(sourceDistribution)} empty={["Quellen", "keine Daten"]} /></div>
         <div className="content-grid two-columns mt-4"><StatsList dataAttr="data-ai-top-structured-modules" rows={structuredDomainRows.map((item) => [item.label || item.module, item.count] as const)} empty={["Strukturierte Bereiche", "keine Daten"]} /><StatsList dataAttr="data-ai-frequent-search-terms" rows={frequentSearchTerms.map((item) => [item.term, item.count] as const)} empty={["Suchbegriffe", "keine Daten"]} /></div>
         <div className="content-grid two-columns mt-4"><StatsList dataAttr="data-ai-no-source-breakdown" rows={noSourceRows} empty={["Antworten ohne Quellen", "keine Daten"]} /><StatsList dataAttr="data-ai-answer-source-average" rows={[["Alle Antworten", monitoringValue("source_count_average", metrics.source_count_average)], ["Beantwortete Fragen", monitoringValue("source_count_average_answered", metrics.source_count_average_answered)]]} empty={["Quellen", "keine Daten"]} /></div>
+      </section>
+      <section className="panel" data-ai-governance-alerts-panel>
+        <div className="panel-header">
+          <div><h3>AI Governance Alerts</h3><p className="panel-meta">Konfigurierbare Warnungen aus Observability, Retrieval-Qualität, Kosten, Tokens und Vector-Store-Status.</p></div>
+          <span className="badge badge-ai" data-ai-governance-status>{ragText(governance.status, "ok")}</span>
+        </div>
+        <DataTable caption="Aktive AI-Governance-Alerts" headers={["Schwere", "Regel", "Metrik", "Wert", "Schwelle", "Aktion"]} dataAttr="data-ai-governance-alerts" rows={governanceAlerts.map((alert) => [
+          alert.severity,
+          alert.title || alert.rule,
+          metricLabel(ragText(alert.metric)),
+          monitoringValue(ragText(alert.metric), alert.value),
+          monitoringValue(ragText(alert.metric), alert.threshold),
+          alert.recommended_action
+        ])} />
       </section>
       <section className="panel"><div className="panel-header"><h3>Quellenabruf Monitoring</h3><span className="panel-meta">Top Treffer, schlechte Treffer, Textabschnitt-Nutzung und Dokumentverteilung.</span></div><div className="content-grid two-columns"><StatsList dataAttr="data-ai-top-hits" rows={topList(retrieval.top_hits)} empty={["Treffer", "keine Daten"]} /><StatsList dataAttr="data-ai-poor-hits" rows={topList(retrieval.poor_hits)} empty={["Schlechte Treffer", "keine Daten"]} /></div><div className="content-grid two-columns mt-4"><StatsList dataAttr="data-ai-chunk-usage" rows={topList(retrieval.chunk_usage)} empty={["Textabschnitte", "keine Daten"]} /><StatsList dataAttr="data-ai-quality-metrics" rows={Object.entries(quality).slice(0, 6).map(([key, value]) => [metricLabel(key), monitoringValue(key, value)] as const)} empty={["Qualität", "keine Daten"]} /></div></section>
       <section className="panel"><div className="panel-header"><h3>Workflow-Kosten und Fehler</h3><span className="panel-meta">Metadata-only Auswertung ohne Prompt- oder Antworttexte</span></div><div className="content-grid two-columns"><DataTable caption="AI-Workflows nach Ereignissen, Fehlern, Ausweichbetrieb, Tokens und Kosten" headers={["Workflow", "Ereignisse", "Ausweichbetrieb", "Fehler", "Tokens", "Kosten", "Latenz"]} dataAttr="data-ai-workflows" rows={workflows.map((item) => [item.workflow, item.events, percentText(item.fallback_rate || 0), item.errors, item.total_tokens, item.estimated_cost_usd, `${numberText(item.average_latency_ms || 0)} ms`])} /><StatsList dataAttr="data-ai-top-errors" rows={topErrors.map((item) => [item.error_category, item.count] as const)} empty={["AI Fehler", "keine Fehler im Zeitraum"]} /></div></section>

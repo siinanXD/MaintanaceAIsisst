@@ -24,7 +24,7 @@ MIN_CHUNK_SIZE = 200
 MIN_CHUNK_OVERLAP = 0
 MAX_SECTION_TITLE_CHARS = 140
 MAX_PROTECTED_BLOCK_OVERSIZE_FACTOR = 1.35
-SUPPORTED_CHUNKING_MODES = {"structured", "hybrid_semantic"}
+SUPPORTED_CHUNKING_MODES = {"structured", "hybrid_semantic", "legacy_fixed"}
 logger = logging.getLogger(__name__)
 HEADING_NUMBER_PATTERN = re.compile(r"^\d+(?:\.\d+)*[.)]?\s+\S+")
 LIST_ITEM_PATTERN = re.compile(
@@ -188,10 +188,24 @@ def chunk_text(text, metadata=None, config=None):
         return []
 
     chunking_config = validate_chunking_config(configured_chunking(config))
+    if chunking_config.mode == "legacy_fixed":
+        normalized_text = normalize_text(text)
+        if not normalized_text:
+            return []
+        return _character_chunks(normalized_text, metadata, chunking_config)
+
     blocks = _structured_blocks(structured_text)
-    if chunking_config.mode == "hybrid_semantic" and len(blocks) > 1:
+    if chunking_config.mode == "hybrid_semantic":
         try:
-            return _pack_semantic_blocks(blocks, metadata, chunking_config)
+            from app.services.semantic_chunking_service import semantic_chunk_text
+
+            chunks = semantic_chunk_text(
+                structured_text,
+                metadata=metadata,
+                config=chunking_config,
+            )
+            if chunks:
+                return chunks
         except Exception:
             logger.exception("semantic_chunking_fallback mode=structured")
     if _has_structural_signal(blocks):

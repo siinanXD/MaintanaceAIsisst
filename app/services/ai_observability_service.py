@@ -12,6 +12,7 @@ from app.domain_models.common import utc_now
 from app.extensions import db
 from app.models import AIAuditEvent, AIFeedback, ChatMessage, KnowledgeDocument, KnowledgeGap
 from app.services.ai_answer_quality_service import answer_quality_from_history_item
+from app.services.ai_governance_service import evaluate_governance_alerts
 from app.services.ai_prompting import text_system_prompt
 from app.services.ai_provider_readiness_service import ai_provider_readiness_snapshot
 from app.services.ai_routing import ai_price_configuration_status
@@ -26,6 +27,7 @@ DEFAULT_OBSERVABILITY_LIMIT = 10
 MAX_OBSERVABILITY_LIMIT = 50
 LOW_SIMILARITY_THRESHOLD = 0.35
 LOW_SCORE_THRESHOLD = 35.0
+LOW_CONFIDENCE_SCORE_THRESHOLD = 45
 NEGATIVE_RATINGS = {"not_helpful"}
 CONFIGURATION_FAILURE_STATUSES = {
     "api_key_missing",
@@ -111,6 +113,14 @@ def ai_observability_dashboard(args=None):
     metrics.update(_provider_readiness_metrics(provider_readiness))
     retrieval_monitoring = _retrieval_monitoring(events, feedback_entries, limit)
     quality_metrics = _quality_metrics(events, telemetry)
+    governance = evaluate_governance_alerts(
+        metrics,
+        quality_metrics=quality_metrics,
+        retrieval_monitoring=retrieval_monitoring,
+        telemetry=telemetry,
+        provider_readiness=provider_readiness,
+    )
+    metrics.update(_governance_metrics(governance))
     recommended_actions = _observability_recommended_actions(
         metrics,
         retrieval_monitoring,
@@ -129,6 +139,8 @@ def ai_observability_dashboard(args=None):
         "logs": ai_logs,
         "failed_requests": failed_requests,
         "quality_metrics": quality_metrics,
+        "governance": governance,
+        "alerts": governance["alerts"],
         "top_questions": metrics["top_questions"],
         "frequent_questions": metrics["frequent_questions"],
         "frequent_search_terms": metrics["frequent_search_terms"],
@@ -158,6 +170,10 @@ def ai_observability_dashboard(args=None):
 def _metric_catalog():
     """Return stable AI Admin dashboard metric definitions."""
     return [
+        _metric_definition("total_requests", "Requests gesamt", "reliability", "count"),
+        _metric_definition("successful_requests", "Erfolgreiche Requests", "reliability", "count"),
+        _metric_definition("failed_requests", "Fehlgeschlagene Requests", "reliability", "count"),
+        _metric_definition("request_success_rate", "Request-Erfolgsquote", "reliability", "rate"),
         _metric_definition("frequent_questions", "Haeufige Fragen", "usage", "count"),
         _metric_definition("frequent_search_terms", "Suchbegriffe", "usage", "count"),
         _metric_definition(
@@ -239,12 +255,58 @@ def _metric_catalog():
         ),
         _metric_definition("p95_response_ms", "Antwortlatenz p95", "latency", "ms"),
         _metric_definition("p95_retrieval_ms", "Retrievallatenz p95", "latency", "ms"),
+        _metric_definition("latency", "Latenzmetriken", "latency", "object"),
+        _metric_definition("atlas_queries", "Atlas Queries", "atlas", "count"),
+        _metric_definition("atlas_errors", "Atlas Fehler", "atlas", "count"),
+        _metric_definition("atlas_latency", "Atlas Latenz", "atlas", "ms"),
+        _metric_definition("atlas_fallbacks", "Atlas Fallbacks", "atlas", "count"),
+        _metric_definition("atlas_sync_failures", "Atlas Sync-Fehler", "atlas", "count"),
+        _metric_definition("atlas_vector_count", "Atlas Vektoren", "atlas", "count"),
+        _metric_definition(
+            "atlas_reindex_required",
+            "Atlas Reindex erforderlich",
+            "atlas",
+            "boolean",
+        ),
         _metric_definition(
             "failed_request_count",
             "Fehlgeschlagene Requests",
             "reliability",
             "count",
         ),
+        _metric_definition(
+            "no_source_answers",
+            "Antworten ohne Quellen",
+            "quality",
+            "count",
+        ),
+        _metric_definition(
+            "low_confidence_answers",
+            "Low-Confidence Antworten",
+            "quality",
+            "count",
+        ),
+        _metric_definition("token_usage", "Token-Nutzung", "cost", "object"),
+        _metric_definition("costs", "Kosten", "cost", "object"),
+        _metric_definition(
+            "governance_alert_count",
+            "Governance Alerts",
+            "governance",
+            "count",
+        ),
+        _metric_definition(
+            "governance_critical_alert_count",
+            "Kritische Governance Alerts",
+            "governance",
+            "count",
+        ),
+        _metric_definition(
+            "governance_warning_alert_count",
+            "Governance Warnungen",
+            "governance",
+            "count",
+        ),
+        _metric_definition("governance_status", "Governance Status", "governance", "status"),
         _metric_definition("retrieval_hit_rate", "Retrieval-Erfolgsquote", "quality", "rate"),
         _metric_definition("source_freshness", "Quellen-Frische", "retrieval", "rate"),
         _metric_definition("no_answer_rate", "No-Answer-Rate", "quality", "rate"),
@@ -399,6 +461,16 @@ def _provider_readiness_metrics(provider_readiness):
     }
 
 
+def _governance_metrics(governance):
+    """Return stable top-level governance metric counters."""
+    return {
+        "governance_status": str(governance.get("status") or "ok"),
+        "governance_alert_count": int(governance.get("alert_count") or 0),
+        "governance_critical_alert_count": int(governance.get("critical_count") or 0),
+        "governance_warning_alert_count": int(governance.get("warning_count") or 0),
+    }
+
+
 def _audit_events_since(since):
     """Return audit events in the observability window."""
     return (
@@ -456,6 +528,11 @@ def _metrics(events, chats, feedback_entries, telemetry):
     rag_answer_count = sum(1 for chat in chats if _is_rag_answer(chat))
     no_source_count = sum(1 for value in chat_source_counts if value == 0)
     no_source_breakdown = _no_source_breakdown(chats)
+    low_confidence_count = sum(1 for chat in chats if _is_low_confidence_chat(chat))
+    fallback_count = sum(1 for event in events if event.fallback_used)
+    token_usage = _token_usage(events)
+    cost_windows = _cost_windows(events)
+    latency = _latency_metrics(response_times, retrieval_times)
     answered_source_counts = [
         int(chat.source_count or 0) for chat in chats if _is_answered_chat(chat)
     ]
@@ -482,15 +559,23 @@ def _metrics(events, chats, feedback_entries, telemetry):
     return {
         "event_count": event_count,
         "chat_count": len(chats),
-        "average_response_ms": _average(response_times),
-        "p95_response_ms": _percentile(response_times, 0.95),
-        "average_retrieval_ms": _average(retrieval_times),
-        "p95_retrieval_ms": _percentile(retrieval_times, 0.95),
-        "total_tokens": sum(event.total_tokens or 0 for event in events),
-        "input_tokens": sum(event.input_tokens or 0 for event in events),
-        "output_tokens": sum(event.output_tokens or 0 for event in events),
-        "average_tokens": _average([event.total_tokens for event in events]),
-        "cost_windows": _cost_windows(events),
+        "total_requests": event_count,
+        "successful_requests": max(event_count - error_count, 0),
+        "failed_requests": error_count,
+        "request_success_rate": _rate(max(event_count - error_count, 0), event_count),
+        "average_response_ms": latency["average_response_ms"],
+        "p95_response_ms": latency["p95_response_ms"],
+        "average_retrieval_ms": latency["average_retrieval_ms"],
+        "p95_retrieval_ms": latency["p95_retrieval_ms"],
+        "latency": latency,
+        "total_tokens": token_usage["total_tokens"],
+        "input_tokens": token_usage["input_tokens"],
+        "output_tokens": token_usage["output_tokens"],
+        "cached_tokens": token_usage["cached_tokens"],
+        "average_tokens": token_usage["average_tokens"],
+        "token_usage": token_usage,
+        "cost_windows": cost_windows,
+        "costs": _cost_metrics(cost_windows, events),
         "price_configuration": ai_price_configuration_status(),
         "error_count": error_count,
         "failed_request_count": error_count,
@@ -517,6 +602,9 @@ def _metrics(events, chats, feedback_entries, telemetry):
         "high_uncertainty_rate": _rate(high_uncertainty_count, len(chats)),
         "uncertain_answer_count": uncertain_answer_count,
         "uncertain_answer_rate": _rate(uncertain_answer_count, len(chats)),
+        "low_confidence_answers": low_confidence_count,
+        "low_confidence_answer_count": low_confidence_count,
+        "low_confidence_rate": _rate(low_confidence_count, len(chats)),
         "retrieval_hit_rate": _rate(
             sum(1 for event in events if int(event.source_count or 0) > 0),
             event_count,
@@ -552,6 +640,8 @@ def _metrics(events, chats, feedback_entries, telemetry):
         "rag_answer_rate": _rate(rag_answer_count, len(chats)),
         "no_source_count": no_source_count,
         "no_source_rate": _rate(no_source_count, len(chats)),
+        "no_source_answers": no_source_count,
+        "no_source_answer_rate": _rate(no_source_count, len(chats)),
         "no_source_permission_denied_count": no_source_breakdown["permission_denied"],
         "no_source_no_data_count": no_source_breakdown["no_data"],
         "no_source_answer_count": no_source_breakdown["answered_without_sources"],
@@ -566,7 +656,8 @@ def _metrics(events, chats, feedback_entries, telemetry):
         "average_rerank_candidate_count": reranking_metrics["average_candidate_count"],
         "average_rerank_reduction_rate": reranking_metrics["average_reduction_rate"],
         "hallucination_warning_count": hallucination_warning_count,
-        "fallback_rate": _rate(sum(1 for event in events if event.fallback_used), event_count),
+        "fallback_count": fallback_count,
+        "fallback_rate": _rate(fallback_count, event_count),
         "positive_feedback_count": feedback_summary["positive"],
         "negative_feedback_count": feedback_summary["negative"],
         "feedback": feedback_summary,
@@ -581,6 +672,13 @@ def _metrics(events, chats, feedback_entries, telemetry):
         "source_kind_distribution_rows": _counter_rows(source_kind_distribution),
         "retrieval_slo": retrieval_slo,
         "retrieval_slo_warnings": retrieval_slo["warnings"],
+        "atlas_queries": retrieval_slo["atlas_queries"],
+        "atlas_errors": retrieval_slo["atlas_errors"],
+        "atlas_latency": retrieval_slo["atlas_latency"],
+        "atlas_fallbacks": retrieval_slo["atlas_fallbacks"],
+        "atlas_sync_failures": retrieval_slo["atlas_sync_failures"],
+        "atlas_vector_count": retrieval_slo["atlas_vector_count"],
+        "atlas_reindex_required": retrieval_slo["atlas_reindex_required"],
         "telemetry_status": retrieval_slo["status"],
     }
 
@@ -971,6 +1069,13 @@ def _retrieval_slo_summary(telemetry):
         ),
         "no_source_rate": _optional_float(last_values.get("no_source_rate")),
         "fallback_rate": _optional_float(last_values.get("fallback_rate")),
+        "atlas_queries": _optional_int(last_values.get("atlas_queries")) or 0,
+        "atlas_errors": _optional_int(last_values.get("atlas_errors")) or 0,
+        "atlas_latency": _optional_float(last_values.get("atlas_latency")) or 0,
+        "atlas_fallbacks": _optional_int(last_values.get("atlas_fallbacks")) or 0,
+        "atlas_sync_failures": _optional_int(last_values.get("atlas_sync_failures")) or 0,
+        "atlas_vector_count": _optional_int(last_values.get("atlas_vector_count")) or 0,
+        "atlas_reindex_required": bool(last_values.get("atlas_reindex_required")),
         "warning_count": len(warnings),
         "warnings": warnings,
     }
@@ -2492,6 +2597,26 @@ def _has_source_conflict(chat):
     )
 
 
+def _is_low_confidence_chat(chat):
+    """Return whether a chat answer should count as low confidence."""
+    diagnostics = chat.diagnostics()
+    confidence = diagnostics.get("confidence") or {}
+    level = str(
+        chat.confidence_level
+        or diagnostics.get("confidence_level")
+        or confidence.get("level")
+        or "",
+    ).strip()
+    if level == "low":
+        return True
+    score = _optional_int(
+        chat.confidence_score
+        or diagnostics.get("confidence_score")
+        or confidence.get("score"),
+    )
+    return score is not None and score <= LOW_CONFIDENCE_SCORE_THRESHOLD
+
+
 def _is_error_event(event):
     """Return whether an audit event counts as an AI error."""
     status = str(event.status or "").strip()
@@ -2564,6 +2689,47 @@ def _knowledge_title(document_id):
     except (TypeError, ValueError):
         return ""
     return _bounded(getattr(document, "title", ""), 180) if document else ""
+
+
+def _token_usage(events):
+    """Return token usage metrics from audit events without duplicating counters."""
+    total_tokens = sum(event.total_tokens or 0 for event in events)
+    input_tokens = sum(event.input_tokens or 0 for event in events)
+    output_tokens = sum(event.output_tokens or 0 for event in events)
+    cached_tokens = sum(event.cached_tokens or 0 for event in events)
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cached_tokens": cached_tokens,
+        "total_tokens": total_tokens,
+        "average_tokens": _average([event.total_tokens for event in events]),
+        "cache_rate": _rate(cached_tokens, input_tokens),
+    }
+
+
+def _cost_metrics(cost_windows, events):
+    """Return cost metrics from the existing rolling cost windows."""
+    total_tokens = sum(event.total_tokens or 0 for event in events)
+    estimated_cost = round(sum(float(event.estimated_cost_usd or 0.0) for event in events), 6)
+    return {
+        "day": cost_windows.get("day", 0.0),
+        "week": cost_windows.get("week", 0.0),
+        "month": cost_windows.get("month", 0.0),
+        "estimated_cost_usd": estimated_cost,
+        "cost_per_1k_tokens": round((estimated_cost / total_tokens) * 1000, 6)
+        if total_tokens
+        else 0,
+    }
+
+
+def _latency_metrics(response_times, retrieval_times):
+    """Return response and retrieval latency metrics."""
+    return {
+        "average_response_ms": _average(response_times),
+        "p95_response_ms": _percentile(response_times, 0.95),
+        "average_retrieval_ms": _average(retrieval_times),
+        "p95_retrieval_ms": _percentile(retrieval_times, 0.95),
+    }
 
 
 def _average(values):

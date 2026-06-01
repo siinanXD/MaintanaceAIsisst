@@ -39,6 +39,7 @@ def app(tmp_path):
         SQLALCHEMY_TRACK_MODIFICATIONS = False
         JWT_SECRET_KEY = "test-secret-key-with-enough-length"
         AI_PROVIDER = "mock"
+        EMBEDDING_PROVIDER = "hashing"
         OPENAI_API_KEY = ""
         OPENAI_MODEL = "test-model"
         UPLOAD_FOLDER = str(tmp_path / "uploads")

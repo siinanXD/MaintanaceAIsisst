@@ -25,9 +25,6 @@ from app.models import (
     Task,
 )
 from app.services.chunking_service import (
-    ChunkingConfig,
-)
-from app.services.chunking_service import (
     chunk_text as build_text_chunks,
 )
 from app.services.document_service import (
@@ -113,6 +110,8 @@ def rebuild_chunks(document, text):
         chunk_metadata.setdefault("chunking_mode", _configured_chunking_mode())
         if provider is not None:
             chunk_metadata["embedding_model"] = _embedding_model_label(provider)
+        if index < len(embeddings):
+            chunk_metadata["embedding_dimensions"] = len(embeddings[index] or [])
         entities = extract_technical_entities(
             chunk,
             metadata={**source_metadata, **chunk_metadata},
@@ -210,13 +209,16 @@ def sync_vector_store_document(document, chunks):
                 RuntimeError("One or more knowledge chunks are missing embeddings"),
             )
         return
-    if getattr(store, "name", "") != "chroma":
+    external_store_names = {"chroma", "mongodb_atlas"}
+    if getattr(store, "name", "") not in external_store_names:
         configured_store = str(current_app.config.get("RAG_VECTOR_STORE", "local")).lower()
-        if configured_store == "chroma":
+        if configured_store in external_store_names:
             record_vector_sync_failure(
                 document.id,
-                "chroma",
-                RuntimeError("Configured Chroma vector store fell back to local search"),
+                configured_store,
+                RuntimeError(
+                    f"Configured {configured_store} vector store fell back to local search"
+                ),
             )
         return
     try:
@@ -227,6 +229,7 @@ def sync_vector_store_document(document, chunks):
                     text=chunk.text,
                     record_id=f"knowledge:{document.id}:{chunk.chunk_index}",
                     metadata=chunk_vector_metadata(document, chunk),
+                    embedding=getattr(chunk, "embedding", None),
                 )
                 for chunk in chunks
             ]
@@ -267,12 +270,6 @@ def chunk_vector_metadata(document, chunk):
     metadata.update(_public_source_entity_metadata(document_entity_metadata(document)))
     metadata.update(stored_chunk_metadata(chunk))
     return metadata
-
-
-def chunk_text(text, max_chars=1400, overlap=160):
-    """Split text into stable overlapping chunks."""
-    config = ChunkingConfig(max_chars=max_chars, overlap=overlap)
-    return [chunk["text"] for chunk in build_text_chunks(text, config=config)]
 
 
 def tokens(value):
@@ -339,7 +336,6 @@ __all__ = [
     "rebuild_chunks",
     "sync_vector_store_document",
     "chunk_vector_metadata",
-    "chunk_text",
     "tokens",
     "reindex_all_knowledge",
     "reindex_stale_knowledge",
