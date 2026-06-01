@@ -7,7 +7,7 @@ not for the artificial golden-test fixtures.
 ## Setup Check
 
 1. Run `python seed.py demo`.
-2. Start the app and log in as `master.admin` with `Demo1234!`.
+2. Start the app and log in as `admin` with `Demo1234!`.
 3. Open the chat from the dashboard or any operations page.
 4. Optional: in `/admin/ai`, check that RAG is available and run a stale reindex
    if the knowledge status shows stale or missing chunks.

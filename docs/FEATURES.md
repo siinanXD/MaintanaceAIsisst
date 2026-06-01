@@ -41,10 +41,11 @@ permissions remain in `app/permissions.py`.
   `app/static/pages/`.
 - If a feature reuses another permission, set `permissionKey` explicitly instead
   of duplicating permission checks in templates or scripts.
-- New frontend code should live behind one feature initializer or one route
-  page module and avoid adding feature logic to the core `app/static/app.js`
-  bootstrap.
-- Login, handover, shift plans and Admin AI are loaded as route-specific page
-  modules. Do not reintroduce large inline scripts in templates.
+- New frontend code should live behind one feature initializer, one small shell
+  helper, or one React route island in `frontend/src`; avoid adding feature
+  logic to the core `app/static/app.js` bootstrap.
+- Login, handover, shift plans, Admin AI and the other larger screens are
+  loaded as route-specific React islands or page modules. Do not reintroduce
+  large inline scripts in templates.
 - Dynamic API data should be rendered with DOM APIs and `textContent` unless the
   string is a static, trusted empty-state fragment.

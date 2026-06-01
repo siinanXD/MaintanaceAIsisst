@@ -19,7 +19,7 @@ API key, and keeps sensitive employee or admin data behind permissions.
 ## Portfolio highlights
 
 - **Full-stack product surface:** Flask app factory, SQLAlchemy domain models,
-  Jinja/Tailwind UI, vanilla JS page modules and Docker deployment.
+  Jinja/Tailwind shell, React route islands, Tailwind CSS and Docker deployment.
 - **SaaS-grade access control:** JWT authentication, role-based navigation,
   per-dashboard permissions and audit logs for critical admin actions.
 - **AI-readiness without lock-in:** OpenAI and OpenAI-compatible provider
@@ -27,8 +27,8 @@ API key, and keeps sensitive employee or admin data behind permissions.
   policies and retrieval diagnostics.
 - **Operational workflows:** tasks, errors, machines, documents, inventory,
   shift planning, handover, vacations, notifications and backups.
-- **Quality baseline:** 417 passing tests with 83.58% coverage on the current
-  local baseline, plus Ruff, compile checks, OpenAPI docs and CI workflow.
+- **Quality baseline:** pytest coverage gate in CI, Ruff, compile checks,
+  frontend type checks, OpenAPI docs and Docker build workflow.
 
 ## Screenshots
 
@@ -87,7 +87,7 @@ checked-in UI state.
 **Infrastructure**
 - Knowledge search across tasks, errors, document metadata, and indexed AI knowledge chunks
 - Inventory management with spare-parts forecast
-- Swagger UI + OpenAPI JSON auto-generated from code
+- Swagger UI + curated OpenAPI JSON
 - Docker Compose setup with Gunicorn and persistent volumes
 - ZIP backup/restore for SQLite data, uploads, documents, logs, and manifests
 - Scheduler-friendly CLI jobs for task reminders, AI alerts, and daily briefings
@@ -99,20 +99,21 @@ checked-in UI state.
 | Backend | Flask, SQLAlchemy, Flask-JWT-Extended |
 | Database | SQLite for tests/dev, PostgreSQL + pgvector-ready Docker setup |
 | AI | OpenAI API with local rule-based fallback |
-| Frontend | Jinja2 templates, Tailwind CSS, vanilla JS |
-| Tests | pytest (417 tests, no external services required) |
+| Frontend | Jinja2 templates, Tailwind CSS, React 19 route islands, small vanilla JS shell helpers |
+| Tests | pytest, Ruff, TypeScript check, no external services required for the standard suite |
 | CI | GitHub Actions: lint, compile, test, Docker build |
 
-Frontend convention: `app/static/app.js` is the shell bootstrap for auth,
-feedback, toasts, live regions and route-module loading. Route behavior lives in
-focused page modules such as `login.js`, `admin-ai.js`, `handover.js`,
-`shiftplans.js` and the workflow loader; templates avoid large inline scripts.
+Frontend convention: Jinja templates render the shared shell and mount points.
+`frontend/src` contains React route islands that build into `app/static/react`;
+`app/static/app.js`, `app/static/auth.js` and `app/static/core/*` keep auth,
+feature registry, API client and shell fallback behavior small. Templates avoid
+large inline scripts.
 
 ## Getting Started
 
-**Prerequisites:** Python 3.11 or 3.12, Node.js only if rebuilding CSS.
-The default setup uses the local SQLAlchemy knowledge store, so it works without
-native vector-store build tools.
+**Prerequisites:** Python 3.11 or 3.12. Node.js is only needed when rebuilding
+CSS or React assets. The default setup uses SQLite plus the local SQLAlchemy
+knowledge store, so it works without native vector-store build tools.
 
 ```bash
 python -m venv .venv
@@ -150,9 +151,14 @@ Open `http://127.0.0.1:5050`. Demo credentials after `python seed.py demo`:
 
 | Username | Password | Role |
 |----------|----------|------|
-| `master.admin` | `Demo1234!` | Master Admin |
-| `produktion.leitung` | `Demo1234!` | Production lead |
-| `instandhaltung.leitung` | `Demo1234!` | Maintenance lead |
+| `admin` | `Demo1234!` | Master Admin |
+| `thomas.hoffmann` | `Demo1234!` | Maintenance |
+| `dirk.hartmann` | `Demo1234!` | Production |
+| `ralf.bergmann` | `Demo1234!` | IT |
+
+Current role values are `master_admin`, `it`, `verwaltung`, `instandhaltung`,
+`produktion` and `personalabteilung`. `master_admin` can access all dashboards;
+other roles are scoped by department and by per-dashboard permissions.
 
 For presentations, use the source-backed AI prompt list in
 [`docs/AI_DEMO_QUESTIONS.md`](docs/AI_DEMO_QUESTIONS.md).
@@ -261,6 +267,8 @@ OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 RAG_HASH_EMBEDDING_DIMENSIONS=384
 KNOWLEDGE_FOLDER=knowledge
 BACKUP_FOLDER=backups
+OPERATIONS_HASH_SECRET=     # optional; defaults to SECRET_KEY
+OPERATIONS_EVENT_RETENTION_MONTHS=24
 DOCUMENTS_FOLDER=documents
 MANUALS_FOLDER=manuals
 MAIL_ENABLED=false
@@ -339,42 +347,46 @@ handlers.
 
 ```
 app/
-├── __init__.py          # app factory, blueprint registration
-├── models.py            # SQLAlchemy models
-├── config.py            # configuration class
-├── extensions.py        # db, jwt, migrate instances
-├── security.py          # auth decorators
-├── permissions.py       # role and dashboard permission helpers
-├── responses.py         # consistent JSON response helpers
-├── services/            # business logic (task, error, AI, search…)
-├── templates/           # Jinja2 HTML templates
-├── static/              # Tailwind CSS output, JS
-├── auth/                # login, logout, /me
-├── tasks/               # task CRUD and AI workflows
-├── errors/              # error catalog and similarity search
-├── employees/           # employee management
-├── machines/            # machine management and AI assistant
-├── shiftplans/          # shift planning, drag-and-drop, audit log
-├── handover/            # shift handover protocol
-├── vacations/           # vacation requests and approval workflow
-├── inventory/           # inventory and spare-parts forecast
-├── documents/           # document listing and AI review
-├── ai/                  # chat, daily briefing, status endpoints
-├── search/              # cross-domain knowledge search
-└── admin/               # user and permission management
-tests/                   # pytest suite, SQLite in-memory
+|-- __init__.py          # app factory, blueprint registration
+|-- models.py            # SQLAlchemy model exports
+|-- domain_models/       # split SQLAlchemy model definitions
+|-- config.py            # environment-driven configuration
+|-- extensions.py        # db, jwt, migrate instances
+|-- security.py          # auth and role decorators
+|-- permissions.py       # dashboard permission helpers
+|-- responses.py         # consistent JSON response helpers
+|-- services/            # business logic, AI/RAG, workflows, diagnostics
+|-- templates/           # Jinja2 shell and page templates
+|-- static/              # CSS, shell JS, built React assets
+|-- auth/                # login, logout, /me
+|-- tasks/               # task CRUD and AI workflows
+|-- errors/              # error catalog and similarity search
+|-- employees/           # employee management
+|-- machines/            # machine management and AI assistant
+|-- shiftplans/          # shift planning, conflicts, export, audit log
+|-- handover/            # shift handover protocol
+|-- vacations/           # vacation requests and approval workflow
+|-- inventory/           # inventory and spare-parts forecast
+|-- documents/           # reports, manuals, review and downloads
+|-- ai/                  # chat, daily briefing, status endpoints
+|-- search/              # cross-domain knowledge search
+`-- admin/               # users, permissions, AI admin and operations APIs
+frontend/src/           # React route islands built by Vite
+migrations/             # Alembic database migrations
+tests/                  # pytest suite, SQLite in-memory
 docs/
-├── API_PROTOCOL.md      # full endpoint reference
-└── screenshots/
+|-- API_PROTOCOL.md      # endpoint reference
+|-- FEATURES.md          # feature boundaries
+`-- screenshots/
 ```
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    Browser["Browser\nJinja2 + Tailwind + JS"] --> Flask["Flask App Factory"]
+    Browser["Browser\nJinja2 + Tailwind + React islands"] --> Flask["Flask App Factory"]
     Flask --> Routes["Blueprint Routes\n16 domain modules"]
-    Routes --> Services["Service Layer\nvalidation · workflows · AI"]
+    Routes --> Services["Service Layer\nvalidation - workflows - AI"]
     Services --> Models["SQLAlchemy Models"]
     Models --> SQLite["SQLite"]
     Services --> AI["OpenAI API\nor local fallback"]

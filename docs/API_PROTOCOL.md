@@ -30,7 +30,7 @@ Alle geschuetzten Endpunkte erwarten einen JWT im `Authorization`-Header:
 Authorization: Bearer <access_token>
 ```
 
-Passwoerter werden nicht im Klartext gespeichert, sondern als Hash. Der Token wird ueber `/api/auth/login` ausgestellt.
+Passwoerter werden nicht im Klartext gespeichert, sondern als Hash. Der Token wird ueber `/api/v1/auth/login` ausgestellt.
 
 ## Rollen- und Rechtemodell
 
@@ -41,6 +41,7 @@ Passwoerter werden nicht im Klartext gespeichert, sondern als Hash. Der Token wi
 | Verwaltung | `verwaltung` | Eigener Bereich |
 | Instandhaltung | `instandhaltung` | Eigener Bereich |
 | Produktion | `produktion` | Eigener Bereich |
+| Personalabteilung | `personalabteilung` | Eigener Bereich |
 
 Zusaetzlich zur Rolle gibt es Dashboard-Rechte pro User. Der Admin kann fuer jedes Dashboard `can_view` und `can_write` setzen. Die API prueft diese Rechte serverseitig.
 
@@ -100,7 +101,7 @@ Typische Statuscodes:
 ### Benutzer registrieren
 
 ```http
-POST /api/auth/register
+POST /api/v1/auth/register
 Content-Type: application/json
 ```
 
@@ -150,7 +151,7 @@ Response `201`:
 ### Login
 
 ```http
-POST /api/auth/login
+POST /api/v1/auth/login
 Content-Type: application/json
 ```
 
@@ -184,7 +185,7 @@ Response `200`:
 ### Aktuellen Benutzer lesen
 
 ```http
-GET /api/auth/me
+GET /api/v1/auth/me
 Authorization: Bearer <access_token>
 ```
 
@@ -296,7 +297,7 @@ Response `200`:
   "data": [
     {
       "id": 1,
-      "actor": {"id": 1, "username": "master.admin"},
+      "actor": {"id": 1, "username": "admin"},
       "action": "permissions.update",
       "resource_type": "user",
       "resource_id": "2",
@@ -373,7 +374,7 @@ Benachrichtigungen fuer betroffene verknuepfte Mitarbeiter und Plan-Admins.
 ### Departments auflisten
 
 ```http
-GET /api/departments
+GET /api/v1/departments
 Authorization: Bearer <access_token>
 ```
 
@@ -393,7 +394,7 @@ Response `200`:
 Nur `master_admin`.
 
 ```http
-POST /api/departments
+POST /api/v1/departments
 Authorization: Bearer <access_token>
 Content-Type: application/json
 ```
@@ -420,7 +421,7 @@ Response `201`:
 ### Task-Vorschlag aus Freitext
 
 ```http
-POST /api/tasks/suggest
+POST /api/v1/tasks/suggest
 Authorization: Bearer <access_token>
 Content-Type: application/json
 ```
@@ -450,14 +451,14 @@ Response `200` ist ein Vorschlag und wird nicht gespeichert:
 ### Tasks auflisten
 
 ```http
-GET /api/tasks
+GET /api/v1/tasks
 Authorization: Bearer <access_token>
 ```
 
 Optionale Filter:
 
 ```http
-GET /api/tasks?status=open&priority=urgent
+GET /api/v1/tasks?status=open&priority=urgent
 ```
 
 Response `200`:
@@ -485,7 +486,7 @@ Response `200`:
 ### Task erstellen
 
 ```http
-POST /api/tasks
+POST /api/v1/tasks
 Authorization: Bearer <access_token>
 Content-Type: application/json
 ```
@@ -520,7 +521,7 @@ Response `201`: Task-Objekt.
 ### Einzelnen Task lesen
 
 ```http
-GET /api/tasks/1
+GET /api/v1/tasks/1
 Authorization: Bearer <access_token>
 ```
 
@@ -529,7 +530,7 @@ Response `200`: Task-Objekt.
 ### Task aktualisieren
 
 ```http
-PUT /api/tasks/1
+PUT /api/v1/tasks/1
 Authorization: Bearer <access_token>
 Content-Type: application/json
 ```
@@ -548,7 +549,7 @@ Response `200`: Aktualisiertes Task-Objekt.
 ### Task loeschen
 
 ```http
-DELETE /api/tasks/1
+DELETE /api/v1/tasks/1
 Authorization: Bearer <access_token>
 ```
 
@@ -561,7 +562,7 @@ Response:
 ### Heutige Tasks abrufen
 
 ```http
-GET /api/tasks/today
+GET /api/v1/tasks/today
 Authorization: Bearer <access_token>
 ```
 
@@ -570,7 +571,7 @@ Response `200`: Liste der Tasks mit `due_date` gleich dem aktuellen Datum des Se
 ### Tasks priorisieren
 
 ```http
-POST /api/tasks/prioritize
+POST /api/v1/tasks/prioritize
 Authorization: Bearer <access_token>
 Content-Type: application/json
 ```
@@ -608,7 +609,7 @@ Ohne OpenAI-Key nutzt die API den lokalen Fallback. Die Priorisierung speichert 
 ### Fehlerbeschreibung analysieren
 
 ```http
-POST /api/errors/analyze
+POST /api/v1/errors/analyze
 Authorization: Bearer <access_token>
 Content-Type: application/json
 ```
@@ -629,7 +630,7 @@ Response `200` ist ein Vorschlag und wird nicht gespeichert:
 ### Fehler auflisten
 
 ```http
-GET /api/errors
+GET /api/v1/errors
 Authorization: Bearer <access_token>
 ```
 
@@ -657,7 +658,7 @@ Response `200`:
 ### Fehler anlegen
 
 ```http
-POST /api/errors
+POST /api/v1/errors
 Authorization: Bearer <access_token>
 Content-Type: application/json
 ```
@@ -681,7 +682,7 @@ Response `201`: Fehlerkatalog-Objekt.
 ### Fehler suchen
 
 ```http
-GET /api/errors/search?query=E104
+GET /api/v1/errors/search?query=E104
 Authorization: Bearer <access_token>
 ```
 
@@ -692,7 +693,7 @@ Response `200`: Liste passender Fehlerkatalogeintraege.
 ### Aehnliche Fehler vorschlagen
 
 ```http
-POST /api/errors/similar
+POST /api/v1/errors/similar
 Authorization: Bearer <access_token>
 Content-Type: application/json
 ```
@@ -736,7 +737,7 @@ Response `200`:
 ### Einzelnen Fehler lesen
 
 ```http
-GET /api/errors/1
+GET /api/v1/errors/1
 Authorization: Bearer <access_token>
 ```
 
@@ -745,7 +746,7 @@ Response `200`: Fehlerkatalog-Objekt.
 ### Fehler aktualisieren
 
 ```http
-PUT /api/errors/1
+PUT /api/v1/errors/1
 Authorization: Bearer <access_token>
 Content-Type: application/json
 ```
@@ -763,7 +764,7 @@ Response `200`: Aktualisiertes Fehlerkatalog-Objekt.
 ### Fehler loeschen
 
 ```http
-DELETE /api/errors/1
+DELETE /api/v1/errors/1
 Authorization: Bearer <access_token>
 ```
 
@@ -778,7 +779,7 @@ Response:
 ### Chat-Anfrage senden
 
 ```http
-POST /api/ai/chat
+POST /api/v1/ai/chat
 Authorization: Bearer <access_token>
 Content-Type: application/json
 ```
@@ -900,7 +901,7 @@ als `sources` mit `type: "knowledge"`.
 ### Taegliches Briefing
 
 ```http
-GET /api/ai/daily-briefing
+GET /api/v1/ai/daily-briefing
 Authorization: Bearer <access_token>
 ```
 
@@ -920,7 +921,7 @@ Response `200`:
           "title": "Motor pruefen",
           "severity": "critical",
           "summary": "urgent, open, faellig 2026-04-30",
-          "url": "/api/tasks/1"
+          "url": "/api/v1/tasks/1"
         }
       ]
     }
@@ -937,7 +938,7 @@ Response `200`:
 Nur `master_admin`.
 
 ```http
-GET /api/ai/status
+GET /api/v1/ai/status
 Authorization: Bearer <access_token>
 ```
 
@@ -960,7 +961,7 @@ Wenn `api_key_configured` false ist, fehlt die lokale `.env` oder `OPENAI_API_KE
 ### AI-Feedback speichern
 
 ```http
-POST /api/ai/feedback
+POST /api/v1/ai/feedback
 Authorization: Bearer <access_token>
 Content-Type: application/json
 ```
@@ -1033,7 +1034,7 @@ Response `200`:
 ### Dokument pruefen
 
 ```http
-POST /api/documents/1/review
+POST /api/v1/documents/1/review
 Authorization: Bearer <access_token>
 ```
 
@@ -1132,7 +1133,7 @@ Fehlercodes, offene Risiken
 ## Wissenssuche
 
 ```http
-GET /api/search?q=Sensorfehler
+GET /api/v1/search?q=Sensorfehler
 Authorization: Bearer <access_token>
 ```
 
@@ -1146,7 +1147,7 @@ Response:
       "type": "task",
       "title": "Sensor pruefen",
       "summary": "Beschreibung",
-      "url": "/api/tasks/1"
+      "url": "/api/v1/tasks/1"
     }
   ]
 }
@@ -1157,10 +1158,10 @@ Response:
 Mitarbeiter-Endpunkte benoetigen `employees.view`. Schreibzugriffe, Uploads und Downloads vertraulicher Dokumente benoetigen `employees.write` und `employee_access_level=confidential`.
 
 ```http
-GET /api/employees
-POST /api/employees
-PUT /api/employees/1
-DELETE /api/employees/1
+GET /api/v1/employees
+POST /api/v1/employees
+PUT /api/v1/employees/1
+DELETE /api/v1/employees/1
 ```
 
 Mitarbeiter enthalten fuer die Schichtplanung:
@@ -1177,11 +1178,11 @@ Mitarbeiter enthalten fuer die Schichtplanung:
 Maschinen-Endpunkte benoetigen `machines.view` oder `machines.write`.
 
 ```http
-GET /api/machines
-POST /api/machines
-GET /api/machines/1/history
-PUT /api/machines/1
-DELETE /api/machines/1
+GET /api/v1/machines
+POST /api/v1/machines
+GET /api/v1/machines/1/history
+PUT /api/v1/machines/1
+DELETE /api/v1/machines/1
 ```
 
 Request:
@@ -1224,7 +1225,7 @@ Erlaubte Level: `basic`, `trained`, `expert`, `trainer`.
 ### Maschinen-Historie
 
 ```http
-GET /api/machines/1/history
+GET /api/v1/machines/1/history
 Authorization: Bearer <access_token>
 ```
 
@@ -1257,7 +1258,7 @@ Response `200`:
       "title": "Stillstand Anlage 4",
       "status": "open",
       "summary": "Sensorfehler pruefen",
-      "url": "/api/tasks/1"
+      "url": "/api/v1/tasks/1"
     }
   ]
 }
@@ -1268,7 +1269,7 @@ Die Historie ist read-only und speichert keine KI-Zusammenfassungen.
 ### Maschinen-KI-Assistent
 
 ```http
-POST /api/machines/1/assistant
+POST /api/v1/machines/1/assistant
 Authorization: Bearer <access_token>
 Content-Type: application/json
 ```
@@ -1307,11 +1308,11 @@ Response `200`:
 Lager-Endpunkte benoetigen `inventory.view` oder `inventory.write`.
 
 ```http
-GET /api/inventory
-GET /api/inventory/summary
-POST /api/inventory
-PUT /api/inventory/1
-DELETE /api/inventory/1
+GET /api/v1/inventory
+GET /api/v1/inventory/summary
+POST /api/v1/inventory
+PUT /api/v1/inventory/1
+DELETE /api/v1/inventory/1
 ```
 
 Request:
@@ -1339,7 +1340,7 @@ Summary:
 ### Ersatzteil-Prognose
 
 ```http
-POST /api/inventory/forecast
+POST /api/v1/inventory/forecast
 Authorization: Bearer <access_token>
 Content-Type: application/json
 ```
@@ -1391,12 +1392,12 @@ oder Beschreibung erkannt.
 Schichtplan-Endpunkte benoetigen `shiftplans.view` oder `shiftplans.write`. Die Generierung benoetigt zusaetzlich mindestens Mitarbeiterdatenstufe `shift`, weil dabei Produktionsmitarbeiter geplant werden.
 
 ```http
-GET /api/shiftplans
-POST /api/shiftplans/generate
+GET /api/v1/shiftplans
+POST /api/v1/shiftplans/generate
 GET /api/v1/shiftplans/1/conflicts
 POST /api/v1/shiftplans/validate
 GET /api/v1/shiftplans/1/export.xlsx
-DELETE /api/shiftplans/1
+DELETE /api/v1/shiftplans/1
 ```
 
 Request:
@@ -1436,7 +1437,7 @@ Die PDF-Ausgabe erfolgt ueber die optimierte Druckansicht des Browsers.
 Login:
 
 ```bash
-curl -X POST https://deine-domain.de/api/auth/login \
+curl -X POST https://deine-domain.de/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d "{\"login\":\"admin\",\"password\":\"secret\"}"
 ```
@@ -1444,14 +1445,14 @@ curl -X POST https://deine-domain.de/api/auth/login \
 Fehler suchen:
 
 ```bash
-curl "https://deine-domain.de/api/errors/search?query=E104" \
+curl "https://deine-domain.de/api/v1/errors/search?query=E104" \
   -H "Authorization: Bearer <access_token>"
 ```
 
 Chat:
 
 ```bash
-curl -X POST https://deine-domain.de/api/ai/chat \
+curl -X POST https://deine-domain.de/api/v1/ai/chat \
   -H "Authorization: Bearer <access_token>" \
   -H "Content-Type: application/json" \
   -d "{\"message\":\"Maschine 3 zeigt Fehler E104. Was soll ich pruefen?\"}"
