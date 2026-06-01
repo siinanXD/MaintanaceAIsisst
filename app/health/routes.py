@@ -1,7 +1,6 @@
 """Health check API routes."""
 
 from flask import Blueprint, current_app, jsonify
-from flask_jwt_extended import jwt_required
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -62,9 +61,9 @@ def readiness_check():
 
 
 @health_bp.get("/database")
-@jwt_required()
+@roles_required(Role.IT)
 def database_health():
-    """Return authenticated database diagnostics for administrators and tests."""
+    """Return sensitive database diagnostics for IT and master admins."""
     inspector = inspect(db.engine)
     table_names = inspector.get_table_names()
     database_rows = []

@@ -138,8 +138,27 @@
     }
   }
 
-  function logout() {
-    clearSession({ redirect: true });
+  async function revokeAuthToken(authToken) {
+    if (!authToken) return;
+    const response = await fetch("/api/v1/auth/logout", {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + authToken },
+      keepalive: true
+    });
+    if (!response.ok && response.status !== 401 && response.status !== 422) {
+      throw new Error("Logout failed with status " + response.status);
+    }
+  }
+
+  async function logout() {
+    const authToken = window.localStorage.getItem(TOKEN_KEY);
+    try {
+      await revokeAuthToken(authToken);
+    } catch (error) {
+      console.warn("Logout token revocation failed.", error);
+    } finally {
+      clearSession({ redirect: true });
+    }
   }
 
   function highContrastEnabled() {

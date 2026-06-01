@@ -15,6 +15,8 @@ AI_ADMIN_VIEWS = {
     "technical": "/admin/ai/technical",
 }
 
+# Deprecated legacy Admin-AI page paths kept for old bookmarks and clients.
+# Remove these redirects after a documented deprecation phase.
 AI_ADMIN_LEGACY_REDIRECTS = {
     "/admin/ai/prompts": "/admin/ai/prompt-faq",
     "/admin/ai/faq": "/admin/ai/prompt-faq",
@@ -92,7 +94,7 @@ def render_ai_admin_page(view_name):
 @web_bp.get("/admin/ai/diagnostics")
 @web_bp.get("/admin/ai/indexing")
 def admin_ai_legacy_redirect_page():
-    """Redirect legacy AI admin web pages to their canonical sections."""
+    """Redirect deprecated Admin-AI legacy pages to canonical sections."""
     target_path = AI_ADMIN_LEGACY_REDIRECTS.get(request.path)
     if target_path is None:
         abort(404)

@@ -76,6 +76,23 @@ def test_login_with_username_email_and_me(client, make_user):
     assert me_response.get_json()["username"] == user["username"]
 
 
+def test_logout_revokes_current_token(client, make_user):
+    """Verify logout stores the token as revoked for later API requests."""
+    user = make_user(username="logout_user")
+    login_response = client.post(
+        "/api/v1/auth/login",
+        json={"login": user["username"], "password": user["password"]},
+    )
+    token = login_response.get_json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    logout_response = client.post("/api/v1/auth/logout", headers=headers)
+    revoked_response = client.get("/api/v1/auth/me", headers=headers)
+
+    assert logout_response.status_code == 200
+    assert revoked_response.status_code == 401
+
+
 def test_login_rejects_invalid_credentials_and_locked_users(client, make_user):
     """Verify login error handling for bad passwords and inactive accounts."""
     user = make_user(username="locked", is_active=False)

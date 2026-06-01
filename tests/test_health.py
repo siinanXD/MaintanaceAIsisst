@@ -157,6 +157,64 @@ def test_readiness_ai_probe_reports_embedding_provider_readiness(app, client):
     assert "test-key" not in str(ai)
 
 
+def test_database_health_requires_authentication(client):
+    """Verify database diagnostics are unavailable without authentication."""
+    response = client.get("/api/v1/health/database")
+
+    assert response.status_code == 401
+
+
+def test_database_health_requires_it_or_master_admin(client, make_user, auth_headers):
+    """Verify regular users cannot read sensitive database diagnostics."""
+    user = make_user(
+        username="db_health_user",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+
+    response = client.get(
+        "/api/v1/health/database",
+        headers=auth_headers(user["username"]),
+    )
+
+    assert response.status_code == 403
+
+
+def test_database_health_allows_it_and_master_admin(client, make_user, auth_headers):
+    """Verify IT and master admins can read database diagnostics."""
+    it_user = make_user(
+        username="db_health_it",
+        role=Role.IT,
+        department_name="IT",
+    )
+    admin = make_user(
+        username="db_health_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+
+    it_response = client.get(
+        "/api/v1/health/database",
+        headers=auth_headers(it_user["username"]),
+    )
+    admin_response = client.get(
+        "/api/v1/health/database",
+        headers=auth_headers(admin["username"]),
+    )
+
+    assert it_response.status_code == 200
+    assert admin_response.status_code == 200
+    for response in (it_response, admin_response):
+        payload = response.get_json()
+        assert payload["database_uri"]
+        assert payload["schema"]["ok"] is True
+        assert isinstance(payload["sqlite_files"], list)
+        assert "task" in payload["tables"]
+        assert {"tasks", "errors", "employees", "employee_documents"} <= set(
+            payload["counts"]
+        )
+
+
 def test_operations_health_requires_master_admin(client, make_user, auth_headers):
     """Verify operations metrics are exposed only to master admins."""
     admin = make_user(

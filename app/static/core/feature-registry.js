@@ -111,6 +111,7 @@
         "/admin/ai/prompt-faq",
         "/admin/ai/effectiveness",
         "/admin/ai/technical",
+        // Deprecated legacy Admin-AI aliases kept for old bookmarks and redirects.
         "/admin/ai/prompts",
         "/admin/ai/faq",
         "/admin/ai/lab",

@@ -2,7 +2,7 @@
 
 import logging
 
-from flask import jsonify, render_template
+from flask import jsonify, redirect, render_template
 
 from app.docs.openapi_parts.builder import build_openapi_spec
 
@@ -24,11 +24,15 @@ def include_schema_model(_tag):
 def configure_api_documentation(app):
     """Register OpenAPI JSON and Swagger UI routes on the Flask app."""
 
-    @app.get("/api/v1/swagger.json")
-    @app.get("/api/swagger.json")  # backward compat redirect
+    @app.get("/api/swagger.json")
     def swagger_json():
         """Return the OpenAPI specification as JSON."""
         return jsonify(OPENAPI_SPEC)
+
+    @app.get("/api/v1/swagger.json")
+    def swagger_json_legacy_redirect():
+        """Redirect the deprecated v1 OpenAPI URL to the canonical JSON route."""
+        return redirect("/api/swagger.json", code=308)
 
     try:
         from flasgger import Swagger

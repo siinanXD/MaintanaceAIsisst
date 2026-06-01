@@ -38,6 +38,7 @@ def test_openapi_json_documents_core_endpoints(client):
     assert "/api/v1/admin/sites" in paths
     assert "/api/v1/admin/sites/{site_id}" in paths
     assert "/api/v1/admin/operations/aggregate" in paths
+
     assert "/api/v1/admin/ai/chats" in paths
     assert "/api/v1/admin/ai/events" in paths
     assert "/api/v1/admin/jobs" in paths
@@ -150,6 +151,14 @@ def test_openapi_json_documents_core_endpoints(client):
     assert paths["/api/v1/handover/{handover_id}/summary"]["get"]["responses"]["200"]["content"][
         "application/json"
     ]["schema"]["$ref"] == ("#/components/schemas/ShiftHandoverSummary")
+
+
+def test_legacy_openapi_json_route_redirects_to_canonical_path(client):
+    """Verify the deprecated v1 OpenAPI JSON route is only a redirect."""
+    response = client.get("/api/v1/swagger.json")
+
+    assert response.status_code == 308
+    assert response.headers["Location"] == "/api/swagger.json"
 
 
 def test_openapi_examples_are_present(client):

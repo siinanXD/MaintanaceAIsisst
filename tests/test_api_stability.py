@@ -427,6 +427,7 @@ def test_feature_registry_covers_permissions_and_frontend_assets(client):
     assert '"/admin/ai/training"' in registry
     assert "featureRoutes(feature)" in auth_js
     assert "feature.routeAliases" in auth_js
+    assert 'fetch("/api/v1/auth/logout"' in auth_js
     assert 'moduleUrl: "/static/pages/handover-island.js"' in registry
     assert 'moduleUrl: "/static/pages/shiftplans-island.js"' in registry
     assert 'moduleUrl: "/static/pages/inventory-island.js"' in registry
