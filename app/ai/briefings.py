@@ -39,6 +39,7 @@ from app.services.ai_safety_service import (
     enforce_post_generation_safety,
 )
 from app.services.ai_service import AIServiceError, MockAIProvider, get_ai_provider
+from app.services.ai_structured_source_service import module_count_source_card
 from app.services.conversation_context_service import conversation_context_for_chat
 from app.services.document_service import visible_documents_query
 from app.services.empty_retrieval_response_service import build_empty_retrieval_answer
@@ -63,6 +64,7 @@ from app.services.retrieval_debug_service import (
 from app.services.retrieval_explainability_service import retrieval_explainability_summary
 from app.services.retrieval_service import knowledge_context_for_chat
 from app.services.task_service import visible_tasks_query
+from app.services.text_normalization_service import normalize_text
 
 LAST_OPENAI_ERROR = None
 OPENAI_PROVIDER = "OpenAI"
@@ -194,6 +196,53 @@ def daily_briefing(user):
             ),
         },
     }
+
+
+def answer_daily_briefing_chat_question(message, user):
+    """Return a structured chat answer for daily briefing style questions."""
+    if not looks_like_daily_briefing_question(message):
+        return None
+
+    briefing = daily_briefing(user)
+    sections = list(briefing.get("sections") or [])
+    item_count = sum(int(section.get("count") or 0) for section in sections)
+    return {
+        "type": "daily_briefing",
+        "answer": _format_daily_briefing_answer(briefing, sections, item_count),
+        "data": {
+            "entity_type": "daily_briefing",
+            "date": briefing.get("date"),
+            "count": item_count,
+            "summary": briefing.get("summary"),
+            "sections": sections,
+        },
+        "sources": _daily_briefing_source_cards(sections, user),
+        "scope": "daily_briefing",
+        "structured_context": {"entity_type": "daily_briefing"},
+    }
+
+
+def looks_like_daily_briefing_question(message):
+    """Return whether a chat message asks for today's briefing or decisions."""
+    text = normalize_text(message)
+    if not any(term in text for term in ("heute", "heutige", "tagesbriefing", "daily briefing")):
+        return False
+    if _mentions_specific_app_scope(text):
+        return False
+    return any(
+        phrase in text
+        for phrase in (
+            "was steht heute an",
+            "steht heute an",
+            "was ist heute wichtig",
+            "heute wichtig",
+            "heutige entscheidungen",
+            "entscheidungen stehen heute an",
+            "welche entscheidungen",
+            "tagesbriefing",
+            "daily briefing",
+        )
+    )
 
 
 def task_briefing_section(user):
@@ -332,6 +381,93 @@ def document_briefing_section(user):
     }
 
 
+def _format_daily_briefing_answer(briefing, sections, item_count):
+    """Return a compact German chat answer for an existing daily briefing payload."""
+    lines = [
+        "## Heutige Entscheidungen",
+        f"- **Datum:** {briefing.get('date')}",
+        f"- **Status:** {briefing.get('summary')}",
+        f"- **Anzahl:** {item_count}",
+        "- **Quelle:** Daily-Briefing-Service",
+    ]
+    if item_count <= 0:
+        lines.append("")
+        lines.append("Keine Eintraege fuer heute vorhanden.")
+        return "\n".join(lines)
+
+    lines.append("")
+    lines.append("Wichtige Punkte:")
+    for section in sections:
+        if int(section.get("count") or 0) <= 0:
+            continue
+        lines.append(f"- **{section.get('title')}:** {section.get('count')}")
+        for item in list(section.get("items") or [])[:3]:
+            lines.append(f"  - {item.get('title')} ({item.get('severity')})")
+    return "\n".join(lines)
+
+
+def _daily_briefing_source_cards(sections, user):
+    """Return prompt-safe source cards for daily briefing sections."""
+    sources = []
+    for section in sections:
+        scope = _briefing_section_scope(section)
+        if scope:
+            source = module_count_source_card(scope, int(section.get("count") or 0), user)
+            if source:
+                sources.append(source)
+            continue
+        sources.extend(_knowledge_section_source_cards(section))
+    return sources
+
+
+def _briefing_section_scope(section):
+    """Return the dashboard scope represented by one briefing section."""
+    mapping = {
+        "tasks": "tasks",
+        "inventory": "inventory",
+        "errors": "errors",
+        "recurring_issues": "errors",
+        "incident_timeline": "errors",
+        "documents": "documents",
+    }
+    return mapping.get(str((section or {}).get("type") or ""))
+
+
+def _knowledge_section_source_cards(section):
+    """Return lightweight source cards for knowledge briefing items."""
+    if str((section or {}).get("type") or "") != "knowledge":
+        return []
+    cards = []
+    for index, item in enumerate(list(section.get("items") or [])[:3], start=1):
+        cards.append(
+            {
+                "type": "knowledge",
+                "id": None,
+                "title": str(item.get("title") or "AI-Wissenskontext")[:160],
+                "module": "knowledge",
+                "url": str(item.get("url") or "/admin/ai/knowledge")[:240],
+                "source_type": "daily_briefing_knowledge",
+                "source_id": None,
+                "source_record_id": None,
+                "source_kind": "daily_briefing",
+                "role_visibility": "permission_scoped",
+                "created_at": str(item.get("created_at") or ""),
+                "score": max(1, 30 - index),
+            }
+        )
+    return cards
+
+
+def _mentions_specific_app_scope(text):
+    """Return whether a message should stay with a more specific structured route."""
+    scoped_keywords = set()
+    for scope, keywords in SCOPE_KEYWORDS.items():
+        if scope == "admin_users":
+            continue
+        scoped_keywords.update(keywords)
+    return any(keyword in text for keyword in scoped_keywords)
+
+
 def rag_briefing_section(user):
     """Return visible RAG knowledge sources relevant for today's briefing."""
     department = user.department.name if user.department else ""
@@ -365,7 +501,9 @@ def rag_briefing_section(user):
 
 
 __all__ = [
+    "answer_daily_briefing_chat_question",
     "daily_briefing",
+    "looks_like_daily_briefing_question",
     "task_briefing_section",
     "inventory_briefing_section",
     "error_briefing_section",

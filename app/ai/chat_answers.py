@@ -85,6 +85,8 @@ from app.services.retrieval_explainability_service import retrieval_explainabili
 from app.services.retrieval_service import knowledge_context_for_chat
 from app.services.task_service import visible_tasks_query
 
+from .briefings import answer_daily_briefing_chat_question
+
 LAST_OPENAI_ERROR = None
 OPENAI_PROVIDER = "OpenAI"
 logger = logging.getLogger(__name__)
@@ -274,6 +276,28 @@ def _wants_document_review(text):
     )
 
 
+def _daily_briefing_scopes(result):
+    """Return dashboard scopes represented by a daily briefing chat answer."""
+    source_scopes = {
+        str(source.get("module") or "")
+        for source in result.get("sources") or []
+        if isinstance(source, dict)
+    }
+    scopes = {
+        scope
+        for scope in source_scopes
+        if scope in {"tasks", "errors", "inventory", "documents"}
+    }
+    section_types = {
+        str(section.get("type") or "")
+        for section in ((result.get("data") or {}).get("sections") or [])
+        if isinstance(section, dict)
+    }
+    if "recurring_issues" in section_types or "incident_timeline" in section_types:
+        scopes.add("errors")
+    return scopes
+
+
 def answer_chat(message, user, session_id=""):
     """Route the user message to the correct assistant behavior."""
     conversation_context = conversation_context_for_chat(user, message, session_id)
@@ -281,6 +305,19 @@ def answer_chat(message, user, session_id=""):
     if conversation_context.applied:
         requested_scopes |= set(conversation_context.suggested_scopes)
     allowed_scopes = allowed_ai_scopes(user)
+
+    daily_briefing_result = answer_daily_briefing_chat_question(message, user)
+    if daily_briefing_result:
+        daily_briefing_result["diagnostics"] = ai_diagnostics("local_answer")
+        return attach_audit_metadata(
+            user,
+            daily_briefing_result,
+            requested_scopes or _daily_briefing_scopes(daily_briefing_result),
+            allowed_scopes,
+            workflow="daily_briefing",
+            message=message,
+            conversation_context=conversation_context,
+        )
 
     vacation_structured_result = answer_vacation_structured_question(message, user)
     if vacation_structured_result:

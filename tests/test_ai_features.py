@@ -8317,6 +8317,107 @@ def test_daily_briefing_respects_permissions_and_uses_local_fallback(
     assert "documents" not in section_types
 
 
+def test_ai_chat_daily_briefing_answers_today_decisions(
+    client,
+    make_user,
+    make_task,
+    auth_headers,
+):
+    """Verify decision-style chat questions reuse the daily briefing service."""
+    user = make_user(
+        username="chat_briefing_decisions_user",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+    make_task(
+        "Heute Entscheidung Task",
+        creator_username=user["username"],
+        department_name="Produktion",
+        priority=Priority.URGENT,
+        due_date_value=date.today(),
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Entscheidungen stehen heute an?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "daily_briefing"
+    assert payload["data"]["entity_type"] == "daily_briefing"
+    assert payload["data"]["count"] >= 1
+    assert any(section["type"] == "tasks" for section in payload["data"]["sections"])
+    assert "Heute Entscheidung Task" in payload["answer"]
+    assert "Keine belastbare Quelle" not in payload["answer"]
+    assert payload["diagnostics"]["source_count"] >= 1
+    assert payload["answer_quality"]["status"] == "grounded"
+
+
+def test_ai_chat_daily_briefing_answers_what_is_today(
+    client,
+    make_user,
+    make_error_entry,
+    auth_headers,
+):
+    """Verify generic today planning questions use the daily briefing service."""
+    user = make_user(
+        username="chat_briefing_today_user",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+    make_error_entry(
+        "Anlage Chat Briefing",
+        "BRIEF-1",
+        "Neuer Chat Briefing Fehler",
+        department_name="Produktion",
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Was steht heute an?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "daily_briefing"
+    assert payload["data"]["count"] >= 1
+    assert any(section["type"] == "errors" for section in payload["data"]["sections"])
+    assert "Neuer Chat Briefing Fehler" in payload["answer"]
+    assert "Keine belastbare Quelle" not in payload["answer"]
+    assert payload["diagnostics"]["source_count"] >= 1
+
+
+def test_ai_chat_daily_briefing_empty_result_stays_structured(
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify empty daily briefing chat questions do not fall back to RAG no-source."""
+    user = make_user(
+        username="chat_briefing_empty_user",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Was ist heute wichtig?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "daily_briefing"
+    assert payload["data"]["count"] == 0
+    assert "Keine Eintraege fuer heute vorhanden." in payload["answer"]
+    assert "Keine belastbare Quelle" not in payload["answer"]
+    assert payload["diagnostics"]["empty_retrieval"] is False
+    assert payload["diagnostics"]["source_count"] >= 1
+
+
 def test_daily_briefing_includes_recurring_issue_trends(
     client,
     make_user,
