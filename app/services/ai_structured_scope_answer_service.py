@@ -295,10 +295,18 @@ def _merged_filters(base_context, text, entity_type):
         for key, value in (base_context or {}).items()
         if key in {"department", "status", "time_range", "machine"} and value
     }
+    previous_status = filters.get("status")
     status = detect_status(text)
+    time_range = detect_time_range(text)
     if status:
         filters["status"] = status
-    time_range = detect_time_range(text)
+        if _should_drop_inherited_time_range(
+            entity_type,
+            previous_status,
+            status,
+            time_range,
+        ):
+            filters.pop("time_range", None)
     if time_range:
         filters["time_range"] = time_range
     department = detect_department(text)
@@ -313,6 +321,17 @@ def _merged_filters(base_context, text, entity_type):
     if entity_type == "incidents" and severity:
         filters["severity"] = severity
     return filters
+
+
+def _should_drop_inherited_time_range(entity_type, previous_status, status, time_range):
+    """Return whether a status-changing task follow-up should avoid stale time filters."""
+    return (
+        entity_type == "tasks"
+        and bool(previous_status)
+        and bool(status)
+        and previous_status != status
+        and not time_range
+    )
 
 
 def _structured_context(entity_type, filters):

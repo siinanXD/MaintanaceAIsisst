@@ -845,6 +845,81 @@ def test_ai_chat_counts_open_tasks_only_as_task_followup(
     assert fresh_response.get_json()["type"] != "structured_scope"
 
 
+def test_ai_chat_short_open_followup_after_yesterday_done_uses_task_domain(
+    app,
+    client,
+    make_user,
+    make_task,
+    auth_headers,
+):
+    """Verify a short open-count follow-up keeps task context without stale time filters."""
+    user = make_user(username="ai_yesterday_open_followup_user")
+    yesterday = date.today() - timedelta(days=1)
+    done_task_id = make_task(
+        "Gestern abgeschlossen fuer Follow-up",
+        creator_username=user["username"],
+        status=TaskStatus.DONE,
+    )
+    open_task_id = make_task(
+        "Aktuell offener Follow-up Task",
+        creator_username=user["username"],
+        status=TaskStatus.OPEN,
+    )
+    with app.app_context():
+        db.session.get(Task, done_task_id).completed_at = datetime.combine(
+            yesterday,
+            time(hour=9),
+        )
+        db.session.get(Task, open_task_id).created_at = datetime.combine(
+            date.today(),
+            time(hour=9),
+        )
+        db.session.commit()
+    headers = auth_headers(user["username"])
+
+    first_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Welche Tasks wurden gestern abgeschlossen?",
+            "session_id": "task-yesterday-open-followup",
+        },
+    )
+    followup_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Wie viele sind noch offen?",
+            "session_id": "task-yesterday-open-followup",
+        },
+    )
+    fresh_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Wie viele sind noch offen?",
+            "session_id": "task-yesterday-open-fresh",
+        },
+    )
+
+    first_payload = first_response.get_json()
+    followup_payload = followup_response.get_json()
+    fresh_payload = fresh_response.get_json()
+    assert first_response.status_code == 200
+    assert first_payload["type"] == "tasks_status"
+    assert first_payload["data"]["status"] == TaskStatus.DONE.value
+    assert first_payload["data"]["count"] == 1
+    assert followup_response.status_code == 200
+    assert followup_payload["type"] == "structured_scope"
+    assert followup_payload["data"]["entity_type"] == "tasks"
+    assert followup_payload["data"]["filters"] == {"status": TaskStatus.OPEN.value}
+    assert followup_payload["data"]["count"] == 1
+    assert followup_payload["data"]["items"][0]["title"] == "Aktuell offener Follow-up Task"
+    assert fresh_response.status_code == 200
+    assert fresh_payload["type"] not in {"structured_scope", "tasks_status"}
+    assert "Anzahl:**" not in fresh_payload["answer"]
+
+
 def test_ai_chat_structured_task_answers_return_safe_source_cards(
     client,
     make_user,
