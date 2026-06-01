@@ -20,6 +20,7 @@ from app.services.ai_question_normalizer import (
 from app.services.ai_structured_source_service import (
     incident_source_cards,
     incident_source_cards_from_payloads,
+    module_count_source_card,
     task_source_cards,
 )
 from app.services.error_service import visible_errors_query
@@ -67,6 +68,7 @@ def _answer_tasks(message, user, filters):
     count = query.count()
     tasks = _ordered_tasks(query, filters).limit(MAX_ITEMS).all()
     count_question = _is_count_question(message)
+    sources = _task_sources(tasks, count, user)
     return {
         "type": "structured_scope",
         "answer": _format_answer("Tasks", count, tasks, filters, count_question),
@@ -76,7 +78,7 @@ def _answer_tasks(message, user, filters):
             "filters": _public_filters(filters),
             "items": [task.to_dict() for task in tasks],
         },
-        "sources": task_source_cards(tasks),
+        "sources": sources,
         "scope": "tasks",
         "structured_context": _structured_context("tasks", filters),
     }
@@ -93,6 +95,7 @@ def _answer_incidents(message, user, filters):
     count = query.count()
     incidents = _ordered_incidents(query, filters).limit(MAX_ITEMS).all()
     count_question = _is_count_question(message)
+    sources = _incident_sources(incidents, count, user)
     return {
         "type": "structured_scope",
         "answer": _format_answer("Stoerungen", count, incidents, filters, count_question),
@@ -102,7 +105,7 @@ def _answer_incidents(message, user, filters):
             "filters": _public_filters(filters),
             "items": [incident.to_dict() for incident in incidents],
         },
-        "sources": incident_source_cards(incidents),
+        "sources": sources,
         "scope": "errors",
         "structured_context": _structured_context("incidents", filters),
     }
@@ -114,6 +117,10 @@ def _answer_incident_machine_aggregation(user, filters):
     incidents = query.order_by(ErrorEntry.created_at.desc(), ErrorEntry.id.desc()).all()
     groups = _incident_machine_groups(incidents)
     top_group = groups[0] if groups else None
+    sources = incident_source_cards_from_payloads(top_group["examples"] if top_group else [])
+    if not sources:
+        aggregate_source = module_count_source_card("errors", len(incidents), user)
+        sources = [aggregate_source] if aggregate_source else []
     return {
         "type": "structured_scope",
         "answer": _format_machine_aggregation_answer(top_group, groups, filters),
@@ -128,10 +135,28 @@ def _answer_incident_machine_aggregation(user, filters):
             },
             "items": top_group["examples"] if top_group else [],
         },
-        "sources": incident_source_cards_from_payloads(top_group["examples"] if top_group else []),
+        "sources": sources,
         "scope": "errors",
         "structured_context": _structured_context("incidents", filters),
     }
+
+
+def _task_sources(tasks, count, user):
+    """Return row or aggregate source cards for a structured task answer."""
+    sources = task_source_cards(tasks)
+    if sources:
+        return sources
+    aggregate_source = module_count_source_card("tasks", count, user)
+    return [aggregate_source] if aggregate_source else []
+
+
+def _incident_sources(incidents, count, user):
+    """Return row or aggregate source cards for a structured incident answer."""
+    sources = incident_source_cards(incidents)
+    if sources:
+        return sources
+    aggregate_source = module_count_source_card("errors", count, user)
+    return [aggregate_source] if aggregate_source else []
 
 
 def _filtered_task_query(user, filters):

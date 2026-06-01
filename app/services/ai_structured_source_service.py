@@ -145,7 +145,7 @@ def vacation_source_cards(vacations, limit=SOURCE_CARD_LIMIT, role_visibility=""
 
 def module_count_source_card(scope, count, user):
     """Return one compact aggregate source card for a visible module count."""
-    if not count:
+    if count is None:
         return None
 
     config = _MODULE_COUNT_SOURCES.get(scope)

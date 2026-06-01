@@ -756,6 +756,33 @@ def test_ai_chat_task_status_answers_return_safe_source_cards(
     assert payload["answer_quality"]["source_count"] == len(sources)
 
 
+def test_ai_chat_counts_open_tasks_from_structured_data(
+    client,
+    make_user,
+    make_task,
+    auth_headers,
+):
+    """Verify open-task count questions use structured task status data."""
+    user = make_user(username="ai_open_task_count_user")
+    make_task("Offener Count Task", creator_username=user["username"], status=TaskStatus.OPEN)
+    make_task("Erledigter Count Task", creator_username=user["username"], status=TaskStatus.DONE)
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Wie viele Tasks sind offen?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "tasks_status"
+    assert payload["data"]["status"] == TaskStatus.OPEN.value
+    assert payload["data"]["count"] == 1
+    assert "Keine belastbare Quelle" not in payload["answer"]
+    assert payload["diagnostics"]["source_count"] > 0
+    assert payload["answer_quality"]["status"] == "grounded"
+
+
 def test_ai_chat_counts_done_tasks_from_structured_data(
     app,
     client,
@@ -978,6 +1005,42 @@ def test_ai_chat_structured_task_answers_return_safe_source_cards(
     assert payload["answer_quality"]["has_sources"] is True
 
 
+def test_ai_chat_lists_urgent_tasks_from_structured_data(
+    client,
+    make_user,
+    make_task,
+    auth_headers,
+):
+    """Verify urgent-task wording uses structured task filters before RAG."""
+    user = make_user(username="ai_urgent_task_exact_user")
+    urgent_id = make_task(
+        "Dringender Exact Task",
+        creator_username=user["username"],
+        priority=Priority.URGENT,
+    )
+    make_task(
+        "Normaler Exact Task",
+        creator_username=user["username"],
+        priority=Priority.NORMAL,
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Tasks sind dringend?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "structured_scope"
+    assert payload["data"]["entity_type"] == "tasks"
+    assert payload["data"]["filters"]["priority"] == "urgent"
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["items"][0]["id"] == urgent_id
+    assert "Keine belastbare Quelle" not in payload["answer"]
+    assert payload["diagnostics"]["source_count"] > 0
+
+
 def test_ai_chat_structured_followup_inherits_incident_scope(
     app,
     client,
@@ -1170,6 +1233,49 @@ def test_ai_chat_lists_visible_critical_incidents_from_structured_data(
     assert source["error_code"] == "CRIT-1"
     _assert_no_forbidden_source_fields(source, FORBIDDEN_INCIDENT_SOURCE_FIELDS)
     assert "CRIT-3" not in json.dumps(payload, ensure_ascii=True)
+
+
+def test_ai_chat_critical_incident_exists_question_uses_structured_data(
+    app,
+    client,
+    make_user,
+    make_error_entry,
+    auth_headers,
+):
+    """Verify critical-incident existence questions use structured incident data."""
+    user = make_user(username="ai_critical_incident_exists_user")
+    critical_id = make_error_entry(
+        "Presse Exists Critical",
+        "CRIT-EXISTS-1",
+        "Kritische sichtbare Exists Stoerung",
+        department_name="Produktion",
+    )
+    medium_id = make_error_entry(
+        "Presse Exists Medium",
+        "CRIT-EXISTS-2",
+        "Normale sichtbare Exists Stoerung",
+        department_name="Produktion",
+    )
+    with app.app_context():
+        db.session.get(ErrorEntry, critical_id).severity = "critical"
+        db.session.get(ErrorEntry, medium_id).severity = "medium"
+        db.session.commit()
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Gibt es kritische Störungen?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "structured_scope"
+    assert payload["data"]["entity_type"] == "incidents"
+    assert payload["data"]["filters"]["severity"] == "critical"
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["items"][0]["id"] == critical_id
+    assert "Keine belastbare Quelle" not in payload["answer"]
+    assert payload["diagnostics"]["source_count"] > 0
 
 
 def test_ai_chat_filters_incidents_reported_today_from_structured_data(
@@ -2707,6 +2813,34 @@ def test_ai_chat_document_outdated_uses_structured_metadata(
     assert payload["data"]["items"][0]["quality_status"] == "outdated"
     assert "Bericht Veraltet" in serialized_payload
     assert "Bericht Frisch" not in serialized_payload
+
+
+def test_ai_chat_outdated_documents_zero_result_stays_structured(
+    client,
+    make_user,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify zero outdated documents are answered from structured metadata."""
+    user = make_user(username="ai_document_outdated_zero_user")
+    set_dashboard_permission(user["username"], "documents", can_view=True)
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Dokumente sind veraltet?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "document_outdated"
+    assert payload["data"]["count"] == 0
+    assert payload["data"]["items"] == []
+    assert "Keine belastbare Quelle" not in payload["answer"]
+    assert "Keine sichtbaren Dokumente" in payload["answer"]
+    assert payload["diagnostics"]["source_count"] == 1
+    _assert_aggregate_count_source(payload["sources"][0], "documents", "/documents", 0)
+    assert payload["answer_quality"]["status"] == "grounded"
 
 
 def test_ai_chat_document_this_week_uses_visible_created_metadata(

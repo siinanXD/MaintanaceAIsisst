@@ -13,7 +13,7 @@ from app.services.ai_question_normalizer import (
     detect_time_range,
     normalize_text,
 )
-from app.services.ai_structured_source_service import task_source_cards
+from app.services.ai_structured_source_service import module_count_source_card, task_source_cards
 from app.services.task_service import visible_tasks_query
 
 TASK_TERMS = ("task", "tasks", "aufgabe", "aufgaben")
@@ -55,6 +55,7 @@ def answer_task_status_question(message, user, conversation_context=None):
     count = query.count()
     items = _matching_tasks(query, status, text)
     timeframe = _timeframe_label(status, text)
+    sources = _task_status_sources(items, count, user)
     return {
         "type": "tasks_status",
         "answer": _format_answer(status, count, items, timeframe, _is_count_question(text)),
@@ -65,8 +66,17 @@ def answer_task_status_question(message, user, conversation_context=None):
             "timeframe": timeframe,
             "items": [task.to_dict() for task in items],
         },
-        "sources": task_source_cards(items),
+        "sources": sources,
     }
+
+
+def _task_status_sources(tasks, count, user):
+    """Return row or aggregate source cards for a task-status answer."""
+    sources = task_source_cards(tasks)
+    if sources:
+        return sources
+    aggregate_source = module_count_source_card("tasks", count, user)
+    return [aggregate_source] if aggregate_source else []
 
 
 def _status_query(user, status, text):

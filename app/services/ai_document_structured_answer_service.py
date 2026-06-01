@@ -11,6 +11,7 @@ from app.services.ai_question_normalizer import detect_department, normalize_tex
 from app.services.ai_structured_source_service import (
     document_source_cards,
     manual_source_cards,
+    module_count_source_card,
 )
 from app.services.document_service import visible_documents_query, visible_manuals_query
 
@@ -63,7 +64,7 @@ def _answer_recent_documents(user):
         key=lambda item: item.get("updated_at") or item.get("created_at") or "",
         reverse=True,
     )[:MAX_ITEMS]
-    return _document_result("document_recent", "Zuletzt geaenderte Dokumente", items)
+    return _document_result("document_recent", "Zuletzt geaenderte Dokumente", items, user)
 
 
 def _answer_outdated_documents(user):
@@ -74,7 +75,7 @@ def _answer_outdated_documents(user):
         if _is_outdated_document(document)
     ]
     items = [_document_item(document) for document in documents]
-    return _document_result("document_outdated", "Veraltete Dokumente", items)
+    return _document_result("document_outdated", "Veraltete Dokumente", items, user)
 
 
 def _answer_this_week_documents(user):
@@ -100,7 +101,7 @@ def _answer_this_week_documents(user):
         key=lambda item: item.get("created_at") or "",
         reverse=True,
     )[:MAX_ITEMS]
-    return _document_result("document_this_week", "Diese Woche hochgeladen", items)
+    return _document_result("document_this_week", "Diese Woche hochgeladen", items, user)
 
 
 def _answer_department_documents(user, department):
@@ -126,6 +127,7 @@ def _answer_department_documents(user, department):
         "document_department_list",
         f"Dokumente {department}",
         items,
+        user,
     )
 
 
@@ -144,14 +146,18 @@ def _answer_machine_documents(user, machine):
     items = [_document_item(document) for document in documents] + [
         _manual_item(manual) for manual in manuals
     ]
-    return _document_result("document_machine_list", f"Dokumente zu {machine}", items)
+    return _document_result("document_machine_list", f"Dokumente zu {machine}", items, user)
 
 
-def _document_result(response_type, title, items):
+def _document_result(response_type, title, items, user):
     """Return a structured document result."""
     answer = _format_document_answer(title, items)
     documents = [item["record"] for item in items if item["kind"] == "generated_document"]
     manuals = [item["record"] for item in items if item["kind"] == "machine_manual"]
+    sources = document_source_cards(documents) + manual_source_cards(manuals)
+    if not sources:
+        aggregate_source = module_count_source_card("documents", len(items), user)
+        sources = [aggregate_source] if aggregate_source else []
     public_items = [
         {key: value for key, value in item.items() if key != "record"} for item in items
     ]
@@ -164,7 +170,7 @@ def _document_result(response_type, title, items):
             "count": len(public_items),
             "items": public_items,
         },
-        "sources": document_source_cards(documents) + manual_source_cards(manuals),
+        "sources": sources,
         "scope": "documents",
         "structured_context": {"entity_type": "documents"},
     }
