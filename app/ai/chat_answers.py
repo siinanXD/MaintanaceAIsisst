@@ -46,9 +46,21 @@ from app.services.order_planning_service import (
     plan_order,
 )
 from app.services.rag_service import build_rag_context
-from app.services.retrieval_service import knowledge_context_for_chat
 
 from .briefings import answer_daily_briefing_chat_question
+from .status import (
+    ANSWER_CATEGORY_GENERAL,
+    ANSWER_CATEGORY_RAG,
+    MODEL_KNOWLEDGE_LABEL,
+    ai_diagnostics,
+    attach_audit_metadata,
+    fallback_general_answer,
+    grounded_empty_retrieval_answer,
+    openai_assistant_answer,
+    openai_general_answer,
+    retrieval_has_evidence,
+    should_generate_without_evidence,
+)
 
 LAST_OPENAI_ERROR = None
 OPENAI_PROVIDER = "OpenAI"
@@ -368,19 +380,14 @@ def answer_chat(message, user, session_id=""):
         )
 
     if should_use_general_hybrid_mode(message, requested_scopes):
-        knowledge_context, knowledge_sources = knowledge_context_for_chat(
-            message,
-            user,
-            conversation_context=conversation_context,
-        )
         with langfuse_trace_context(
             "general_chat",
             user=user,
             session_id=conversation_context.session_id,
-            metadata={"source_count": len(knowledge_sources)},
+            metadata={"source_count": 0, "retrieval_used": False},
             tags=["chat", "general"],
         ):
-            answer, diagnostics = openai_general_answer(message, knowledge_context)
+            answer, diagnostics = openai_general_answer(message, "")
         return attach_audit_metadata(
             user,
             {
@@ -388,7 +395,10 @@ def answer_chat(message, user, session_id=""):
                 "answer": answer,
                 "diagnostics": diagnostics,
                 "data": {},
-                "sources": knowledge_sources,
+                "sources": [],
+                "answer_category": ANSWER_CATEGORY_GENERAL,
+                "retrieval_used": False,
+                "source_label": MODEL_KNOWLEDGE_LABEL,
             },
             requested_scopes,
             allowed_scopes,
@@ -610,6 +620,8 @@ def answer_chat(message, user, session_id=""):
         "data": response_data,
         "sources": retrieval["sources"],
         "rag": retrieval.get("rag", {}),
+        "answer_category": ANSWER_CATEGORY_RAG,
+        "retrieval_used": retrieval_has_evidence(retrieval),
     }
     if action_preview:
         result["action_preview"] = action_preview

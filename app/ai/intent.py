@@ -234,10 +234,9 @@ def looks_like_count_question(message):
 
 def looks_like_error_question(message):
     """Check whether a message asks for error catalog or fault help."""
-    text = message.lower()
-    return bool(re.search(r"\b[A-Z]{0,3}\d{2,5}\b", message.upper())) or any(
-        word in text for word in SCOPE_KEYWORDS["errors"]
-    )
+    text = str(message or "").lower()
+    has_error_word = any(word in text for word in SCOPE_KEYWORDS["errors"])
+    return _contains_error_code(message, require_context=not has_error_word) or has_error_word
 
 
 def looks_like_general_knowledge_question(message):
@@ -247,20 +246,20 @@ def looks_like_general_knowledge_question(message):
         return False
     if looks_like_count_question(text) or looks_like_today_tasks_question(text):
         return False
-    if re.search(r"\b[A-Z]{0,3}\d{2,5}\b", str(message or "").upper()):
+    if _contains_error_code(message, require_context=True):
         return False
     return not any(phrase in text for phrase in APP_DATA_INTENT_PHRASES)
 
 
 def detect_requested_scopes(message):
     """Return dashboard scopes explicitly referenced by a user message."""
-    text = message.lower()
+    text = str(message or "").lower()
     scopes = {
         scope
         for scope, keywords in SCOPE_KEYWORDS.items()
         if any(keyword in text for keyword in keywords)
     }
-    if re.search(r"\b[A-Z]{0,3}\d{2,5}\b", message.upper()):
+    if _contains_error_code(message, require_context=True):
         scopes.add("errors")
     if looks_like_today_tasks_question(message):
         scopes.add("tasks")
@@ -271,6 +270,21 @@ def detect_requested_scopes(message):
     if looks_like_employee_question(message):
         scopes.add("employees")
     return scopes
+
+
+def _contains_error_code(message, require_context=False):
+    """Return whether text contains an error-code-like token, excluding plain years."""
+    raw_text = str(message or "")
+    match = re.search(r"\b[A-Z]{0,3}\d{2,5}\b", raw_text.upper())
+    if not match:
+        return False
+    token = match.group(0)
+    if any(char.isalpha() for char in token):
+        return True
+    text = raw_text.lower()
+    if require_context:
+        return any(word in text for word in SCOPE_KEYWORDS["errors"])
+    return not (1900 <= int(token) <= 2099)
 
 
 def blocked_requested_scopes(user, scopes):

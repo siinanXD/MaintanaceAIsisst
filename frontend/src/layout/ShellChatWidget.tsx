@@ -25,6 +25,7 @@ type ShellChatDiagnostics = {
   readonly answer_origin?: string;
   readonly evidence_visible?: boolean;
   readonly fallback_used?: boolean;
+  readonly source_label?: string;
   readonly source_count?: number;
   readonly status?: string;
 };
@@ -43,6 +44,7 @@ type ShellChatResponse = {
   readonly data?: ShellChatResponse;
   readonly diagnostics?: ShellChatDiagnostics;
   readonly evidence_visible?: boolean;
+  readonly source_label?: string;
   readonly sources?: readonly ShellChatSource[];
   readonly success?: boolean;
   readonly type?: string;
@@ -215,11 +217,13 @@ function sourceLabelFromPayload(
 ): string {
   const moduleLabel = firstSourceModuleLabel(data.sources || []);
   if (moduleLabel) return `Quelle: ${moduleLabel}`;
+  const explicitSourceLabel = String(data.source_label || data.diagnostics?.source_label || "").trim();
+  if (explicitSourceLabel) return `Quelle: ${explicitSourceLabel}`;
   const answerSource = sourceLabelFromAnswer(data.answer || "");
   if (answerSource) return `Quelle: ${normalizedSourceLabel(answerSource)}`;
   if (answerType === "Daily Briefing") return "Quelle: Daily Briefing";
   if (answerType !== "Antwort") return `Quelle: ${answerType}`;
-  return sourceItems.length ? "Quelle: freigegebene App-Daten" : "Quelle: geprueft";
+  return sourceItems.length ? "Quelle: freigegebene App-Daten" : "Quelle: geprüft";
 }
 
 /**
@@ -232,7 +236,7 @@ function firstSourceModuleLabel(sources: readonly ShellChatSource[]): string {
   const labels: Record<string, string> = {
     daily_briefing: "Daily Briefing",
     documents: "Dokumente",
-    errors: "Stoerungen",
+    errors: "Störungen",
     inventory: "Lager",
     knowledge: "Wissensdatenbank",
     machines: "Maschinen",
@@ -252,7 +256,7 @@ function normalizedSourceLabel(sourceLabel: string): string {
   }
   if (normalized.includes("task")) return "Tasks";
   if (normalized.includes("dokument")) return "Dokumente";
-  if (normalized.includes("fehler") || normalized.includes("stoerung")) return "Stoerungen";
+  if (normalized.includes("fehler") || normalized.includes("stoerung")) return "Störungen";
   if (normalized.includes("lager") || normalized.includes("material")) return "Lager";
   if (normalized.includes("mitarbeiter")) return "Mitarbeiter";
   if (normalized.includes("maschine")) return "Maschinen";
@@ -321,7 +325,7 @@ function uncertaintyLabel(uncertainty: unknown, status: unknown): string {
   };
   if (labels[value]) return labels[value];
   if (String(status || "") === "grounded") return "Unsicherheit: niedrig";
-  return "Unsicherheit: geprueft";
+  return "Unsicherheit: geprüft";
 }
 
 /**
@@ -400,9 +404,10 @@ function ShellChatMessageBubble({ message }: { readonly message: ShellChatMessag
  * Return the source status shown in the compact answer metadata row.
  */
 function sourceStatusLabel(meta: ShellChatAnswerMeta): string {
-  if (meta.zeroResult) return "0 Treffer geprueft";
+  if (meta.sourceLabel === "Quelle: Modellwissen") return "Modellwissen";
+  if (meta.zeroResult) return "0 Treffer geprüft";
   if (meta.sourceCount > 0) return `${meta.sourceCount} Quellen`;
-  return "App-Daten geprueft";
+  return "App-Daten geprüft";
 }
 
 /**

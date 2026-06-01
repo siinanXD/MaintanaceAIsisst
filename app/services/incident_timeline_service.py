@@ -74,6 +74,14 @@ def timeline_context_for_query(message, user, query_understanding=None, limit=6)
             "url": item["url"],
             "reason": "Timeline-Kontext",
             "score": 35,
+            "source_kind": "structured",
+            "source_type": item["type"],
+            "source_id": item["id"],
+            "source_record_id": item["id"],
+            "machine_id": item.get("machine_id"),
+            "department": item.get("department"),
+            "role_visibility": _role_visibility(item.get("department")),
+            "created_at": item.get("occurred_at"),
         }
         for item in timeline["items"][:limit]
     ]
@@ -177,8 +185,9 @@ def _handover_events(user, since, machine_id):
                 "id": handover.id,
                 "module": "shiftplans",
                 "title": f"Schichtuebergabe {handover.shift_type}",
+                "department": handover.department,
                 "machine": machine.name if machine else _machine_hint(machine_text),
-                "machine_id": machine_id,
+                "machine_id": handover.machine_id,
                 "occurred_at": _aware(handover.created_at),
                 "url": "/handover",
                 "severity": "info",
@@ -236,6 +245,13 @@ def _pattern_label(event):
     if event["type"] == "error":
         return event.get("signature") or "Fehler"
     return event["type"]
+
+
+def _role_visibility(department):
+    """Return the prompt-safe visibility label for a timeline source."""
+    if department:
+        return f"department:{department}"
+    return "all_departments"
 
 
 def _task_severity(task):

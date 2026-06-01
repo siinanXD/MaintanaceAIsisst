@@ -136,8 +136,17 @@ def update_employee_rotation_state(employees):
         upcoming_entries = [entry for entry in entries if entry.work_date >= today]
         employee.last_shift = past_entries[-1].shift if past_entries else ""
         employee.current_shift = upcoming_entries[0].shift if upcoming_entries else ""
-        employee.next_shift = upcoming_entries[1].shift if len(upcoming_entries) > 1 else ""
+        employee.next_shift = _next_planned_shift(upcoming_entries)
         employee.rotation_state_updated_at = utc_now()
+
+
+def _next_planned_shift(upcoming_entries):
+    """Return the next planned productive shift from upcoming plan entries."""
+    if not upcoming_entries:
+        return ""
+    if len(upcoming_entries) > 1:
+        return upcoming_entries[1].shift
+    return upcoming_entries[0].shift
 
 
 def generate_shift_plan(data, user=None):

@@ -136,7 +136,7 @@ def _extract_searchable_text(knowledge_document):
 def _extract_document_content_text(source, source_type):
     """Return only the actual uploaded or generated document text content."""
     if source_type == "machine_manual":
-        version = source.current_version
+        version = source.current_version or next(iter(source.versions or []), None)
         return version.extracted_text if version else ""
 
     from app.services.document_service import document_path, html_to_text

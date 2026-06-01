@@ -124,6 +124,28 @@ APP_DATA_INTENT_PHRASES = (
     "ändern",
 )
 
+MAINTENANCE_RAG_TERMS = (
+    "anleitung",
+    "dokumentation",
+    "druckverlust",
+    "fehler",
+    "fehlercode",
+    "filterpflege",
+    "hydraulik",
+    "maschine",
+    "presse",
+    "pruefung",
+    "prüfung",
+    "quelle",
+    "quellen",
+    "sensor",
+    "stoerung",
+    "störung",
+    "task",
+    "training",
+    "wartung",
+)
+
 
 def format_tasks_today(user):
     """Return a formatted answer and structured data for today's visible tasks."""
@@ -458,6 +480,9 @@ def answer_count_question(message, user, requested_scopes, allowed_scopes):
 
 def should_use_general_hybrid_mode(message, requested_scopes):
     """Return whether the message should be answered as a general AI question."""
+    text = " ".join(str(message or "").lower().split())
+    if any(term in text for term in MAINTENANCE_RAG_TERMS):
+        return False
     if looks_like_general_knowledge_question(message):
         return True
     if requested_scopes:

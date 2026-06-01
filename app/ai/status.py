@@ -41,6 +41,11 @@ LAST_OPENAI_ERROR = None
 OPENAI_PROVIDER = "OpenAI"
 logger = logging.getLogger(__name__)
 
+ANSWER_CATEGORY_STRUCTURED = "structured_data"
+ANSWER_CATEGORY_RAG = "rag"
+ANSWER_CATEGORY_GENERAL = "general_ai_knowledge"
+MODEL_KNOWLEDGE_LABEL = "Modellwissen"
+
 DASHBOARD_SCOPE_LABELS = {
     "tasks": "Tasks",
     "errors": "Fehlerkatalog",
@@ -182,9 +187,10 @@ def chat_quality_warnings(result, message=""):
     """Return visible quality warnings for the chat answer without storing prompt text."""
     diagnostics = result.get("diagnostics") or {}
     sources = result.get("sources") or []
+    answer_category = diagnostics.get("answer_category") or result.get("answer_category")
     confidence = result.get("confidence") or diagnostics.get("confidence") or {}
     warnings = []
-    if not sources:
+    if not sources and answer_category != ANSWER_CATEGORY_GENERAL:
         warnings.append(
             {
                 "type": "empty_retrieval",
@@ -303,6 +309,33 @@ def ai_diagnostics(
     return payload
 
 
+def _answer_category_for_result(result):
+    """Return the high-level answer category for traceability and UI display."""
+    diagnostics = result.get("diagnostics") or {}
+    explicit = result.get("answer_category") or diagnostics.get("answer_category")
+    if explicit:
+        return str(explicit)
+    response_type = str(result.get("type") or "")
+    if response_type == "general_chat":
+        return ANSWER_CATEGORY_GENERAL
+    if result.get("rag") is not None or response_type in {"assistant", "error_help"}:
+        return ANSWER_CATEGORY_RAG
+    return ANSWER_CATEGORY_STRUCTURED
+
+
+def _retrieval_used_for_result(result, answer_category, sources):
+    """Return whether vector/RAG retrieval contributed visible answer sources."""
+    diagnostics = result.get("diagnostics") or {}
+    explicit = result.get("retrieval_used")
+    if explicit is None:
+        explicit = diagnostics.get("retrieval_used")
+    if explicit is not None:
+        return bool(explicit)
+    if answer_category != ANSWER_CATEGORY_RAG:
+        return False
+    return bool(sources)
+
+
 def attach_audit_metadata(
     user,
     result,
@@ -342,6 +375,18 @@ def attach_audit_metadata(
     result = attach_confidence_to_result(message, result)
     diagnostics = result.setdefault("diagnostics", ai_diagnostics("local_answer"))
     sources = result.get("sources") or []
+    answer_category = _answer_category_for_result(result)
+    retrieval_used = _retrieval_used_for_result(result, answer_category, sources)
+    source_label = result.get("source_label") or diagnostics.get("source_label")
+    if not source_label and answer_category == ANSWER_CATEGORY_GENERAL:
+        source_label = MODEL_KNOWLEDGE_LABEL
+    result["answer_category"] = answer_category
+    result["retrieval_used"] = retrieval_used
+    if source_label:
+        result["source_label"] = source_label
+        diagnostics["source_label"] = source_label
+    diagnostics["answer_category"] = answer_category
+    diagnostics["retrieval_used"] = retrieval_used
     safety_assessment = assess_ai_safety(message, query_understanding=None, sources=sources)
     if safety.get("safety_relevant"):
         safety_assessment = assess_ai_safety(message, sources=sources)
@@ -625,6 +670,10 @@ def fallback_general_answer(context_data, blocked_scopes=None):
 
 
 __all__ = [
+    "ANSWER_CATEGORY_GENERAL",
+    "ANSWER_CATEGORY_RAG",
+    "ANSWER_CATEGORY_STRUCTURED",
+    "MODEL_KNOWLEDGE_LABEL",
     "answer_mode_for_message",
     "retrieval_has_evidence",
     "should_generate_without_evidence",

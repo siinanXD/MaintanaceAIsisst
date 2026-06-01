@@ -68,6 +68,8 @@ def answer_structured_scope_question(message, user, conversation_context=None):
         return None
     if not explicit_entity and not follow_up:
         return None
+    if _should_defer_incident_retrieval_question(text, explicit_entity, follow_up):
+        return None
     if explicit_entity and not _has_structured_signal(text, explicit_entity):
         return None
     if _should_defer_task_status_answer(text, explicit_entity, follow_up):
@@ -455,6 +457,25 @@ def _should_defer_task_status_answer(text, explicit_entity, follow_up):
             _machine_from_text(text),
         )
     )
+
+
+def _should_defer_incident_retrieval_question(text, explicit_entity, follow_up):
+    """Return whether an incident wording should use RAG instead of a list answer."""
+    if explicit_entity != "incidents" or follow_up:
+        return False
+    retrieval_terms = (
+        "anleitung",
+        "behebe",
+        "beheben",
+        "hilft",
+        "helfen",
+        "loesung",
+        "lösung",
+        "quelle",
+        "quellen",
+        "training",
+    )
+    return any(term in text for term in retrieval_terms)
 
 
 def _entity_type_from_text(text):

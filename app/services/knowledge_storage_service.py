@@ -341,10 +341,12 @@ def machine_manual_text(manual_id):
     manual = db.session.get(MachineManual, manual_id)
     if not manual:
         return ""
-    extracted_text = manual.current_version.extracted_text if manual.current_version else ""
+    version = manual.current_version or next(iter(manual.versions or []), None)
+    extracted_text = version.extracted_text if version else ""
     return "\n".join(
         part
         for part in (
+            extracted_text,
             f"Maschinenhandbuch #{manual.id}",
             f"Titel: {manual.title}",
             f"Datei: {manual.original_filename}",
@@ -352,7 +354,6 @@ def machine_manual_text(manual_id):
             f"Abteilung: {manual.department}",
             f"Analyse: {manual.analysis}",
             f"Zusammenfassung: {manual.summary}",
-            extracted_text,
         )
         if part
     )

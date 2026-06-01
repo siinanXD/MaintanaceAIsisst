@@ -781,7 +781,103 @@ def test_ai_chat_counts_open_tasks_from_structured_data(
     assert payload["data"]["count"] == 1
     assert "Keine belastbare Quelle" not in payload["answer"]
     assert payload["diagnostics"]["source_count"] > 0
+    assert payload["diagnostics"]["answer_category"] == "structured_data"
+    assert payload["diagnostics"]["retrieval_used"] is False
     assert payload["answer_quality"]["status"] == "grounded"
+
+
+def test_ai_chat_general_knowledge_uses_modelwissen_without_internal_sources(
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify general AI answers do not attach unrelated internal RAG sources."""
+    user = make_user(username="ai_general_modelwissen_user")
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Was ist die Mondlandung von 1969?"},
+    )
+
+    payload = response.get_json()
+    diagnostics = payload["diagnostics"]
+    assert response.status_code == 200
+    assert payload["type"] == "general_chat"
+    assert payload["sources"] == []
+    assert payload["source_label"] == "Modellwissen"
+    assert diagnostics["answer_category"] == "general_ai_knowledge"
+    assert diagnostics["retrieval_used"] is False
+    assert diagnostics["source_count"] == 0
+    assert not diagnostics["empty_retrieval"]
+
+
+def test_ai_chat_maintenance_error_question_stays_on_rag_path(
+    client,
+    make_user,
+    make_error_entry,
+    auth_headers,
+):
+    """Verify maintenance error questions are not answered as general model knowledge."""
+    user = make_user(username="ai_error_rag_mode_user")
+    error_id = make_error_entry(
+        machine="Presse RAG 77",
+        error_code="E777",
+        title="RAG Sensorfehler",
+        description="Fehler E777 an Presse RAG 77.",
+        solution="Sensor reinigen und Abstand pruefen.",
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Loesung gibt es fuer Fehler E777?"},
+    )
+
+    payload = response.get_json()
+    source_keys = {(source["type"], source["id"]) for source in payload["sources"]}
+    assert response.status_code == 200
+    assert payload["diagnostics"]["answer_category"] == "rag"
+    assert payload["diagnostics"]["retrieval_used"] is True
+    assert ("error", error_id) in source_keys
+
+
+def test_ai_chat_mixed_error_and_task_question_keeps_contributing_sources(
+    client,
+    make_user,
+    make_error_entry,
+    make_task,
+    auth_headers,
+):
+    """Verify mixed maintenance questions retain task and error sources."""
+    user = make_user(username="ai_mixed_rag_mode_user")
+    error_id = make_error_entry(
+        machine="Presse Mix 88",
+        error_code="E778",
+        title="Mix Sensorfehler",
+        description="Fehler E778 an Presse Mix 88.",
+        solution="Sensor pruefen.",
+    )
+    task_id = make_task(
+        "Offene Mix Aufgabe E778",
+        creator_username=user["username"],
+        status=TaskStatus.OPEN,
+        description="Offene Aufgabe zu Fehler E778 an Presse Mix 88.",
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Quellen helfen bei Fehler E778 und offener Aufgabe?"},
+    )
+
+    payload = response.get_json()
+    source_keys = {(source["type"], source["id"]) for source in payload["sources"]}
+    assert response.status_code == 200
+    assert payload["diagnostics"]["answer_category"] == "rag"
+    assert payload["diagnostics"]["retrieval_used"] is True
+    assert ("error", error_id) in source_keys
+    assert ("task", task_id) in source_keys
 
 
 def test_ai_chat_counts_done_tasks_from_structured_data(

@@ -97,7 +97,7 @@ def retrieve_context(
         data["knowledge_links"] = knowledge_links.get("links", [])
     timeline_context = _timeline_context_stage(retrieval_message, user, understanding)
     if timeline_context.get("sources"):
-        sources = _deduplicate_sources(sources + timeline_context["sources"])
+        sources = _merge_timeline_sources(sources, timeline_context["sources"], understanding)
         data["incident_timeline"] = timeline_context.get("summary", {})
 
     fallback = _sql_keyword_fallback(
@@ -120,7 +120,11 @@ def retrieve_context(
         )
         sources = _deduplicate_sources(ranked_sources)
         if timeline_context.get("sources"):
-            sources = _deduplicate_sources(sources + timeline_context["sources"])
+            sources = _merge_timeline_sources(
+                sources,
+                timeline_context["sources"],
+                understanding,
+            )
         structured_context = _join_context(
             structured_context,
             _candidate_context(fallback["candidates"]),
@@ -477,12 +481,20 @@ def _rank_candidates_for_query(
     structured_ranked = rank_candidates(structured_candidates)
     vector_ranked = rank_candidates(vector_candidates)
     if classification_type == QUERY_TYPE_LIVE_SQL:
-        return [*structured_ranked, *vector_ranked]
+        return rank_candidates([*structured_ranked, *vector_ranked])
     if classification_type == QUERY_TYPE_KNOWLEDGE_RAG:
         return [*vector_ranked, *structured_ranked]
     if classification_type == QUERY_TYPE_HYBRID:
         return rank_candidates([*structured_candidates, *vector_candidates])
     return rank_candidates([*structured_candidates, *vector_candidates])
+
+
+def _merge_timeline_sources(sources, timeline_sources, understanding):
+    """Merge timeline sources, promoting them for trend or handover questions."""
+    timeline_sources = timeline_sources or []
+    if getattr(understanding, "query_type", "") == "trend_history_question":
+        return _deduplicate_sources(timeline_sources + (sources or []))
+    return _deduplicate_sources((sources or []) + timeline_sources)
 
 
 def _timeline_context_stage(retrieval_message, user, understanding):

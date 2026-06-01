@@ -162,7 +162,12 @@ def _pack_semantic_blocks(blocks, metadata, max_chars, target_chars, max_chunks)
         for part in _split_oversized_block(block, max_chars):
             if len(chunks) >= max_chunks:
                 break
-            if _is_standalone_block(part):
+            if current_blocks and _is_standalone_block(part) and _should_keep_standalone(
+                current_blocks,
+                part,
+                max_chars,
+                target_chars,
+            ):
                 if current_blocks:
                     _append_chunk(chunks, current_blocks, metadata)
                     current_blocks = []
@@ -287,6 +292,18 @@ def _is_standalone_block(block):
         "maintenance_instruction",
         "table",
     }
+
+
+def _should_keep_standalone(current_blocks, next_block, max_chars, target_chars):
+    """Return whether a protected block should force a chunk boundary."""
+    if not current_blocks:
+        return True
+    current_text = _blocks_text(current_blocks)
+    if current_blocks[-1].section.index != next_block.section.index:
+        return True
+    if len(current_text) + 2 + len(next_block.text) > max_chars:
+        return True
+    return len(current_text) >= target_chars
 
 
 def _should_flush_chunk(current_blocks, next_block, max_chars, target_chars):

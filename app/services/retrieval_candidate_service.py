@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from app.services.retrieval_explainability_service import explainability_from_metadata
 
 STRUCTURED_SCORE_CAP = 100.0
-KNOWLEDGE_SCORE_CAP = 180.0
+KNOWLEDGE_SCORE_CAP = 100.0
 STRUCTURED_SCOPE_PRIORITY = {
     "errors": 18.0,
     "machines": 10.0,
