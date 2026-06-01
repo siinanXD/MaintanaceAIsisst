@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from datetime import UTC, datetime, timedelta
 
+from app.extensions import db
 from app.models import ErrorEntry, Machine, ShiftHandover, Task, TaskStatus
 from app.security import has_dashboard_permission
 from app.services.error_service import visible_errors_query
@@ -143,7 +144,7 @@ def _task_events(user, since, machine_id):
     """Return visible task events that can enrich the incident timeline."""
     if not has_dashboard_permission(user, "tasks", "view"):
         return []
-    machine = Machine.query.get(machine_id) if machine_id else None
+    machine = db.session.get(Machine, machine_id) if machine_id else None
     query = visible_tasks_query(user).filter(Task.created_at >= since)
     events = []
     for task in query.order_by(Task.created_at.desc()).limit(300).all():
@@ -170,7 +171,7 @@ def _handover_events(user, since, machine_id):
     """Return visible shift-handover events with machine notes."""
     if not has_dashboard_permission(user, "shiftplans", "view"):
         return []
-    machine = Machine.query.get(machine_id) if machine_id else None
+    machine = db.session.get(Machine, machine_id) if machine_id else None
     query = ShiftHandover.query.filter(ShiftHandover.created_at >= since)
     if not user.is_admin and user.department:
         query = query.filter(ShiftHandover.department == user.department.name)

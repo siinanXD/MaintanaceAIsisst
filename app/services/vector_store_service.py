@@ -974,7 +974,7 @@ def _document_type(document):
     """Return a source document type when it can be resolved safely."""
     if document.source_type != "generated_document" or not document.source_id:
         return document.source_type
-    generated_document = GeneratedDocument.query.get(document.source_id)
+    generated_document = db.session.get(GeneratedDocument, document.source_id)
     if not generated_document:
         return document.source_type
     return generated_document.document_type
