@@ -14,13 +14,20 @@ from app.services.ai_provider_readiness_service import ai_readiness_summary
 from app.services.ai_routing import workflow_profile
 from app.services.ai_service import OpenAIProvider
 from app.services.langfuse_metrics_service import langfuse_metrics_summary
+from app.services.langfuse_eval_score_service import (
+    submit_automatic_eval_scores,
+    submit_user_feedback_score,
+)
 from app.services.langfuse_service import (
+    attach_langfuse_eval_io,
     configure_langfuse_environment,
+    langfuse_eval_enabled,
     langfuse_observation,
     langfuse_status,
     langfuse_trace_context,
     link_langfuse_answer_trace,
     openai_langfuse_kwargs,
+    submit_langfuse_scores,
 )
 
 LANGFUSE_TEST_PUBLIC_KEY = "test-public-key"
@@ -736,3 +743,271 @@ def test_ai_summary_includes_unavailable_langfuse_metrics(app):
 
     assert summary["langfuse_metrics"]["available"] is False
     assert summary["langfuse_metrics"]["status"] == "disabled"
+
+
+def test_langfuse_eval_disabled_by_default(app):
+    """Verify automatic eval scores stay off unless explicitly enabled."""
+    with app.app_context():
+        app.config["LANGFUSE_ENABLED"] = True
+        app.config["LANGFUSE_PUBLIC_KEY"] = LANGFUSE_TEST_PUBLIC_KEY
+        app.config["LANGFUSE_SECRET_KEY"] = LANGFUSE_TEST_SECRET_KEY
+        assert langfuse_eval_enabled() is False
+        assert (
+            submit_automatic_eval_scores(
+                {"langfuse_trace_id": "trace-abc"},
+                {"answer": "Antwort"},
+            )
+            == 0
+        )
+
+
+def test_submit_langfuse_scores_calls_create_score(app, monkeypatch):
+    """Verify score payloads are forwarded to the Langfuse client."""
+    calls = []
+
+    class FakeClient:
+        """Minimal Langfuse client for score submission tests."""
+
+        def create_score(self, **kwargs):
+            """Record one score submission."""
+            calls.append(kwargs)
+
+    fake_langfuse = types.SimpleNamespace(get_client=lambda: FakeClient())
+    monkeypatch.setitem(sys.modules, "langfuse", fake_langfuse)
+    monkeypatch.setattr("app.services.langfuse_service._langfuse_available", lambda: True)
+
+    with app.app_context():
+        app.config["LANGFUSE_ENABLED"] = True
+        app.config["LANGFUSE_PUBLIC_KEY"] = LANGFUSE_TEST_PUBLIC_KEY
+        app.config["LANGFUSE_SECRET_KEY"] = LANGFUSE_TEST_SECRET_KEY
+        submitted = submit_langfuse_scores(
+            "trace-abc",
+            [
+                {
+                    "name": "hallucination-risk",
+                    "value": 1.0,
+                    "data_type": "BOOLEAN",
+                }
+            ],
+        )
+
+    assert submitted == 1
+    assert calls[0]["name"] == "hallucination-risk"
+    assert calls[0]["trace_id"] == "trace-abc"
+    assert calls[0]["data_type"] == "BOOLEAN"
+
+
+def test_submit_automatic_eval_scores_maps_hallucination_and_retrieval(app, monkeypatch):
+    """Verify automatic eval scores include hallucination and retrieval metrics."""
+    calls = []
+
+    class FakeClient:
+        """Minimal Langfuse client for automatic eval score tests."""
+
+        def create_score(self, **kwargs):
+            """Record one score submission."""
+            calls.append(kwargs)
+
+    fake_langfuse = types.SimpleNamespace(get_client=lambda: FakeClient())
+    monkeypatch.setitem(sys.modules, "langfuse", fake_langfuse)
+    monkeypatch.setattr("app.services.langfuse_service._langfuse_available", lambda: True)
+
+    diagnostics = {
+        "langfuse_trace_id": "trace-abc",
+        "hallucination_warning": True,
+        "empty_retrieval": True,
+        "retrieval_used": True,
+        "retrieval_duration_ms": 180,
+        "retrieval_explainability": {
+            "source_count": 2,
+            "explained_source_count": 2,
+            "averages": {"final_score": 72.5, "semantic_similarity": 0.81},
+            "machine_match_count": 1,
+        },
+        "confidence_score": 65,
+    }
+    result = {
+        "answer": "Kurze Antwort",
+        "question": "Wie repariere ich E104?",
+        "answer_quality": {"status": "no_answer", "no_answer": True},
+        "confidence": {"score": 65},
+        "sources": [{"type": "document", "title": "Handbuch A", "module": "docs"}],
+    }
+
+    with app.app_context():
+        app.config["LANGFUSE_ENABLED"] = True
+        app.config["LANGFUSE_PUBLIC_KEY"] = LANGFUSE_TEST_PUBLIC_KEY
+        app.config["LANGFUSE_SECRET_KEY"] = LANGFUSE_TEST_SECRET_KEY
+        app.config["LANGFUSE_EVAL_ENABLED"] = True
+        app.config["LANGFUSE_EVAL_CAPTURE_IO"] = False
+        submitted = submit_automatic_eval_scores(diagnostics, result)
+
+    assert submitted >= 5
+    score_names = {call["name"] for call in calls}
+    assert "hallucination-risk" in score_names
+    assert "empty-retrieval" in score_names
+    assert "no-answer" in score_names
+    assert "retrieval-avg-final-score" in score_names
+    assert "confidence" in score_names
+    assert calls[0]["trace_id"] == "trace-abc"
+
+
+def test_submit_user_feedback_score_maps_ratings(app, monkeypatch):
+    """Verify user feedback ratings are converted into Langfuse scores."""
+    calls = []
+
+    class FakeClient:
+        """Minimal Langfuse client for feedback score tests."""
+
+        def create_score(self, **kwargs):
+            """Record one score submission."""
+            calls.append(kwargs)
+
+    fake_langfuse = types.SimpleNamespace(get_client=lambda: FakeClient())
+    monkeypatch.setitem(sys.modules, "langfuse", fake_langfuse)
+    monkeypatch.setattr("app.services.langfuse_service._langfuse_available", lambda: True)
+
+    chat_message = types.SimpleNamespace(
+        diagnostics=lambda: {"langfuse_trace_id": "trace-feedback"},
+    )
+    feedback_entry = types.SimpleNamespace(
+        rating="partially_helpful",
+        comment="Quellen waren unklar",
+    )
+
+    with app.app_context():
+        app.config["LANGFUSE_ENABLED"] = True
+        app.config["LANGFUSE_PUBLIC_KEY"] = LANGFUSE_TEST_PUBLIC_KEY
+        app.config["LANGFUSE_SECRET_KEY"] = LANGFUSE_TEST_SECRET_KEY
+        linked = submit_user_feedback_score(chat_message, feedback_entry)
+
+    assert linked is True
+    assert len(calls) == 2
+    numeric = next(call for call in calls if call["name"] == "user-feedback")
+    categorical = next(call for call in calls if call["name"] == "user-feedback-rating")
+    assert numeric["value"] == 0.5
+    assert categorical["value"] == "partially_helpful"
+    assert "Quellen waren unklar" in numeric["comment"]
+
+
+def test_attach_langfuse_eval_io_skipped_without_capture_flag(app, monkeypatch):
+    """Verify eval IO is not sent unless LANGFUSE_EVAL_CAPTURE_IO is enabled."""
+    calls = []
+
+    class FakeClient:
+        """Minimal Langfuse client for eval IO tests."""
+
+        def start_as_current_observation(self, **kwargs):
+            """Record span creation attempts."""
+            calls.append(kwargs)
+            raise AssertionError("eval IO should not be created")
+
+    fake_langfuse = types.SimpleNamespace(get_client=lambda: FakeClient())
+    monkeypatch.setitem(sys.modules, "langfuse", fake_langfuse)
+    monkeypatch.setattr("app.services.langfuse_service._langfuse_available", lambda: True)
+
+    with app.app_context():
+        app.config["LANGFUSE_ENABLED"] = True
+        app.config["LANGFUSE_PUBLIC_KEY"] = LANGFUSE_TEST_PUBLIC_KEY
+        app.config["LANGFUSE_SECRET_KEY"] = LANGFUSE_TEST_SECRET_KEY
+        app.config["LANGFUSE_EVAL_ENABLED"] = True
+        app.config["LANGFUSE_EVAL_CAPTURE_IO"] = False
+        attached = attach_langfuse_eval_io(
+            "trace-abc",
+            {"hallucination_warning": True},
+            {"answer": "Antwort", "question": "Frage"},
+        )
+
+    assert attached is False
+    assert calls == []
+
+
+def test_attach_langfuse_eval_io_omits_chunk_text(app, monkeypatch):
+    """Verify eval IO contains bounded text but never raw chunk content."""
+    calls = []
+
+    class FakeSpan:
+        """Minimal Langfuse span for eval IO tests."""
+
+        def update(self, **kwargs):
+            """Record span updates."""
+            calls.append(("update", kwargs))
+
+    class FakeSpanContext:
+        """Context manager for eval IO span tests."""
+
+        def __enter__(self):
+            """Return a fake span."""
+            return FakeSpan()
+
+        def __exit__(self, exc_type, exc, traceback):
+            """Ignore span exit."""
+
+    class FakeClient:
+        """Minimal Langfuse client for eval IO span tests."""
+
+        def start_as_current_observation(self, **kwargs):
+            """Record span creation."""
+            calls.append(("start", kwargs))
+            return FakeSpanContext()
+
+    fake_langfuse = types.SimpleNamespace(get_client=lambda: FakeClient())
+    monkeypatch.setitem(sys.modules, "langfuse", fake_langfuse)
+    monkeypatch.setattr("app.services.langfuse_service._langfuse_available", lambda: True)
+
+    with app.app_context():
+        app.config["LANGFUSE_ENABLED"] = True
+        app.config["LANGFUSE_PUBLIC_KEY"] = LANGFUSE_TEST_PUBLIC_KEY
+        app.config["LANGFUSE_SECRET_KEY"] = LANGFUSE_TEST_SECRET_KEY
+        app.config["LANGFUSE_EVAL_ENABLED"] = True
+        app.config["LANGFUSE_EVAL_CAPTURE_IO"] = True
+        attached = attach_langfuse_eval_io(
+            "trace-abc",
+            {"hallucination_warning": True, "empty_retrieval": True},
+            {
+                "answer": "Antworttext",
+                "question": "Frage zum Fehler",
+                "sources": [
+                    {
+                        "type": "document",
+                        "title": "Handbuch",
+                        "chunk_text": "Geheimer Chunk",
+                    }
+                ],
+            },
+        )
+
+    assert attached is True
+    start = next(value for name, value in calls if name == "start")
+    serialized = json.dumps(start, ensure_ascii=True).lower()
+    assert start["name"] == "maintenance-ai.eval_io"
+    assert start["input"]["question"] == "Frage zum Fehler"
+    assert "geheimer chunk" not in serialized
+    assert "chunktext" not in serialized
+
+
+def test_ai_diagnostics_preserves_langfuse_trace_metadata(app):
+    """Verify rebuilding diagnostics keeps Langfuse trace identifiers."""
+    payload = ai_diagnostics(
+        "local_answer",
+        metadata={
+            "langfuse_enabled": True,
+            "langfuse_trace_id": "trace-preserve",
+            "langfuse_observation_id": "obs-preserve",
+            "langfuse_host": "https://cloud.langfuse.com",
+        },
+    )
+
+    assert payload["langfuse_trace_id"] == "trace-preserve"
+    assert payload["langfuse_observation_id"] == "obs-preserve"
+    assert payload["langfuse_host"] == "https://cloud.langfuse.com"
+
+
+def test_langfuse_evaluation_documentation_exists():
+    """Verify Langfuse evaluation setup is documented."""
+    root = Path(__file__).resolve().parents[1]
+    docs = (root / "docs" / "LANGFUSE_EVALUATION.md").read_text(encoding="utf-8")
+    assert "LANGFUSE_EVAL_ENABLED" in docs
+    assert "user-feedback" in docs
+    assert "hallucination-risk" in docs
+    assert "LLM-as-a-Judge" in docs

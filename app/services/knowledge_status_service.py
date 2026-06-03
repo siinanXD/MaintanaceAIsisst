@@ -127,14 +127,15 @@ def knowledge_index_status():
     indexed = status_counts.get("indexed", 0)
     errors = status_counts.get("error", 0)
     total_chunks = sum(document.chunk_count or 0 for document in documents)
+    lifecycle = knowledge_lifecycle_overview(documents)
+    vector_status = vector_store_drift_status(documents)
     readiness_score, readiness_reasons = _rag_readiness(
         documents=documents,
         indexed=indexed,
         errors=errors,
         total_chunks=total_chunks,
+        vector_status=vector_status,
     )
-    lifecycle = knowledge_lifecycle_overview(documents)
-    vector_status = vector_store_drift_status(documents)
     return {
         "documents": len(documents),
         "indexed": indexed,
@@ -172,8 +173,9 @@ def knowledge_index_status():
     }
 
 
-def _rag_readiness(documents, indexed, errors, total_chunks):
+def _rag_readiness(documents, indexed, errors, total_chunks, vector_status=None):
     """Return a RAG readiness score and admin-facing reasons."""
+    vector_status = vector_status or {}
     if not current_app.config.get("RAG_ENABLED", True):
         return 0, ["RAG ist deaktiviert."]
     if not documents:
@@ -199,6 +201,15 @@ def _rag_readiness(documents, indexed, errors, total_chunks):
     if no_text:
         score -= min(15, round((no_text / len(documents)) * 40))
         reasons.append(f"{no_text} Wissensdokumente enthalten keinen lesbaren Text.")
+    if vector_status.get("fallback_active"):
+        score = min(score, 20)
+        reasons.append("Konfigurierter Vector Store ist im Fallback-Modus aktiv.")
+    if vector_status.get("atlas_reindex_required"):
+        score = min(score, 25)
+        reasons.append("Atlas erfordert eine vollstaendige Reindexierung oder Resync.")
+    if vector_status.get("chunk_vector_count_mismatch"):
+        score = min(score, 35)
+        reasons.append("Vector-Store-Drift zwischen SQL-Chunks und externen Vektoren erkannt.")
     if not reasons:
         reasons.append("RAG-Index ist bereit.")
     return max(0, min(100, score)), reasons

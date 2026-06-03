@@ -8,6 +8,7 @@ from app.security import employee_access_level, has_dashboard_permission
 from app.services.ai_prompting import (
     permission_denied_answer,
 )
+from app.services.ai_question_normalizer import contains_any_lookup_term, normalize_text
 
 LAST_OPENAI_ERROR = None
 OPENAI_PROVIDER = "OpenAI"
@@ -29,9 +30,13 @@ SCOPE_KEYWORDS = {
     "errors": [
         "fehler",
         "stoerung",
+        "stoerungen",
+        "stoerfall",
+        "stoerfaelle",
         "problem",
         "probleme",
         "störung",
+        "störungen",
         "error",
         "fehlercode",
         "ursache",
@@ -150,10 +155,12 @@ APP_DATA_INTENT_PHRASES = (
 
 def looks_like_today_tasks_question(message):
     """Check whether a message asks for today's visible tasks."""
-    text = message.lower()
+    text = normalize_text(message)
     task_words = ["task", "tasks", "aufgabe", "aufgaben", "arbeit", "arbeiten", "todo"]
     today_words = ["heute", "heutige", "heutigen", "today", "anstehend"]
-    return any(word in text for word in task_words) and any(word in text for word in today_words)
+    return contains_any_lookup_term(text, task_words) and any(
+        word in text for word in today_words
+    )
 
 
 def extract_error_query(message):
@@ -188,6 +195,8 @@ def looks_like_employee_question(message):
 def looks_like_employee_count_question(message):
     """Check whether a message asks for the number of employees."""
     text = message.lower()
+    if any(word in text for word in ("dokument", "dokumente", "unterlage", "unterlagen")):
+        return False
     employee_words = ["mitarbeiter", "personal", "employees"]
     return any(word in text for word in COUNT_WORDS) and any(
         word in text for word in employee_words
@@ -253,11 +262,11 @@ def looks_like_general_knowledge_question(message):
 
 def detect_requested_scopes(message):
     """Return dashboard scopes explicitly referenced by a user message."""
-    text = str(message or "").lower()
+    text = normalize_text(message)
     scopes = {
         scope
         for scope, keywords in SCOPE_KEYWORDS.items()
-        if any(keyword in text for keyword in keywords)
+        if contains_any_lookup_term(text, keywords)
     }
     if _contains_error_code(message, require_context=True):
         scopes.add("errors")

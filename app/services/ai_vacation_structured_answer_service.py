@@ -5,7 +5,12 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from app.models import VacationRequest
-from app.services.ai_question_normalizer import normalize_text
+from app.services.ai_question_normalizer import detect_department, normalize_text
+from app.services.ai_structured_context_helpers import (
+    build_structured_context,
+    inherited_structured_scope,
+    is_list_follow_up,
+)
 from app.services.ai_structured_source_service import vacation_source_cards
 from app.vacations.services import visible_vacation_query
 
@@ -19,11 +24,14 @@ STATUS_LABELS = {
 }
 
 
-def answer_vacation_structured_question(message, user):
+def answer_vacation_structured_question(message, user, conversation_context=None):
     """Return a structured vacation answer for supported German questions."""
     text = normalize_text(message)
-    if not _is_vacation_question(text):
+    if not _is_vacation_question(text) and not _is_vacation_follow_up(text, conversation_context):
         return None
+    follow_up_result = _answer_vacation_follow_up(message, user, conversation_context)
+    if follow_up_result:
+        return follow_up_result
     if _is_pending_count_question(text):
         return _answer_pending_count(user)
     if _is_own_latest_status_question(text):
@@ -35,6 +43,63 @@ def answer_vacation_structured_question(message, user):
     if _is_next_week_absence_question(text):
         return _answer_absences(user, *_next_week_bounds(), "naechste Woche")
     return None
+
+
+def _answer_vacation_follow_up(message, user, conversation_context):
+    """Return a structured vacation follow-up answer."""
+    text = normalize_text(message)
+    if not _is_vacation_follow_up(text, conversation_context):
+        return None
+
+    inherited = inherited_structured_scope(conversation_context)
+    query = str(inherited.get("query") or "").strip()
+    if query == "pending_count":
+        return _answer_pending_list(user)
+    if query == "approved_absences":
+        time_range = str(inherited.get("time_range") or "").strip()
+        if time_range == "tomorrow":
+            return _answer_absences(
+                user,
+                *_tomorrow_bounds(),
+                "morgen",
+                department=detect_department(message),
+            )
+        if time_range == "next_week":
+            return _answer_absences(
+                user,
+                *_next_week_bounds(),
+                "naechste Woche",
+                department=detect_department(message),
+            )
+    return None
+
+
+def _answer_pending_list(user):
+    """Return visible pending vacation requests after a pending-count follow-up."""
+    vacations = (
+        visible_vacation_query(user)
+        .filter(VacationRequest.status == "pending")
+        .order_by(VacationRequest.created_at.desc(), VacationRequest.start_date.desc())
+        .limit(MAX_ITEMS)
+        .all()
+    )
+    return {
+        "type": "vacation_pending_list",
+        "answer": _format_pending_count_answer(len(vacations), vacations),
+        "data": {
+            "entity_type": "vacations",
+            "query": "pending_count",
+            "count": len(vacations),
+            "items": [_vacation_payload(vacation) for vacation in vacations],
+        },
+        "sources": vacation_source_cards(vacations),
+        "scope": "employees",
+        "structured_context": build_structured_context(
+            "vacations",
+            query="pending_count",
+            status="pending",
+        ),
+    }
 
 
 def _answer_own_pending(user):
@@ -66,7 +131,7 @@ def _answer_own_pending(user):
             role_visibility=f"employee:{user.employee_id}",
         ),
         "scope": "employees",
-        "structured_context": {"entity_type": "vacations"},
+        "structured_context": build_structured_context("vacations", query="own_pending"),
     }
 
 
@@ -96,11 +161,11 @@ def _answer_own_latest_status(user):
             role_visibility=f"employee:{user.employee_id}",
         ),
         "scope": "employees",
-        "structured_context": {"entity_type": "vacations"},
+        "structured_context": build_structured_context("vacations", query="own_latest_status"),
     }
 
 
-def _answer_absences(user, start_date, end_date, label):
+def _answer_absences(user, start_date, end_date, label, department=""):
     """Return approved visible vacation absences overlapping the given period."""
     vacations = (
         _overlapping_vacation_query(user, start_date, end_date)
@@ -108,6 +173,14 @@ def _answer_absences(user, start_date, end_date, label):
         .limit(MAX_ITEMS)
         .all()
     )
+    if department:
+        vacations = [
+            vacation
+            for vacation in vacations
+            if vacation.employee
+            and normalize_text(vacation.employee.department) == normalize_text(department)
+        ]
+    time_range = "tomorrow" if label == "morgen" else "next_week" if "woche" in label else ""
     return {
         "type": "vacation_absences",
         "answer": _format_absence_answer(vacations, label),
@@ -124,7 +197,13 @@ def _answer_absences(user, start_date, end_date, label):
         },
         "sources": vacation_source_cards(vacations),
         "scope": "employees",
-        "structured_context": {"entity_type": "vacations"},
+        "structured_context": build_structured_context(
+            "vacations",
+            query="approved_absences",
+            time_range=time_range,
+            department=department,
+            status="approved",
+        ),
     }
 
 
@@ -148,7 +227,11 @@ def _answer_pending_count(user):
         },
         "sources": vacation_source_cards(examples),
         "scope": "employees",
-        "structured_context": {"entity_type": "vacations"},
+        "structured_context": build_structured_context(
+            "vacations",
+            query="pending_count",
+            status="pending",
+        ),
     }
 
 
@@ -276,7 +359,7 @@ def _no_result(response_type, message):
         },
         "sources": [],
         "scope": "employees",
-        "structured_context": {"entity_type": "vacations"},
+        "structured_context": build_structured_context("vacations"),
     }
 
 
@@ -347,3 +430,11 @@ def _mentions_self(text):
 def _mentions_pending(text):
     """Return whether the message asks for pending or open requests."""
     return any(term in text for term in ("offen", "offene", "ausstehend", "pending"))
+
+
+def _is_vacation_follow_up(text, conversation_context):
+    """Return whether a follow-up should stay on structured vacation data."""
+    if not is_list_follow_up(text):
+        return False
+    inherited = inherited_structured_scope(conversation_context)
+    return inherited.get("entity_type") == "vacations"

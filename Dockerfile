@@ -27,6 +27,7 @@ COPY app ./app
 COPY --from=frontend-build /build/app/static/react ./app/static/react
 COPY docs ./docs
 COPY migrations ./migrations
+COPY scripts ./scripts
 COPY run.py seed.py seed_demo.py seed_production.py seed_test.py ./
 
 RUN mkdir -p /app/data /app/logs /app/documents /app/manuals /app/backups /app/knowledge \

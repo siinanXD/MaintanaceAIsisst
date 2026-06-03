@@ -63,6 +63,113 @@ def langfuse_is_ready(config=None):
     return bool(langfuse_status(config).get("ready"))
 
 
+def langfuse_eval_enabled(config=None):
+    """Return whether automatic Langfuse evaluation scores should be submitted."""
+    config = config or current_app.config
+    return bool(
+        config.get("LANGFUSE_ENABLED", False)
+        and config.get("LANGFUSE_EVAL_ENABLED", False)
+        and langfuse_is_ready(config),
+    )
+
+
+def langfuse_eval_capture_io_enabled(config=None):
+    """Return whether bounded eval input/output should be attached for LLM judges."""
+    config = config or current_app.config
+    return bool(
+        langfuse_eval_enabled(config) and config.get("LANGFUSE_EVAL_CAPTURE_IO", False)
+    )
+
+
+def submit_langfuse_scores(trace_id, scores, observation_id=""):
+    """Submit one or more Langfuse scores for a trace without raising on failure."""
+    if not langfuse_is_ready() or not trace_id or not scores:
+        return 0
+
+    configure_langfuse_environment()
+    try:
+        from langfuse import get_client
+    except ImportError:
+        logger.warning("langfuse_scores_skipped reason=package_missing")
+        return 0
+
+    client = get_client()
+    submitted = 0
+    safe_trace_id = _safe_attribute(trace_id)
+    safe_observation_id = _safe_parent_span_id(observation_id)
+    for score in scores:
+        if not isinstance(score, dict):
+            continue
+        name = _safe_attribute(score.get("name"))
+        if not name:
+            continue
+        payload = {
+            "name": name,
+            "value": score.get("value"),
+            "trace_id": safe_trace_id,
+            "data_type": str(score.get("data_type") or "").upper() or None,
+        }
+        if safe_observation_id:
+            payload["observation_id"] = safe_observation_id
+        comment = _safe_attribute(score.get("comment"))
+        if comment:
+            payload["comment"] = comment
+        try:
+            client.create_score(**{key: value for key, value in payload.items() if value is not None})
+            submitted += 1
+        except Exception as exc:  # pragma: no cover - external observability guard
+            logger.warning(
+                "langfuse_score_failed name=%s error=%s",
+                name,
+                exc.__class__.__name__,
+            )
+    return submitted
+
+
+def attach_langfuse_eval_io(trace_id, diagnostics, result, observation_id=""):
+    """Attach bounded question/answer IO for Langfuse LLM-as-a-Judge evaluators."""
+    if not langfuse_eval_capture_io_enabled():
+        return False
+    if not trace_id:
+        return False
+
+    configure_langfuse_environment()
+    try:
+        from langfuse import get_client
+    except ImportError:
+        logger.warning("langfuse_eval_io_skipped reason=package_missing")
+        return False
+
+    eval_input = _eval_io_input(diagnostics, result)
+    eval_output = _eval_io_output(result)
+    if not eval_input and not eval_output:
+        return False
+
+    trace_context = {"trace_id": _safe_attribute(trace_id)}
+    parent_span_id = _safe_parent_span_id(observation_id)
+    if parent_span_id:
+        trace_context["parent_span_id"] = parent_span_id
+
+    try:
+        client = get_client()
+        with client.start_as_current_observation(
+            as_type="span",
+            name="maintenance-ai.eval_io",
+            trace_context=trace_context,
+            input=eval_input,
+        ) as span:
+            updater = getattr(span, "update", None)
+            if callable(updater):
+                updater(output=eval_output, metadata=_eval_io_metadata(diagnostics, result))
+    except AttributeError:
+        logger.warning("langfuse_eval_io_skipped reason=sdk_context_manager_missing")
+        return False
+    except Exception as exc:  # pragma: no cover - external observability guard
+        logger.warning("langfuse_eval_io_failed error=%s", exc.__class__.__name__)
+        return False
+    return True
+
+
 @contextmanager
 def langfuse_trace_context(
     workflow,
@@ -555,6 +662,101 @@ def _safe_parent_span_id(value):
     if re.fullmatch(r"[0-9a-f]{16}", text):
         return text
     return ""
+
+
+def _eval_io_input(diagnostics, result):
+    """Return bounded eval input for Langfuse judges without chunk text."""
+    config = current_app.config
+    safe_result = result if isinstance(result, dict) else {}
+    safe_diagnostics = diagnostics if isinstance(diagnostics, dict) else {}
+    question = _truncate_eval_text(
+        safe_result.get("question") or safe_diagnostics.get("question") or "",
+        config.get("LANGFUSE_EVAL_MAX_QUESTION_CHARS", 400),
+    )
+    answer_quality = safe_result.get("answer_quality") or {}
+    if not isinstance(answer_quality, dict):
+        answer_quality = {}
+
+    payload = {
+        "question": question,
+        "guards": {
+            "hallucination_warning": bool(safe_diagnostics.get("hallucination_warning")),
+            "empty_retrieval": bool(safe_diagnostics.get("empty_retrieval")),
+            "status_reason": _safe_attribute(answer_quality.get("status_reason")),
+        },
+    }
+    if config.get("LANGFUSE_EVAL_INCLUDE_SOURCE_TITLES", True):
+        payload["context_titles"] = _eval_source_titles(safe_result.get("sources") or [])
+    return payload
+
+
+def _eval_io_output(result):
+    """Return bounded eval output for Langfuse judges."""
+    safe_result = result if isinstance(result, dict) else {}
+    return {
+        "answer": _truncate_eval_text(
+            safe_result.get("answer") or "",
+            current_app.config.get("LANGFUSE_EVAL_MAX_ANSWER_CHARS", 800),
+        ),
+    }
+
+
+def _eval_io_metadata(diagnostics, result):
+    """Return safe metadata for the eval IO span."""
+    safe_result = result if isinstance(result, dict) else {}
+    safe_diagnostics = diagnostics if isinstance(diagnostics, dict) else {}
+    answer_quality = safe_result.get("answer_quality") or {}
+    if not isinstance(answer_quality, dict):
+        answer_quality = {}
+    metadata = {
+        "workflow": _safe_attribute(
+            safe_diagnostics.get("workflow") or safe_result.get("type"),
+        ),
+        "answerqualitystatus": _safe_attribute(answer_quality.get("status")),
+        "confidencescore": _safe_attribute(_eval_confidence_score(safe_result, safe_diagnostics)),
+        "sourcecount": _safe_attribute(
+            safe_diagnostics.get("source_count") or len(safe_result.get("sources") or []),
+        ),
+        "retrievalused": bool(safe_diagnostics.get("retrieval_used")),
+    }
+    return _safe_metadata(metadata)
+
+
+def _eval_source_titles(sources):
+    """Return prompt-safe source title references for eval IO."""
+    titles = []
+    for source in sources[:12]:
+        if not isinstance(source, dict):
+            continue
+        titles.append(
+            {
+                "type": _safe_attribute(source.get("type"), default="source"),
+                "title": _safe_attribute(source.get("title"), default="source"),
+                "module": _safe_attribute(source.get("module")),
+                "machine": _safe_attribute(source.get("machine")),
+            }
+        )
+    return titles
+
+
+def _eval_confidence_score(result, diagnostics):
+    """Return a safe confidence score for eval metadata."""
+    confidence = result.get("confidence") or diagnostics.get("confidence") or {}
+    if isinstance(confidence, dict) and confidence.get("score") not in (None, ""):
+        return confidence.get("score")
+    return diagnostics.get("confidence_score")
+
+
+def _truncate_eval_text(value, max_length):
+    """Return eval text truncated to a configured maximum length."""
+    text = " ".join(str(value or "").strip().split())
+    try:
+        limit = int(max_length or 0)
+    except (TypeError, ValueError):
+        limit = 0
+    if limit <= 0:
+        return ""
+    return text[:limit]
 
 
 def _langfuse_available():

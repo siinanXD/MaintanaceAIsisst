@@ -80,6 +80,9 @@ the deployment environment or secret manager, never in Git.
   no-source answers and low-confidence answers are visible to Admin, IT or
   Master users as designed.
 - [ ] Confirm Langfuse settings if `LANGFUSE_ENABLED=true`.
+- [ ] If using Langfuse evaluation: set `LANGFUSE_EVAL_ENABLED=true` and review
+      whether `LANGFUSE_EVAL_CAPTURE_IO=true` is allowed for your data policy
+      (see `docs/LANGFUSE_EVALUATION.md`).
 - [ ] Confirm diagnostics omit raw prompts, raw chunk text, private notes,
   secrets and unauthorized data.
 - [ ] Confirm monitoring alerts are connected to the production notification
@@ -116,6 +119,12 @@ the deployment environment or secret manager, never in Git.
   retrieval quality after the job finishes.
 - [ ] Do not mix embeddings from different providers or dimensions in one
   production vector index.
+- [ ] For MongoDB Atlas retrieval, run `python scripts/rag_atlas_smoke.py` before
+  go-live and after reindex/resync.
+- [ ] Use `POST /api/v1/admin/ai/knowledge/atlas/resync` when SQL chunks and Atlas
+  vectors drift without embedding changes.
+- [ ] Set `RAG_STRICT_QUALITY_GATE=true` when only reviewed knowledge should be
+  retrievable in production.
 
 ## 9. Backup Strategy
 

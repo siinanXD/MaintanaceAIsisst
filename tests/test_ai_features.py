@@ -15,6 +15,7 @@ from app.models import (
     AssistantTrainingEntry,
     ChatMessage,
     Department,
+    EmployeeDocument,
     EmployeeMachineQualification,
     ErrorEntry,
     GeneratedDocument,
@@ -2327,6 +2328,213 @@ def test_ai_chat_structured_followup_preserves_department_filter(
     assert followup_payload["data"]["filters"]["department"] == "Instandhaltung"
     assert followup_payload["data"]["filters"]["priority"] == "urgent"
     assert followup_payload["data"]["items"][0]["title"] == "Instandhaltung dringend"
+
+
+def test_ai_chat_employee_document_count_and_followup(
+    client,
+    app,
+    make_user,
+    make_employee,
+    auth_headers,
+):
+    """Verify employee document questions stay on employees instead of tasks."""
+    admin = make_user(
+        username="ai_employee_document_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    with_documents_id = make_employee(
+        personnel_number="P-AI-DOC-1",
+        name="Anna Mit Dokument",
+        department="Produktion",
+    )
+    make_employee(
+        personnel_number="P-AI-DOC-2",
+        name="Bernd Ohne Dokument",
+        department="Produktion",
+    )
+    with app.app_context():
+        db.session.add(
+            EmployeeDocument(
+                employee_id=with_documents_id,
+                original_filename="qualifikation.pdf",
+                stored_filename="qualifikation-demo.pdf",
+                content_type="application/pdf",
+            )
+        )
+        db.session.commit()
+
+    headers = auth_headers(admin["username"])
+    session_id = "employee-document-followup"
+
+    count_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Wie viele Mitarbeiter mit Dokumenten haben wir?",
+            "session_id": session_id,
+        },
+    )
+    followup_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Welche davon haben Dokumente hinterlegt?",
+            "session_id": session_id,
+        },
+    )
+
+    count_payload = count_response.get_json()
+    followup_payload = followup_response.get_json()
+    assert count_response.status_code == 200
+    assert count_payload["type"] == "employee_document_count"
+    assert count_payload["data"]["count"] == 1
+    assert "Mitarbeiter mit Dokumenten" in count_payload["answer"]
+    assert followup_response.status_code == 200
+    assert followup_payload["type"] == "employee_document_list"
+    assert followup_payload["data"]["count"] == 1
+    assert followup_payload["data"]["items"][0]["name"] == "Anna Mit Dokument"
+    assert followup_payload["scope"] == "employees"
+    assert "Bernd Ohne Dokument" not in json.dumps(followup_payload, ensure_ascii=True)
+    assert followup_payload["type"] != "structured_scope"
+
+
+def test_ai_chat_employee_department_count_followup_lists_department_members(
+    client,
+    make_user,
+    make_employee,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify employee department follow-ups stay on the same department."""
+    user = make_user(username="ai_employee_department_followup_user")
+    make_employee(
+        personnel_number="P-AI-DEPT-FU-1",
+        name="Eva Followup Produktion",
+        department="Produktion",
+    )
+    make_employee(
+        personnel_number="P-AI-DEPT-FU-2",
+        name="Frank Followup Produktion",
+        department="Produktion",
+    )
+    make_employee(
+        personnel_number="P-AI-DEPT-FU-3",
+        name="Greta Followup IT",
+        department="IT",
+    )
+    set_dashboard_permission(
+        user["username"],
+        "employees",
+        can_view=True,
+        employee_access_level="basic",
+    )
+    headers = auth_headers(user["username"])
+    session_id = "employee-department-followup"
+
+    count_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Wie viele Mitarbeiter hat die Produktion?",
+            "session_id": session_id,
+        },
+    )
+    followup_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Welche davon?",
+            "session_id": session_id,
+        },
+    )
+
+    count_payload = count_response.get_json()
+    followup_payload = followup_response.get_json()
+    assert count_response.status_code == 200
+    assert count_payload["type"] == "employee_department_count"
+    assert count_payload["data"]["department"] == "Produktion"
+    assert count_payload["data"]["count"] == 2
+    assert followup_response.status_code == 200
+    assert followup_payload["type"] == "employee_department_list"
+    assert followup_payload["data"]["department"] == "Produktion"
+    assert followup_payload["data"]["count"] == 2
+    names = {item["name"] for item in followup_payload["data"]["items"]}
+    assert names == {"Eva Followup Produktion", "Frank Followup Produktion"}
+    assert followup_payload["type"] != "structured_scope"
+
+
+def test_ai_chat_inventory_low_stock_followup_filters_by_machine(
+    app,
+    client,
+    make_user,
+    make_machine,
+    make_material,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify inventory follow-ups can refine low-stock results by machine."""
+    user = make_user(username="ai_inventory_followup_user")
+    machine_a = make_machine(name="Hydraulikpresse 03")
+    machine_b = make_machine(name="Kompressorstation 07")
+    low_a = make_material("Dichtungssatz Presse", 10.0, 0, machine_id=machine_a)
+    low_b = make_material("O-Ring Kompressor", 5.0, 0, machine_id=machine_b)
+    _update_inventory_material(app, low_a, min_quantity=2)
+    _update_inventory_material(app, low_b, min_quantity=1)
+    set_dashboard_permission(user["username"], "inventory", can_view=True)
+    headers = auth_headers(user["username"])
+    session_id = "inventory-low-stock-followup"
+
+    first_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Welche Materialien sind unter Mindestbestand?",
+            "session_id": session_id,
+        },
+    )
+    followup_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Welche davon betreffen Hydraulikpresse 03?",
+            "session_id": session_id,
+        },
+    )
+
+    first_payload = first_response.get_json()
+    followup_payload = followup_response.get_json()
+    assert first_response.status_code == 200
+    assert first_payload["type"] == "inventory_low_stock"
+    assert first_payload["data"]["count"] == 2
+    assert followup_response.status_code == 200
+    assert followup_payload["type"] == "inventory_machine_materials"
+    assert followup_payload["data"]["count"] == 1
+    assert followup_payload["data"]["items"][0]["name"] == "Dichtungssatz Presse"
+    assert followup_payload["type"] != "structured_scope"
+
+
+def test_ai_chat_document_in_progress_does_not_route_to_tasks(
+    client,
+    make_user,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify Bearbeitung wording does not trigger task structured routing."""
+    user = make_user(username="ai_document_in_progress_user")
+    set_dashboard_permission(user["username"], "documents", can_view=True)
+    set_dashboard_permission(user["username"], "tasks", can_view=True)
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche Dokumente sind in Bearbeitung?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] != "structured_scope"
+    assert payload.get("data", {}).get("entity_type") != "tasks"
 
 
 def test_ai_chat_rejects_empty_messages(client, make_user, auth_headers):

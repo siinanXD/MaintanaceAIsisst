@@ -15,12 +15,14 @@ from app.services.knowledge_service import (
     reindex_all_knowledge,
     reindex_knowledge_document,
     reindex_stale_knowledge,
+    resync_atlas_knowledge,
 )
 from app.services.payload_parsing_service import parse_bool
 
 logger = logging.getLogger(__name__)
 
 JOB_RAG_REINDEX = "rag_reindex"
+JOB_ATLAS_RESYNC = "atlas_resync"
 JOB_KNOWLEDGE_AGING = "knowledge_aging"
 QUEUED = "queued"
 RUNNING = "running"
@@ -42,6 +44,18 @@ def enqueue_rag_reindex_job(mode="stale", document_id=None, user=None):
         _log_deduplicated_job(existing, payload)
         return existing
     job = _create_background_job(JOB_RAG_REINDEX, payload, user)
+    logger.info("background_job_queued id=%s type=%s payload=%s", job.id, job.job_type, payload)
+    return job
+
+
+def enqueue_atlas_resync_job(mode="drift_only", user=None):
+    """Queue an Atlas-only vector resync job and return the persisted job."""
+    payload = validate_atlas_resync_payload(mode=mode)
+    existing = existing_active_job(JOB_ATLAS_RESYNC, payload)
+    if existing:
+        _log_deduplicated_job(existing, payload)
+        return existing
+    job = _create_background_job(JOB_ATLAS_RESYNC, payload, user)
     logger.info("background_job_queued id=%s type=%s payload=%s", job.id, job.job_type, payload)
     return job
 
@@ -102,6 +116,14 @@ def validate_reindex_mode(mode, document_id=None):
     if normalized not in {"all", "stale"}:
         raise ValueError("mode must be 'all' or 'stale'")
     return normalized
+
+
+def validate_atlas_resync_payload(mode="drift_only"):
+    """Return a normalized Atlas resync payload or raise ValueError."""
+    normalized = str(mode or "drift_only").strip().lower()
+    if normalized not in {"all", "drift_only"}:
+        raise ValueError("mode must be 'all' or 'drift_only'")
+    return {"mode": normalized}
 
 
 def validate_knowledge_aging_payload(dry_run=False, limit=None):
@@ -270,6 +292,8 @@ def execute_job(job):
     """Execute a supported background job and return its result payload."""
     if job.job_type == JOB_RAG_REINDEX:
         return execute_rag_reindex_job(job.payload())
+    if job.job_type == JOB_ATLAS_RESYNC:
+        return execute_atlas_resync_job(job.payload())
     if job.job_type == JOB_KNOWLEDGE_AGING:
         return execute_knowledge_aging_job(job.payload())
     raise ValueError(f"Unsupported background job type: {job.job_type}")
@@ -286,6 +310,12 @@ def execute_rag_reindex_job(payload):
     if mode == "all":
         return reindex_all_knowledge()
     return reindex_stale_knowledge()
+
+
+def execute_atlas_resync_job(payload):
+    """Execute an Atlas resync job from a stored payload."""
+    normalized = validate_atlas_resync_payload(payload.get("mode"))
+    return resync_atlas_knowledge(mode=normalized["mode"])
 
 
 def execute_knowledge_aging_job(payload):

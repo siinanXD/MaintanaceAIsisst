@@ -19,6 +19,7 @@ from app.services.ai_prompting import (
     permission_denied_answer,
     permission_denied_context,
 )
+from app.services.ai_question_normalizer import contains_any_lookup_term, normalize_text
 from app.services.ai_structured_source_service import module_count_source_card
 from app.services.document_service import visible_documents_query
 from app.services.error_service import visible_errors_query
@@ -457,7 +458,7 @@ def answer_count_question(message, user, requested_scopes, allowed_scopes):
     ]
     if not count_scopes:
         return None
-    scope = count_scopes[0]
+    scope = _primary_count_scope(message, count_scopes)
     answer, data = format_module_count(user, scope)
     if answer is None:
         return None
@@ -476,6 +477,25 @@ def answer_count_question(message, user, requested_scopes, allowed_scopes):
         allowed_scopes,
         message=message,
     )
+
+
+def _primary_count_scope(message, requested_scopes):
+    """Return the scope whose keyword appears first in a multi-scope count question."""
+    text = normalize_text(message)
+    best_scope = ""
+    best_index = len(text) + 1
+    for scope in requested_scopes:
+        for keyword in SCOPE_KEYWORDS.get(scope, []):
+            normalized_keyword = normalize_text(keyword)
+            if not contains_any_lookup_term(text, [keyword]):
+                continue
+            index = text.find(normalized_keyword)
+            if index == -1 and " " in normalized_keyword:
+                index = text.find(normalized_keyword.split()[0])
+            if index != -1 and index < best_index:
+                best_index = index
+                best_scope = scope
+    return best_scope or requested_scopes[0]
 
 
 def should_use_general_hybrid_mode(message, requested_scopes):

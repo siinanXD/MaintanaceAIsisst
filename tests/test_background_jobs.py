@@ -2,6 +2,8 @@
 
 from datetime import timedelta
 
+import pytest
+
 from app.domain_models.common import utc_now
 from app.extensions import db
 from app.models import BackgroundJob, KnowledgeChunk, KnowledgeDocument
@@ -198,3 +200,29 @@ def test_duplicate_reindex_jobs_reuse_active_job(app):
 
     assert second_job.id == first_job.id
     assert job_count == 1
+
+
+def test_admin_can_queue_atlas_resync_job(client, make_user, auth_headers):
+    """Verify master admins can queue Atlas-only resync jobs."""
+    admin = make_user(username="atlas_resync_admin", role="master_admin")
+
+    response = client.post(
+        "/api/v1/admin/ai/knowledge/atlas/resync/jobs",
+        json={"mode": "drift_only"},
+        headers=auth_headers(admin["username"]),
+    )
+    payload = response.get_json()
+
+    assert response.status_code == 202
+    assert payload["data"]["job_type"] == "atlas_resync"
+    assert payload["data"]["status"] == "queued"
+
+
+def test_atlas_resync_job_validates_mode(app):
+    """Verify Atlas resync jobs reject unsupported modes."""
+    from app.services.background_job_service import enqueue_atlas_resync_job
+
+    with app.app_context():
+        app.config["RAG_VECTOR_STORE"] = "mongodb_atlas"
+        with pytest.raises(ValueError, match="mode must be"):
+            enqueue_atlas_resync_job(mode="invalid", user=None)

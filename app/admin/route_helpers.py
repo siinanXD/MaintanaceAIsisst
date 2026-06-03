@@ -57,6 +57,7 @@ from app.services.assistant_training_service import (
 )
 from app.services.audit_service import audit_log_query, create_audit_log
 from app.services.background_job_service import (
+    enqueue_atlas_resync_job,
     enqueue_knowledge_aging_job,
     enqueue_rag_reindex_job,
     list_background_jobs,
@@ -81,6 +82,7 @@ from app.services.knowledge_service import (
     reindex_all_knowledge,
     reindex_knowledge_document,
     reindex_stale_knowledge,
+    resync_atlas_knowledge,
     upload_knowledge_document,
 )
 from app.services.mail_service import mail_config_status

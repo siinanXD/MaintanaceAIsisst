@@ -609,6 +609,57 @@ def reindex_ai_knowledge():
     return success_response(result, message="Knowledge reindexed")
 
 
+@admin_bp.post("/ai/knowledge/atlas/resync")
+@roles_required(Role.MASTER_ADMIN)
+def resync_atlas_knowledge_route():
+    """Resync indexed knowledge chunks to the configured Atlas vector store."""
+    schema_status = database_schema_status()
+    if not schema_status["ok"]:
+        return jsonify(database_schema_error_payload(schema_status)), 503
+    data = request.get_json(silent=True) or {}
+    mode = str(data.get("mode") or request.args.get("mode") or "drift_only").strip().lower()
+    try:
+        result = resync_atlas_knowledge(mode=mode)
+    except ValueError as exc:
+        return error_response(str(exc), 400)
+    record_event(
+        "rag.atlas_resynced",
+        "ai",
+        entity_type="knowledge_document",
+        user=current_admin_user(),
+        source="admin",
+        metadata={"mode": mode, "result": result},
+        commit=True,
+    )
+    return success_response(result, message="Atlas knowledge resync completed")
+
+
+@admin_bp.post("/ai/knowledge/atlas/resync/jobs")
+@roles_required(Role.MASTER_ADMIN)
+def queue_atlas_knowledge_resync_job():
+    """Queue a background job for an Atlas-only vector resync."""
+    schema_status = database_schema_status()
+    if not schema_status["ok"]:
+        return jsonify(database_schema_error_payload(schema_status)), 503
+    actor = current_admin_user()
+    data = request.get_json(silent=True) or {}
+    try:
+        job = enqueue_atlas_resync_job(mode=data.get("mode", "drift_only"), user=actor)
+    except ValueError as exc:
+        return error_response(str(exc), 400)
+    record_event(
+        "rag.atlas_resync_queued",
+        "ai",
+        entity_type="background_job",
+        entity_id=job.id,
+        user=actor,
+        source="admin",
+        metadata={"job_type": job.job_type, "status": job.status},
+        commit=True,
+    )
+    return success_response(job.to_dict(), 202, "Background job queued")
+
+
 @admin_bp.post("/ai/knowledge/<int:document_id>/reindex")
 @roles_required(Role.MASTER_ADMIN)
 def reindex_ai_knowledge_document(document_id):

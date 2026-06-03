@@ -24,7 +24,7 @@ MAX_ITEMS = 20
 MAX_ANSWER_ITEMS = 10
 
 
-def answer_machine_structured_question(message, user):
+def answer_machine_structured_question(message, user, conversation_context=None):
     """Return a structured machine answer for supported machine questions."""
     text = normalize_text(message)
     if not _is_supported_machine_question(text):

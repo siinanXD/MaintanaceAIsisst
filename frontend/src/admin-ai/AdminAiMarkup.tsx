@@ -271,15 +271,7 @@ function adminAiViewContent({
       />
     );
   }
-  return (
-    <AdminAiOverview
-      onChatQueryChange={onOverviewChatQueryChange}
-      onEventErrorChange={onOverviewEventErrorChange}
-      overviewChatQuery={overviewChatQuery}
-      overviewEventError={overviewEventError}
-      overviewState={overviewState}
-    />
-  );
+  return <AdminAiOverview overviewState={overviewState} />;
 }
 
 /**

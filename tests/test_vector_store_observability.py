@@ -369,6 +369,31 @@ def test_atlas_retrieval_builds_vector_search_pipeline(app, monkeypatch):
     assert pipeline[1]["$project"]["score"] == {"$meta": "vectorSearchScore"}
 
 
+def test_atlas_similarity_search_applies_metadata_prefilter(app, monkeypatch):
+    """Verify Atlas vector search passes safe metadata pre-filters."""
+    fake_collection = _install_fake_pymongo(monkeypatch)
+    _configure_atlas(app)
+
+    with app.app_context():
+        store = MongoAtlasVectorStore(
+            embedding_provider=SimpleNamespace(embed_text=lambda _text: [0.03] * 1536)
+        )
+        store.similarity_search(
+            "Hydraulikdruck E104",
+            user=None,
+            limit=4,
+            filters={"department": "Produktion", "machine_id": 4},
+        )
+
+    vector_stage = fake_collection.pipelines[0][0]["$vectorSearch"]
+    assert vector_stage["filter"] == {
+        "$and": [
+            {"metadata.department": "Produktion"},
+            {"metadata.machine_id": 4},
+        ]
+    }
+
+
 def test_atlas_candidates_still_pass_sql_status_gate(app, monkeypatch):
     """Verify Atlas candidates are rejected when SQL source status is not indexed."""
     fake_collection = _install_fake_pymongo(monkeypatch)
@@ -431,6 +456,8 @@ def test_atlas_configuration_is_documented():
     root = Path(__file__).resolve().parents[1]
     readme = (root / "README.md").read_text(encoding="utf-8")
     env_example = (root / ".env.example").read_text(encoding="utf-8")
+    env_minimal = (root / ".env.minimal.example").read_text(encoding="utf-8")
+    env_production = (root / ".env.production.example").read_text(encoding="utf-8")
     atlas_doc = (root / "docs" / "MONGODB_ATLAS_VECTOR_SEARCH.md").read_text(
         encoding="utf-8"
     )
@@ -438,10 +465,12 @@ def test_atlas_configuration_is_documented():
         encoding="utf-8"
     )
 
-    for source in (readme, env_example, atlas_doc):
+    for source in (readme, env_example, env_production, atlas_doc):
         assert "MONGODB_ATLAS_URI" in source
         assert "MONGODB_ATLAS_VECTOR_COLLECTION" in source
         assert "knowledge_vectors" in source
+    assert "RAG_STRICT_QUALITY_GATE" in env_production
+    assert ".env.production.example" in readme
     assert "Dimensions: 1536" in atlas_doc
     assert "Similarity: cosine" in atlas_doc
     assert "Knowledge documents must be fully reindexed" in atlas_doc
@@ -509,6 +538,9 @@ def _configure_atlas(app, uri="mongodb+srv://user:password@example.mongodb.net")
     app.config["MONGODB_ATLAS_VECTOR_COLLECTION"] = "knowledge_vectors"
     app.config["MONGODB_ATLAS_VECTOR_INDEX"] = "knowledge_vector_index"
     app.config["MONGODB_ATLAS_TIMEOUT_MS"] = 100
+    app.config["EMBEDDING_PROVIDER"] = "openai"
+    app.config["OPENAI_EMBEDDING_MODEL"] = "text-embedding-3-small"
+    app.config["RAG_EMBEDDING_DIMENSIONS"] = 1536
 
 
 def _install_fake_pymongo(monkeypatch, client_factory=None, collection_count=0):

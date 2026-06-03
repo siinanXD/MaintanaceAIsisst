@@ -9,6 +9,10 @@ from app.models import Employee, EmployeeDocument, ErrorEntry, Role, Task
 from app.responses import success_response
 from app.security import roles_required
 from app.services.ai_service import ai_api_key_configured, ai_provider_status
+from app.services.atlas_health_service import (
+    atlas_vector_store_configured,
+    atlas_vector_store_health,
+)
 from app.services.database_schema_service import database_schema_status
 from app.services.embedding_service import embedding_provider_status
 from app.services.knowledge_service import knowledge_index_status
@@ -175,8 +179,17 @@ def _embedding_readiness_reason(embedding_status):
     return f"embedding_{reason}"
 
 
-def _rag_readiness_reason(status):
+def _rag_readiness_reason(status, atlas_health=None):
     """Return a compact RAG readiness reason without exposing document content."""
+    atlas_health = atlas_health or {}
+    if atlas_health.get("configured"):
+        if atlas_health.get("fallback_active"):
+            return str(atlas_health.get("reason") or "atlas_fallback_active")[:180]
+        if not atlas_health.get("index_ready"):
+            return "atlas_index_missing"
+    vector_status = status.get("vector_store") or {}
+    if vector_status.get("atlas_reindex_required"):
+        return "atlas_reindex_required"
     reasons = status.get("readiness_reasons") or []
     if reasons:
         return str(reasons[0])[:180]
@@ -188,12 +201,29 @@ def rag_probe():
     try:
         status = knowledge_index_status()
         diagnostics = status["diagnostics"]
+        vector_status = status.get("vector_store") or {}
+        atlas_health = (
+            atlas_vector_store_health()
+            if atlas_vector_store_configured()
+            else {"configured": False}
+        )
         rag_ready = bool(diagnostics["ready"])
-        return {
+        atlas_degraded = bool(
+            atlas_health.get("configured")
+            and (
+                atlas_health.get("fallback_active")
+                or not atlas_health.get("index_ready")
+                or vector_status.get("atlas_reindex_required")
+                or vector_status.get("fallback_active")
+            )
+        )
+        if atlas_degraded:
+            rag_ready = False
+        payload = {
             "ok": rag_ready,
             "enabled": diagnostics["rag_enabled"],
-            "ready": diagnostics["ready"],
-            "reason": "" if rag_ready else _rag_readiness_reason(status),
+            "ready": diagnostics["ready"] and not atlas_degraded,
+            "reason": "" if rag_ready else _rag_readiness_reason(status, atlas_health),
             "documents": status["documents"],
             "indexed": status["indexed"],
             "stale": status["stale"],
@@ -201,7 +231,21 @@ def rag_probe():
             "chunks": status["chunks"],
             "vector_store": diagnostics["vector_store"],
             "embedding_provider": diagnostics["embedding_provider"],
+            "atlas": {
+                "configured": atlas_health.get("configured", False),
+                "active": atlas_health.get("active", False),
+                "index_ready": atlas_health.get("index_ready", False),
+                "drift_detected": bool(
+                    vector_status.get("atlas_reindex_required")
+                    or vector_status.get("chunk_vector_count_mismatch")
+                ),
+                "fallback_active": bool(
+                    atlas_health.get("fallback_active")
+                    or vector_status.get("fallback_active")
+                ),
+            },
         }
+        return payload
     except SQLAlchemyError as exc:
         current_app.logger.warning("rag_health_failed error=%s", exc.__class__.__name__)
         return {

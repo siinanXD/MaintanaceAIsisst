@@ -287,6 +287,14 @@ def ai_diagnostics(
         "model": metadata.get("model") or default_profile.model,
     }
     for key in (
+        "langfuse_enabled",
+        "langfuse_trace_id",
+        "langfuse_observation_id",
+        "langfuse_host",
+    ):
+        if key in metadata:
+            payload[key] = metadata[key]
+    for key in (
         "workflow",
         "model_tier",
         "temperature",
@@ -297,10 +305,6 @@ def ai_diagnostics(
         "cached_tokens",
         "total_tokens",
         "estimated_cost_usd",
-        "langfuse_enabled",
-        "langfuse_trace_id",
-        "langfuse_observation_id",
-        "langfuse_host",
     ):
         if key in metadata:
             payload[key] = metadata[key]
@@ -461,9 +465,14 @@ def ai_status():
         "provider": provider_readiness["provider"],
         "provider_status": provider_readiness["provider_status"],
         "provider_catalog": ai_provider_catalog(),
+        "provider_catalog_selectable": [
+            item for item in ai_provider_catalog() if item.get("status") == "supported"
+        ],
         "embedding_provider_status": provider_readiness["embedding_provider_status"],
         "embedding_provider_catalog": embedding_provider_catalog(),
-        "streaming_enabled": bool(current_app.config.get("AI_ENABLE_STREAMING", True)),
+        "streaming_configured": bool(current_app.config.get("AI_ENABLE_STREAMING", False)),
+        "streaming_available": False,
+        "streaming_enabled": False,
         "langfuse": langfuse_status(current_app.config),
         "ready": provider_readiness["ready"],
         "readiness": provider_readiness["readiness"],

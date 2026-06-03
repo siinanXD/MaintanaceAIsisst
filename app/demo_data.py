@@ -167,8 +167,11 @@ def _seed_users(departments, employees):
                 department=departments.get(dept_name),
                 is_active=True,
             )
-            user.set_password(DEMO_PASSWORD)
             db.session.add(user)
+        user.role = Role(role_value)
+        user.department = departments.get(dept_name)
+        user.is_active = True
+        user.set_password(DEMO_PASSWORD)
         if emp_nr and emp_nr in employees:
             user.employee = employees[emp_nr]
         users[username] = user

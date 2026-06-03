@@ -3,6 +3,8 @@
 from app.extensions import db
 from app.models import Department
 from app.services.ai_question_normalizer import (
+    contains_any_lookup_term,
+    contains_lookup_term,
     detect_department,
     detect_severity,
     detect_status,
@@ -39,3 +41,16 @@ def test_ai_question_normalizer_detects_department_with_word_boundaries(app):
 
         assert detect_department("Welche Tasks hat QA?") == "QA"
         assert detect_department("Welche St\u00f6rungen sind kritisch?") == ""
+
+
+def test_ai_question_normalizer_lookup_terms_use_word_boundaries():
+    """Verify short lookup terms do not match inside longer German words."""
+    assert contains_lookup_term("Dokumente in Bearbeitung", "arbeit") is False
+    assert contains_lookup_term("Welche Aufgaben sind in Bearbeitung?", "arbeit") is False
+    assert contains_lookup_term("Welche Arbeit steht aus?", "arbeit") is True
+    assert contains_lookup_term("Welche Arbeiten stehen aus?", "arbeiten") is True
+    assert contains_lookup_term("Welche Tasks sind offen?", "tasks") is True
+    assert contains_any_lookup_term(
+        "Dokumente in Bearbeitung",
+        ("task", "tasks", "aufgabe", "aufgaben", "arbeit", "arbeiten", "todo"),
+    ) is False

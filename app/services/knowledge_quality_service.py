@@ -3,6 +3,7 @@
 import logging
 from dataclasses import dataclass
 
+from flask import current_app, has_app_context
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.domain_models.common import Role, utc_now
@@ -101,6 +102,7 @@ UNKNOWN_RETRIEVAL_QUALITY_GATE = RetrievalQualityGate(
     score_multiplier=0.0,
     reason="unknown_quality_status_blocked",
 )
+STRICT_ALLOWED_QUALITY_STATUSES = {"admin_approved", "technician_confirmed"}
 
 
 def default_quality_status_for_source(source_type):
@@ -113,10 +115,18 @@ def default_quality_status_for_source(source_type):
 def retrieval_quality_gate_for_status(status):
     """Return the retrieval gate rule for a quality status."""
     normalized_status = str(status or "").strip().lower()
-    return RETRIEVAL_QUALITY_GATES.get(
+    gate = RETRIEVAL_QUALITY_GATES.get(
         normalized_status,
         UNKNOWN_RETRIEVAL_QUALITY_GATE,
     )
+    if _strict_quality_gate_enabled() and normalized_status not in STRICT_ALLOWED_QUALITY_STATUSES:
+        return RetrievalQualityGate(
+            status=gate.status,
+            allowed=False,
+            score_multiplier=0.0,
+            reason="strict_quality_gate_blocked",
+        )
+    return gate
 
 
 def retrieval_quality_gate_for_document(document):
@@ -262,3 +272,10 @@ def _same_department_or_unscoped(document, user):
     if getattr(user, "department", None):
         user_department = str(user.department.name or "").strip().lower()
     return document_department == user_department
+
+
+def _strict_quality_gate_enabled():
+    """Return whether only reviewed knowledge may be retrieved."""
+    if has_app_context():
+        return bool(current_app.config.get("RAG_STRICT_QUALITY_GATE", False))
+    return False

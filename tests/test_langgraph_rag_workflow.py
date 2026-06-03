@@ -2,6 +2,8 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from app.services.query_classifier_service import (
     QUERY_TYPE_HYBRID,
     QueryClassificationResult,
@@ -125,6 +127,96 @@ def test_answer_with_rag_uses_compiled_langgraph_when_available(monkeypatch):
     assert calls == ["Welche Stoerungen sind dringend?"]
     assert result["rag"]["langgraph"]["engine"] == "langgraph"
     assert result["rag"]["langgraph"]["fallback_active"] is False
+
+
+def test_question_node_rejects_empty_message():
+    """Verify the workflow rejects empty questions before retrieval runs."""
+    from app.services.langgraph_rag_workflow import question_node
+
+    with pytest.raises(ValueError, match="non-empty"):
+        question_node({"message": "   ", "trace": []})
+
+
+def test_answer_with_rag_handles_empty_retrieval_without_sources(monkeypatch):
+    """Verify empty retrieval still completes workflow diagnostics with zero sources."""
+    from app.services import langgraph_rag_workflow as workflow_module
+
+    monkeypatch.setattr(workflow_module, "_compiled_langgraph", lambda: None)
+    monkeypatch.setattr(workflow_module, "_workflow_engine_name", lambda: "fallback")
+    monkeypatch.setattr(workflow_module, "is_rag_enabled", lambda: True)
+    monkeypatch.setattr(
+        workflow_module,
+        "classify_ai_query",
+        lambda message: QueryClassificationResult(
+            query_type=QUERY_TYPE_HYBRID,
+            extracted_keywords=["aufgaben"],
+            suggested_sources=["tasks"],
+        ),
+    )
+    monkeypatch.setattr(
+        workflow_module,
+        "retrieve_context",
+        lambda *args, **kwargs: {
+            "context": "",
+            "sources": [],
+            "data": {},
+            "requested_scopes": {"tasks"},
+            "allowed_scopes": {"tasks"},
+            "query_understanding": {"query_type": "task_status"},
+            "safety": {"safety_relevant": False},
+            "conflicts": {"has_conflicts": False},
+            "context_builder": {"sections": []},
+            "knowledge_links": {"links": []},
+            "timeline_context": {},
+            "retrieval_duration_ms": 4,
+            "retrieval_debug": {"keyword_fallback_used": False},
+        },
+    )
+    provider = RecordingProvider()
+
+    result = answer_with_rag(
+        "Welche Aufgaben sind offen?",
+        SimpleNamespace(id=1, role="master_admin"),
+        requested_scopes={"tasks"},
+        provider=provider,
+    )
+
+    assert result.get("sources") == []
+    assert provider.calls
+    assert result["rag"]["source_count"] == 0
+    assert result["confidence"]["score"] >= 0
+
+
+def test_validation_node_attaches_confidence_and_safety(monkeypatch):
+    """Verify validation enriches answers with confidence and safety metadata."""
+    from app.services import langgraph_rag_workflow as workflow_module
+
+    retrieval = _fake_retrieve_context(
+        "Welche Stoerungen sind dringend?",
+        SimpleNamespace(id=1, role="master_admin"),
+        requested_scopes={"errors"},
+        query_classification=QueryClassificationResult(
+            query_type=QUERY_TYPE_HYBRID,
+            extracted_keywords=["stoerungen"],
+            suggested_sources=["errors"],
+        ),
+    )
+    retrieval["rag"] = {
+        "pipeline": workflow_module.LANGGRAPH_RAG_PIPELINE_STEPS,
+        "safety": {"safety_relevant": False},
+    }
+    state = {
+        "message": "Welche Stoerungen sind dringend?",
+        "retrieval": retrieval,
+        "answer": "Pruefe Ventil und Leitungen gemaess Fehlerkatalog.",
+        "provider": RecordingProvider(),
+        "trace": [],
+    }
+
+    payload = workflow_module.validation_node(state)
+
+    assert payload["result"]["confidence"]["score"] >= 0
+    assert "validation" in [item["node"] for item in payload["trace"]]
 
 
 def _patch_workflow_boundaries(monkeypatch):

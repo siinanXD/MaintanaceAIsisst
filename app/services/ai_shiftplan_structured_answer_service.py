@@ -8,6 +8,11 @@ from app.models import ShiftPlan, ShiftPlanCoverageSlot, ShiftPlanEntry
 from app.security import employee_access_level, has_dashboard_permission
 from app.services.ai_prompting import permission_denied_answer
 from app.services.ai_question_normalizer import normalize_text
+from app.services.ai_structured_context_helpers import (
+    build_structured_context,
+    inherited_structured_scope,
+    is_list_follow_up,
+)
 from app.services.ai_structured_source_service import (
     shiftplan_coverage_source_cards,
     shiftplan_entry_source_cards,
@@ -26,13 +31,16 @@ SHIFT_ALIASES = {
 }
 
 
-def answer_shiftplan_structured_question(message, user):
+def answer_shiftplan_structured_question(message, user, conversation_context=None):
     """Return a structured shift-plan answer for supported German questions."""
     text = normalize_text(message)
-    if not _is_shiftplan_question(text):
+    if not _is_shiftplan_question(text) and not _is_shiftplan_follow_up(text, conversation_context):
         return None
     if not has_dashboard_permission(user, "shiftplans", "view"):
         return _permission_denied()
+    follow_up_result = _answer_shiftplan_follow_up(message, user, conversation_context)
+    if follow_up_result:
+        return follow_up_result
     if _is_understaffed_next_week_question(text):
         return _answer_understaffed_next_week(user)
     if _is_tomorrow_planned_question(text):
@@ -50,6 +58,32 @@ def answer_shiftplan_structured_question(message, user):
     return None
 
 
+def _answer_shiftplan_follow_up(message, user, conversation_context):
+    """Return a structured shift-plan follow-up answer."""
+    text = normalize_text(message)
+    if not _is_shiftplan_follow_up(text, conversation_context):
+        return None
+
+    inherited = inherited_structured_scope(conversation_context)
+    query = str(inherited.get("query") or "").strip()
+    if query == "entries":
+        work_date = _date_from_time_range(str(inherited.get("time_range") or ""))
+        shift = _requested_shift(text) or str(inherited.get("shift") or "").strip()
+        if work_date:
+            label = "morgen" if work_date == _tomorrow() else work_date.isoformat()
+            return _answer_entries_for_date(user, work_date, label, shift=shift)
+    if query == "understaffed":
+        return _answer_understaffed_next_week(user)
+    return None
+
+
+def _date_from_time_range(time_range):
+    """Return a work date for supported structured shift-plan time ranges."""
+    if time_range == "tomorrow":
+        return _tomorrow()
+    return None
+
+
 def _permission_denied():
     """Return a permission-denied shift-plan answer."""
     return {
@@ -58,7 +92,7 @@ def _permission_denied():
         "data": [],
         "sources": [],
         "scope": "shiftplans",
-        "structured_context": {"entity_type": "shiftplans"},
+        "structured_context": build_structured_context("shiftplans"),
     }
 
 
@@ -83,7 +117,12 @@ def _answer_entries_for_date(user, work_date, label, shift=""):
         },
         "sources": shiftplan_entry_source_cards(entries, user),
         "scope": "shiftplans",
-        "structured_context": {"entity_type": "shiftplans"},
+        "structured_context": build_structured_context(
+            "shiftplans",
+            query="entries",
+            time_range="tomorrow" if work_date == _tomorrow() else "",
+            shift=shift,
+        ),
     }
 
 
@@ -108,7 +147,11 @@ def _answer_shift_count(user, shift):
         },
         "sources": shiftplan_entry_source_cards(entries, user),
         "scope": "shiftplans",
-        "structured_context": {"entity_type": "shiftplans"},
+        "structured_context": build_structured_context(
+            "shiftplans",
+            query="shift_count",
+            shift=shift,
+        ),
     }
 
 
@@ -134,7 +177,11 @@ def _answer_understaffed_next_week(user):
         },
         "sources": shiftplan_coverage_source_cards(slots),
         "scope": "shiftplans",
-        "structured_context": {"entity_type": "shiftplans"},
+        "structured_context": build_structured_context(
+            "shiftplans",
+            query="understaffed",
+            time_range="next_week",
+        ),
     }
 
 
@@ -326,3 +373,11 @@ def _is_shift_count_question(text):
 def _is_tomorrow_planned_question(text):
     """Return whether the text asks who is planned tomorrow."""
     return "wer" in text and "morgen" in text and "eingeplant" in text
+
+
+def _is_shiftplan_follow_up(text, conversation_context):
+    """Return whether a follow-up should stay on structured shift-plan data."""
+    if not is_list_follow_up(text):
+        return False
+    inherited = inherited_structured_scope(conversation_context)
+    return inherited.get("entity_type") == "shiftplans"

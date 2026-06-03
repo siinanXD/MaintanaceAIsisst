@@ -26,7 +26,11 @@ export function aiSystemRows(data: DashboardRuntimeData): readonly DashboardStat
       value: assetText(aiStatus, "provider", "-")
     },
     {
-      detail: aiStatus.streaming_enabled ? "Streaming aktiv" : "Streaming aus",
+      detail: aiStatus.streaming_available
+        ? "Streaming aktiv"
+        : aiStatus.streaming_configured
+          ? "Konfiguriert, API noch nicht freigegeben"
+          : "Streaming aus",
       label: "Modell",
       severity: "muted",
       value: assetText(aiStatus, "model", "-")

@@ -165,14 +165,49 @@ For presentations, use the source-backed AI prompt list in
 
 ### Docker
 
+Use one of the Compose profiles:
+
+```bash
+cp .env.example .env   # set SECRET_KEY, JWT_SECRET_KEY, OPENAI_API_KEY for mongodb profile
+docker compose --profile mongodb up --build
+docker compose --profile pgvector up --build   # offline pgvector + hashing fallback
+```
+
+| Profile | Vector store | Embedding | Use case |
+| --- | --- | --- | --- |
+| `mongodb` | MongoDB Atlas Local | OpenAI | Production-like retrieval with `$vectorSearch` |
+| `pgvector` | PostgreSQL pgvector | hashing | Offline development without OpenAI |
+
+The `mongodb` profile starts PostgreSQL, MongoDB Atlas Local, a one-shot vector-index
+init container, the app, and the worker. App runs at `http://127.0.0.1:5050`.
+
+After the first start with MongoDB retrieval enabled, reindex knowledge:
+
+```bash
+curl -X POST http://127.0.0.1:5050/api/v1/admin/ai/knowledge/reindex \
+  -H "Authorization: Bearer <token>"
+```
+
+Local Atlas index maintenance:
+
+```bash
+flask --app run:app atlas ensure-index
+python scripts/rag_atlas_smoke.py
+```
+
+Minimal and production env templates:
+
+- [`.env.minimal.example`](.env.minimal.example) for SQLite + mock AI
+- [`.env.production.example`](.env.production.example) for PostgreSQL + MongoDB Atlas + OpenAI
+
+Legacy single-profile command:
+
 ```bash
 cp .env.example .env   # set SECRET_KEY and JWT_SECRET_KEY
 docker compose up --build
 ```
 
-Compose starts three services: `db` using PostgreSQL with pgvector, `app`
-using Gunicorn, and `worker` for background RAG maintenance. App runs at
-`http://127.0.0.1:5050`.
+This requires an explicit profile because app and worker services are profile-scoped.
 
 Health checks:
 

@@ -15,6 +15,10 @@ def test_create_answer_trace_stores_safe_chunk_metadata(app, make_user, monkeypa
         )
         or True,
     )
+    monkeypatch.setattr(
+        "app.services.ai_traceability_service.submit_automatic_eval_scores",
+        lambda diagnostics, result: 0,
+    )
     user = make_user(username="trace_chunk_admin", role=Role.MASTER_ADMIN)
     with app.app_context():
         audit_event = AIAuditEvent(

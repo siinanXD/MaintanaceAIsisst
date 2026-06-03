@@ -294,7 +294,11 @@ def answer_chat(message, user, session_id=""):
             conversation_context=conversation_context,
         )
 
-    vacation_structured_result = answer_vacation_structured_question(message, user)
+    vacation_structured_result = answer_vacation_structured_question(
+        message,
+        user,
+        conversation_context=conversation_context,
+    )
     if vacation_structured_result:
         status = (
             "permission_denied"
@@ -311,7 +315,11 @@ def answer_chat(message, user, session_id=""):
             conversation_context=conversation_context,
         )
 
-    employee_structured_result = answer_employee_structured_question(message, user)
+    employee_structured_result = answer_employee_structured_question(
+        message,
+        user,
+        conversation_context=conversation_context,
+    )
     if employee_structured_result:
         status = (
             "permission_denied"
@@ -328,7 +336,11 @@ def answer_chat(message, user, session_id=""):
             conversation_context=conversation_context,
         )
 
-    document_structured_result = answer_document_structured_question(message, user)
+    document_structured_result = answer_document_structured_question(
+        message,
+        user,
+        conversation_context=conversation_context,
+    )
     if document_structured_result:
         status = (
             "permission_denied"
@@ -345,7 +357,11 @@ def answer_chat(message, user, session_id=""):
             conversation_context=conversation_context,
         )
 
-    shiftplan_structured_result = answer_shiftplan_structured_question(message, user)
+    shiftplan_structured_result = answer_shiftplan_structured_question(
+        message,
+        user,
+        conversation_context=conversation_context,
+    )
     if shiftplan_structured_result:
         status = (
             "permission_denied"
@@ -362,7 +378,11 @@ def answer_chat(message, user, session_id=""):
             conversation_context=conversation_context,
         )
 
-    inventory_structured_result = answer_inventory_structured_question(message, user)
+    inventory_structured_result = answer_inventory_structured_question(
+        message,
+        user,
+        conversation_context=conversation_context,
+    )
     if inventory_structured_result:
         status = (
             "permission_denied"
@@ -456,7 +476,11 @@ def answer_chat(message, user, session_id=""):
             message=message,
         )
 
-    machine_structured_result = answer_machine_structured_question(message, user)
+    machine_structured_result = answer_machine_structured_question(
+        message,
+        user,
+        conversation_context=conversation_context,
+    )
     if machine_structured_result:
         status = (
             "permission_denied"
@@ -528,10 +552,12 @@ def answer_chat(message, user, session_id=""):
                 "diagnostics": ai_diagnostics(status),
                 "data": data,
                 "sources": sources,
+                "structured_context": {"entity_type": "employees"},
             },
             requested_scopes or {"employees"},
             allowed_scopes,
             message=message,
+            conversation_context=conversation_context,
         )
 
     count_result = answer_count_question(

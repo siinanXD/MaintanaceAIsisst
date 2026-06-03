@@ -6,6 +6,7 @@ from flask import Flask
 from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.exceptions import HTTPException
 
+from app.admin.atlas_commands import register_atlas_commands
 from app.admin.commands import register_admin_commands
 from app.admin.routes import admin_bp
 from app.ai.routes import ai_bp
@@ -31,6 +32,7 @@ from app.permissions import ensure_all_user_default_permissions
 from app.responses import error_response
 from app.search.routes import search_bp
 from app.services.database_schema_service import ensure_local_development_schema
+from app.services.mongodb_service import ensure_maintenance_mongodb_ready, mongodb_is_configured
 from app.shiftplans.routes import shiftplans_bp
 from app.sites.routes import sites_bp
 from app.tasks.routes import tasks_bp
@@ -117,6 +119,7 @@ def create_app(config_class=Config):
     app.register_blueprint(web_bp)
     configure_api_documentation(app)
     register_admin_commands(app)
+    register_atlas_commands(app)
     register_notification_commands(app)
     register_error_handlers(app)
 
@@ -126,5 +129,9 @@ def create_app(config_class=Config):
             ensure_local_development_schema()
             ensure_default_departments()
             ensure_all_user_default_permissions()
+
+    if mongodb_is_configured(app.config):
+        with app.app_context():
+            ensure_maintenance_mongodb_ready(app.config)
 
     return app

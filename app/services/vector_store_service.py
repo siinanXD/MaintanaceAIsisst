@@ -21,6 +21,7 @@ from app.models import (
     MaintenancePlan,
     ShiftHandover,
 )
+from app.services.atlas_health_service import ATLAS_VECTOR_FIELD, atlas_embedding_dimensions
 from app.services.chunking_service import token_set
 from app.services.embedding_service import get_embedding_provider
 from app.services.knowledge_quality_service import retrieval_quality_gate_for_document
@@ -57,7 +58,6 @@ DEFAULT_RAG_SCAN_LIMIT = 300
 DEFAULT_RAG_KEYWORD_SCAN_LIMIT = 500
 DEFAULT_RAG_MAX_KEYWORD_TERMS = 8
 DEFAULT_RAG_MIN_SCORE = 1
-ATLAS_VECTOR_FIELD = "embedding"
 ATLAS_EMBEDDING_DIMENSIONS = 1536
 RETRIEVAL_STOPWORDS = {
     "aber",
@@ -753,8 +753,14 @@ class MongoAtlasVectorStore(BaseVectorStore):
         limit_value = _positive_int(limit, _config_value("RAG_TOP_K", DEFAULT_RAG_TOP_K))
         candidate_limit = _rerank_candidate_limit(limit_value)
         try:
-            query_embedding = _atlas_embedding(self.embedding_provider.embed_text(query_text))
-            pipeline = self._vector_search_pipeline(query_embedding, candidate_limit)
+            query_embedding = _atlas_embedding(
+                self.embedding_provider.embed_text(query_text)
+            )
+            pipeline = self._vector_search_pipeline(
+                query_embedding,
+                candidate_limit,
+                filters=filters,
+            )
             started_at = perf_counter()
             documents = list(self.collection.aggregate(pipeline))
             record_atlas_query((perf_counter() - started_at) * 1000)
@@ -836,18 +842,20 @@ class MongoAtlasVectorStore(BaseVectorStore):
             record_atlas_error(exc)
             raise VectorStoreError("connection_failed") from exc
 
-    def _vector_search_pipeline(self, query_embedding, candidate_limit):
+    def _vector_search_pipeline(self, query_embedding, candidate_limit, filters=None):
         """Return the Atlas Vector Search pipeline for candidate retrieval only."""
+        vector_search = {
+            "index": self.index_name,
+            "path": ATLAS_VECTOR_FIELD,
+            "queryVector": query_embedding,
+            "numCandidates": candidate_limit,
+            "limit": candidate_limit,
+        }
+        atlas_filter = _atlas_vector_search_filter(filters)
+        if atlas_filter:
+            vector_search["filter"] = atlas_filter
         return [
-            {
-                "$vectorSearch": {
-                    "index": self.index_name,
-                    "path": ATLAS_VECTOR_FIELD,
-                    "queryVector": query_embedding,
-                    "numCandidates": candidate_limit,
-                    "limit": candidate_limit,
-                }
-            },
+            {"$vectorSearch": vector_search},
             {
                 "$project": {
                     "_id": 0,
@@ -1182,16 +1190,45 @@ def _safe_vector_metadata(metadata):
 
 def _atlas_embedding(embedding):
     """Return a validated Atlas embedding vector."""
+    expected_dimensions = atlas_embedding_dimensions()
     if not isinstance(embedding, list) or not embedding:
         raise VectorStoreError("atlas_embedding_missing")
-    if len(embedding) != ATLAS_EMBEDDING_DIMENSIONS:
+    if len(embedding) != expected_dimensions:
         raise VectorStoreError(
-            f"atlas_embedding_dimensions_expected_{ATLAS_EMBEDDING_DIMENSIONS}"
+            f"atlas_embedding_dimensions_expected_{expected_dimensions}"
         )
     try:
         return [float(value) for value in embedding]
     except (TypeError, ValueError) as exc:
         raise VectorStoreError("atlas_embedding_invalid") from exc
+
+
+def _atlas_vector_search_filter(filters):
+    """Return an Atlas metadata pre-filter for vector search when filters are set."""
+    if not isinstance(filters, dict) or not filters:
+        return None
+
+    clauses = []
+    department = str(filters.get("department") or "").strip()
+    if department:
+        clauses.append({"metadata.department": department})
+
+    machine_id = filters.get("machine_id")
+    if machine_id not in (None, ""):
+        try:
+            clauses.append({"metadata.machine_id": int(machine_id)})
+        except (TypeError, ValueError):
+            pass
+
+    quality_status = str(filters.get("quality_status") or "").strip()
+    if quality_status:
+        clauses.append({"metadata.quality_status": quality_status})
+
+    if not clauses:
+        return None
+    if len(clauses) == 1:
+        return clauses[0]
+    return {"$and": clauses}
 
 
 def _atlas_result(document):

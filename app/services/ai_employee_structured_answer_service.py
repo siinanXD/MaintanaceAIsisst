@@ -5,10 +5,14 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from app.ai.intent import can_read_employee_context
-from app.models import Employee, VacationRequest
+from app.models import Employee, EmployeeDocument, VacationRequest
 from app.security import employee_access_level
 from app.services.ai_prompting import permission_denied_answer
-from app.services.ai_question_normalizer import detect_department, normalize_text
+from app.services.ai_question_normalizer import (
+    detect_department,
+    is_structured_follow_up,
+    normalize_text,
+)
 from app.services.ai_structured_source_service import (
     employee_count_source_card,
     employee_source_cards,
@@ -18,6 +22,9 @@ from app.vacations.services import visible_vacation_query
 
 MAX_ITEMS = 20
 MAX_ANSWER_ITEMS = 10
+COUNT_TERMS = ("wie viele", "wieviele", "anzahl", "count")
+LIST_TERMS = ("welche", "zeige", "zeig", "liste", "auflisten", "anzeigen")
+DOCUMENT_TERMS = ("dokument", "dokumente", "unterlage", "unterlagen", "datei", "dateien")
 KNOWN_DEPARTMENTS = {
     "instandhaltung": "Instandhaltung",
     "verwaltung": "Verwaltung",
@@ -27,9 +34,22 @@ KNOWN_DEPARTMENTS = {
 }
 
 
-def answer_employee_structured_question(message, user):
+def answer_employee_structured_question(message, user, conversation_context=None):
     """Return a structured employee answer for supported German questions."""
     text = normalize_text(message)
+    if _is_employee_document_question(text, conversation_context):
+        if not can_read_employee_context(user):
+            return _permission_denied()
+        if _is_employee_document_count_question(text, conversation_context):
+            return _answer_employee_document_count(user)
+        if _is_employee_document_list_question(text, conversation_context):
+            return _answer_employee_document_list(user)
+    if _is_employee_department_follow_up_list(text, conversation_context):
+        if not can_read_employee_context(user):
+            return _permission_denied()
+        department = _inherited_employee_department(conversation_context)
+        if department:
+            return _answer_department_list(user, department)
     if not _is_employee_question(text):
         return None
     if not _is_supported_employee_question(text):
@@ -66,6 +86,69 @@ def _permission_denied():
     }
 
 
+def _answer_employee_document_count(user):
+    """Return the count of visible employees with at least one stored document."""
+    count = visible_employees_with_documents_query(user).count()
+    answer = (
+        "## Mitarbeiter mit Dokumenten\n"
+        f"- **Anzahl:** {count}\n"
+        "- **Filter:** mindestens ein hinterlegtes Mitarbeiterdokument\n"
+        "- **Quelle:** Strukturierte Mitarbeiterdaten"
+    )
+    source = employee_count_source_card(count, user)
+    return {
+        "type": "employee_document_count",
+        "answer": answer,
+        "data": {
+            "entity_type": "employees",
+            "query": "document_count",
+            "count": count,
+        },
+        "sources": [source] if source else [],
+        "scope": "employees",
+        "structured_context": {"entity_type": "employees", "query": "with_documents"},
+    }
+
+
+def _answer_employee_document_list(user):
+    """Return visible employees that have at least one stored document."""
+    employees = (
+        visible_employees_with_documents_query(user)
+        .order_by(Employee.name.asc(), Employee.id.asc())
+        .limit(MAX_ITEMS)
+        .all()
+    )
+    answer = _format_employee_list_answer(
+        "Mitarbeiter mit Dokumenten",
+        "mindestens ein hinterlegtes Mitarbeiterdokument",
+        employees,
+        "Sichtbare Mitarbeiter",
+        source="Strukturierte Mitarbeiterdaten",
+    )
+    return {
+        "type": "employee_document_list",
+        "answer": answer,
+        "data": {
+            "entity_type": "employees",
+            "query": "document_list",
+            "count": len(employees),
+            "items": [_employee_payload(employee, user) for employee in employees],
+        },
+        "sources": employee_source_cards(employees, user),
+        "scope": "employees",
+        "structured_context": {"entity_type": "employees", "query": "with_documents"},
+    }
+
+
+def visible_employees_with_documents_query(user):
+    """Return visible employees that have at least one employee document row."""
+    return (
+        visible_employees_query(user)
+        .join(EmployeeDocument, EmployeeDocument.employee_id == Employee.id)
+        .distinct()
+    )
+
+
 def _answer_department_count(user, department):
     """Return the visible employee count for one department."""
     count = _employees_in_department(user, department).count()
@@ -87,7 +170,7 @@ def _answer_department_count(user, department):
         },
         "sources": [source] if source else [],
         "scope": "employees",
-        "structured_context": {"entity_type": "employees"},
+        "structured_context": _employee_department_structured_context(department),
     }
 
 
@@ -117,7 +200,7 @@ def _answer_department_list(user, department):
         },
         "sources": employee_source_cards(employees, user),
         "scope": "employees",
-        "structured_context": {"entity_type": "employees"},
+        "structured_context": _employee_department_structured_context(department),
     }
 
 
@@ -400,3 +483,98 @@ def _is_available_today_question(text):
 def _is_missing_tomorrow_question(text):
     """Return whether the text asks for employees absent tomorrow."""
     return "morgen" in text and any(term in text for term in ("fehlen", "fehlt", "abwesend"))
+
+
+def _employee_department_structured_context(department):
+    """Return structured memory for employee department answers."""
+    return {
+        "entity_type": "employees",
+        "department": department,
+    }
+
+
+def _inherited_employee_department(conversation_context):
+    """Return the department filter from recent employee structured context."""
+    if not conversation_context:
+        return ""
+    structured_scope = dict(getattr(conversation_context, "structured_scope", {}) or {})
+    if structured_scope.get("entity_type") != "employees":
+        return ""
+    return str(structured_scope.get("department") or "").strip()
+
+
+def _is_employee_department_follow_up_list(text, conversation_context):
+    """Return whether a follow-up should list employees for one department."""
+    if _is_employee_document_follow_up(text, conversation_context):
+        return False
+    if not is_structured_follow_up(text):
+        return False
+    if not any(term in text for term in LIST_TERMS):
+        return False
+    return bool(_inherited_employee_department(conversation_context))
+
+
+def _mentions_employee_documents(text):
+    """Return whether the text asks about employee-attached documents."""
+    return any(term in text for term in DOCUMENT_TERMS)
+
+
+def _is_employee_document_question(text, conversation_context):
+    """Return whether the message targets employees with stored documents."""
+    if _mentions_employee_documents(text) and any(
+        term in text for term in ("mitarbeiter", "personal", "employee")
+    ):
+        return True
+    return _is_employee_document_follow_up(text, conversation_context)
+
+
+def _is_employee_document_count_question(text, conversation_context):
+    """Return whether the text asks for a count of employees with documents."""
+    if not _mentions_employee_documents(text):
+        return False
+    if any(term in text for term in COUNT_TERMS):
+        return True
+    return _is_employee_document_follow_up(text, conversation_context) and any(
+        term in text for term in COUNT_TERMS
+    )
+
+
+def _is_employee_document_list_question(text, conversation_context):
+    """Return whether the text asks which employees have stored documents."""
+    if not _mentions_employee_documents(text):
+        return False
+    if any(term in text for term in LIST_TERMS):
+        return True
+    if _is_employee_document_follow_up(text, conversation_context):
+        return True
+    return any(
+        phrase in text
+        for phrase in (
+            "haben dokumente",
+            "haben unterlagen",
+            "mit dokumenten",
+            "mit unterlagen",
+            "dokumente hinterlegt",
+            "unterlagen hinterlegt",
+        )
+    )
+
+
+def _is_employee_document_follow_up(text, conversation_context):
+    """Return whether a follow-up should stay on employees-with-documents."""
+    if not is_structured_follow_up(text):
+        return False
+    if not _mentions_employee_documents(text):
+        return False
+    return _has_employee_document_context(conversation_context)
+
+
+def _has_employee_document_context(conversation_context):
+    """Return whether recent chat context points to employee document questions."""
+    if not conversation_context:
+        return False
+    structured_scope = dict(getattr(conversation_context, "structured_scope", {}) or {})
+    if structured_scope.get("entity_type") == "employees":
+        return True
+    recent_scopes = set(getattr(conversation_context, "recent_scopes", ()) or ())
+    return "employees" in recent_scopes

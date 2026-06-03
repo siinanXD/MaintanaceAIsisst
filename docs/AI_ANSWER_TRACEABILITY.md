@@ -91,6 +91,14 @@ privaten Dateipfade, keine Notes, keine Loesungstexte und keine Secrets. Diese
 Felder werden durch `app/services/langfuse_service.py` verworfen, bevor
 Metadaten an die Langfuse-SDK-Integration gehen.
 
+### Evaluationsscores
+
+Mit `LANGFUSE_EVAL_ENABLED=true` sendet die App regelbasierte Scores
+(Halluzination, Retrieval, Confidence) an den verknuepften Trace. Nutzer-
+Feedback wird als `user-feedback`-Scores geschrieben. Optionales
+`LANGFUSE_EVAL_CAPTURE_IO=true` fuegt einen begrenzten `maintenance-ai.eval_io`-
+Span fuer LLM-as-a-Judge hinzu. Details: [`LANGFUSE_EVALUATION.md`](LANGFUSE_EVALUATION.md).
+
 Audit-Ergebnis: User-, Rollen- und Session-Attribute werden vor dem Modellaufruf
 propagiert; Chat-/Answer-Referenzen und Betriebswerte werden erst nach dem
 Speichern des internen `AIAnswerTrace` als kleiner Link-Span ergaenzt. Fehlende

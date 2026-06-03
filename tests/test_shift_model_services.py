@@ -447,7 +447,7 @@ def test_shiftplan_generate_updates_employee_rotation_state(
         "/api/v1/shiftplans/generate",
         json={
             "department": "Produktion",
-            "start_date": "2026-06-01",
+            "start_date": date.today().isoformat(),
             "days": 2,
             "shift_model_key": "one_shift",
             "machine_ids": [machine_id],

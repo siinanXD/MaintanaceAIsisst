@@ -19,6 +19,7 @@ from app.services.ai_question_normalizer import (
     normalize_text,
 )
 from app.services.ai_retrieval import allowed_ai_scopes
+from app.services.ai_structured_context_helpers import STRUCTURED_CONTEXT_FIELD_KEYS
 
 DEFAULT_CONTEXT_MESSAGES = 4
 DEFAULT_CONTEXT_TTL_MINUTES = 120
@@ -40,13 +41,7 @@ REFERENCE_PATTERNS = (
     "antwort von eben",
     "von eben",
 )
-STRUCTURED_CONTEXT_KEYS = (
-    "entity_type",
-    "department",
-    "status",
-    "time_range",
-    "machine",
-)
+STRUCTURED_CONTEXT_KEYS = STRUCTURED_CONTEXT_FIELD_KEYS
 ENTITY_TYPE_SCOPES = {
     "tasks": "tasks",
     "incidents": "errors",
@@ -86,7 +81,34 @@ SOLUTION_LABEL_TERMS = (
 RESPONSE_TYPE_SCOPES = {
     "tasks_today": {"tasks"},
     "tasks_status": {"tasks"},
+    "structured_scope": {"tasks", "errors"},
     "employee_count": {"employees"},
+    "employee_document_count": {"employees"},
+    "employee_document_list": {"employees"},
+    "employee_department_count": {"employees"},
+    "employee_department_list": {"employees"},
+    "employee_available": {"employees"},
+    "employee_absences": {"employees"},
+    "employee_team_lead_unavailable": {"employees"},
+    "inventory_count": {"inventory"},
+    "inventory_low_stock": {"inventory"},
+    "inventory_critical": {"inventory"},
+    "inventory_machine_materials": {"inventory"},
+    "document_recent": {"documents"},
+    "document_outdated": {"documents"},
+    "document_this_week": {"documents"},
+    "document_department_list": {"documents"},
+    "document_machine_list": {"documents"},
+    "vacation_own_pending": {"employees"},
+    "vacation_own_status": {"employees"},
+    "vacation_absences": {"employees"},
+    "vacation_pending_count": {"employees"},
+    "vacation_pending_list": {"employees"},
+    "shiftplan_entries": {"shiftplans"},
+    "shiftplan_shift_count": {"shiftplans"},
+    "shiftplan_understaffed": {"shiftplans"},
+    "machine_downtime": {"machines"},
+    "machine_incidents": {"machines", "errors"},
     "error_help": {"errors"},
     "order_plan": {"tasks", "machines", "inventory", "employees"},
 }
@@ -284,6 +306,14 @@ def _chat_scopes(chat):
         return set(RESPONSE_TYPE_SCOPES[response_type])
     if response_type.endswith("_count"):
         scope = response_type.removesuffix("_count")
+        if scope.startswith("employee") or scope.startswith("vacation"):
+            return {"employees"}
+        if scope.startswith("inventory"):
+            return {"inventory"}
+        if scope.startswith("document"):
+            return {"documents"}
+        if scope.startswith("shiftplan"):
+            return {"shiftplans"}
         return {"employees" if scope == "employee" else scope}
     return set()
 

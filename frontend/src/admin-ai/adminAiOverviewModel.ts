@@ -91,6 +91,53 @@ export function overviewBadge(state: AdminAiOverviewLoadState): AdminAiStatusCar
 }
 
 /**
+ * Build the four compact status cards for quick fault detection.
+ */
+export function overviewCriticalCards(state: AdminAiOverviewLoadState): AdminAiStatusCard[] {
+  const aiReady = state.aiStatus ? state.aiStatus.ready !== false : false;
+  const readiness = recordField(state.summary, "readiness");
+  const retrievalQuality = recordField(state.summary, "retrieval_quality");
+  const operationsJobs = recordField(state.operations, "background_jobs");
+  const provider = stringField(state.aiStatus, "provider", "unbekannt");
+  const model = stringField(state.aiStatus, "model", "unbekannt");
+  const noSourceRate = numberField(retrievalQuality, "no_source_rate");
+  const failedJobs = numberField(operationsJobs, "failed");
+  const queuedJobs = numberField(operationsJobs, "queue_length");
+  const ragStatus = stringField(readiness, "status", state.isLoading ? "wird geladen" : "offen");
+
+  return [
+    {
+      key: "ready",
+      label: "Gesamtstatus",
+      value: state.errorMessage ? "Teilweise" : aiReady ? "bereit" : "prüfen",
+      detail: state.errorMessage || `${provider} / ${model}`,
+      tone: state.errorMessage ? "is-stale" : aiReady ? "is-active" : "is-error"
+    },
+    {
+      key: "rag",
+      label: "RAG",
+      value: ragStatus,
+      detail: stringField(readiness, "reasons", "Index und Quellenbereitschaft"),
+      tone: toneForStatus(readiness.status)
+    },
+    {
+      key: "no_source",
+      label: "Ohne Quellen",
+      value: percentText(noSourceRate),
+      detail: noSourceRate >= 0.2 ? "Schwellenwert kritisch" : "Antwortqualitaet im Zielbereich",
+      tone: noSourceRate >= 0.4 ? "is-error" : noSourceRate >= 0.2 ? "is-stale" : "is-active"
+    },
+    {
+      key: "jobs",
+      label: "Hintergrundjobs",
+      value: failedJobs ? "fehlgeschlagen" : queuedJobs ? "wartend" : "ruhig",
+      detail: `${numberText(queuedJobs)} wartend / ${numberText(failedJobs)} fehlgeschlagen`,
+      tone: failedJobs ? "is-error" : queuedJobs ? "is-stale" : "is-active"
+    }
+  ];
+}
+
+/**
  * Build the five compact status cards from the overview payloads.
  */
 export function overviewStatusCards(state: AdminAiOverviewLoadState): AdminAiStatusCard[] {
@@ -335,8 +382,10 @@ export function providerFields(state: AdminAiOverviewLoadState): AdminAiProvider
     {
       key: "streaming",
       label: "Streaming",
-      value: state.aiStatus?.streaming_enabled ? "aktiv" : "aus",
-      detail: "Antwortausgabe im Chat-Frontend."
+      value: state.aiStatus?.streaming_available ? "aktiv" : "nicht verfuegbar",
+      detail: state.aiStatus?.streaming_configured
+        ? "Konfiguriert, API noch nicht freigegeben."
+        : "Derzeit nicht konfiguriert."
     }
   ];
 }
@@ -350,7 +399,7 @@ export function providerDetailRows(state: AdminAiOverviewLoadState): AdminAiStat
     { label: "Modell", value: stringField(state.aiStatus, "model", "lokal") },
     {
       label: "Streaming",
-      value: state.aiStatus?.streaming_enabled ? "aktiv" : "aus"
+      value: state.aiStatus?.streaming_available ? "aktiv" : "nicht verfuegbar"
     },
     {
       label: "Letzter Fehler",

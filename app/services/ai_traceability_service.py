@@ -10,6 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
 from app.models import AIAnswerTrace, Role
+from app.services.langfuse_eval_score_service import submit_automatic_eval_scores
 from app.services.langfuse_service import link_langfuse_answer_trace
 
 logger = logging.getLogger(__name__)
@@ -97,6 +98,9 @@ def create_answer_trace(chat_message, result):
         _attach_trace_ids(chat_message, result, trace)
         db.session.commit()
         link_langfuse_answer_trace(diagnostics, chat_message, trace)
+        eval_result = dict(result)
+        eval_result["question"] = chat_message.message
+        submit_automatic_eval_scores(diagnostics, eval_result)
     except SQLAlchemyError:
         db.session.rollback()
         logger.exception(

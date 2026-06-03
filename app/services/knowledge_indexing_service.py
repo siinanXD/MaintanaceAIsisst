@@ -332,6 +332,63 @@ def reindex_knowledge_document(document):
     return result
 
 
+def resync_atlas_knowledge(mode="all"):
+    """Resync indexed knowledge chunks to the configured Atlas vector store."""
+    from app.services.vector_sync_status_service import set_atlas_reindex_required
+
+    normalized_mode = str(mode or "all").strip().lower()
+    if normalized_mode not in {"all", "drift_only"}:
+        raise ValueError("mode must be 'all' or 'drift_only'")
+
+    drift_status = vector_store_drift_status()
+    configured_store = str(drift_status.get("configured_store") or "").lower()
+    if configured_store not in {"mongodb_atlas", "mongo_atlas", "atlas"}:
+        raise ValueError("Atlas vector store is not configured")
+
+    query = KnowledgeDocument.query.filter(KnowledgeDocument.status == "indexed")
+    if normalized_mode == "drift_only":
+        document_ids = _atlas_resync_document_ids(drift_status)
+        if isinstance(document_ids, set) and not document_ids:
+            return {"documents": 0, "chunks": 0, "mode": normalized_mode}
+        if isinstance(document_ids, set):
+            query = query.filter(KnowledgeDocument.id.in_(document_ids))
+
+    documents = query.order_by(KnowledgeDocument.id.asc()).all()
+    chunk_total = 0
+    for document in documents:
+        chunks = (
+            KnowledgeChunk.query.filter_by(document_id=document.id)
+            .order_by(KnowledgeChunk.chunk_index.asc())
+            .all()
+        )
+        sync_vector_store_document(document, chunks)
+        chunk_total += len(chunks)
+    db.session.commit()
+    set_atlas_reindex_required(False)
+    return {
+        "documents": len(documents),
+        "chunks": chunk_total,
+        "mode": normalized_mode,
+    }
+
+
+def _atlas_resync_document_ids(drift_status):
+    """Return document ids needing Atlas resync, all indexed docs, or none."""
+    document_ids = set()
+    for key in ("vector_mismatches", "chunk_mismatches", "missing_chunks"):
+        for item in drift_status.get(key) or []:
+            document_id = item.get("id")
+            if document_id is not None:
+                document_ids.add(int(document_id))
+    if document_ids:
+        return document_ids
+    if drift_status.get("chunk_vector_count_mismatch") or drift_status.get(
+        "atlas_reindex_required"
+    ):
+        return None
+    return set()
+
+
 __all__ = [
     "rebuild_chunks",
     "sync_vector_store_document",
@@ -340,4 +397,5 @@ __all__ = [
     "reindex_all_knowledge",
     "reindex_stale_knowledge",
     "reindex_knowledge_document",
+    "resync_atlas_knowledge",
 ]

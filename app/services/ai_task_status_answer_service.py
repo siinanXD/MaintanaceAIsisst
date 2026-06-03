@@ -9,6 +9,7 @@ from app.security import has_dashboard_permission
 from app.services.ai_prompting import permission_denied_answer
 from app.services.ai_question_normalizer import (
     TASK_STATUS_TERMS,
+    contains_any_lookup_term,
     detect_status,
     detect_time_range,
     normalize_text,
@@ -189,7 +190,7 @@ def _requested_status(text):
 
 def _has_task_reference(text):
     """Return whether the message explicitly references tasks."""
-    return any(term in text for term in TASK_TERMS) or _is_natural_task_status_request(text)
+    return contains_any_lookup_term(text, TASK_TERMS) or _is_natural_task_status_request(text)
 
 
 def _natural_requested_status(text):

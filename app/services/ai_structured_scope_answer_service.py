@@ -9,6 +9,7 @@ from app.models import Department, ErrorEntry, Priority, Task, TaskStatus
 from app.security import has_dashboard_permission
 from app.services.ai_prompting import permission_denied_answer
 from app.services.ai_question_normalizer import (
+    contains_any_lookup_term,
     detect_department,
     detect_severity,
     detect_status,
@@ -17,6 +18,7 @@ from app.services.ai_question_normalizer import (
     mentions_my_area,
     normalize_text,
 )
+from app.services.ai_structured_context_helpers import should_defer_structured_scope_follow_up
 from app.services.ai_structured_source_service import (
     incident_source_cards,
     incident_source_cards_from_payloads,
@@ -34,6 +36,7 @@ INCIDENT_ENTITY_TERMS = (
     "stoerungen",
     "stoerfall",
     "stoerfaelle",
+    "stoerfaellen",
     "fehler",
     "problem",
     "probleme",
@@ -60,6 +63,8 @@ ANSWER_ITEMS = 10
 def answer_structured_scope_question(message, user, conversation_context=None):
     """Return a permission-aware structured answer for explicit or follow-up scopes."""
     text = normalize_text(message)
+    if should_defer_structured_scope_follow_up(text, conversation_context):
+        return None
     inherited_context = dict(getattr(conversation_context, "structured_scope", {}) or {})
     follow_up = is_structured_follow_up(text)
     explicit_entity = _entity_type_from_text(text)
@@ -486,7 +491,9 @@ def _entity_type_from_text(text):
         return ""
     if any(term in text for term in INCIDENT_ENTITY_TERMS):
         return "incidents"
-    if any(term in text for term in TASK_ENTITY_TERMS) or _looks_like_natural_task_request(text):
+    if contains_any_lookup_term(text, TASK_ENTITY_TERMS) or _looks_like_natural_task_request(
+        text
+    ):
         return "tasks"
     return ""
 

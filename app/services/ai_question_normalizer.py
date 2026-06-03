@@ -58,6 +58,24 @@ MY_AREA_TERMS = (
 )
 
 
+def contains_lookup_term(text, term):
+    """Return whether normalized text contains one lookup term as a word or phrase."""
+    normalized_text = normalize_text(text)
+    normalized_term = normalize_text(term)
+    if not normalized_term:
+        return False
+    if " " in normalized_term or "-" in normalized_term:
+        return normalized_term in normalized_text
+    return bool(
+        re.search(rf"(?<!\w){re.escape(normalized_term)}(?!\w)", normalized_text)
+    )
+
+
+def contains_any_lookup_term(text, terms):
+    """Return whether normalized text contains any lookup term as a word or phrase."""
+    return any(contains_lookup_term(text, term) for term in terms)
+
+
 def normalize_text(value, strip_punctuation=True):
     """Return lowercase lookup text normalized for German maintenance questions."""
     text = " ".join(str(value or "").lower().split())

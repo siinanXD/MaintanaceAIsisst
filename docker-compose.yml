@@ -14,7 +14,96 @@ services:
       retries: 5
     restart: unless-stopped
 
+  mongodb:
+    profiles: ["mongodb"]
+    image: mongodb/mongodb-atlas-local:latest
+    hostname: mongodb
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand({ ping: 1 })"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  mongodb-init:
+    profiles: ["mongodb"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      MONGODB_ATLAS_URI: mongodb://mongodb:27017/?directConnection=true
+      MONGODB_ATLAS_DATABASE: maintenance_ai
+      MONGODB_ATLAS_VECTOR_COLLECTION: knowledge_vectors
+      MONGODB_ATLAS_VECTOR_INDEX: knowledge_vector_index
+      MONGODB_ATLAS_TIMEOUT_MS: "10000"
+      RAG_EMBEDDING_DIMENSIONS: "1536"
+    command: ["python", "scripts/mongodb_init_vector_index.py"]
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    restart: "no"
+
   app:
+    profiles: ["mongodb"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      FLASK_ENV: production
+      FLASK_DEBUG: "0"
+      AUTO_CREATE_DATABASE: "true"
+      DATABASE_URL: postgresql+psycopg://maintenance:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/maintenance
+      UPLOAD_FOLDER: /app/data/uploads
+      DOCUMENTS_FOLDER: /app/documents
+      MANUALS_FOLDER: /app/manuals
+      KNOWLEDGE_FOLDER: /app/knowledge
+      BACKUP_FOLDER: /app/backups
+      LOG_DIR: /app/logs
+      RAG_VECTOR_STORE: mongodb_atlas
+      RAG_CHUNKING_MODE: hybrid_semantic
+      EMBEDDING_PROVIDER: openai
+      MONGODB_ATLAS_URI: mongodb://mongodb:27017/?directConnection=true
+      MONGODB_ATLAS_DATABASE: maintenance_ai
+      MONGODB_ATLAS_VECTOR_COLLECTION: knowledge_vectors
+      MONGODB_ATLAS_VECTOR_INDEX: knowledge_vector_index
+    depends_on:
+      db:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      mongodb-init:
+        condition: service_completed_successfully
+    ports:
+      - "5050:5050"
+    volumes:
+      - maintenance_data:/app/data
+      - maintenance_documents:/app/documents
+      - maintenance_manuals:/app/manuals
+      - maintenance_knowledge:/app/knowledge
+      - maintenance_logs:/app/logs
+      - maintenance_backups:/app/backups
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5050/health/ready', timeout=3).read()"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  app-pgvector:
+    profiles: ["pgvector"]
     build:
       context: .
       dockerfile: Dockerfile
@@ -59,6 +148,62 @@ services:
       start_period: 30s
 
   worker:
+    profiles: ["mongodb"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      FLASK_ENV: production
+      FLASK_DEBUG: "0"
+      AUTO_CREATE_DATABASE: "true"
+      DATABASE_URL: postgresql+psycopg://maintenance:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/maintenance
+      UPLOAD_FOLDER: /app/data/uploads
+      DOCUMENTS_FOLDER: /app/documents
+      MANUALS_FOLDER: /app/manuals
+      KNOWLEDGE_FOLDER: /app/knowledge
+      BACKUP_FOLDER: /app/backups
+      LOG_DIR: /app/logs
+      RAG_VECTOR_STORE: mongodb_atlas
+      RAG_CHUNKING_MODE: hybrid_semantic
+      EMBEDDING_PROVIDER: openai
+      MONGODB_ATLAS_URI: mongodb://mongodb:27017/?directConnection=true
+      MONGODB_ATLAS_DATABASE: maintenance_ai
+      MONGODB_ATLAS_VECTOR_COLLECTION: knowledge_vectors
+      MONGODB_ATLAS_VECTOR_INDEX: knowledge_vector_index
+      WORKER_RAG_REINDEX_ENABLED: "true"
+      WORKER_POLL_SECONDS: "60"
+      WORKER_HEARTBEAT_PATH: /app/data/worker_heartbeat
+    command: ["python", "-m", "app.worker"]
+    depends_on:
+      db:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      mongodb-init:
+        condition: service_completed_successfully
+    volumes:
+      - maintenance_data:/app/data
+      - maintenance_documents:/app/documents
+      - maintenance_manuals:/app/manuals
+      - maintenance_knowledge:/app/knowledge
+      - maintenance_logs:/app/logs
+      - maintenance_backups:/app/backups
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import time, pathlib; p=pathlib.Path('/app/data/worker_heartbeat'); assert p.exists() and time.time()-float(p.read_text())<180"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  worker-pgvector:
+    profiles: ["pgvector"]
     build:
       context: .
       dockerfile: Dockerfile
@@ -80,6 +225,7 @@ services:
       EMBEDDING_PROVIDER: hashing
       WORKER_RAG_REINDEX_ENABLED: "true"
       WORKER_POLL_SECONDS: "60"
+      WORKER_HEARTBEAT_PATH: /app/data/worker_heartbeat
     command: ["python", "-m", "app.worker"]
     depends_on:
       db:
@@ -92,9 +238,21 @@ services:
       - maintenance_logs:/app/logs
       - maintenance_backups:/app/backups
     restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import time, pathlib; p=pathlib.Path('/app/data/worker_heartbeat'); assert p.exists() and time.time()-float(p.read_text())<180"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
 volumes:
   postgres_data:
+  mongodb_data:
+  mongodb_config:
   maintenance_data:
   maintenance_documents:
   maintenance_manuals:

@@ -258,6 +258,43 @@ def test_candidate_ranking_uses_quality_as_score_tiebreaker():
     assert rank_candidates([weak, strong]) == [strong, weak]
 
 
+def test_strict_quality_gate_blocks_draft_knowledge(app, make_user, set_dashboard_permission):
+    """Verify strict quality gate blocks non-reviewed knowledge from retrieval."""
+    user_data = make_user(
+        username="candidate_strict_gate_user",
+        role=Role.PRODUKTION,
+        department_name="Produktion",
+    )
+    set_dashboard_permission(user_data["username"], "documents", can_view=True)
+
+    with app.app_context():
+        app.config["RAG_STRICT_QUALITY_GATE"] = True
+        user = db.session.get(User, user_data["id"])
+        _create_candidate_knowledge_document(
+            title="UC902 Draft Wissen",
+            text="UC902 Draft Hydraulik Sequenz pruefen.",
+            created_by=user.id,
+            quality_status="draft",
+        )
+        _create_candidate_knowledge_document(
+            title="UC902 Approved Wissen",
+            text="UC902 Approved Hydraulik Sequenz pruefen.",
+            created_by=user.id,
+            quality_status="admin_approved",
+        )
+        db.session.commit()
+
+        payload = retrieve_context(
+            "UC902 Hydraulik Sequenz",
+            user,
+            requested_scopes={"documents"},
+        )
+
+    titles = {source["title"] for source in payload["sources"]}
+    assert "UC902 Approved Wissen" in titles
+    assert "UC902 Draft Wissen" not in titles
+
+
 def _create_candidate_knowledge_document(
     *,
     title,

@@ -243,3 +243,40 @@ def test_operations_health_requires_master_admin(client, make_user, auth_headers
     assert payload["database"]["ok"] is True
     assert "background_jobs" in payload
     assert "slow_endpoints" in payload["requests"]
+
+
+def test_readiness_rag_probe_marks_atlas_fallback_as_degraded(app, client, monkeypatch):
+    """Verify configured Atlas fallback degrades RAG readiness."""
+    import app.health.routes as health_routes
+
+    with app.app_context():
+        app.config["RAG_VECTOR_STORE"] = "mongodb_atlas"
+        app.config["MONGODB_ATLAS_URI"] = "mongodb://127.0.0.1:27017"
+        app.config["MONGODB_ATLAS_DATABASE"] = "maintenance_ai"
+        app.config["MONGODB_ATLAS_VECTOR_COLLECTION"] = "knowledge_vectors"
+        app.config["MONGODB_ATLAS_VECTOR_INDEX"] = "knowledge_vector_index"
+
+    monkeypatch.setattr(
+        health_routes,
+        "atlas_vector_store_health",
+        lambda config=None: {
+            "configured": True,
+            "active": False,
+            "connected": False,
+            "index_ready": False,
+            "fallback_active": True,
+            "reason": "connection_failed",
+            "ok": False,
+        },
+    )
+
+    response = client.get("/health/ready")
+    payload = response.get_json()
+    rag = payload["components"]["rag"]
+
+    assert response.status_code == 200
+    assert payload["ready"] is False
+    assert "rag" in payload["degraded_components"]
+    assert rag["ok"] is False
+    assert rag["atlas"]["fallback_active"] is True
+    assert rag["reason"] == "connection_failed"

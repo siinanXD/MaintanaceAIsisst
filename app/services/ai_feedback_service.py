@@ -4,6 +4,7 @@ import json
 
 from app.extensions import db
 from app.models import AIAuditEvent, AIFeedback, ChatMessage
+from app.services.langfuse_eval_score_service import submit_user_feedback_score
 
 ALLOWED_FEEDBACK_RATINGS = {"helpful", "not_helpful", "partially_helpful"}
 MAX_FEEDBACK_SOURCES = 12
@@ -52,6 +53,7 @@ def record_ai_feedback(data, user):
     )
     db.session.add(feedback_entry)
     db.session.flush()
+    submit_user_feedback_score(chat_message, feedback_entry)
     return feedback_entry, None, 201
 
 

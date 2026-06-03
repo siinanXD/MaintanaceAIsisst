@@ -8,6 +8,12 @@ from app.models import GeneratedDocument, MachineManual
 from app.security import has_dashboard_permission
 from app.services.ai_prompting import permission_denied_answer
 from app.services.ai_question_normalizer import detect_department, normalize_text
+from app.services.ai_structured_context_helpers import (
+    build_structured_context,
+    inherited_structured_scope,
+    is_list_follow_up,
+    mentions_employee_documents,
+)
 from app.services.ai_structured_source_service import (
     document_source_cards,
     manual_source_cards,
@@ -20,13 +26,22 @@ MAX_ANSWER_ITEMS = 10
 OUTDATED_STATUSES = {"outdated", "stale", "veraltet"}
 
 
-def answer_document_structured_question(message, user):
+def answer_document_structured_question(message, user, conversation_context=None):
     """Return a structured document answer for supported metadata questions."""
     text = normalize_text(message)
-    if not _is_document_question(text) or _is_content_question(text):
+    if mentions_employee_documents(text) and any(
+        term in text for term in ("mitarbeiter", "personal", "employee")
+    ):
+        return None
+    if not _is_document_question(text) and not _is_document_follow_up(text, conversation_context):
+        return None
+    if _is_content_question(text):
         return None
     if not has_dashboard_permission(user, "documents", "view"):
         return _permission_denied()
+    follow_up_result = _answer_document_follow_up(message, user, conversation_context)
+    if follow_up_result:
+        return follow_up_result
     if _is_recent_question(text):
         return _answer_recent_documents(user)
     if _is_outdated_question(text):
@@ -42,6 +57,110 @@ def answer_document_structured_question(message, user):
     return None
 
 
+def _answer_document_follow_up(message, user, conversation_context):
+    """Return a filtered document answer for structured follow-up questions."""
+    text = normalize_text(message)
+    if not _is_document_follow_up(text, conversation_context):
+        return None
+
+    inherited = inherited_structured_scope(conversation_context)
+    query = str(inherited.get("query") or "").strip()
+    items = _items_for_query(query, user)
+    if not items:
+        return None
+
+    department = detect_department(message) or str(inherited.get("department") or "").strip()
+    machine = _requested_machine(message, user, allow_name_only=True) or str(
+        inherited.get("machine") or ""
+    ).strip()
+    if department:
+        items = [
+            item
+            for item in items
+            if normalize_text(department) in normalize_text(item.get("department") or "")
+        ]
+    if machine:
+        items = [
+            item
+            for item in items
+            if normalize_text(machine) in normalize_text(item.get("machine") or "")
+        ]
+
+    title = _follow_up_title_for_query(query, department, machine)
+    response_type = query or "document_follow_up"
+    return _document_result(
+        response_type,
+        title,
+        items,
+        user,
+        build_structured_context(
+            "documents",
+            query=query or response_type,
+            department=department,
+            machine=machine,
+        ),
+    )
+
+
+def _items_for_query(query, user):
+    """Return visible document metadata rows for one structured query."""
+    if query == "document_outdated":
+        documents = [
+            document
+            for document in visible_documents_query(user).limit(MAX_ITEMS).all()
+            if _is_outdated_document(document)
+        ]
+        return [_document_item(document) for document in documents]
+    if query == "document_recent":
+        documents = visible_documents_query(user).limit(MAX_ITEMS).all()
+        manuals = visible_manuals_query(user).limit(MAX_ITEMS).all()
+        return sorted(
+            [_document_item(document) for document in documents]
+            + [_manual_item(manual) for manual in manuals],
+            key=lambda item: item.get("updated_at") or item.get("created_at") or "",
+            reverse=True,
+        )[:MAX_ITEMS]
+    if query == "document_this_week":
+        start = _week_start()
+        documents = (
+            visible_documents_query(user)
+            .filter(GeneratedDocument.created_at >= start)
+            .order_by(GeneratedDocument.created_at.desc(), GeneratedDocument.id.desc())
+            .limit(MAX_ITEMS)
+            .all()
+        )
+        manuals = (
+            visible_manuals_query(user)
+            .filter(MachineManual.created_at >= start)
+            .order_by(MachineManual.created_at.desc(), MachineManual.id.desc())
+            .limit(MAX_ITEMS)
+            .all()
+        )
+        return sorted(
+            [_document_item(document) for document in documents]
+            + [_manual_item(manual) for manual in manuals],
+            key=lambda item: item.get("created_at") or "",
+            reverse=True,
+        )[:MAX_ITEMS]
+    if query in {"document_department_list", "document_machine_list"}:
+        return []
+    return []
+
+
+def _follow_up_title_for_query(query, department, machine):
+    """Return a German title for a document follow-up answer."""
+    if machine:
+        return f"Dokumente zu {machine}"
+    if department:
+        return f"Dokumente {department}"
+    mapping = {
+        "document_outdated": "Veraltete Dokumente",
+        "document_recent": "Zuletzt geaenderte Dokumente",
+        "document_this_week": "Diese Woche hochgeladen",
+    }
+    return mapping.get(query, "Dokumente")
+
+
 def _permission_denied():
     """Return a permission-denied document answer."""
     return {
@@ -50,7 +169,7 @@ def _permission_denied():
         "data": [],
         "sources": [],
         "scope": "documents",
-        "structured_context": {"entity_type": "documents"},
+        "structured_context": build_structured_context("documents"),
     }
 
 
@@ -64,7 +183,13 @@ def _answer_recent_documents(user):
         key=lambda item: item.get("updated_at") or item.get("created_at") or "",
         reverse=True,
     )[:MAX_ITEMS]
-    return _document_result("document_recent", "Zuletzt geaenderte Dokumente", items, user)
+    return _document_result(
+        "document_recent",
+        "Zuletzt geaenderte Dokumente",
+        items,
+        user,
+        build_structured_context("documents", query="document_recent"),
+    )
 
 
 def _answer_outdated_documents(user):
@@ -75,7 +200,13 @@ def _answer_outdated_documents(user):
         if _is_outdated_document(document)
     ]
     items = [_document_item(document) for document in documents]
-    return _document_result("document_outdated", "Veraltete Dokumente", items, user)
+    return _document_result(
+        "document_outdated",
+        "Veraltete Dokumente",
+        items,
+        user,
+        build_structured_context("documents", query="document_outdated"),
+    )
 
 
 def _answer_this_week_documents(user):
@@ -101,7 +232,13 @@ def _answer_this_week_documents(user):
         key=lambda item: item.get("created_at") or "",
         reverse=True,
     )[:MAX_ITEMS]
-    return _document_result("document_this_week", "Diese Woche hochgeladen", items, user)
+    return _document_result(
+        "document_this_week",
+        "Diese Woche hochgeladen",
+        items,
+        user,
+        build_structured_context("documents", query="document_this_week"),
+    )
 
 
 def _answer_department_documents(user, department):
@@ -128,6 +265,11 @@ def _answer_department_documents(user, department):
         f"Dokumente {department}",
         items,
         user,
+        build_structured_context(
+            "documents",
+            query="document_department_list",
+            department=department,
+        ),
     )
 
 
@@ -146,10 +288,20 @@ def _answer_machine_documents(user, machine):
     items = [_document_item(document) for document in documents] + [
         _manual_item(manual) for manual in manuals
     ]
-    return _document_result("document_machine_list", f"Dokumente zu {machine}", items, user)
+    return _document_result(
+        "document_machine_list",
+        f"Dokumente zu {machine}",
+        items,
+        user,
+        build_structured_context(
+            "documents",
+            query="document_machine_list",
+            machine=machine,
+        ),
+    )
 
 
-def _document_result(response_type, title, items, user):
+def _document_result(response_type, title, items, user, structured_context):
     """Return a structured document result."""
     answer = _format_document_answer(title, items)
     documents = [item["record"] for item in items if item["kind"] == "generated_document"]
@@ -172,7 +324,7 @@ def _document_result(response_type, title, items, user):
         },
         "sources": sources,
         "scope": "documents",
-        "structured_context": {"entity_type": "documents"},
+        "structured_context": structured_context,
     }
 
 
@@ -231,10 +383,10 @@ def _format_document_answer(title, items):
     return "\n".join(lines)
 
 
-def _requested_machine(message, user):
+def _requested_machine(message, user, allow_name_only=False):
     """Return a visible machine name mentioned in the question."""
     text = normalize_text(message)
-    if not any(term in text for term in ("maschine", "anlage")):
+    if not allow_name_only and not any(term in text for term in ("maschine", "anlage")):
         return ""
     for machine_name in _visible_machine_names(user):
         if machine_name and normalize_text(machine_name) in text:
@@ -330,3 +482,11 @@ def _is_outdated_question(text):
 def _is_this_week_question(text):
     """Return whether the text asks for this week's uploads."""
     return "diese woche" in text and any(term in text for term in ("hochgeladen", "erstellt"))
+
+
+def _is_document_follow_up(text, conversation_context):
+    """Return whether a follow-up should stay on structured document metadata."""
+    if not is_list_follow_up(text):
+        return False
+    inherited = inherited_structured_scope(conversation_context)
+    return inherited.get("entity_type") == "documents"
