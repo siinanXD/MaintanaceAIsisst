@@ -56,8 +56,9 @@ yarn-error.log*
 .DS_Store
 Thumbs.db
 
-# Misc
-.claude/
+# Local AI assistant tooling (optional, not required for app runtime)
+.agents/
+agent.md
 .codex/
 .codex_tmp/
 .codex_pytest_tmp/

@@ -51,7 +51,7 @@ flowchart LR
 4. Antwort + **Quellen** + Audit/Trace für Admins  
 
 **Sprechertext (≈45 s):**  
-„Nicht jede Frage geht ans LLM. Zähler- und Listenfragen beantwortet das System strukturiert aus der Datenbank. Komplexe Fragen nutzen Retrieval: relevante Chunks, dann Generierung. Temperature und Prompt-Versionen sind konfigurierbar; ich habe Mock und OpenAI verglichen – siehe Vergleichstabelle im Repo unter docs/MASTERSCHOOL_PROVIDER_VERGLEICH.md.“
+„Nicht jede Frage geht ans LLM. Zähler- und Listenfragen beantwortet das System strukturiert aus der Datenbank. Komplexe Fragen nutzen Retrieval: relevante Chunks, dann Generierung. Temperature und Prompt-Versionen sind konfigurierbar; ich habe Mock und OpenAI verglichen – siehe Vergleichstabelle im Repo unter docs/internal/MASTERSCHOOL_PROVIDER_VERGLEICH.md.“
 
 ---
 

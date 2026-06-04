@@ -233,8 +233,7 @@ Before releasing to production, use
 [`docs/PRODUCTION_DEPLOYMENT_CHECKLIST.md`](docs/PRODUCTION_DEPLOYMENT_CHECKLIST.md)
 to verify configuration, secrets, migrations, health checks, observability,
 governance, reindexing, backups and rollback readiness.
-The short final RC summary is tracked in
-[`docs/FINAL_RELEASE_CANDIDATE.md`](docs/FINAL_RELEASE_CANDIDATE.md).
+Release history is tracked in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Configuration
 
@@ -460,7 +459,9 @@ tests/                  # pytest suite, SQLite in-memory
 docs/
 |-- API_PROTOCOL.md      # endpoint reference
 |-- FEATURES.md          # feature boundaries
-`-- screenshots/
+|-- ROADMAP.md           # maintainer notes and open debt
+|-- screenshots/
+`-- internal/            # presentation and session notes (optional)
 ```
 
 ## Architecture
@@ -513,7 +514,6 @@ Current implementation:
 - `rag_service.py` exposes the stable RAG facade; `langgraph_rag_workflow.py` contains the modular LangGraph orchestration with a deterministic fallback runner. See `docs/LANGGRAPH_RAG_WORKFLOW.md`.
 - `retrieval_service.py` remains the single retrieval orchestration layer. Structured SQL retrieval, vector retrieval and keyword fallback stay separated as components; see `docs/AI_RAG_ARCHITECTURE.md`.
 - See `docs/MONGODB_ATLAS_VECTOR_SEARCH.md` for Atlas Vector Search setup, index configuration and fallback behavior.
-- The latest conservative AI/RAG cleanup report is in `docs/AI_RAG_CLEANUP_REPORT.md`.
 - `ai_traceability_service.py` stores metadata-only answer traces connected to chat messages and AI audit events. See `docs/AI_ANSWER_TRACEABILITY.md`.
 - `ai_observability_service.py` aggregates existing audit, chat and retrieval telemetry for the AI Admin dashboard. See `docs/AI_OBSERVABILITY.md`.
 - `knowledge_gap_service.py` records open `KnowledgeGap` entries when AI chat cannot find reliable RAG/source context; recent duplicate questions are folded into one gap.
@@ -616,6 +616,21 @@ Versioning policy: `/api/v1` is stable. Breaking API changes should be added
 under a new major prefix such as `/api/v2`.
 
 See [`docs/API_PROTOCOL.md`](docs/API_PROTOCOL.md) for the full endpoint reference.
+
+## Documentation
+
+| Topic | Document |
+| --- | --- |
+| Features and scope | [`docs/FEATURES.md`](docs/FEATURES.md) |
+| RAG architecture | [`docs/AI_RAG_ARCHITECTURE.md`](docs/AI_RAG_ARCHITECTURE.md) |
+| Production deploy | [`docs/PRODUCTION_DEPLOYMENT_CHECKLIST.md`](docs/PRODUCTION_DEPLOYMENT_CHECKLIST.md) |
+| API reference | [`docs/API_PROTOCOL.md`](docs/API_PROTOCOL.md) |
+| Demo questions | [`docs/AI_DEMO_QUESTIONS.md`](docs/AI_DEMO_QUESTIONS.md) |
+| Maintainer roadmap | [`docs/ROADMAP.md`](docs/ROADMAP.md) |
+
+Additional deep dives (observability, Langfuse, chunking, Atlas, governance) live
+under `docs/`. Session-specific notes are in `docs/internal/`. Optional AI pair
+programming rules for contributors are in [`AGENTS.md`](AGENTS.md).
 
 ## Running Tests
 

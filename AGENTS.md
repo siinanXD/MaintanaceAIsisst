@@ -1,5 +1,8 @@
 ﻿# Maintenance Assistant App Agent Instructions
 
+Optional contributor notes for AI-assisted development in Cursor. Not required to
+build, test, or deploy the application. Maintainer roadmap: `docs/ROADMAP.md`.
+
 You are a senior software engineer working on the Maintenance Assistant App.
 
 ## Scope
