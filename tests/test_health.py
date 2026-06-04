@@ -210,9 +210,7 @@ def test_database_health_allows_it_and_master_admin(client, make_user, auth_head
         assert payload["schema"]["ok"] is True
         assert isinstance(payload["sqlite_files"], list)
         assert "task" in payload["tables"]
-        assert {"tasks", "errors", "employees", "employee_documents"} <= set(
-            payload["counts"]
-        )
+        assert {"tasks", "errors", "employees", "employee_documents"} <= set(payload["counts"])
 
 
 def test_operations_health_requires_master_admin(client, make_user, auth_headers):

@@ -2399,6 +2399,516 @@ def test_ai_chat_employee_document_count_and_followup(
     assert followup_payload["type"] != "structured_scope"
 
 
+def test_ai_chat_employee_document_count_followup_welche_davon(
+    client,
+    app,
+    make_user,
+    make_employee,
+    auth_headers,
+):
+    """Verify a short follow-up after document count lists employees with documents."""
+    admin = make_user(
+        username="ai_employee_document_short_followup_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    with_documents_id = make_employee(
+        personnel_number="P-AI-DOC-SF-1",
+        name="Anna Dokument Kurz",
+        department="Produktion",
+    )
+    make_employee(
+        personnel_number="P-AI-DOC-SF-2",
+        name="Bernd Ohne Dokument Kurz",
+        department="Produktion",
+    )
+    with app.app_context():
+        db.session.add(
+            EmployeeDocument(
+                employee_id=with_documents_id,
+                original_filename="zertifikat.pdf",
+                stored_filename="zertifikat-demo.pdf",
+                content_type="application/pdf",
+            )
+        )
+        db.session.commit()
+
+    headers = auth_headers(admin["username"])
+    session_id = "employee-document-short-followup"
+
+    count_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Wie viele Mitarbeiter mit Dokumenten haben wir?",
+            "session_id": session_id,
+        },
+    )
+    followup_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Welche davon?",
+            "session_id": session_id,
+        },
+    )
+
+    count_payload = count_response.get_json()
+    followup_payload = followup_response.get_json()
+    assert count_response.status_code == 200
+    assert count_payload["type"] == "employee_document_count"
+    assert followup_response.status_code == 200
+    assert followup_payload["type"] == "employee_document_list"
+    assert followup_payload["data"]["count"] == 1
+    assert followup_payload["data"]["items"][0]["name"] == "Anna Dokument Kurz"
+    assert followup_payload["type"] != "structured_scope"
+
+
+def test_ai_chat_employee_document_list_followup_welche_only(
+    client,
+    app,
+    make_user,
+    make_employee,
+    auth_headers,
+):
+    """Verify bare 'welche' after an employee document list shows stored files."""
+    admin = make_user(
+        username="ai_employee_document_welche_files_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    with_documents_id = make_employee(
+        personnel_number="P-AI-DOC-WF-1",
+        name="Anna Datei Followup",
+        department="Produktion",
+    )
+    with app.app_context():
+        db.session.add(
+            EmployeeDocument(
+                employee_id=with_documents_id,
+                original_filename="arbeitsvertrag.pdf",
+                stored_filename="arbeitsvertrag-demo.pdf",
+                content_type="application/pdf",
+            )
+        )
+        db.session.commit()
+
+    headers = auth_headers(admin["username"])
+    session_id = "employee-document-welche-files"
+
+    list_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Welche Mitarbeiter haben Dokumente hinterlegt?",
+            "session_id": session_id,
+        },
+    )
+    followup_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={"message": "welche", "session_id": session_id},
+    )
+
+    list_payload = list_response.get_json()
+    followup_payload = followup_response.get_json()
+    assert list_response.status_code == 200
+    assert list_payload["type"] == "employee_document_list"
+    assert followup_response.status_code == 200
+    assert followup_payload["type"] == "employee_stored_document_list"
+    assert followup_payload["data"]["count"] == 1
+    assert followup_payload["data"]["items"][0]["original_filename"] == "arbeitsvertrag.pdf"
+    assert followup_payload["type"] != "assistant"
+
+
+def test_ai_chat_employee_stored_document_list_question(
+    client,
+    app,
+    make_user,
+    make_employee,
+    auth_headers,
+):
+    """Verify questions about stored employee files list document metadata."""
+    admin = make_user(
+        username="ai_employee_stored_document_list_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    with_documents_id = make_employee(
+        personnel_number="P-AI-DOC-FILES-1",
+        name="Ben Dateien",
+        department="Instandhaltung",
+    )
+    with app.app_context():
+        db.session.add(
+            EmployeeDocument(
+                employee_id=with_documents_id,
+                original_filename="qualifikation.pdf",
+                stored_filename="qualifikation-demo.pdf",
+                content_type="application/pdf",
+            )
+        )
+        db.session.commit()
+
+    headers = auth_headers(admin["username"])
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Welche Dokumente wurden bei Mitarbeitern hinterlegt?",
+            "session_id": "employee-stored-document-list",
+        },
+    )
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "employee_stored_document_list"
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["items"][0]["original_filename"] == "qualifikation.pdf"
+    assert payload["data"]["items"][0]["employee_name"] == "Ben Dateien"
+    assert "qualifikation.pdf" in payload["answer"]
+    assert payload["type"] != "employee_document_list"
+
+
+def test_ai_chat_employee_stored_document_count_question(
+    client,
+    app,
+    make_user,
+    make_employee,
+    auth_headers,
+):
+    """Verify file-count questions count document rows, not employees."""
+    admin = make_user(
+        username="ai_employee_stored_document_count_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    employee_id = make_employee(
+        personnel_number="P-AI-DOC-COUNT-1",
+        name="Clara Zwei Dateien",
+        department="Produktion",
+    )
+    with app.app_context():
+        db.session.add_all(
+            [
+                EmployeeDocument(
+                    employee_id=employee_id,
+                    original_filename="a.pdf",
+                    stored_filename="a-demo.pdf",
+                    content_type="application/pdf",
+                ),
+                EmployeeDocument(
+                    employee_id=employee_id,
+                    original_filename="b.pdf",
+                    stored_filename="b-demo.pdf",
+                    content_type="application/pdf",
+                ),
+            ]
+        )
+        db.session.commit()
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(admin["username"]),
+        json={
+            "message": "Wie viele Mitarbeiterdokumente sind hinterlegt?",
+            "session_id": "employee-stored-document-count",
+        },
+    )
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "employee_stored_document_count"
+    assert payload["data"]["count"] == 2
+    assert (payload.get("confidence") or {}).get("level") == "high"
+
+
+def test_ai_chat_employee_stored_documents_for_named_employee(
+    client,
+    app,
+    make_user,
+    make_employee,
+    auth_headers,
+):
+    """Verify per-employee questions list only that employee's files."""
+    admin = make_user(
+        username="ai_employee_named_document_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    anna_id = make_employee(
+        personnel_number="P-AI-DOC-ANNA-1",
+        name="Anna Schmidt",
+        department="Produktion",
+    )
+    make_employee(
+        personnel_number="P-AI-DOC-BEN-1",
+        name="Ben Mueller",
+        department="Instandhaltung",
+    )
+    with app.app_context():
+        db.session.add(
+            EmployeeDocument(
+                employee_id=anna_id,
+                original_filename="anna-only.pdf",
+                stored_filename="anna-only-demo.pdf",
+                content_type="application/pdf",
+            )
+        )
+        db.session.commit()
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(admin["username"]),
+        json={
+            "message": "Welche Dokumente hat Anna Schmidt?",
+            "session_id": "employee-named-document-list",
+        },
+    )
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "employee_stored_document_list"
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["items"][0]["original_filename"] == "anna-only.pdf"
+    assert payload["sources"][0]["type"] == "employee_document"
+
+
+def test_ai_chat_employee_document_three_turn_session(
+    client,
+    app,
+    make_user,
+    make_employee,
+    auth_headers,
+):
+    """Verify count -> employee list -> file list in one chat session."""
+    admin = make_user(
+        username="ai_employee_three_turn_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    employee_id = make_employee(
+        personnel_number="P-AI-DOC-3T-1",
+        name="Erika Drei Turn",
+        department="Produktion",
+    )
+    with app.app_context():
+        db.session.add(
+            EmployeeDocument(
+                employee_id=employee_id,
+                original_filename="dreiturn.pdf",
+                stored_filename="dreiturn-demo.pdf",
+                content_type="application/pdf",
+            )
+        )
+        db.session.commit()
+
+    headers = auth_headers(admin["username"])
+    session_id = "employee-document-three-turn"
+    count_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Wie viele Mitarbeiter mit Dokumenten haben wir?",
+            "session_id": session_id,
+        },
+    )
+    list_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={"message": "Welche davon?", "session_id": session_id},
+    )
+    files_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={"message": "welche", "session_id": session_id},
+    )
+    count_payload = count_response.get_json()
+    list_payload = list_response.get_json()
+    files_payload = files_response.get_json()
+    assert count_payload["type"] == "employee_document_count"
+    assert list_payload["type"] == "employee_document_list"
+    assert files_payload["type"] == "employee_stored_document_list"
+    assert files_payload["data"]["items"][0]["original_filename"] == "dreiturn.pdf"
+
+
+def test_calculate_ai_confidence_structured_employee_documents():
+    """Verify structured employee document answers use high SQL confidence."""
+    confidence = calculate_ai_confidence(
+        "Welche Mitarbeiter haben Dokumente hinterlegt?",
+        [{"type": "employee", "id": 1}],
+        response_type="employee_document_list",
+    )
+    assert confidence.level == "high"
+    assert confidence.score >= 70
+
+
+def test_calculate_ai_confidence_structured_scope_local_answer():
+    """Verify structured scope answers use high SQL confidence via local_answer."""
+    confidence = calculate_ai_confidence(
+        "Wie viele offene Aufgaben?",
+        [{"type": "task", "id": 1}],
+        response_type="structured_scope",
+        result={"diagnostics": {"status": "local_answer"}},
+    )
+    assert confidence.level == "high"
+
+
+def test_ai_chat_employee_name_refinement_after_document_list(
+    client,
+    app,
+    make_user,
+    make_employee,
+    auth_headers,
+):
+    """Verify 'nur <name>' after a document list filters to one employee's files."""
+    admin = make_user(
+        username="ai_employee_name_refinement_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    anna_id = make_employee(
+        personnel_number="P-AI-NAME-REF-1",
+        name="Anna Refinement",
+        department="Produktion",
+    )
+    ben_id = make_employee(
+        personnel_number="P-AI-NAME-REF-2",
+        name="Ben Refinement",
+        department="Produktion",
+    )
+    with app.app_context():
+        db.session.add_all(
+            [
+                EmployeeDocument(
+                    employee_id=anna_id,
+                    original_filename="anna-ref.pdf",
+                    stored_filename="anna-ref-demo.pdf",
+                    content_type="application/pdf",
+                ),
+                EmployeeDocument(
+                    employee_id=ben_id,
+                    original_filename="ben-ref.pdf",
+                    stored_filename="ben-ref-demo.pdf",
+                    content_type="application/pdf",
+                ),
+            ]
+        )
+        db.session.commit()
+
+    headers = auth_headers(admin["username"])
+    session_id = "employee-name-refinement"
+
+    client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Welche Dokumente wurden bei Mitarbeitern hinterlegt?",
+            "session_id": session_id,
+        },
+    )
+    followup = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={"message": "nur Anna Refinement", "session_id": session_id},
+    )
+    payload = followup.get_json()
+    assert followup.status_code == 200
+    assert payload["type"] == "employee_stored_document_list"
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["items"][0]["original_filename"] == "anna-ref.pdf"
+
+
+def test_ai_chat_outdated_documents_not_routed_to_employees(
+    client,
+    make_user,
+    auth_headers,
+):
+    """Verify module document questions do not use employee document handlers."""
+    admin = make_user(
+        username="ai_outdated_documents_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(admin["username"]),
+        json={"message": "Welche veralteten Dokumente gibt es?", "session_id": "outdated-docs"},
+    )
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] != "employee_document_list"
+    assert payload["type"] != "employee_stored_document_list"
+
+
+def test_ai_chat_employee_department_count_document_followup(
+    client,
+    app,
+    make_user,
+    make_employee,
+    auth_headers,
+):
+    """Verify department count follow-ups can refine to employees with documents."""
+    admin = make_user(
+        username="ai_employee_department_document_followup_admin",
+        role=Role.MASTER_ADMIN,
+        department_name=None,
+    )
+    with_documents_id = make_employee(
+        personnel_number="P-AI-DEPT-DOC-1",
+        name="Eva Dept Dokument",
+        department="Produktion",
+    )
+    make_employee(
+        personnel_number="P-AI-DEPT-DOC-2",
+        name="Frank Dept Ohne Dokument",
+        department="Produktion",
+    )
+    make_employee(
+        personnel_number="P-AI-DEPT-DOC-3",
+        name="Greta IT Dokument",
+        department="IT",
+    )
+    with app.app_context():
+        db.session.add(
+            EmployeeDocument(
+                employee_id=with_documents_id,
+                original_filename="produktion.pdf",
+                stored_filename="produktion-demo.pdf",
+                content_type="application/pdf",
+            )
+        )
+        db.session.commit()
+
+    headers = auth_headers(admin["username"])
+    session_id = "employee-department-document-followup"
+
+    count_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Wie viele Mitarbeiter hat die Produktion?",
+            "session_id": session_id,
+        },
+    )
+    followup_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Welche davon haben Dokumente hinterlegt?",
+            "session_id": session_id,
+        },
+    )
+
+    count_payload = count_response.get_json()
+    followup_payload = followup_response.get_json()
+    assert count_response.status_code == 200
+    assert count_payload["type"] == "employee_department_count"
+    assert followup_response.status_code == 200
+    assert followup_payload["type"] == "employee_document_list"
+    assert followup_payload["data"]["department"] == "Produktion"
+    assert followup_payload["data"]["count"] == 1
+    assert followup_payload["data"]["items"][0]["name"] == "Eva Dept Dokument"
+    assert "Greta IT Dokument" not in json.dumps(followup_payload, ensure_ascii=True)
+
+
 def test_ai_chat_employee_department_count_followup_lists_department_members(
     client,
     make_user,
@@ -2462,6 +2972,206 @@ def test_ai_chat_employee_department_count_followup_lists_department_members(
     names = {item["name"] for item in followup_payload["data"]["items"]}
     assert names == {"Eva Followup Produktion", "Frank Followup Produktion"}
     assert followup_payload["type"] != "structured_scope"
+
+
+def test_ai_chat_employee_count_followup_lists_all_visible_employees(
+    app,
+    client,
+    make_user,
+    make_employee,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify generic employee count follow-ups list all visible employees."""
+    user = make_user(username="ai_employee_total_followup_user")
+    make_employee(
+        personnel_number="P-AI-TOTAL-FU-1",
+        name="Eva Total Followup",
+        department="Produktion",
+    )
+    make_employee(
+        personnel_number="P-AI-TOTAL-FU-2",
+        name="Frank Total Followup",
+        department="IT",
+    )
+    set_dashboard_permission(
+        user["username"],
+        "employees",
+        can_view=True,
+        employee_access_level="basic",
+    )
+    headers = auth_headers(user["username"])
+    session_id = "employee-total-followup"
+
+    count_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Wie viele Mitarbeiter gibt es?",
+            "session_id": session_id,
+        },
+    )
+    followup_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Welche davon?",
+            "session_id": session_id,
+        },
+    )
+
+    count_payload = count_response.get_json()
+    followup_payload = followup_response.get_json()
+    assert count_response.status_code == 200
+    assert count_payload["type"] == "employee_count"
+    assert followup_response.status_code == 200
+    assert followup_payload["type"] == "employee_list"
+    assert followup_payload["data"]["count"] == 1
+    names = {item["name"] for item in followup_payload["data"]["items"]}
+    assert names == {"Eva Total Followup"}
+
+
+def test_ai_chat_multi_scope_count_returns_both_module_totals(
+    client,
+    make_user,
+    make_employee,
+    make_task,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify multi-scope count questions return counts for each requested module."""
+    user = make_user(username="ai_multi_count_user")
+    make_employee(
+        personnel_number="P-MULTI-COUNT-1",
+        name="Multi Count Employee",
+        department="Produktion",
+    )
+    make_task("Multi Count Task", creator_username=user["username"])
+    set_dashboard_permission(
+        user["username"],
+        "employees",
+        can_view=True,
+        employee_access_level="basic",
+    )
+    set_dashboard_permission(user["username"], "tasks", can_view=True)
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Wie viele Mitarbeiter und Tasks gibt es?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "multi_count"
+    assert len(payload["data"]["scopes"]) == 2
+    scope_counts = {item["scope"]: item["count"] for item in payload["data"]["scopes"]}
+    assert scope_counts["employees"] == 1
+    assert scope_counts["tasks"] == 1
+    assert len(payload["sources"]) == 2
+
+
+def test_ai_chat_document_department_list_followup_reuses_department_scope(
+    app,
+    client,
+    make_user,
+    make_task,
+    make_document,
+    set_dashboard_permission,
+    auth_headers,
+):
+    """Verify document follow-ups after department lists keep the department filter."""
+    user = make_user(username="ai_document_department_followup_user")
+    visible_task_id = make_task("Doku Followup Produktion", creator_username=user["username"])
+    hidden_task_id = make_task(
+        "Doku Followup IT",
+        creator_username=user["username"],
+        department_name="IT",
+    )
+    visible_document_id = make_document(
+        visible_task_id,
+        created_by=user["id"],
+        relative_path="2026/05/document-followup-visible.html",
+        department="Produktion",
+        machine="Anlage Followup A",
+    )
+    hidden_document_id = make_document(
+        hidden_task_id,
+        created_by=user["id"],
+        relative_path="2026/05/document-followup-hidden.html",
+        department="IT",
+        machine="Anlage Followup B",
+    )
+    _update_generated_document(app, visible_document_id, title="Bericht Followup Produktion")
+    _update_generated_document(app, hidden_document_id, title="Bericht Followup IT")
+    set_dashboard_permission(user["username"], "documents", can_view=True)
+    headers = auth_headers(user["username"])
+    session_id = "document-department-followup"
+
+    first_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Welche Dokumente gehoeren zur Produktion?",
+            "session_id": session_id,
+        },
+    )
+    followup_response = client.post(
+        "/api/v1/ai/chat",
+        headers=headers,
+        json={
+            "message": "Welche davon?",
+            "session_id": session_id,
+        },
+    )
+
+    first_payload = first_response.get_json()
+    followup_payload = followup_response.get_json()
+    assert first_response.status_code == 200
+    assert first_payload["type"] == "document_department_list"
+    assert followup_response.status_code == 200
+    assert followup_payload["type"] == "document_department_list"
+    assert followup_payload["data"]["count"] == 1
+    assert followup_payload["data"]["items"][0]["title"] == "Bericht Followup Produktion"
+
+
+def test_ai_chat_machine_structured_preempts_general_hybrid(
+    client,
+    make_user,
+    make_machine,
+    make_error_entry,
+    set_dashboard_permission,
+    auth_headers,
+    monkeypatch,
+):
+    """Verify machine structured answers run before forced general hybrid mode."""
+    user = make_user(username="ai_machine_routing_order_user")
+    machine_name = "Routing Presse 99"
+    make_machine(name=machine_name)
+    make_error_entry(
+        machine=machine_name,
+        error_code="E-ROUTING",
+        title="Routing Stoerung",
+        description="Stoerung an Routing Presse 99.",
+        solution="Reset durchfuehren.",
+    )
+    set_dashboard_permission(user["username"], "machines", can_view=True)
+    set_dashboard_permission(user["username"], "errors", can_view=True)
+    monkeypatch.setattr(
+        "app.ai.chat_answers.should_use_general_hybrid_mode",
+        lambda *_args, **_kwargs: True,
+    )
+
+    response = client.post(
+        "/api/v1/ai/chat",
+        headers=auth_headers(user["username"]),
+        json={"message": "Welche stoerungen an Routing Presse 99?"},
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["type"] == "machine_incidents"
+    assert payload["data"]["machine"]["name"] == machine_name
 
 
 def test_ai_chat_inventory_low_stock_followup_filters_by_machine(

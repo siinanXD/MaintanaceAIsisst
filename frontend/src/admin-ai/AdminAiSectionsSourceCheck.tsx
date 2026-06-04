@@ -15,7 +15,9 @@ export type AdminAiSourceCheckProps = {
   readonly sourceCheckState: AdminAiSourceCheckState;
 };
 
-type AdminAiSourceTestPanelProps = Partial<AdminAiSourceCheckProps>;
+type AdminAiSourceTestPanelProps = Partial<AdminAiSourceCheckProps> & {
+  readonly layout?: "default" | "arena";
+};
 
 /**
  * Return the submit button value that triggered a source test form submit.
@@ -31,6 +33,7 @@ function sourceTestSubmitIntent(event: FormEvent<HTMLFormElement>): string | und
  * Render the shared source test form and result panel.
  */
 export function AdminAiSourceTestPanel({
+  layout = "default",
   onCreateFaq = () => {},
   onFeedback = () => {},
   onReset = () => {},
@@ -38,12 +41,15 @@ export function AdminAiSourceTestPanel({
   sourceCheckState = EMPTY_ADMIN_AI_SOURCE_CHECK_STATE
 }: AdminAiSourceTestPanelProps): ReactNode {
   const roleAccess = useAdminAiRoleAccess();
+  const isArenaLayout = layout === "arena";
+  const formClassName = isArenaLayout ? "stack source-test-form source-test-form-card" : "panel stack source-test-form";
+  const resultClassName = isArenaLayout ? "source-test-result source-test-result-card" : "panel source-test-result";
 
   return (
     <>
-      <div className="source-test-layout">
+      <div className={`source-test-layout${isArenaLayout ? " is-arena" : ""}`}>
         <form
-          className="panel stack source-test-form"
+          className={formClassName}
           data-ai-source-test-form
           onSubmit={(event) => {
             event.preventDefault();
@@ -75,19 +81,21 @@ export function AdminAiSourceTestPanel({
               className="input input-bordered"
               name="question"
               placeholder="z. B. Warum fällt Presse 3 bei Hydraulikdruck ab?"
-              rows={5}
+              rows={isArenaLayout ? 3 : 5}
             />
           </label>
-          <label>
-            <span>Optionaler Kontext</span>
-            <textarea
-              className="input input-bordered"
-              name="context"
-              placeholder="Maschine, Abteilung, Fehlercode oder bekannte Quelle"
-              rows={4}
-            />
-          </label>
-          <div className="toolbar">
+          {isArenaLayout ? null : (
+            <label>
+              <span>Optionaler Kontext</span>
+              <textarea
+                className="input input-bordered"
+                name="context"
+                placeholder="Maschine, Abteilung, Fehlercode oder bekannte Quelle"
+                rows={4}
+              />
+            </label>
+          )}
+          <div className={`toolbar${isArenaLayout ? " source-test-toolbar-arena" : ""}`}>
             <button
               className="btn btn-secondary"
               disabled={sourceCheckState.isRunning}
@@ -112,10 +120,10 @@ export function AdminAiSourceTestPanel({
           </div>
         </form>
 
-        <section className="panel source-test-result">
-          <div className="panel-header">
+        <section className={resultClassName}>
+          <div className="panel-header source-test-result-header">
             <div>
-              <h3>Antwort & Quellen</h3>
+              <h3>{isArenaLayout ? "Antwort" : "Antwort & Quellen"}</h3>
               <p className="panel-meta" data-ai-source-test-meta>{sourceCheckState.testMeta}</p>
             </div>
             <span className={sourceCheckState.stateClassName} data-ai-source-test-state>
@@ -274,20 +282,7 @@ function SourceCheckSources({
 export function AdminAiSourceCheck(props: AdminAiSourceCheckProps): ReactNode {
   return (
     <section className="ai-admin-area source-check-area" id="ai-source-check" data-ai-admin-area="source-check">
-      <div className="ai-admin-area-header">
-        <div>
-          <span className="section-kicker">2. Quellenprüfung</span>
-          <h3>Testfrage stellen, Quellen prüfen und direkt bewerten</h3>
-          <p className="panel-meta">
-            Dry-run bleibt kostenlos. Live-Test ist explizit und speichert normale Chat-, Audit-
-            und Feedback-Daten.
-          </p>
-        </div>
-        <span className="badge badge-ai" data-ai-section-status="lab">
-          Bereit
-        </span>
-      </div>
-      <AdminAiSourceTestPanel {...props} />
+      <AdminAiSourceTestPanel {...props} layout="default" />
     </section>
   );
 }

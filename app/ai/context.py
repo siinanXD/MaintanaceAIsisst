@@ -14,6 +14,7 @@ from app.models import (
     Task,
     User,
 )
+from app.permissions import can_read_employee_context
 from app.security import employee_access_level, has_dashboard_permission
 from app.services.ai_prompting import (
     permission_denied_answer,
@@ -55,6 +56,10 @@ SCOPE_KEYWORDS = {
         "error",
         "fehlercode",
         "ursache",
+        "not-halt",
+        "not halt",
+        "not-aus",
+        "sicherheitskreis",
     ],
     "employees": [
         "mitarbeiter",
@@ -145,6 +150,8 @@ MAINTENANCE_RAG_TERMS = (
     "task",
     "training",
     "wartung",
+    "not-halt",
+    "not-aus",
 )
 
 
@@ -458,6 +465,14 @@ def answer_count_question(message, user, requested_scopes, allowed_scopes):
     ]
     if not count_scopes:
         return None
+    if len(count_scopes) >= 2:
+        return _answer_multi_scope_count(
+            message,
+            user,
+            count_scopes,
+            requested_scopes,
+            allowed_scopes,
+        )
     scope = _primary_count_scope(message, count_scopes)
     answer, data = format_module_count(user, scope)
     if answer is None:
@@ -477,6 +492,68 @@ def answer_count_question(message, user, requested_scopes, allowed_scopes):
         allowed_scopes,
         message=message,
     )
+
+
+def _answer_multi_scope_count(message, user, count_scopes, requested_scopes, allowed_scopes):
+    """Return one local answer with counts for multiple requested modules."""
+    ordered_scopes = _ordered_count_scopes(message, count_scopes)
+    sections = []
+    scope_results = []
+    sources = []
+    denied = False
+    for scope in ordered_scopes:
+        answer, data = format_module_count(user, scope)
+        if answer is None:
+            continue
+        if not data:
+            denied = True
+            continue
+        sections.append(answer.strip())
+        scope_results.append({"scope": scope, "count": data.get("count")})
+        sources.extend(count_answer_sources(scope, data, user))
+    if not sections:
+        return None
+    combined_answer = "\n\n".join(sections)
+    status = "local_answer" if not denied else "permission_denied"
+    scope_names = [item["scope"] for item in scope_results]
+    return attach_audit_metadata(
+        user,
+        {
+            "type": "multi_count" if not denied else "permission_denied",
+            "answer": combined_answer,
+            "diagnostics": ai_diagnostics(status),
+            "data": {"scopes": scope_results},
+            "sources": sources,
+            "structured_context": {
+                "entity_type": "multi_count",
+                "query": "count",
+                "scopes": scope_names,
+            },
+        },
+        requested_scopes or set(scope_names),
+        allowed_scopes,
+        message=message,
+    )
+
+
+def _ordered_count_scopes(message, count_scopes):
+    """Return count scopes ordered by first keyword occurrence in the message."""
+    text = normalize_text(message)
+    ranked = []
+    for scope in count_scopes:
+        best_index = len(text) + 1
+        for keyword in SCOPE_KEYWORDS.get(scope, []):
+            normalized_keyword = normalize_text(keyword)
+            if not contains_any_lookup_term(text, [keyword]):
+                continue
+            index = text.find(normalized_keyword)
+            if index == -1 and " " in normalized_keyword:
+                index = text.find(normalized_keyword.split()[0])
+            if index != -1 and index < best_index:
+                best_index = index
+        ranked.append((best_index, scope))
+    ranked.sort(key=lambda item: item[0])
+    return [scope for _, scope in ranked]
 
 
 def _primary_count_scope(message, requested_scopes):

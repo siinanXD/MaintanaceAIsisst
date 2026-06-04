@@ -305,6 +305,11 @@ def has_employee_access(user, required_level):
     return EMPLOYEE_ACCESS_RANK[current_level] >= EMPLOYEE_ACCESS_RANK[required_level]
 
 
+def can_read_employee_context(user):
+    """Return whether the user may read employee context through the assistant."""
+    return has_permission(user, "employees", "view") and get_employee_access_level(user) != "none"
+
+
 def replace_user_permissions(user, payload):
     """Replace dashboard permissions for a user from an admin payload."""
     permissions_payload = payload.get("permissions")

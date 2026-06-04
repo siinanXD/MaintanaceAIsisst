@@ -753,9 +753,7 @@ class MongoAtlasVectorStore(BaseVectorStore):
         limit_value = _positive_int(limit, _config_value("RAG_TOP_K", DEFAULT_RAG_TOP_K))
         candidate_limit = _rerank_candidate_limit(limit_value)
         try:
-            query_embedding = _atlas_embedding(
-                self.embedding_provider.embed_text(query_text)
-            )
+            query_embedding = _atlas_embedding(self.embedding_provider.embed_text(query_text))
             pipeline = self._vector_search_pipeline(
                 query_embedding,
                 candidate_limit,
@@ -1194,9 +1192,7 @@ def _atlas_embedding(embedding):
     if not isinstance(embedding, list) or not embedding:
         raise VectorStoreError("atlas_embedding_missing")
     if len(embedding) != expected_dimensions:
-        raise VectorStoreError(
-            f"atlas_embedding_dimensions_expected_{expected_dimensions}"
-        )
+        raise VectorStoreError(f"atlas_embedding_dimensions_expected_{expected_dimensions}")
     try:
         return [float(value) for value in embedding]
     except (TypeError, ValueError) as exc:

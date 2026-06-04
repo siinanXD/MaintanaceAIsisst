@@ -1,5 +1,6 @@
 ﻿import { type ReactNode } from "react";
 
+import { type AdminAiPayload } from "./adminAiApi";
 import {
   type AdminAiTechnicalFilters,
   type AdminAiTechnicalState,
@@ -18,6 +19,11 @@ import {
 import { numberText, percentText } from "./adminAiEffectivenessModel";
 import { ragText } from "./adminAiRagBoardModel";
 import {
+  AdminAiObservabilityLangfuse,
+  ObservabilityLangfuseTraceLink
+} from "./AdminAiObservabilityLangfuse";
+import {
+  CollapsibleMetricGrid,
   DataTable,
   debugRequests,
   debugSteps,
@@ -68,6 +74,15 @@ const MONITORING_KPIS = [
   ["average_similarity_score", "Similarity Ø", "0%"]
 ] as const;
 
+const OBSERVABILITY_ESSENTIAL_KPIS = [
+  ["total_requests", "Anfragen", "0"],
+  ["failed_requests", "Fehler", "0"],
+  ["average_response_ms", "Antwortzeit", "0 ms"],
+  ["no_source_answers", "Ohne Quellen", "0"],
+  ["governance_alert_count", "Alerts", "0"],
+  ["retrieval_hit_rate", "Trefferquote", "0%"]
+] as const;
+
 type AdminAiTechnicalProps = {
   readonly onFilterChange: (key: keyof AdminAiTechnicalFilters, value: string) => void;
   readonly onQueueStale: () => void;
@@ -82,76 +97,139 @@ type AdminAiTechnicalProps = {
  * Render the technical Admin-AI diagnostics areas.
  */
 export function AdminAiTechnical(props: AdminAiTechnicalProps): ReactNode {
-  const { technicalState } = props;
+  const { onRefresh, technicalState } = props;
+  const observability = technicalState.observability || {};
+  const metrics = objectPayload(observability.metrics);
+  const quality = objectPayload(observability.quality_metrics);
+  const logs = Array.isArray(observability.logs) ? observability.logs.filter(isPayload) : technicalItems(observability);
+  const runtime = objectPayload(technicalState.aiStatus?.langfuse);
+  const traceHost = ragText(runtime.host, "https://cloud.langfuse.com");
 
   return (
-    <>
-      <section className="ai-admin-area" id="ai-technical" data-ai-admin-area="technical">
-        <div className="ai-admin-area-header">
-          <div>
-            <span className="section-kicker">7. Technische Diagnose</span>
-            <h3>Retrieval, Protokolle, Reindex und SLOs</h3>
-            <p className="panel-meta">
-              Die bisherigen technischen Detailansichten bleiben erhalten und sind hier gebündelt
-              verlinkt.
-            </p>
-          </div>
-          <span className="badge badge-ai" data-ai-section-status="technical">
-            {technicalState.isLoading ? "Diagnose lädt" : "Diagnose bereit"}
-          </span>
+    <section className="ai-admin-area ai-observability-hub" id="ai-technical" data-ai-admin-area="technical">
+      <div className="ai-admin-area-header">
+        <div>
+          <span className="section-kicker">Observability</span>
+          <h3>Logging, Tracing und Metriken</h3>
+          <p className="panel-meta">
+            Langfuse, die wichtigsten Kennzahlen und Protokolle im Blick. Detaildiagnose im Expertenmodus.
+          </p>
         </div>
-        <div className="document-card-grid">
-          <a className="document-card" href="#ai-retrieval"><span>Retrieval</span><strong>Quellenabruf analysieren</strong><small>Debug, SLO und Golden Eval.</small></a>
-          <a className="document-card" href="#ai-diagnostics"><span>Protokolle</span><strong>AI-Logs und Wissenslücken</strong><small>Observability, Fehler und Debug-Blueprints.</small></a>
-          <a className="document-card" href="#ai-indexing-status"><span>Index</span><strong>Reindex und Jobs</strong><small>Queue, Vektor-Sync und Drift.</small></a>
-          <a className="document-card" href="/admin/ai#ai-models"><span>Modelle</span><strong>Provider und Laufzeit</strong><small>Status, Fallbacks und Modellprofile.</small></a>
+        <div className="toolbar">
+          <span className="badge badge-ai" data-ai-section-status="technical">
+            {technicalState.isLoading ? "lädt" : "bereit"}
+          </span>
+          <button className="btn btn-secondary btn-sm" type="button" data-ai-observability-refresh onClick={onRefresh}>
+            Aktualisieren
+          </button>
+        </div>
+      </div>
+      <AdminAiObservabilityLangfuse aiStatus={technicalState.aiStatus} summary={technicalState.summary} />
+      <section className="panel ai-observability-essentials" data-ai-observability-essentials>
+        <div className="panel-header">
+          <div>
+            <h3>Kern-Kennzahlen (30 Tage)</h3>
+            <p className="panel-meta">Schneller Ueberblick vor den Protokollen.</p>
+          </div>
+        </div>
+        <div className="dashboard-grid dashboard-grid-3">
+          {OBSERVABILITY_ESSENTIAL_KPIS.map(([key, label, fallback]) => (
+            <article className="metric-card" key={key}>
+              <span>{label}</span>
+              <strong data-ai-monitoring-kpi={key}>
+                {metrics[key] == null && quality[key] == null
+                  ? fallback
+                  : monitoringValue(key, metrics[key] ?? quality[key])}
+              </strong>
+            </article>
+          ))}
         </div>
       </section>
-      <CollapsedTechnicalPanel
-        detail="Recall@K, MRR, NDCG, Antworten ohne Quellen, Similarity und Quellenabruf-Ablauf."
-        title="Retrieval-Qualität und Evaluation"
-      >
-        <RetrievalSection {...props} />
-      </CollapsedTechnicalPanel>
-      <CollapsedTechnicalPanel
-        detail="Monitoring, Fehler, Prompt-Debug, Chunk-Nutzung, Top-Fragen und Wissensluecken."
-        title="Interne Diagnose und Prompt-Debug"
-      >
-        <DiagnosticsSection {...props} />
-      </CollapsedTechnicalPanel>
-      <CollapsedTechnicalPanel
-        detail="Reindex-Kommandos, Background-Jobs, Vektor-Sync, Queue und Operationsdaten."
-        title="Index, Jobs und Operations"
-      >
-        <IndexingSection {...props} />
-      </CollapsedTechnicalPanel>
-    </>
+      <ObservabilityLogsPanel isLoading={technicalState.isLoading} logs={logs} traceHost={traceHost} />
+      <details className="help-disclosure ui-secondary-panel admin-ai-expert-mode" id="ai-observability-expert">
+        <summary>
+          <span className="admin-ai-technical-disclosure-copy">
+            <strong>Expertenmodus</strong>
+            <small>Metrik-Cockpit, Retrieval-Debug, Golden Eval, Jobs und Reindex.</small>
+          </span>
+        </summary>
+        <div className="help-disclosure-body admin-ai-technical-disclosure-body">
+          <nav className="admin-technical-nav" aria-label="Observability Bereiche">
+            <a className="action-hint-item is-muted" href="#ai-diagnostics">
+              <div className="action-hint-copy">
+                <strong>Metriken & Alerts</strong>
+                <small>Governance, Workflows, Wissensluecken.</small>
+              </div>
+              <span>Details</span>
+            </a>
+            <a className="action-hint-item is-muted" href="#ai-retrieval">
+              <div className="action-hint-copy">
+                <strong>Tracing / Retrieval</strong>
+                <small>Quellenabruf-Ablauf, SLO und Golden Eval.</small>
+              </div>
+              <span>Tracing</span>
+            </a>
+            <a className="action-hint-item is-muted" href="#ai-indexing-status">
+              <div className="action-hint-copy">
+                <strong>Jobs & Index</strong>
+                <small>Reindex, Queue und Background-Jobs.</small>
+              </div>
+              <span>Jobs</span>
+            </a>
+          </nav>
+          <DiagnosticsExpertSection {...props} />
+          <RetrievalSection {...props} />
+          <IndexingSection {...props} />
+        </div>
+      </details>
+    </section>
   );
 }
 
 /**
- * Render a collapsed technical diagnostics group.
+ * Render the primary observability log table with Langfuse trace links.
  */
-function CollapsedTechnicalPanel({
-  children,
-  detail,
-  title
+function ObservabilityLogsPanel({
+  isLoading,
+  logs,
+  traceHost
 }: {
-  readonly children: ReactNode;
-  readonly detail: string;
-  readonly title: string;
+  readonly isLoading: boolean;
+  readonly logs: readonly AdminAiPayload[];
+  readonly traceHost: string;
 }): ReactNode {
   return (
-    <details className="panel admin-ai-technical-disclosure">
-      <summary>
-        <span>
-          <strong>{title}</strong>
-          <small>{detail}</small>
-        </span>
-        <span className="status-pill is-muted">aufklappen</span>
-      </summary>
-      <div className="admin-ai-technical-disclosure-body">{children}</div>
-    </details>
+    <section className="ai-admin-area" id="ai-diagnostics" data-ai-admin-area="answers">
+      <section className="panel">
+        <div className="panel-header">
+          <div>
+            <h3>KI-Protokolle</h3>
+            <p className="panel-meta">Referenz, Qualität, Quellen und Langfuse-Trace je Anfrage.</p>
+          </div>
+          <span className="badge badge-ai" data-ai-observability-status>
+            {isLoading ? "lädt" : "geladen"}
+          </span>
+        </div>
+        <DataTable
+          caption="AI-Monitoring-Protokolle mit Antwortqualitaet, Sicherheit und Quellen"
+          headers={["Zeit", "Referenz", "Qualität", "Quellen", "Dauer", "Langfuse", "Debug"]}
+          dataAttr="data-ai-observability-logs"
+          rows={logs.map((item) => {
+            const langfuseRef = objectPayload(item.langfuse);
+            const traceId = ragText(langfuseRef.trace_id);
+            return [
+              technicalDateTime(item.created_at),
+              technicalReference("AI", item.id),
+              item.quality_status || item.status,
+              item.source_count || 0,
+              `${numberText(item.response_duration_ms || item.retrieval_duration_ms || 0)} ms`,
+              <ObservabilityLangfuseTraceLink host={traceHost} traceId={traceId} />,
+              "Debug"
+            ];
+          })}
+        />
+      </section>
+    </section>
   );
 }
 
@@ -191,14 +269,15 @@ function RetrievalSection({
           <div><h3>Suchqualität SLO</h3><p className="panel-meta">Qualitäts- und Betriebsmetriken für AI-Antworten.</p></div>
           <span className="badge badge-ai" data-retrieval-slo-status>{ragText(slo.status, "Noch nicht geladen")}</span>
         </div>
-        <div className="dashboard-grid dashboard-grid-4">
-          {RETRIEVAL_SLO_KPIS.map(([key, label, fallback]) => (
+        <CollapsibleMetricGrid
+          summaryLabel="Weitere SLO-Metriken"
+          cards={RETRIEVAL_SLO_KPIS.map(([key, label, fallback]) => (
             <article className="metric-card" key={key}>
               <span>{label}</span>
               <strong data-retrieval-slo-kpi={key}>{sloValues[key] == null ? fallback : retrievalSloValue(key, sloValues[key])}</strong>
             </article>
           ))}
-        </div>
+        />
         <div className="content-grid two-columns mt-4">
           <StatsList dataAttr="data-retrieval-slo-trends" rows={Object.entries(trends).map(([key, value]) => [metricLabel(key), retrievalSloValue(key, objectPayload(value).current)] as const)} empty={["Trends", "noch keine SLO-Trends"]} />
           <StatsList dataAttr="data-retrieval-slo-warnings" rows={warnings.map((warning) => [metricLabel(ragText(warning.metric)), `${ragText(warning.status)} ab ${retrievalSloValue(ragText(warning.metric), warning.threshold)}`] as const)} empty={["Warnungen", "keine aktiven SLO-Warnungen"]} />
@@ -281,9 +360,9 @@ function RetrievalSection({
 }
 
 /**
- * Render observability, workflow and prompt-debug panels.
+ * Render extended observability panels for expert diagnostics.
  */
-function DiagnosticsSection({ onRefresh, technicalState }: AdminAiTechnicalProps): ReactNode {
+function DiagnosticsExpertSection({ technicalState }: AdminAiTechnicalProps): ReactNode {
   const observability = technicalState.observability || {};
   const metrics = objectPayload(observability.metrics);
   const quality = objectPayload(observability.quality_metrics);
@@ -318,20 +397,36 @@ function DiagnosticsSection({ onRefresh, technicalState }: AdminAiTechnicalProps
   ] as const;
 
   return (
-    <section className="ai-admin-area" id="ai-diagnostics" data-ai-admin-area="answers">
-      <div className="ai-admin-area-header">
-        <div><span className="section-kicker">5. Diagnose</span><h3>Fehler, Protokolle, Prompt-Debugging und Wissenslücken</h3><p className="panel-meta">Admins sehen prompt-sichere Betriebsdiagnosen, letzte fehlgeschlagene Abfragen, Workflows, Wissenslücken und Debug-Blueprints.</p></div>
-        <div className="toolbar"><span className="badge badge-ai" data-ai-observability-status>{technicalState.isLoading ? "lädt" : "geladen"}</span><button className="btn btn-secondary" type="button" data-ai-observability-refresh onClick={onRefresh}>Monitoring aktualisieren</button></div>
-      </div>
-      <section className="panel"><div className="panel-header"><div><h3>Letzte fehlgeschlagene AI-Abfragen</h3><p className="panel-meta">Aus bestehenden Audit-Ereignissen abgeleitet; ohne Rohfrage oder Antworttext.</p></div></div><div className="ai-failed-query-list" data-ai-failed-queries>{logs.slice(0, 5).map((item) => <MetricRow key={ragText(item.id)} label={technicalReference("Audit", item.id)} value={ragText(item.status || item.error_category, "ok")} />)}</div></section>
-      <section className="panel ai-answer-quality-panel"><div className="panel-header"><h3>Antwortqualität im Chat</h3><span className="panel-meta">Jede Antwort zeigt Quellen, Sicherheit, Unsicherheit und verwendete Dokumente.</span></div><div className="ai-answer-quality-grid" data-ai-answer-quality-guide><MetricRow label="Quellen" value="sichtbar" /><MetricRow label="Sicherheit" value="bewertet" /></div></section>
-      <section className="panel ai-observability-panel">
-        <div className="panel-header"><div><h3>KI-Metrik-Cockpit</h3><p className="panel-meta">Latenz, Tokens, Fehler, leere Abrufe und Halluzinationswarnungen.</p></div></div>
-        <div className="dashboard-grid dashboard-grid-4">{MONITORING_KPIS.map(([key, label, fallback]) => <article className="metric-card" key={key}><span>{label}</span><strong data-ai-monitoring-kpi={key}>{metrics[key] == null && quality[key] == null ? fallback : monitoringValue(key, metrics[key] ?? quality[key])}</strong></article>)}</div>
+    <section className="ai-admin-area ai-observability-expert-metrics" data-ai-admin-area="diagnostics-expert">
+      <details className="help-disclosure ui-secondary-panel">
+        <summary>Letzte fehlgeschlagene Abfragen ({Math.min(logs.length, 5)})</summary>
+        <div className="help-disclosure-body">
+          <p className="panel-meta">Aus Audit-Ereignissen; ohne Rohfrage oder Antworttext.</p>
+          <div className="ai-failed-query-list" data-ai-failed-queries>
+            {logs.slice(0, 5).map((item) => (
+              <MetricRow key={ragText(item.id)} label={technicalReference("Audit", item.id)} value={ragText(item.status || item.error_category, "ok")} />
+            ))}
+          </div>
+        </div>
+      </details>
+      <details className="help-disclosure ui-secondary-panel">
+        <summary>Metrik-Cockpit und Governance</summary>
+        <div className="help-disclosure-body ai-observability-panel">
+        <CollapsibleMetricGrid
+          previewCount={4}
+          summaryLabel="Weitere Monitoring-Metriken"
+          cards={MONITORING_KPIS.map(([key, label, fallback]) => (
+            <article className="metric-card" key={key}>
+              <span>{label}</span>
+              <strong data-ai-monitoring-kpi={key}>
+                {metrics[key] == null && quality[key] == null ? fallback : monitoringValue(key, metrics[key] ?? quality[key])}
+              </strong>
+            </article>
+          ))}
+        />
         <div className="content-grid two-columns mt-4"><StatsList dataAttr="data-ai-top-questions" rows={topList(topQuestions)} empty={["Fragen", "keine Daten"]} /><StatsList dataAttr="data-ai-source-distribution" rows={topList(sourceDistribution)} empty={["Quellen", "keine Daten"]} /></div>
         <div className="content-grid two-columns mt-4"><StatsList dataAttr="data-ai-top-structured-modules" rows={structuredDomainRows.map((item) => [item.label || item.module, item.count] as const)} empty={["Strukturierte Bereiche", "keine Daten"]} /><StatsList dataAttr="data-ai-frequent-search-terms" rows={frequentSearchTerms.map((item) => [item.term, item.count] as const)} empty={["Suchbegriffe", "keine Daten"]} /></div>
         <div className="content-grid two-columns mt-4"><StatsList dataAttr="data-ai-no-source-breakdown" rows={noSourceRows} empty={["Antworten ohne Quellen", "keine Daten"]} /><StatsList dataAttr="data-ai-answer-source-average" rows={[["Alle Antworten", monitoringValue("source_count_average", metrics.source_count_average)], ["Beantwortete Fragen", monitoringValue("source_count_average_answered", metrics.source_count_average_answered)]]} empty={["Quellen", "keine Daten"]} /></div>
-      </section>
       <section className="panel" data-ai-governance-alerts-panel>
         <div className="panel-header">
           <div><h3>AI Governance Alerts</h3><p className="panel-meta">Konfigurierbare Warnungen aus Observability, Retrieval-Qualität, Kosten, Tokens und Vector-Store-Status.</p></div>
@@ -349,8 +444,9 @@ function DiagnosticsSection({ onRefresh, technicalState }: AdminAiTechnicalProps
       <section className="panel"><div className="panel-header"><h3>Quellenabruf Monitoring</h3><span className="panel-meta">Top Treffer, schlechte Treffer, Textabschnitt-Nutzung und Dokumentverteilung.</span></div><div className="content-grid two-columns"><StatsList dataAttr="data-ai-top-hits" rows={topList(retrieval.top_hits)} empty={["Treffer", "keine Daten"]} /><StatsList dataAttr="data-ai-poor-hits" rows={topList(retrieval.poor_hits)} empty={["Schlechte Treffer", "keine Daten"]} /></div><div className="content-grid two-columns mt-4"><StatsList dataAttr="data-ai-chunk-usage" rows={topList(retrieval.chunk_usage)} empty={["Textabschnitte", "keine Daten"]} /><StatsList dataAttr="data-ai-quality-metrics" rows={Object.entries(quality).slice(0, 6).map(([key, value]) => [metricLabel(key), monitoringValue(key, value)] as const)} empty={["Qualität", "keine Daten"]} /></div></section>
       <section className="panel"><div className="panel-header"><h3>Workflow-Kosten und Fehler</h3><span className="panel-meta">Metadata-only Auswertung ohne Prompt- oder Antworttexte</span></div><div className="content-grid two-columns"><DataTable caption="AI-Workflows nach Ereignissen, Fehlern, Ausweichbetrieb, Tokens und Kosten" headers={["Workflow", "Ereignisse", "Ausweichbetrieb", "Fehler", "Tokens", "Kosten", "Latenz"]} dataAttr="data-ai-workflows" rows={workflows.map((item) => [item.workflow, item.events, percentText(item.fallback_rate || 0), item.errors, item.total_tokens, item.estimated_cost_usd, `${numberText(item.average_latency_ms || 0)} ms`])} /><StatsList dataAttr="data-ai-top-errors" rows={topErrors.map((item) => [item.error_category, item.count] as const)} empty={["AI Fehler", "keine Fehler im Zeitraum"]} /></div></section>
       <section className="panel"><div className="panel-header"><h3>Wissenslücken</h3><span className="panel-meta" data-ai-knowledge-gap-count>{numberText(gaps.length)} offen</span></div><DataTable caption="Offene Wissenslücken aus KI-Fragen ohne belastbare Quellen" headers={["Referenz", "Bereich", "Maschine", "Status", "Treffer", "Zuletzt"]} dataAttr="data-ai-knowledge-gaps" rows={gaps.map((gap) => [technicalReference("Gap", gap.id), gap.department, gap.machine, gap.status, gap.occurrence_count, technicalDateTime(gap.last_seen_at)])} /></section>
-      <section className="panel"><div className="panel-header"><h3>KI-Protokolle</h3><span className="panel-meta">Prompt-sichere Referenz, Quellen, Sicherheit, Antwortqualität, Fehler und Dauer.</span></div><DataTable caption="AI-Monitoring-Protokolle mit Antwortqualität, Sicherheit und Quellen" headers={["Zeit", "Referenz", "Qualität", "Sicherheit", "Quellen", "Dauer", "Debug"]} dataAttr="data-ai-observability-logs" rows={logs.map((item) => [technicalDateTime(item.created_at), technicalReference("AI", item.id), item.quality_status || item.status, item.confidence_level || "-", item.source_count || 0, `${numberText(item.response_duration_ms || item.retrieval_duration_ms || 0)} ms`, "Debug"])} /></section>
       <section className="panel"><div className="panel-header"><h3>Debug Tools</h3><div className="toolbar"><select className="input input-bordered" data-ai-debug-request aria-label="AI-Anfrage analysieren">{debugRequests(debugTools).map((item) => <option key={ragText(item.id)} value={ragText(item.id)}>{technicalReference("Chat", item.id)}</option>)}</select></div></div><div className="content-grid two-columns"><div className="ai-monitor-list" data-ai-debug-analysis><MetricRow label="Quellen" value={objectPayload(debugTools.request_analysis).source_count || 0} /></div><pre className="ai-debug-prompt" data-ai-debug-prompt>{ragText(objectPayload(debugTools.prompt_blueprint).system_prompt, "Kein Prompt-Blueprint geladen.")}</pre></div></section>
+        </div>
+      </details>
     </section>
   );
 }

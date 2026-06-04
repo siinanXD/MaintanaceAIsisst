@@ -162,11 +162,15 @@ def _pack_semantic_blocks(blocks, metadata, max_chars, target_chars, max_chunks)
         for part in _split_oversized_block(block, max_chars):
             if len(chunks) >= max_chunks:
                 break
-            if current_blocks and _is_standalone_block(part) and _should_keep_standalone(
-                current_blocks,
-                part,
-                max_chars,
-                target_chars,
+            if (
+                current_blocks
+                and _is_standalone_block(part)
+                and _should_keep_standalone(
+                    current_blocks,
+                    part,
+                    max_chars,
+                    target_chars,
+                )
             ):
                 if current_blocks:
                     _append_chunk(chunks, current_blocks, metadata)

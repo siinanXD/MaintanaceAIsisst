@@ -181,8 +181,7 @@ def embedding_provider_status(config=None):
     """Return redacted embedding provider readiness without external API calls."""
     config = config or (current_app.config if has_app_context() else {})
     provider_name = str(
-        config.get("EMBEDDING_PROVIDER", DEFAULT_EMBEDDING_PROVIDER)
-        or DEFAULT_EMBEDDING_PROVIDER
+        config.get("EMBEDDING_PROVIDER", DEFAULT_EMBEDDING_PROVIDER) or DEFAULT_EMBEDDING_PROVIDER
     ).lower()
     api_key_configured = bool(str(config.get("OPENAI_API_KEY") or "").strip())
     base_url_configured = bool(str(config.get("AI_BASE_URL") or "").strip())
@@ -298,10 +297,14 @@ def _config_text_value(name, default):
 
 def _configured_provider_name():
     """Return the configured embedding provider name normalized for dispatch."""
-    return str(
-        _config_value("EMBEDDING_PROVIDER", DEFAULT_EMBEDDING_PROVIDER)
-        or DEFAULT_EMBEDDING_PROVIDER
-    ).strip().lower()
+    return (
+        str(
+            _config_value("EMBEDDING_PROVIDER", DEFAULT_EMBEDDING_PROVIDER)
+            or DEFAULT_EMBEDDING_PROVIDER
+        )
+        .strip()
+        .lower()
+    )
 
 
 def _configured_openai_model():

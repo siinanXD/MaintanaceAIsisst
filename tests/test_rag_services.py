@@ -539,9 +539,7 @@ def test_openai_embedding_provider_rejects_unexpected_dimensions(app):
         )
     provider.client = SimpleNamespace(
         embeddings=SimpleNamespace(
-            create=lambda **_kwargs: SimpleNamespace(
-                data=[SimpleNamespace(embedding=[0.0] * 384)]
-            )
+            create=lambda **_kwargs: SimpleNamespace(data=[SimpleNamespace(embedding=[0.0] * 384)])
         )
     )
 
@@ -561,9 +559,7 @@ def test_reindex_notice_is_documented_for_embedding_provider_changes():
 
 def test_embedding_provider_configuration_documentation_is_current():
     """Verify configuration docs describe OpenAI default and hashing fallback."""
-    config_doc = Path("docs/EMBEDDING_PROVIDER_CONFIGURATION.md").read_text(
-        encoding="utf-8"
-    )
+    config_doc = Path("docs/EMBEDDING_PROVIDER_CONFIGURATION.md").read_text(encoding="utf-8")
 
     assert "EMBEDDING_PROVIDER=openai" in config_doc
     assert "text-embedding-3-small" in config_doc

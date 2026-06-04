@@ -13,6 +13,7 @@ from app.extensions import db
 from app.models import AIAuditEvent, AIFeedback, ChatMessage, KnowledgeDocument, KnowledgeGap
 from app.services.ai_answer_quality_service import answer_quality_from_history_item
 from app.services.ai_governance_service import evaluate_governance_alerts
+from app.services.ai_metric_catalog_service import metric_catalog
 from app.services.ai_prompting import text_system_prompt
 from app.services.ai_provider_readiness_service import ai_provider_readiness_snapshot
 from app.services.ai_routing import ai_price_configuration_status
@@ -155,7 +156,7 @@ def ai_observability_dashboard(args=None):
         ),
         "debug_tools": _debug_tools(chats, chat_message_id),
         "langfuse_metrics": langfuse_metrics_summary(days=days),
-        "metric_catalog": _metric_catalog(),
+        "metric_catalog": metric_catalog(),
         "privacy": {
             "source": "chat_history_audit_metadata_retrieval_telemetry",
             "raw_questions_visible_to_admins": True,
@@ -164,283 +165,6 @@ def ai_observability_dashboard(args=None):
             "source_ids_visible": False,
             "source_metadata_aggregates_visible": True,
         },
-    }
-
-
-def _metric_catalog():
-    """Return stable AI Admin dashboard metric definitions."""
-    return [
-        _metric_definition("total_requests", "Requests gesamt", "reliability", "count"),
-        _metric_definition("successful_requests", "Erfolgreiche Requests", "reliability", "count"),
-        _metric_definition("failed_requests", "Fehlgeschlagene Requests", "reliability", "count"),
-        _metric_definition("request_success_rate", "Request-Erfolgsquote", "reliability", "rate"),
-        _metric_definition("frequent_questions", "Haeufige Fragen", "usage", "count"),
-        _metric_definition("frequent_search_terms", "Suchbegriffe", "usage", "count"),
-        _metric_definition(
-            "structured_answer_count",
-            "Strukturierte Antworten",
-            "structured",
-            "count",
-        ),
-        _metric_definition("rag_answer_count", "RAG-Antworten", "retrieval", "count"),
-        _metric_definition("no_source_count", "Antworten ohne Quellen", "quality", "count"),
-        _metric_definition(
-            "no_source_permission_denied_count",
-            "Ohne Quellen wegen fehlender Berechtigung",
-            "quality",
-            "count",
-        ),
-        _metric_definition(
-            "no_source_no_data_count",
-            "Ohne Quellen weil keine Daten gefunden wurden",
-            "quality",
-            "count",
-        ),
-        _metric_definition(
-            "no_source_answer_count",
-            "Beantwortet ohne Quellen",
-            "quality",
-            "count",
-        ),
-        _metric_definition(
-            "source_count_average",
-            "Durchschnitt Quellen pro Antwort",
-            "sources",
-            "count",
-        ),
-        _metric_definition(
-            "source_count_average_answered",
-            "Durchschnitt Quellen pro beantworteter Frage",
-            "sources",
-            "count",
-        ),
-        _metric_definition(
-            "top_structured_modules",
-            "Top strukturierte Module",
-            "structured",
-            "count",
-        ),
-        _metric_definition(
-            "structured_domain_distribution",
-            "Strukturierte Antwortbereiche",
-            "structured",
-            "count",
-        ),
-        _metric_definition("average_final_top_k", "Durchschnitt Top-K", "retrieval", "count"),
-        _metric_definition("average_tokens", "Durchschnitt Tokens", "cost", "tokens"),
-        _metric_definition("cost_windows", "Kostenfenster", "cost", "usd"),
-        _metric_definition(
-            "provider_ready",
-            "Provider bereit",
-            "provider",
-            "boolean",
-        ),
-        _metric_definition(
-            "provider_readiness_status",
-            "Provider-Readiness",
-            "provider",
-            "status",
-        ),
-        _metric_definition(
-            "provider_degraded_component_count",
-            "Provider-Degradierungen",
-            "provider",
-            "count",
-        ),
-        _metric_definition(
-            "provider_next_action_type",
-            "Provider Next Action",
-            "provider",
-            "action",
-        ),
-        _metric_definition("p95_response_ms", "Antwortlatenz p95", "latency", "ms"),
-        _metric_definition("p95_retrieval_ms", "Retrievallatenz p95", "latency", "ms"),
-        _metric_definition("latency", "Latenzmetriken", "latency", "object"),
-        _metric_definition("atlas_queries", "Atlas Queries", "atlas", "count"),
-        _metric_definition("atlas_errors", "Atlas Fehler", "atlas", "count"),
-        _metric_definition("atlas_latency", "Atlas Latenz", "atlas", "ms"),
-        _metric_definition("atlas_fallbacks", "Atlas Fallbacks", "atlas", "count"),
-        _metric_definition("atlas_sync_failures", "Atlas Sync-Fehler", "atlas", "count"),
-        _metric_definition("atlas_vector_count", "Atlas Vektoren", "atlas", "count"),
-        _metric_definition(
-            "atlas_reindex_required",
-            "Atlas Reindex erforderlich",
-            "atlas",
-            "boolean",
-        ),
-        _metric_definition(
-            "failed_request_count",
-            "Fehlgeschlagene Requests",
-            "reliability",
-            "count",
-        ),
-        _metric_definition(
-            "no_source_answers",
-            "Antworten ohne Quellen",
-            "quality",
-            "count",
-        ),
-        _metric_definition(
-            "low_confidence_answers",
-            "Low-Confidence Antworten",
-            "quality",
-            "count",
-        ),
-        _metric_definition("token_usage", "Token-Nutzung", "cost", "object"),
-        _metric_definition("costs", "Kosten", "cost", "object"),
-        _metric_definition(
-            "governance_alert_count",
-            "Governance Alerts",
-            "governance",
-            "count",
-        ),
-        _metric_definition(
-            "governance_critical_alert_count",
-            "Kritische Governance Alerts",
-            "governance",
-            "count",
-        ),
-        _metric_definition(
-            "governance_warning_alert_count",
-            "Governance Warnungen",
-            "governance",
-            "count",
-        ),
-        _metric_definition("governance_status", "Governance Status", "governance", "status"),
-        _metric_definition("retrieval_hit_rate", "Retrieval-Erfolgsquote", "quality", "rate"),
-        _metric_definition("source_freshness", "Quellen-Frische", "retrieval", "rate"),
-        _metric_definition("no_answer_rate", "No-Answer-Rate", "quality", "rate"),
-        _metric_definition(
-            "uncertainty_distribution",
-            "Unsicherheitsverteilung",
-            "quality",
-            "count",
-        ),
-        _metric_definition(
-            "answer_quality_reason_distribution",
-            "Answer-Quality-Gruende",
-            "quality",
-            "count",
-        ),
-        _metric_definition(
-            "answer_quality_action_count",
-            "Answer-Quality Actions",
-            "quality",
-            "count",
-        ),
-        _metric_definition(
-            "high_uncertainty_rate",
-            "Hohe Unsicherheit",
-            "quality",
-            "rate",
-        ),
-        _metric_definition(
-            "uncertain_answer_rate",
-            "Unsichere Antworten",
-            "quality",
-            "rate",
-        ),
-        _metric_definition("recall_at_k", "Recall@K", "evaluation", "rate"),
-        _metric_definition("mrr", "MRR", "evaluation", "rate"),
-        _metric_definition("keyword_hit_rate", "Keyword-Trefferquote", "evaluation", "rate"),
-        _metric_definition("no_result_rate", "No-Result-Rate", "evaluation", "rate"),
-        _metric_definition(
-            "expected_no_result_success_rate",
-            "Erwartete No-Results",
-            "evaluation",
-            "rate",
-        ),
-        _metric_definition(
-            "unexpected_no_result_rate",
-            "Unerwartete No-Results",
-            "evaluation",
-            "rate",
-        ),
-        _metric_definition(
-            "min_source_count_pass_rate",
-            "Mindestquellen-Abdeckung",
-            "evaluation",
-            "rate",
-        ),
-        _metric_definition(
-            "query_type_accuracy",
-            "Query-Type Accuracy",
-            "evaluation",
-            "rate",
-        ),
-        _metric_definition(
-            "permission_leak_count",
-            "Permission-Leak-Checks",
-            "evaluation",
-            "count",
-        ),
-        _metric_definition(
-            "evaluation_quality_gate",
-            "Evaluation Quality Gate",
-            "evaluation",
-            "status",
-        ),
-        _metric_definition(
-            "evaluation_quality_gate_status",
-            "Evaluation Gate Status",
-            "evaluation",
-            "status",
-        ),
-        _metric_definition(
-            "evaluation_quality_gate_issue_count",
-            "Evaluation Gate Issues",
-            "evaluation",
-            "count",
-        ),
-        _metric_definition(
-            "evaluation_blocking_count",
-            "Evaluation Blocker",
-            "evaluation",
-            "count",
-        ),
-        _metric_definition(
-            "evaluation_warning_count",
-            "Evaluation Warnungen",
-            "evaluation",
-            "count",
-        ),
-        _metric_definition(
-            "source_metadata_gap_count",
-            "Source-Metadata-Gaps",
-            "evaluation",
-            "count",
-        ),
-        _metric_definition(
-            "source_metadata_min_coverage_rate",
-            "Source-Metadata Mindestabdeckung",
-            "evaluation",
-            "rate",
-        ),
-        _metric_definition(
-            "retrieval_action_count",
-            "Retrieval Actions",
-            "retrieval",
-            "count",
-        ),
-        _metric_definition(
-            "evaluation_action_count",
-            "Evaluation Actions",
-            "evaluation",
-            "count",
-        ),
-        _metric_definition("feedback", "Feedback", "quality", "count"),
-        _metric_definition("most_used_documents", "Meistgenutzte Dokumente", "sources", "count"),
-        _metric_definition("knowledge_gaps", "Knowledge Gaps", "knowledge", "count"),
-    ]
-
-
-def _metric_definition(key, label, category, unit):
-    """Return one stable prompt-safe metric definition."""
-    return {
-        "key": key,
-        "label": label,
-        "category": category,
-        "unit": unit,
     }
 
 
@@ -2351,9 +2075,7 @@ def _structured_domain_from_response_type(response_type):
 def _structured_domain_from_scopes(scopes):
     """Return a structured domain from a single dashboard scope."""
     domains = {
-        STRUCTURED_SCOPE_DOMAINS[scope]
-        for scope in scopes
-        if scope in STRUCTURED_SCOPE_DOMAINS
+        STRUCTURED_SCOPE_DOMAINS[scope] for scope in scopes if scope in STRUCTURED_SCOPE_DOMAINS
     }
     return next(iter(domains)) if len(domains) == 1 else ""
 
@@ -2610,9 +2332,7 @@ def _is_low_confidence_chat(chat):
     if level == "low":
         return True
     score = _optional_int(
-        chat.confidence_score
-        or diagnostics.get("confidence_score")
-        or confidence.get("score"),
+        chat.confidence_score or diagnostics.get("confidence_score") or confidence.get("score"),
     )
     return score is not None and score <= LOW_CONFIDENCE_SCORE_THRESHOLD
 

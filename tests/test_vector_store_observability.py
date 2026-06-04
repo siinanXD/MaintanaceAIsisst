@@ -210,9 +210,9 @@ def test_admin_ai_dashboard_contains_atlas_metric_hooks():
     section_source = (
         root / "frontend" / "src" / "admin-ai" / "AdminAiSectionsTechnical.tsx"
     ).read_text(encoding="utf-8")
-    model_source = (
-        root / "frontend" / "src" / "admin-ai" / "adminAiTechnicalModel.ts"
-    ).read_text(encoding="utf-8")
+    model_source = (root / "frontend" / "src" / "admin-ai" / "adminAiTechnicalModel.ts").read_text(
+        encoding="utf-8"
+    )
 
     for key in (
         "atlas_queries",
@@ -260,9 +260,7 @@ def test_atlas_connection_error_fallback_does_not_leak_secret(app, monkeypatch, 
     secret_uri = "mongodb+srv://app_user:secret-password@example.mongodb.net"
     _install_fake_pymongo(
         monkeypatch,
-        client_factory=lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            RuntimeError(secret_uri)
-        ),
+        client_factory=lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError(secret_uri)),
     )
     _configure_atlas(app, uri=secret_uri)
 
@@ -458,17 +456,14 @@ def test_atlas_configuration_is_documented():
     env_example = (root / ".env.example").read_text(encoding="utf-8")
     env_minimal = (root / ".env.minimal.example").read_text(encoding="utf-8")
     env_production = (root / ".env.production.example").read_text(encoding="utf-8")
-    atlas_doc = (root / "docs" / "MONGODB_ATLAS_VECTOR_SEARCH.md").read_text(
-        encoding="utf-8"
-    )
-    observability_doc = (root / "docs" / "AI_OBSERVABILITY.md").read_text(
-        encoding="utf-8"
-    )
+    atlas_doc = (root / "docs" / "MONGODB_ATLAS_VECTOR_SEARCH.md").read_text(encoding="utf-8")
+    observability_doc = (root / "docs" / "AI_OBSERVABILITY.md").read_text(encoding="utf-8")
 
     for source in (readme, env_example, env_production, atlas_doc):
         assert "MONGODB_ATLAS_URI" in source
         assert "MONGODB_ATLAS_VECTOR_COLLECTION" in source
         assert "knowledge_vectors" in source
+    assert ".env.production.example" in env_minimal
     assert "RAG_STRICT_QUALITY_GATE" in env_production
     assert ".env.production.example" in readme
     assert "Dimensions: 1536" in atlas_doc
@@ -485,10 +480,7 @@ def test_atlas_configuration_is_documented():
     ):
         assert key in observability_doc
     normalized_observability_doc = " ".join(observability_doc.split())
-    assert (
-        "do not increment or duplicate AI request counters"
-        in normalized_observability_doc
-    )
+    assert "do not increment or duplicate AI request counters" in normalized_observability_doc
 
 
 def _create_knowledge_document(

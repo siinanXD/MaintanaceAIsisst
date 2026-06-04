@@ -155,9 +155,7 @@ def _safe_sources(sources):
         if score_debug:
             entry["score_components"] = _safe_score_components(score_debug.get("signals"))
         explainability = (
-            source.get("explainability")
-            if isinstance(source.get("explainability"), dict)
-            else {}
+            source.get("explainability") if isinstance(source.get("explainability"), dict) else {}
         )
         if explainability:
             entry["explainability"] = _safe_score_components(explainability)
@@ -216,9 +214,7 @@ def _similarity_score(source):
         source.get("score"),
     ]
     explainability = (
-        source.get("explainability")
-        if isinstance(source.get("explainability"), dict)
-        else {}
+        source.get("explainability") if isinstance(source.get("explainability"), dict) else {}
     )
     candidates.append(explainability.get("semantic_similarity"))
     for value in candidates:
@@ -282,11 +278,7 @@ def _safe_scalar(value):
 
 def _drop_empty_values(payload):
     """Return a dictionary without empty values."""
-    return {
-        key: value
-        for key, value in payload.items()
-        if value not in (None, "", [], {})
-    }
+    return {key: value for key, value in payload.items() if value not in (None, "", [], {})}
 
 
 def _int_value(value):

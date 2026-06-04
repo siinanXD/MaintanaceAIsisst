@@ -50,7 +50,10 @@ def test_ai_question_normalizer_lookup_terms_use_word_boundaries():
     assert contains_lookup_term("Welche Arbeit steht aus?", "arbeit") is True
     assert contains_lookup_term("Welche Arbeiten stehen aus?", "arbeiten") is True
     assert contains_lookup_term("Welche Tasks sind offen?", "tasks") is True
-    assert contains_any_lookup_term(
-        "Dokumente in Bearbeitung",
-        ("task", "tasks", "aufgabe", "aufgaben", "arbeit", "arbeiten", "todo"),
-    ) is False
+    assert (
+        contains_any_lookup_term(
+            "Dokumente in Bearbeitung",
+            ("task", "tasks", "aufgabe", "aufgaben", "arbeit", "arbeiten", "todo"),
+        )
+        is False
+    )

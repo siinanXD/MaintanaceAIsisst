@@ -107,6 +107,12 @@ def structured_candidate_score(
     """Return calibrated score metadata for one structured app-data candidate."""
     requested_scope_set = set(requested_scopes or set())
     overlap = set(query_tokens or set()) & set(candidate_tokens or set())
+    if not overlap and permission_scope not in requested_scope_set:
+        return StructuredCandidateScore(
+            raw_score=0,
+            explanation="Kein Begriffs-Treffer",
+            allowed=False,
+        )
     requested_bonus = 15 if permission_scope in requested_scope_set else 0
     scope_priority_bonus = STRUCTURED_SCOPE_PRIORITY.get(str(permission_scope or ""), 4.0)
     raw_score = len(overlap) * 20 + requested_bonus + scope_priority_bonus
@@ -180,11 +186,7 @@ def _source_kind_rank(candidate):
 
 def _recency_rank(candidate):
     """Return a lexicographic recency hint from candidate metadata."""
-    return str(
-        candidate.metadata.get("updated_at")
-        or candidate.metadata.get("created_at")
-        or ""
-    )
+    return str(candidate.metadata.get("updated_at") or candidate.metadata.get("created_at") or "")
 
 
 def vector_result_candidate(result, include_score_debug=False):

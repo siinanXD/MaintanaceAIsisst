@@ -68,8 +68,6 @@ export function AdminAiMarkup({
   onKnowledgeFilterChange,
   onKnowledgeUpload,
   onNetworkFilterChange,
-  onOverviewChatQueryChange,
-  onOverviewEventErrorChange,
   onPromptVersionSubmit,
   onQueueDocument,
   onQueueStale,
@@ -88,8 +86,6 @@ export function AdminAiMarkup({
   onTechnicalRunEvaluation,
   onUpdateKnowledgeQuality,
   overviewState,
-  overviewChatQuery,
-  overviewEventError,
   promptFaqState,
   ragBoardState,
   sourceCheckState,
@@ -118,8 +114,6 @@ export function AdminAiMarkup({
         onKnowledgeFilterChange,
         onKnowledgeUpload,
         onNetworkFilterChange,
-        onOverviewChatQueryChange,
-        onOverviewEventErrorChange,
         onPromptVersionSubmit,
         onQueueDocument,
         onQueueStale,
@@ -138,8 +132,6 @@ export function AdminAiMarkup({
         onTechnicalRunEvaluation,
         onUpdateKnowledgeQuality,
         overviewState,
-        overviewChatQuery,
-        overviewEventError,
         promptFaqState,
         ragBoardState,
         sourceCheckState,
@@ -152,7 +144,13 @@ export function AdminAiMarkup({
   );
 }
 
-type AdminAiViewContentProps = AdminAiMarkupProps & {
+type AdminAiViewContentProps = Omit<
+  AdminAiMarkupProps,
+  | "onOverviewChatQueryChange"
+  | "onOverviewEventErrorChange"
+  | "overviewChatQuery"
+  | "overviewEventError"
+> & {
   readonly canUseAdminAiApi: boolean;
   readonly isTechnicalRole: boolean;
 };
@@ -170,8 +168,6 @@ function adminAiViewContent({
   onKnowledgeFilterChange,
   onKnowledgeUpload,
   onNetworkFilterChange,
-  onOverviewChatQueryChange,
-  onOverviewEventErrorChange,
   onPromptVersionSubmit,
   onQueueDocument,
   onQueueStale,
@@ -190,8 +186,6 @@ function adminAiViewContent({
   onTechnicalRunEvaluation,
   onUpdateKnowledgeQuality,
   overviewState,
-  overviewChatQuery,
-  overviewEventError,
   promptFaqState,
   ragBoardState,
   sourceCheckState,
@@ -283,8 +277,8 @@ function AdminAiTechnicalRoleNotice(): ReactNode {
       <section className="panel">
         <div className="panel-header">
           <div>
-            <span className="section-kicker">Technology & Operations</span>
-            <h3>Technische Diagnose ist für Master Admin sichtbar</h3>
+            <span className="section-kicker">Observability</span>
+            <h3>Observability ist für Master Admin sichtbar</h3>
             <p className="panel-meta">
               Roh-Prompts, Debug-Panels und interne Retrieval-Diagnosen folgen dem Backend-Vertrag
               der Admin-AI-API und bleiben für andere Rollen ausgeblendet.

@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 
 from flask import current_app, has_app_context
 
+from app.services.ai_question_normalizer import contains_lookup_term
 from app.services.text_normalization_service import normalize_query
 
 QUERY_ERROR_ANALYSIS = "error_analysis"
@@ -50,6 +51,8 @@ KEYWORDS = {
         "ausfall",
         "defekt",
         "error",
+        "not-halt",
+        "not halt",
     ),
     QUERY_MACHINE: (
         "maschine",
@@ -71,6 +74,7 @@ KEYWORDS = {
     ),
     QUERY_TASK: (
         "task",
+        "tasks",
         "aufgabe",
         "arbeit",
         "arbeiten",
@@ -118,6 +122,8 @@ KEYWORDS = {
         "sicherheit",
         "not-aus",
         "notaus",
+        "not-halt",
+        "not halt",
         "abschaltung",
         "spannung",
         "strom",
@@ -172,7 +178,7 @@ SCOPE_BY_QUERY_TYPE = {
 SOURCE_TYPES_BY_QUERY_TYPE = {
     QUERY_ERROR_ANALYSIS: ("error_entry", "machine_manual", "manual_training"),
     QUERY_MACHINE: ("machine", "machine_manual", "maintenance_plan"),
-    QUERY_INVENTORY: ("inventory_material", "maintenance_plan"),
+    QUERY_INVENTORY: ("inventory_material", "maintenance_plan", "manual_training"),
     QUERY_TASK: ("task", "maintenance_plan", "shift_handover"),
     QUERY_DOCUMENT: ("upload", "generated_document", "machine_manual"),
     QUERY_EMPLOYEE: ("employee", "shiftplan", "machine"),
@@ -227,6 +233,7 @@ def classify_query(message, requested_scopes=None):
     confidence = _confidence(scores, query_type)
     signals = _signals(text, query_type, scores)
     recommended_scopes = _recommended_scopes(query_type, secondary_types, requested_scopes)
+    retrieval_strategy = _retrieval_strategy(query_type, is_safety, text)
     return QueryUnderstandingResult(
         query_type=query_type,
         confidence=confidence,
@@ -234,7 +241,7 @@ def classify_query(message, requested_scopes=None):
         secondary_types=secondary_types,
         signals=signals,
         recommended_scopes=recommended_scopes,
-        retrieval_strategy=_retrieval_strategy(query_type, is_safety),
+        retrieval_strategy=retrieval_strategy,
         provider=_provider_label(),
     )
 
@@ -243,7 +250,10 @@ def _score_query_types(text, requested_scopes):
     """Return local rule scores for each supported query type."""
     scores = {query_type: 0 for query_type in QUERY_TYPES}
     for query_type, keywords in KEYWORDS.items():
-        scores[query_type] += sum(1 for keyword in keywords if keyword in text)
+        scores[query_type] += sum(1 for keyword in keywords if contains_lookup_term(text, keyword))
+    if _is_inventory_maintenance_risk_question(text):
+        scores[QUERY_INVENTORY] += 2
+        scores[QUERY_KNOWLEDGE_GAP] += 1
     if ERROR_CODE_PATTERN.search(text.upper()):
         scores[QUERY_ERROR_ANALYSIS] += 3
     for scope in requested_scopes:
@@ -326,7 +336,7 @@ def _recommended_scopes(query_type, secondary_types, requested_scopes):
     return tuple(scopes[:6])
 
 
-def _retrieval_strategy(query_type, is_safety):
+def _retrieval_strategy(query_type, is_safety, text=""):
     """Return strategy metadata used by retrieval and prompting."""
     top_k = {
         QUERY_ERROR_ANALYSIS: 6,
@@ -343,9 +353,14 @@ def _retrieval_strategy(query_type, is_safety):
     }.get(query_type, 4)
     if is_safety:
         top_k = max(top_k, 6)
+    source_types = list(SOURCE_TYPES_BY_QUERY_TYPE.get(query_type, ()))
+    if _is_inventory_maintenance_risk_question(text):
+        if "manual_training" not in source_types:
+            source_types.append("manual_training")
+        top_k = max(top_k, 6)
     return {
         "top_k": top_k,
-        "source_types": list(SOURCE_TYPES_BY_QUERY_TYPE.get(query_type, ())),
+        "source_types": source_types,
         "scope_weights": _scope_weights(query_type),
         "prompt_rules": _prompt_rules(query_type, is_safety),
         "prefer_structured": query_type
@@ -419,6 +434,25 @@ def _provider_label():
     if has_app_context() and current_app.config.get("QUERY_UNDERSTANDING_OPENAI"):
         return "local_rules_openai_optional"
     return "local_rules"
+
+
+def _is_inventory_maintenance_risk_question(text):
+    """Return whether the text asks about spare parts blocking maintenance."""
+    normalized = _normalized_text(text)
+    has_inventory = any(
+        contains_lookup_term(normalized, term)
+        for term in (
+            "ersatzteil",
+            "ersatzteile",
+            "material",
+            "materialien",
+            "lager",
+            "bestand",
+            "inventar",
+        )
+    )
+    has_risk = contains_lookup_term(normalized, "wartung") or "blockier" in normalized
+    return has_inventory and has_risk
 
 
 def _normalized_text(value):

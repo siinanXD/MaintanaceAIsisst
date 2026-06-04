@@ -1,6 +1,10 @@
 ﻿import { type ReactNode } from "react";
 
-import { ADMIN_AI_NAVIGATION, type AdminAiView } from "./AdminAiTypes";
+import { type AdminAiView } from "./AdminAiTypes";
+import {
+  ADMIN_AI_PRIMARY_NAVIGATION,
+  adminAiViewMeta
+} from "./adminAiViewMeta";
 import { type AdminAiEffectivenessState } from "./adminAiEffectivenessModel";
 import { overviewBadge, type AdminAiOverviewLoadState } from "./adminAiOverviewModel";
 import { type AdminAiPromptFaqState } from "./adminAiPromptFaqModel";
@@ -49,8 +53,8 @@ export function AdminAiShell({
     technicalState,
     view
   });
-  const roleAccess = useAdminAiRoleAccess();
   const visibleNavigation = useVisibleAdminAiNavigation();
+  const viewMeta = adminAiViewMeta(view);
   const errorMessage =
     view === "overview"
       ? overviewState.errorMessage
@@ -70,35 +74,14 @@ export function AdminAiShell({
     <section className="page-section ai-admin-page" data-admin-ai-page data-ai-admin-view={view}>
       <header className="ai-admin-hero is-compact">
         <div>
-          <span className="section-kicker">Admin Control Center</span>
-          <h1>AI Admin Control Center</h1>
-          <p className="panel-meta">
-            Klare Steuerung für Status, Wissensbasis, Antwortqualitaet, Prompts, Kosten und
-            technische Betriebsdiagnose.
-          </p>
+          <span className="section-kicker">KI-Administration</span>
+          <h1>{viewMeta.title}</h1>
+          <p className="panel-meta">{viewMeta.lead}</p>
         </div>
-        <div className="ai-admin-hero-status" aria-label="KI-Administration Schnellstatus">
+        <div className="ai-admin-hero-status" aria-label="Bereichsstatus">
           <span className={`badge badge-ai ${heroStatus.tone}`} data-ai-overview-state>
             {heroStatus.label}
           </span>
-          <span className="panel-meta">
-            AI-Admin-Daten folgen dem Backend-Vertrag: Master Admin.
-          </span>
-          <div
-            className="surface-action-row"
-            aria-label="KI-Administration Schnellzugriff"
-            hidden={!roleAccess.canUseAdminAiApi}
-          >
-            <a className="btn btn-primary btn-sm" href="/admin/ai/source-check">
-              Testfrage prüfen
-            </a>
-            <a className="btn btn-secondary btn-sm" href="/admin/ai/rag-board">
-              Wissensbasis pflegen
-            </a>
-            <a className="btn btn-ghost btn-sm" href="/admin/ai/effectiveness">
-              Kosten ansehen
-            </a>
-          </div>
         </div>
       </header>
 
@@ -109,11 +92,13 @@ export function AdminAiShell({
             className={view === item.view ? "is-active" : undefined}
             href={item.href}
             key={item.view}
+            title={item.description}
           >
             {item.label}
           </a>
         ))}
       </nav>
+      <p className="ai-admin-nav-hint panel-meta">{viewMeta.description}</p>
       <p
         className="panel-meta ai-admin-load-message"
         data-ai-admin-message
@@ -203,10 +188,10 @@ function toneFromClassName(className: string): AdminAiHeroStatus["tone"] {
 /**
  * Return the navigation entries visible to the current AI admin role.
  */
-function useVisibleAdminAiNavigation(): typeof ADMIN_AI_NAVIGATION {
+function useVisibleAdminAiNavigation(): typeof ADMIN_AI_PRIMARY_NAVIGATION {
   const roleAccess = useAdminAiRoleAccess();
   if (!roleAccess.canUseAdminAiApi) return [];
-  return ADMIN_AI_NAVIGATION.filter(
+  return ADMIN_AI_PRIMARY_NAVIGATION.filter(
     (item) => item.view !== "technical" || roleAccess.isTechnicalRole
   );
 }

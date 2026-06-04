@@ -240,8 +240,7 @@ def rag_probe():
                     or vector_status.get("chunk_vector_count_mismatch")
                 ),
                 "fallback_active": bool(
-                    atlas_health.get("fallback_active")
-                    or vector_status.get("fallback_active")
+                    atlas_health.get("fallback_active") or vector_status.get("fallback_active")
                 ),
             },
         }

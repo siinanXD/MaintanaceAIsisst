@@ -6,6 +6,7 @@ from datetime import date, timedelta
 
 from app.models import VacationRequest
 from app.services.ai_question_normalizer import detect_department, normalize_text
+from app.services.ai_structured_constants import MAX_ANSWER_ITEMS, MAX_LIST_ITEMS
 from app.services.ai_structured_context_helpers import (
     build_structured_context,
     inherited_structured_scope,
@@ -14,8 +15,6 @@ from app.services.ai_structured_context_helpers import (
 from app.services.ai_structured_source_service import vacation_source_cards
 from app.vacations.services import visible_vacation_query
 
-MAX_ITEMS = 20
-MAX_ANSWER_ITEMS = 10
 STATUS_LABELS = {
     "approved": "genehmigt",
     "cancelled": "storniert",
@@ -80,7 +79,7 @@ def _answer_pending_list(user):
         visible_vacation_query(user)
         .filter(VacationRequest.status == "pending")
         .order_by(VacationRequest.created_at.desc(), VacationRequest.start_date.desc())
-        .limit(MAX_ITEMS)
+        .limit(MAX_LIST_ITEMS)
         .all()
     )
     return {
@@ -114,7 +113,7 @@ def _answer_own_pending(user):
             VacationRequest.status == "pending",
         )
         .order_by(VacationRequest.created_at.desc(), VacationRequest.start_date.desc())
-        .limit(MAX_ITEMS)
+        .limit(MAX_LIST_ITEMS)
         .all()
     )
     return {
@@ -170,7 +169,7 @@ def _answer_absences(user, start_date, end_date, label, department=""):
     vacations = (
         _overlapping_vacation_query(user, start_date, end_date)
         .order_by(VacationRequest.start_date.asc(), VacationRequest.id.asc())
-        .limit(MAX_ITEMS)
+        .limit(MAX_LIST_ITEMS)
         .all()
     )
     if department:
@@ -434,7 +433,7 @@ def _mentions_pending(text):
 
 def _is_vacation_follow_up(text, conversation_context):
     """Return whether a follow-up should stay on structured vacation data."""
-    if not is_list_follow_up(text):
+    if not is_list_follow_up(text, conversation_context):
         return False
     inherited = inherited_structured_scope(conversation_context)
     return inherited.get("entity_type") == "vacations"

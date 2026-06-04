@@ -17,60 +17,126 @@ import {
 import { numberText } from "./adminAiEffectivenessModel";
 import { isPayload, StatsList } from "./AdminAiRagBoardShared";
 
+type KnowledgeStatusPanelProps = {
+  readonly showSourceBoard?: boolean;
+  readonly state: AdminAiRagBoardState;
+};
+
 /**
  * Render the complete knowledge status block.
  */
-export function KnowledgeStatusPanel({ state }: { readonly state: AdminAiRagBoardState }): ReactNode {
+export function KnowledgeStatusPanel({
+  showSourceBoard = true,
+  state
+}: KnowledgeStatusPanelProps): ReactNode {
   return (
     <>
-      <section className="panel">
-        <div className="panel-header">
-          <div>
-            <h3>Quelle Health Matrix</h3>
-            <p className="panel-meta">Einträge, Textabschnitte, RAG-Aktivierung und Health je Quelle.</p>
+      {showSourceBoard ? (
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <h3>Quelle Health Matrix</h3>
+              <p className="panel-meta">Einträge, Textabschnitte, RAG-Aktivierung und Health je Quelle.</p>
+            </div>
           </div>
+          <SourceHealthBoard state={state} compact />
+        </section>
+      ) : null}
+      <details className="help-disclosure ui-secondary-panel rag-status-disclosure">
+        <summary>Index-Status und Lifecycle-Details</summary>
+        <div className="help-disclosure-body rag-status-disclosure-body">
+          <RagStatusPanel state={state} />
+          <KnowledgeLifecyclePanel state={state} />
         </div>
-        <SourceHealthBoard state={state} compact />
-      </section>
-      <RagStatusPanel state={state} />
-      <KnowledgeLifecyclePanel state={state} />
+      </details>
     </>
   );
 }
 
 /**
- * Render the top RAG health strip.
+ * Render the left-rail system status list for the RAG board shell.
  */
-export function RagHealthStrip({ state }: { readonly state: AdminAiRagBoardState }): ReactNode {
+export function RagHealthRail({ state }: { readonly state: AdminAiRagBoardState }): ReactNode {
   const status = state.knowledgeStatus;
   const score = Number(status?.readiness_score || 0);
   const jobsQueued = state.jobs.filter((job) => job.status === "queued").length;
   const jobsFailed = state.jobs.filter((job) => job.status === "failed").length;
 
   return (
-    <div className="rag-game-status">
+    <div className="rag-health-list" aria-label="Systemstatus">
       <article className="rag-health-item is-good" data-ai-health="ai">
-        <span>AI</span>
-        <strong data-ai-health-label>bereit</strong>
-        <em data-ai-health-detail>Systemstatus</em>
+        <span className="rag-health-icon">AI</span>
+        <div>
+          <small>Systemstatus</small>
+          <strong data-ai-health-label>bereit</strong>
+          <em data-ai-health-detail>Betriebsbereit</em>
+        </div>
       </article>
       <article className={`rag-health-item ${score >= 80 ? "is-good" : "is-watch"}`} data-ai-health="rag">
-        <span>RAG</span>
-        <strong data-ai-health-label>{score}/100</strong>
-        <em data-ai-health-detail>RAG-Bereitschaft</em>
+        <span className="rag-health-icon">RG</span>
+        <div>
+          <small>RAG-Bereitschaft</small>
+          <strong data-ai-health-label>{score}/100</strong>
+          <em data-ai-health-detail>{ragReadinessLabel(status)}</em>
+        </div>
       </article>
-      <article className={`rag-health-item ${jobsFailed ? "is-error" : "is-good"}`} data-ai-health="queue">
-        <span>Queue</span>
-        <strong data-ai-job-count>{state.jobs.length} Jobs</strong>
-        <em data-ai-health-detail>{jobsQueued} queued / {jobsFailed} failed</em>
+      <article className={`rag-health-item ${jobsFailed ? "is-error" : jobsQueued ? "is-watch" : "is-good"}`} data-ai-health="queue">
+        <span className="rag-health-icon">Q</span>
+        <div>
+          <small>Queue</small>
+          <strong data-ai-job-count>{state.jobs.length} Jobs</strong>
+          <em data-ai-health-detail>{jobsQueued} wartend / {jobsFailed} fehlgeschlagen</em>
+        </div>
       </article>
       <article className="rag-health-item">
-        <span>Kosten</span>
-        <strong data-ai-kpi="estimated_cost_usd">$0</strong>
-        <em data-ai-price-status>über Effektivität sichtbar</em>
+        <span className="rag-health-icon">$</span>
+        <div>
+          <small>Kosten</small>
+          <strong data-ai-kpi="estimated_cost_usd">$0</strong>
+          <em data-ai-price-status>in Effektivität</em>
+        </div>
       </article>
     </div>
   );
+}
+
+/**
+ * Render the index pipeline track above the source board.
+ */
+export function RagIndexTrack({ state }: { readonly state: AdminAiRagBoardState }): ReactNode {
+  const status = state.knowledgeStatus;
+  const documents = Number(status?.documents || 0);
+  const chunks = Number(status?.chunks || 0);
+  const searchable = Number(status?.searchable_documents || 0);
+  const readiness = Number(status?.readiness_score || 0);
+  const steps = [
+    { key: "source", label: "Quelle", value: numberText(documents), done: documents > 0 },
+    { key: "chunks", label: "Textabschnitte", value: numberText(chunks), done: chunks > 0 },
+    { key: "vectors", label: "Vektoren", value: numberText(status?.indexed || 0), done: Number(status?.indexed || 0) > 0 },
+    { key: "search", label: "Suchbar", value: numberText(searchable), done: searchable > 0 },
+    { key: "tested", label: "Getestet", value: `${readiness}%`, done: readiness >= 80 }
+  ] as const;
+
+  return (
+    <div className="rag-index-track-panel">
+      <div className="rag-index-track" aria-label="RAG Pipeline">
+        {steps.map((step) => (
+          <article className={step.done ? "is-done" : ""} key={step.key}>
+            <span>{step.label}</span>
+            <strong>{step.value}</strong>
+            {step.done ? <b aria-hidden="true">✓</b> : null}
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * @deprecated Use RagHealthRail in the RAG board shell.
+ */
+export function RagHealthStrip({ state }: { readonly state: AdminAiRagBoardState }): ReactNode {
+  return <RagHealthRail state={state} />;
 }
 
 /**

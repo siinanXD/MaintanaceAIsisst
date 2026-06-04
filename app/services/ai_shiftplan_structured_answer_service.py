@@ -8,6 +8,10 @@ from app.models import ShiftPlan, ShiftPlanCoverageSlot, ShiftPlanEntry
 from app.security import employee_access_level, has_dashboard_permission
 from app.services.ai_prompting import permission_denied_answer
 from app.services.ai_question_normalizer import normalize_text
+from app.services.ai_structured_constants import (
+    MAX_ANSWER_ITEMS,
+    MAX_SHIFTPLAN_LIST_ITEMS,
+)
 from app.services.ai_structured_context_helpers import (
     build_structured_context,
     inherited_structured_scope,
@@ -19,8 +23,6 @@ from app.services.ai_structured_source_service import (
 )
 from app.services.visibility_query_service import visible_shiftplans_query
 
-MAX_ITEMS = 30
-MAX_ANSWER_ITEMS = 10
 SHIFT_ALIASES = {
     "frueh": "Frueh",
     "fruehschicht": "Frueh",
@@ -74,6 +76,30 @@ def _answer_shiftplan_follow_up(message, user, conversation_context):
             return _answer_entries_for_date(user, work_date, label, shift=shift)
     if query == "understaffed":
         return _answer_understaffed_next_week(user)
+    if query == "shift_count":
+        shift = str(inherited.get("shift") or "").strip() or _requested_shift(text)
+        if shift:
+            entries = [entry for entry in _visible_entries(user) if entry.shift == shift][
+                :MAX_SHIFTPLAN_LIST_ITEMS
+            ]
+            return {
+                "type": "shiftplan_entries",
+                "answer": _format_entry_answer(f"{shift}schicht", entries, user),
+                "data": {
+                    "entity_type": "shiftplans",
+                    "query": "entries",
+                    "shift": shift,
+                    "count": len(entries),
+                    "items": [_entry_payload(entry, user) for entry in entries],
+                },
+                "sources": shiftplan_entry_source_cards(entries, user),
+                "scope": "shiftplans",
+                "structured_context": build_structured_context(
+                    "shiftplans",
+                    query="entries",
+                    shift=shift,
+                ),
+            }
     return None
 
 
@@ -102,7 +128,7 @@ def _answer_entries_for_date(user, work_date, label, shift=""):
     entries = [entry for entry in entries if entry.work_date == work_date]
     if shift:
         entries = [entry for entry in entries if entry.shift == shift]
-    entries = entries[:MAX_ITEMS]
+    entries = entries[:MAX_SHIFTPLAN_LIST_ITEMS]
     title = f"Eingeplant {label}" if not shift else f"{shift}schicht {label}"
     return {
         "type": "shiftplan_entries",
@@ -128,7 +154,9 @@ def _answer_entries_for_date(user, work_date, label, shift=""):
 
 def _answer_shift_count(user, shift):
     """Return the visible employee count for one shift."""
-    entries = [entry for entry in _visible_entries(user) if entry.shift == shift][:MAX_ITEMS]
+    entries = [entry for entry in _visible_entries(user) if entry.shift == shift][
+        :MAX_SHIFTPLAN_LIST_ITEMS
+    ]
     employee_ids = {entry.employee_id for entry in entries}
     return {
         "type": "shiftplan_shift_count",
@@ -163,7 +191,7 @@ def _answer_understaffed_next_week(user):
         slot
         for slot in _visible_coverage_slots(user)
         if start_date <= slot.work_date <= end_date and slot.missing > 0
-    ][:MAX_ITEMS]
+    ][:MAX_SHIFTPLAN_LIST_ITEMS]
     return {
         "type": "shiftplan_understaffed",
         "answer": _format_coverage_answer("Unterbesetzte Schichten naechste Woche", slots),
@@ -197,7 +225,7 @@ def _visible_entries(user):
             ShiftPlanEntry.shift.asc(),
             ShiftPlanEntry.id.asc(),
         )
-        .limit(MAX_ITEMS)
+        .limit(MAX_SHIFTPLAN_LIST_ITEMS)
         .all()
     )
 
@@ -214,7 +242,7 @@ def _visible_coverage_slots(user):
             ShiftPlanCoverageSlot.shift.asc(),
             ShiftPlanCoverageSlot.id.asc(),
         )
-        .limit(MAX_ITEMS)
+        .limit(MAX_SHIFTPLAN_LIST_ITEMS)
         .all()
     )
 
@@ -225,7 +253,7 @@ def _visible_plan_ids(user):
         plan.id
         for plan in visible_shiftplans_query(user)
         .order_by(ShiftPlan.start_date.desc(), ShiftPlan.id.desc())
-        .limit(MAX_ITEMS)
+        .limit(MAX_SHIFTPLAN_LIST_ITEMS)
         .all()
     ]
 
@@ -314,8 +342,7 @@ def _format_coverage_answer(title, slots):
     for slot in slots[:MAX_ANSWER_ITEMS]:
         machine = slot.machine.name if slot.machine else "ohne Maschine"
         lines.append(
-            f"- {slot.work_date.isoformat()} {slot.shift}: "
-            f"{machine}, fehlen {slot.missing}"
+            f"- {slot.work_date.isoformat()} {slot.shift}: " f"{machine}, fehlen {slot.missing}"
         )
     if len(slots) > MAX_ANSWER_ITEMS:
         lines.append(f"- ... {len(slots) - MAX_ANSWER_ITEMS} weitere Slots")
@@ -377,7 +404,7 @@ def _is_tomorrow_planned_question(text):
 
 def _is_shiftplan_follow_up(text, conversation_context):
     """Return whether a follow-up should stay on structured shift-plan data."""
-    if not is_list_follow_up(text):
+    if not is_list_follow_up(text, conversation_context):
         return False
     inherited = inherited_structured_scope(conversation_context)
     return inherited.get("entity_type") == "shiftplans"

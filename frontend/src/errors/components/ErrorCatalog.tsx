@@ -184,46 +184,62 @@ export function ErrorCatalog(props: ErrorCatalogProps): ReactNode {
         </div>
         <button className="btn btn-outline btn-sm" data-error-similar-focus type="button" onClick={findSimilarFromSearch}>Ähnliche Fehler finden</button>
       </header>
-      <section className="incident-filter-bar" aria-label="Fehlerkatalog filtern">
-        <label className="incident-filter-field" htmlFor="error-search">
-          <span>Suche</span>
-          <input className="input input-bordered input-sm" data-error-search id="error-search" placeholder="E104, Presse 3, Hydraulik, Sensor" value={props.filters.search} onChange={(event) => props.onFiltersChange({ ...props.filters, search: event.currentTarget.value })} />
+      <div className="incident-catalog-search">
+        <label className="compact-search-field" htmlFor="error-search">
+          <span>Suche im Katalog</span>
+          <input
+            className="input input-bordered input-sm"
+            data-error-search
+            id="error-search"
+            placeholder="E104, Presse 3, Hydraulik, Sensor"
+            value={props.filters.search}
+            onChange={(event) => props.onFiltersChange({ ...props.filters, search: event.currentTarget.value })}
+          />
         </label>
-        <label className="incident-filter-field" htmlFor="error-status-filter">
-          <span>Status</span>
-          <select className="select select-bordered select-sm" data-error-status-filter id="error-status-filter" value={props.filters.status} onChange={(event) => props.onFiltersChange({ ...props.filters, status: event.currentTarget.value })}>
-            <option value="">Alle</option>
-            <option value="open">Offen</option>
-            <option value="in_progress">In Bearbeitung</option>
-            <option value="closed">Geschlossen</option>
-          </select>
-        </label>
-        <label className="incident-filter-field" htmlFor="error-severity-filter">
-          <span>Schwere</span>
-          <select className="select select-bordered select-sm" data-error-severity-filter id="error-severity-filter" value={props.filters.severity} onChange={(event) => props.onFiltersChange({ ...props.filters, severity: event.currentTarget.value })}>
-            <option value="">Alle</option>
-            <option value="critical">Kritisch</option>
-            <option value="high">Hoch</option>
-            <option value="medium">Mittel</option>
-            <option value="low">Niedrig</option>
-          </select>
-        </label>
-        <label className="incident-filter-field" htmlFor="error-category-filter">
-          <span>Kategorie</span>
-          <select className="select select-bordered select-sm" data-error-category-filter id="error-category-filter" value={props.filters.category} onChange={(event) => props.onFiltersChange({ ...props.filters, category: event.currentTarget.value })}>
-            <option value="">Alle Kategorien</option>
-            {categories.map((category) => <option key={category} value={category}>{category}</option>)}
-          </select>
-        </label>
-        <button className="btn btn-ghost btn-sm" data-error-filter-reset type="button" onClick={resetFilters}>Zurücksetzen</button>
-        <span className="incident-filter-summary" data-error-filter-summary>{visibleErrors.length} von {props.errors.length} Einträgen sichtbar</span>
-      </section>
-      <div className="filter-chip-row incident-category-chips" aria-label="Schnellfilter Fehlerkatalog">
-        <button className={`filter-chip${props.filters.quick === "all" ? " is-active" : ""}`} data-error-filter="all" type="button" onClick={() => props.onFiltersChange({ ...props.filters, quick: "all" })}>Alle</button>
-        {QUICK_FILTERS.map((filter) => (
-          <button className={`filter-chip${props.filters.quick === filter ? " is-active" : ""}`} data-error-filter={filter} key={filter} type="button" onClick={() => props.onFiltersChange({ ...props.filters, quick: filter })}>{filter}</button>
-        ))}
+        <span className="incident-filter-summary" data-error-filter-summary>
+          {visibleErrors.length} von {props.errors.length} Einträgen sichtbar
+        </span>
       </div>
+      <details className="help-disclosure ui-secondary-panel incident-filter-disclosure">
+        <summary>Erweiterte Filter und Kategorien</summary>
+        <div className="help-disclosure-body">
+          <section className="incident-filter-bar" aria-label="Fehlerkatalog filtern">
+            <label className="incident-filter-field" htmlFor="error-status-filter">
+              <span>Status</span>
+              <select className="select select-bordered select-sm" data-error-status-filter id="error-status-filter" value={props.filters.status} onChange={(event) => props.onFiltersChange({ ...props.filters, status: event.currentTarget.value })}>
+                <option value="">Alle</option>
+                <option value="open">Offen</option>
+                <option value="in_progress">In Bearbeitung</option>
+                <option value="closed">Geschlossen</option>
+              </select>
+            </label>
+            <label className="incident-filter-field" htmlFor="error-severity-filter">
+              <span>Schwere</span>
+              <select className="select select-bordered select-sm" data-error-severity-filter id="error-severity-filter" value={props.filters.severity} onChange={(event) => props.onFiltersChange({ ...props.filters, severity: event.currentTarget.value })}>
+                <option value="">Alle</option>
+                <option value="critical">Kritisch</option>
+                <option value="high">Hoch</option>
+                <option value="medium">Mittel</option>
+                <option value="low">Niedrig</option>
+              </select>
+            </label>
+            <label className="incident-filter-field" htmlFor="error-category-filter">
+              <span>Kategorie</span>
+              <select className="select select-bordered select-sm" data-error-category-filter id="error-category-filter" value={props.filters.category} onChange={(event) => props.onFiltersChange({ ...props.filters, category: event.currentTarget.value })}>
+                <option value="">Alle Kategorien</option>
+                {categories.map((category) => <option key={category} value={category}>{category}</option>)}
+              </select>
+            </label>
+            <button className="btn btn-ghost btn-sm" data-error-filter-reset type="button" onClick={resetFilters}>Zurücksetzen</button>
+          </section>
+          <div className="filter-chip-row incident-category-chips" aria-label="Schnellfilter Fehlerkatalog">
+            <button className={`filter-chip${props.filters.quick === "all" ? " is-active" : ""}`} data-error-filter="all" type="button" onClick={() => props.onFiltersChange({ ...props.filters, quick: "all" })}>Alle</button>
+            {QUICK_FILTERS.map((filter) => (
+              <button className={`filter-chip${props.filters.quick === filter ? " is-active" : ""}`} data-error-filter={filter} key={filter} type="button" onClick={() => props.onFiltersChange({ ...props.filters, quick: filter })}>{filter}</button>
+            ))}
+          </div>
+        </div>
+      </details>
       <div className="error-card-grid incident-card-grid" data-error-list>
         {visibleErrors.length ? visibleErrors.map((entry) => <ErrorCard {...props} entry={entry} key={entry.id} />) : (
           <div className="guided-empty-state">

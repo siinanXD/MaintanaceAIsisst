@@ -76,9 +76,7 @@ def langfuse_eval_enabled(config=None):
 def langfuse_eval_capture_io_enabled(config=None):
     """Return whether bounded eval input/output should be attached for LLM judges."""
     config = config or current_app.config
-    return bool(
-        langfuse_eval_enabled(config) and config.get("LANGFUSE_EVAL_CAPTURE_IO", False)
-    )
+    return bool(langfuse_eval_enabled(config) and config.get("LANGFUSE_EVAL_CAPTURE_IO", False))
 
 
 def submit_langfuse_scores(trace_id, scores, observation_id=""):
@@ -115,7 +113,8 @@ def submit_langfuse_scores(trace_id, scores, observation_id=""):
         if comment:
             payload["comment"] = comment
         try:
-            client.create_score(**{key: value for key, value in payload.items() if value is not None})
+            filtered_payload = {key: value for key, value in payload.items() if value is not None}
+            client.create_score(**filtered_payload)
             submitted += 1
         except Exception as exc:  # pragma: no cover - external observability guard
             logger.warning(
@@ -123,7 +122,20 @@ def submit_langfuse_scores(trace_id, scores, observation_id=""):
                 name,
                 exc.__class__.__name__,
             )
+    if submitted:
+        _flush_langfuse_client(client)
     return submitted
+
+
+def _flush_langfuse_client(client):
+    """Flush pending Langfuse score events so they appear in the UI promptly."""
+    flush = getattr(client, "flush", None)
+    if not callable(flush):
+        return
+    try:
+        flush()
+    except Exception as exc:  # pragma: no cover - external observability guard
+        logger.warning("langfuse_flush_failed error=%s", exc.__class__.__name__)
 
 
 def attach_langfuse_eval_io(trace_id, diagnostics, result, observation_id=""):

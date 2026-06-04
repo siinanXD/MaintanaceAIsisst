@@ -4,21 +4,21 @@ from __future__ import annotations
 
 from app.models import InventoryMaterial
 from app.security import has_dashboard_permission
-from app.services.ai_prompting import permission_denied_answer
 from app.services.ai_question_normalizer import normalize_text
+from app.services.ai_structured_constants import MAX_LIST_ITEMS
 from app.services.ai_structured_context_helpers import (
     build_structured_context,
+    build_structured_result,
+    format_structured_list_answer,
     inherited_structured_scope,
     is_list_follow_up,
+    structured_permission_denied,
 )
 from app.services.ai_structured_source_service import (
     inventory_source_cards,
     module_count_source_card,
 )
 from app.services.visibility_query_service import visible_inventory_materials_query
-
-MAX_ITEMS = 20
-MAX_ANSWER_ITEMS = 10
 
 
 def answer_inventory_structured_question(message, user, conversation_context=None):
@@ -27,7 +27,11 @@ def answer_inventory_structured_question(message, user, conversation_context=Non
     if not _is_inventory_question(text) and not _is_inventory_follow_up(text, conversation_context):
         return None
     if not has_dashboard_permission(user, "inventory", "view"):
-        return _permission_denied()
+        return structured_permission_denied(
+            dashboard_label="Lager",
+            scope="inventory",
+            entity_type="inventory",
+        )
     follow_up_result = _answer_inventory_follow_up(message, user, conversation_context)
     if follow_up_result:
         return follow_up_result
@@ -55,9 +59,10 @@ def _answer_inventory_follow_up(message, user, conversation_context):
     if not materials:
         return None
 
-    machine = _requested_machine(message, user, allow_name_only=True) or str(
-        inherited.get("machine") or ""
-    ).strip()
+    machine = (
+        _requested_machine(message, user, allow_name_only=True)
+        or str(inherited.get("machine") or "").strip()
+    )
     if machine:
         materials = [
             material
@@ -112,18 +117,6 @@ def _follow_up_title_for_query(query):
     return mapping.get(query, "Lagerartikel")
 
 
-def _permission_denied():
-    """Return a permission-denied inventory answer."""
-    return {
-        "type": "permission_denied",
-        "answer": permission_denied_answer("Lager", "inventory"),
-        "data": [],
-        "sources": [],
-        "scope": "inventory",
-        "structured_context": build_structured_context("inventory"),
-    }
-
-
 def _answer_inventory_count(user):
     """Return the visible inventory material count."""
     count = visible_inventory_materials_query(user).count()
@@ -152,7 +145,7 @@ def _answer_machine_materials(user, machine):
         material
         for material in _visible_materials(user)
         if normalize_text(machine) in normalize_text(_machine_name(material))
-    ][:MAX_ITEMS]
+    ][:MAX_LIST_ITEMS]
     return _inventory_result(
         "inventory_machine_materials",
         f"Teile zu {machine}",
@@ -171,7 +164,7 @@ def _answer_low_stock(user):
         material
         for material in _visible_materials(user)
         if material.min_quantity > 0 and material.quantity < material.min_quantity
-    ][:MAX_ITEMS]
+    ][:MAX_LIST_ITEMS]
     materials.sort(key=lambda item: (item.quantity - item.min_quantity, item.name))
     return _inventory_result(
         "inventory_low_stock",
@@ -188,7 +181,7 @@ def _answer_critical_inventory(user):
         for material in _visible_materials(user)
         if str(getattr(material, "criticality", "") or "").strip().lower()
         in {"critical", "kritisch", "high", "hoch"}
-    ][:MAX_ITEMS]
+    ][:MAX_LIST_ITEMS]
     materials.sort(
         key=lambda item: (
             0 if str(item.criticality or "").lower() in {"critical", "kritisch"} else 1,
@@ -205,19 +198,19 @@ def _answer_critical_inventory(user):
 
 def _inventory_result(response_type, title, materials, structured_context):
     """Return a structured inventory result."""
-    return {
-        "type": response_type,
-        "answer": _format_inventory_answer(title, materials),
-        "data": {
+    return build_structured_result(
+        response_type=response_type,
+        answer=_format_inventory_answer(title, materials),
+        data={
             "entity_type": "inventory",
             "query": response_type,
             "count": len(materials),
             "items": [_material_payload(material) for material in materials],
         },
-        "sources": inventory_source_cards(materials),
-        "scope": "inventory",
-        "structured_context": structured_context,
-    }
+        sources=inventory_source_cards(materials),
+        scope="inventory",
+        structured_context=structured_context,
+    )
 
 
 def _visible_materials(user):
@@ -225,7 +218,7 @@ def _visible_materials(user):
     return (
         visible_inventory_materials_query(user)
         .order_by(InventoryMaterial.quantity.asc(), InventoryMaterial.name.asc())
-        .limit(MAX_ITEMS)
+        .limit(MAX_LIST_ITEMS)
         .all()
     )
 
@@ -248,26 +241,20 @@ def _material_payload(material):
 
 def _format_inventory_answer(title, materials):
     """Return a compact German inventory answer."""
-    lines = [
-        f"## {title}",
-        f"- **Sichtbare Artikel:** {len(materials)}",
-        "- **Quelle:** Strukturierte Lagerdaten",
-    ]
-    if not materials:
-        lines.append("")
-        lines.append("Keine sichtbaren Lagerartikel fuer diese Anfrage gefunden.")
-        return "\n".join(lines)
-    lines.append("")
-    lines.append("Sichtbare Artikel:")
-    for material in materials[:MAX_ANSWER_ITEMS]:
-        machine = f", Maschine {_machine_name(material)}" if _machine_name(material) else ""
-        lines.append(
+    return format_structured_list_answer(
+        title=title,
+        label="sichtbare Lagerartikel",
+        items=materials,
+        count_label="Sichtbare Artikel",
+        formatter=lambda material: (
             f"- {material.name}: Bestand {material.quantity}, "
-            f"Mindestbestand {material.min_quantity}{machine}"
-        )
-    if len(materials) > MAX_ANSWER_ITEMS:
-        lines.append(f"- ... {len(materials) - MAX_ANSWER_ITEMS} weitere Artikel")
-    return "\n".join(lines)
+            f"Mindestbestand {material.min_quantity}"
+            f"{f', Maschine {_machine_name(material)}' if _machine_name(material) else ''}"
+        ),
+        source="Strukturierte Lagerdaten",
+        overflow_suffix="weitere Artikel",
+        empty_message="Keine sichtbaren Lagerartikel fuer diese Anfrage gefunden.",
+    )
 
 
 def _requested_machine(message, user, allow_name_only=False):
@@ -294,7 +281,7 @@ def _machine_name(material):
 
 def _is_inventory_follow_up(text, conversation_context):
     """Return whether a follow-up should stay on structured inventory data."""
-    if not is_list_follow_up(text):
+    if not is_list_follow_up(text, conversation_context):
         return False
     inherited = inherited_structured_scope(conversation_context)
     return inherited.get("entity_type") == "inventory"

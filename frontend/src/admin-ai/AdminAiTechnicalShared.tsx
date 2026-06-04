@@ -1,4 +1,4 @@
-import { type ChangeEvent, type ReactNode } from "react";
+import { isValidElement, type ChangeEvent, type ReactNode, type ReactElement } from "react";
 
 import { type AdminAiPayload } from "./adminAiApi";
 import {
@@ -6,6 +6,38 @@ import {
   objectPayload
 } from "./adminAiTechnicalModel";
 import { ragText } from "./adminAiRagBoardModel";
+
+/**
+ * Render a metric grid with optional collapsed overflow cards.
+ */
+export function CollapsibleMetricGrid({
+  cards,
+  previewCount = 4,
+  summaryLabel = "Weitere Metriken"
+}: {
+  readonly cards: readonly ReactElement[];
+  readonly previewCount?: number;
+  readonly summaryLabel?: string;
+}): ReactNode {
+  const previewCards = cards.slice(0, previewCount);
+  const overflowCards = cards.slice(previewCount);
+
+  return (
+    <>
+      <div className="dashboard-grid dashboard-grid-4 metric-grid-preview">{previewCards}</div>
+      {overflowCards.length ? (
+        <details className="help-disclosure ui-secondary-panel metric-grid-disclosure">
+          <summary>
+            {summaryLabel} ({overflowCards.length})
+          </summary>
+          <div className="help-disclosure-body">
+            <div className="dashboard-grid dashboard-grid-4">{overflowCards}</div>
+          </div>
+        </details>
+      ) : null}
+    </>
+  );
+}
 
 /**
  * Render one operations metric card.
@@ -94,7 +126,7 @@ export function DataTable({
             rows.map((row, index) => (
               <tr key={index}>
                 {row.map((value, cellIndex) => (
-                  <td key={cellIndex}>{ragText(value)}</td>
+                  <td key={cellIndex}>{isValidElement(value) ? value : ragText(value)}</td>
                 ))}
               </tr>
             ))

@@ -6,7 +6,7 @@ from datetime import UTC, date, datetime, timedelta
 
 from flask import current_app
 
-from app.ai.services import daily_briefing
+from app.ai.briefings import daily_briefing
 from app.extensions import db
 from app.models import AIAuditEvent, NotificationDelivery, Priority, Role, Task, TaskStatus, User
 from app.permissions import has_permission

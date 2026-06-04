@@ -22,9 +22,11 @@ type ShellChatAnswerQuality = {
 };
 
 type ShellChatDiagnostics = {
+  readonly answer_category?: string;
   readonly answer_origin?: string;
   readonly evidence_visible?: boolean;
   readonly fallback_used?: boolean;
+  readonly retrieval_used?: boolean;
   readonly source_label?: string;
   readonly source_count?: number;
   readonly status?: string;
@@ -40,10 +42,12 @@ type ShellChatMessage = {
 
 type ShellChatResponse = {
   readonly answer?: string;
+  readonly answer_category?: string;
   readonly answer_quality?: ShellChatAnswerQuality;
   readonly data?: ShellChatResponse;
   readonly diagnostics?: ShellChatDiagnostics;
   readonly evidence_visible?: boolean;
+  readonly retrieval_used?: boolean;
   readonly source_label?: string;
   readonly sources?: readonly ShellChatSource[];
   readonly success?: boolean;
@@ -52,6 +56,7 @@ type ShellChatResponse = {
 
 type ShellChatAnswerMeta = {
   readonly answerType: string;
+  readonly appDataBadge: boolean;
   readonly evidenceLabel: string;
   readonly sourceCount: number;
   readonly sourceLabel: string;
@@ -144,13 +149,18 @@ function metaFromPayload(payload: ShellChatResponse): ShellChatAnswerMeta {
   const sources = data.sources || [];
   const sourceItems = sources.map(sourceItemLabel).filter(Boolean).slice(0, 3);
   const sourceCount = sourceCountFromPayload(data, sourceItems.length);
+  const answerCategory = String(
+    data.answer_category || diagnostics.answer_category || ""
+  ).trim();
   const answerType = answerTypeLabel(data.type);
-  const structured = isStructuredAnswer(data.type);
+  const structured = isStructuredAnswer(data.type, answerCategory);
+  const appDataBadge = structured || answerCategory === "structured_data";
   const sourceLabel = sourceLabelFromPayload(data, sourceItems, answerType);
   const zeroResult = isZeroResult(data.answer || "", data, sourceCount);
 
   return {
-    answerType,
+    answerType: appDataBadge ? "App-Daten" : answerType,
+    appDataBadge,
     evidenceLabel: evidenceLabel(data.evidence_visible, diagnostics.evidence_visible),
     sourceCount,
     sourceLabel,
@@ -183,7 +193,8 @@ function answerTypeLabel(typeValue: unknown): string {
 /**
  * Return whether a response type represents structured app data.
  */
-function isStructuredAnswer(typeValue: unknown): boolean {
+function isStructuredAnswer(typeValue: unknown, answerCategory = ""): boolean {
+  if (answerCategory === "structured_data") return true;
   const key = String(typeValue || "");
   return (
     key === "daily_briefing"
@@ -194,6 +205,7 @@ function isStructuredAnswer(typeValue: unknown): boolean {
     || key.startsWith("machine_")
     || key.startsWith("shiftplan_")
     || key.startsWith("tasks_")
+    || key.startsWith("vacation_")
     || key.endsWith("_count")
   );
 }
@@ -381,6 +393,9 @@ function ShellChatMessageBubble({ message }: { readonly message: ShellChatMessag
     <article className={className}>
       <div className="chat-answer-meta" aria-label="Antwort-Metadaten">
         <span>{message.meta.answerType}</span>
+        {message.meta.appDataBadge ? (
+          <span className="chat-answer-badge is-positive">App-Daten</span>
+        ) : null}
         <span>{message.meta.sourceLabel}</span>
         <span>{sourceStatusLabel(message.meta)}</span>
       </div>

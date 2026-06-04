@@ -11,12 +11,12 @@ import { createActionDefinition } from "../components/ui/createActionSchema";
 import { loadGeneratedDocuments, loadMachineManuals, loadMachines } from "./documentApi";
 import { DocumentFilterPanel } from "./components/DocumentFilterPanel";
 import { DocumentHeader } from "./components/DocumentHeader";
+import { DocumentInsightPanels } from "./components/DocumentInsightPanels";
+import { DocumentOverviewIntro } from "./components/DocumentOverviewIntro";
 import { GeneratedDocumentList, ManualList } from "./components/DocumentLists";
 import { DocumentStats } from "./components/DocumentStats";
 import {
   ManualUploadPanel,
-  ReviewPanel,
-  SummaryPanel,
   UploadCheckPanel
 } from "./components/DocumentPanels";
 import type {
@@ -103,10 +103,10 @@ export function DocumentsApp(): ReactNode {
         onUploadCheckOpen={() => setActiveDrawer("upload-check")}
         writable={writable}
       />
+      <DocumentOverviewIntro />
       <DocumentStats documents={documents} manuals={manuals} />
-      <section className="dashboard-grid">
-        <ReviewPanel review={review} />
-        <SummaryPanel summary={summary} />
+      <DocumentInsightPanels review={review} summary={summary} />
+      <section className="dashboard-grid documents-work-grid">
         <GeneratedDocumentList
           documents={documents}
           onMessage={setMessage}

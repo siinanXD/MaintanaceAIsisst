@@ -63,8 +63,7 @@ def incident_source_cards(incidents, limit=SOURCE_CARD_LIMIT):
 def incident_source_cards_from_payloads(incidents, limit=SOURCE_CARD_LIMIT):
     """Return compact source cards from already-visible incident payloads."""
     return [
-        _incident_source_card_from_payload(incident)
-        for incident in list(incidents or [])[:limit]
+        _incident_source_card_from_payload(incident) for incident in list(incidents or [])[:limit]
     ]
 
 
@@ -87,8 +86,16 @@ def employee_source_cards(employees, user, limit=SOURCE_CARD_LIMIT):
     """Return compact source cards for already-visible employee rows."""
     access_level = employee_access_level(user)
     return [
-        _employee_source_card(employee, access_level)
-        for employee in list(employees or [])[:limit]
+        _employee_source_card(employee, access_level) for employee in list(employees or [])[:limit]
+    ]
+
+
+def employee_document_source_cards(documents, limit=SOURCE_CARD_LIMIT):
+    """Return compact source cards for visible employee document file rows."""
+    return [
+        _employee_document_source_card(document)
+        for document in list(documents or [])[:limit]
+        if document is not None
     ]
 
 
@@ -125,8 +132,7 @@ def shiftplan_entry_source_cards(entries, user=None, limit=SOURCE_CARD_LIMIT):
     """Return compact source cards for already-visible shift plan entries."""
     access_level = employee_access_level(user) if user else "basic"
     return [
-        _shiftplan_entry_source_card(entry, access_level)
-        for entry in list(entries or [])[:limit]
+        _shiftplan_entry_source_card(entry, access_level) for entry in list(entries or [])[:limit]
     ]
 
 
@@ -292,6 +298,32 @@ def _inventory_source_card(material):
     }
 
 
+def _employee_document_source_card(document):
+    """Return one prompt-safe source card for an employee document file."""
+    employee = getattr(document, "employee", None)
+    employee_name = str(getattr(employee, "name", "") or "")[:160]
+    department = str(getattr(employee, "department", "") or "")[:120]
+    filename = str(getattr(document, "original_filename", "") or "")[:160]
+    payload = document.to_dict() if hasattr(document, "to_dict") else {}
+    download_url = str(payload.get("download_url") or "")[:240]
+    return {
+        "type": "employee_document",
+        "id": getattr(document, "id", None),
+        "title": filename or "Mitarbeiterdokument",
+        "module": "employees",
+        "url": download_url or "/employees",
+        "source_type": "employee_document",
+        "source_id": getattr(document, "id", None),
+        "source_record_id": getattr(document, "id", None),
+        "source_kind": "structured",
+        "role_visibility": _role_visibility(department),
+        "created_at": _isoformat(getattr(document, "uploaded_at", None)),
+        "employee_id": getattr(document, "employee_id", None),
+        "employee_name": employee_name,
+        "original_filename": filename,
+    }
+
+
 def _employee_source_card(employee, access_level):
     """Return one prompt-safe employee source card."""
     department = str(getattr(employee, "department", "") or "")[:120]
@@ -393,11 +425,7 @@ def _shiftplan_entry_source_card(entry, access_level):
     employee = getattr(entry, "employee", None)
     machine = getattr(entry, "machine", None)
     department = str(getattr(plan, "department", "") or "")[:120]
-    employee_name = (
-        str(getattr(employee, "name", "") or "")[:160]
-        if access_level != "none"
-        else ""
-    )
+    employee_name = str(getattr(employee, "name", "") or "")[:160] if access_level != "none" else ""
     title = (
         f"{employee_name} {entry.work_date.isoformat()} {entry.shift}".strip()
         if employee_name

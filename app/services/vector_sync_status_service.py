@@ -236,9 +236,7 @@ def vector_store_drift_status(documents=None):
         fallback_active=fallback_active,
     )
     if _is_atlas_store(configured_store):
-        set_atlas_reindex_required(
-            bool(reindex_reasons or collection_mismatch or fallback_active)
-        )
+        set_atlas_reindex_required(bool(reindex_reasons or collection_mismatch or fallback_active))
 
     return {
         "store": store_name,

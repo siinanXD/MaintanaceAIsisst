@@ -74,9 +74,15 @@ export function GeneratedDocumentList(props: GeneratedDocumentListProps): ReactN
           </div>
           <span className="badge badge-status is-open" data-document-count>{props.documents.length} Dokumente</span>
         </div>
-        <div className="status-explainer">
-          <p><strong>Prüfstatus:</strong> Schwache oder unvollständige Berichte sollten nachgearbeitet werden, bevor sie als verlässliche Wissensquelle dienen.</p>
-        </div>
+        <details className="help-disclosure ui-secondary-panel document-list-help">
+          <summary>Hinweis zum Prüfstatus</summary>
+          <div className="help-disclosure-body">
+            <p className="panel-meta">
+              Schwache oder unvollständige Berichte sollten nachgearbeitet werden, bevor sie als verlaessliche
+              Wissensquelle dienen.
+            </p>
+          </div>
+        </details>
         <div className="list-toolbar">
           <label className="compact-search-field" htmlFor="document-list-search">
             <span>Dokumente suchen</span>
@@ -153,9 +159,15 @@ export function ManualList(props: ManualListProps): ReactNode {
           </div>
           <span className="badge badge-status is-open" data-manual-count>{props.manuals.length} Handbücher</span>
         </div>
-        <div className="status-explainer">
-          <p><strong>Für Antworten:</strong> Maschinenhandbücher liefern technische Details. Je klarer Maschine und Bereich gesetzt sind, desto besser werden Treffer und Quellenangaben.</p>
-        </div>
+        <details className="help-disclosure ui-secondary-panel document-list-help">
+          <summary>Hinweis zu Maschinenhandbuechern</summary>
+          <div className="help-disclosure-body">
+            <p className="panel-meta">
+              Maschinenhandbuecher liefern technische Details. Je klarer Maschine und Bereich gesetzt sind, desto
+              besser werden Treffer und Quellenangaben.
+            </p>
+          </div>
+        </details>
         <div className="record-card-grid document-record-grid" data-manual-list data-list-search-items=".record-card">
           {props.manuals.length ? props.manuals.map((manual) => <ManualCard {...props} key={manual.id} manual={manual} />) : (
             <article className="guided-empty-state empty-state">

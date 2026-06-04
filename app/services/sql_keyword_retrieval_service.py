@@ -72,6 +72,8 @@ TOKEN_SYNONYMS = {
     "maschinen": {"anlagen", "machine"},
     "report": {"bericht", "dokument"},
     "stoerung": {"fehler", "error", "defekt"},
+    "halt": {"not-halt", "notaus", "not-aus"},
+    "kreis": {"not-halt-kreis", "sicherheitskreis"},
     "task": {"aufgabe", "auftrag"},
     "teil": {"material", "ersatzteil"},
 }

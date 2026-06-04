@@ -43,9 +43,7 @@ def health_command():
 def probe_search_command():
     """Run a lightweight Atlas vector search probe."""
     result = probe_atlas_vector_search()
-    click.echo(
-        f"ok={result['ok']} reason={result['reason']} latency_ms={result['latency_ms']}"
-    )
+    click.echo(f"ok={result['ok']} reason={result['reason']} latency_ms={result['latency_ms']}")
     if not result.get("ok"):
         raise click.ClickException(result.get("reason") or "Atlas vector search probe failed")
 

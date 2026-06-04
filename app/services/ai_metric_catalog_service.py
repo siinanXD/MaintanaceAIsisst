@@ -1,0 +1,142 @@
+"""Stable AI Admin dashboard metric catalog definitions."""
+
+from __future__ import annotations
+
+METRIC_CATALOG_ENTRIES: tuple[tuple[str, str, str, str], ...] = (
+    ("total_requests", "Requests gesamt", "reliability", "count"),
+    ("successful_requests", "Erfolgreiche Requests", "reliability", "count"),
+    ("failed_requests", "Fehlgeschlagene Requests", "reliability", "count"),
+    ("request_success_rate", "Request-Erfolgsquote", "reliability", "rate"),
+    ("frequent_questions", "Haeufige Fragen", "usage", "count"),
+    ("frequent_search_terms", "Suchbegriffe", "usage", "count"),
+    ("structured_answer_count", "Strukturierte Antworten", "structured", "count"),
+    ("rag_answer_count", "RAG-Antworten", "retrieval", "count"),
+    ("no_source_count", "Antworten ohne Quellen", "quality", "count"),
+    (
+        "no_source_permission_denied_count",
+        "Ohne Quellen wegen fehlender Berechtigung",
+        "quality",
+        "count",
+    ),
+    (
+        "no_source_no_data_count",
+        "Ohne Quellen weil keine Daten gefunden wurden",
+        "quality",
+        "count",
+    ),
+    ("no_source_answer_count", "Beantwortet ohne Quellen", "quality", "count"),
+    ("source_count_average", "Durchschnitt Quellen pro Antwort", "sources", "count"),
+    (
+        "source_count_average_answered",
+        "Durchschnitt Quellen pro beantworteter Frage",
+        "sources",
+        "count",
+    ),
+    ("top_structured_modules", "Top strukturierte Module", "structured", "count"),
+    (
+        "structured_domain_distribution",
+        "Strukturierte Antwortbereiche",
+        "structured",
+        "count",
+    ),
+    ("average_final_top_k", "Durchschnitt Top-K", "retrieval", "count"),
+    ("average_tokens", "Durchschnitt Tokens", "cost", "tokens"),
+    ("cost_windows", "Kostenfenster", "cost", "usd"),
+    ("provider_ready", "Provider bereit", "provider", "boolean"),
+    ("provider_readiness_status", "Provider-Readiness", "provider", "status"),
+    ("provider_degraded_component_count", "Provider-Degradierungen", "provider", "count"),
+    ("provider_next_action_type", "Provider Next Action", "provider", "action"),
+    ("p95_response_ms", "Antwortlatenz p95", "latency", "ms"),
+    ("p95_retrieval_ms", "Retrievallatenz p95", "latency", "ms"),
+    ("latency", "Latenzmetriken", "latency", "object"),
+    ("atlas_queries", "Atlas Queries", "atlas", "count"),
+    ("atlas_errors", "Atlas Fehler", "atlas", "count"),
+    ("atlas_latency", "Atlas Latenz", "atlas", "ms"),
+    ("atlas_fallbacks", "Atlas Fallbacks", "atlas", "count"),
+    ("atlas_sync_failures", "Atlas Sync-Fehler", "atlas", "count"),
+    ("atlas_vector_count", "Atlas Vektoren", "atlas", "count"),
+    ("atlas_reindex_required", "Atlas Reindex erforderlich", "atlas", "boolean"),
+    ("failed_request_count", "Fehlgeschlagene Requests", "reliability", "count"),
+    ("no_source_answers", "Antworten ohne Quellen", "quality", "count"),
+    ("low_confidence_answers", "Low-Confidence Antworten", "quality", "count"),
+    ("token_usage", "Token-Nutzung", "cost", "object"),
+    ("costs", "Kosten", "cost", "object"),
+    ("governance_alert_count", "Governance Alerts", "governance", "count"),
+    (
+        "governance_critical_alert_count",
+        "Kritische Governance Alerts",
+        "governance",
+        "count",
+    ),
+    ("governance_warning_alert_count", "Governance Warnungen", "governance", "count"),
+    ("governance_status", "Governance Status", "governance", "status"),
+    ("retrieval_hit_rate", "Retrieval-Erfolgsquote", "quality", "rate"),
+    ("source_freshness", "Quellen-Frische", "retrieval", "rate"),
+    ("no_answer_rate", "No-Answer-Rate", "quality", "rate"),
+    ("uncertainty_distribution", "Unsicherheitsverteilung", "quality", "count"),
+    (
+        "answer_quality_reason_distribution",
+        "Answer-Quality-Gruende",
+        "quality",
+        "count",
+    ),
+    ("answer_quality_action_count", "Answer-Quality Actions", "quality", "count"),
+    ("high_uncertainty_rate", "Hohe Unsicherheit", "quality", "rate"),
+    ("uncertain_answer_rate", "Unsichere Antworten", "quality", "rate"),
+    ("recall_at_k", "Recall@K", "evaluation", "rate"),
+    ("mrr", "MRR", "evaluation", "rate"),
+    ("keyword_hit_rate", "Keyword-Trefferquote", "evaluation", "rate"),
+    ("no_result_rate", "No-Result-Rate", "evaluation", "rate"),
+    (
+        "expected_no_result_success_rate",
+        "Erwartete No-Results",
+        "evaluation",
+        "rate",
+    ),
+    ("unexpected_no_result_rate", "Unerwartete No-Results", "evaluation", "rate"),
+    ("min_source_count_pass_rate", "Mindestquellen-Abdeckung", "evaluation", "rate"),
+    ("query_type_accuracy", "Query-Type Accuracy", "evaluation", "rate"),
+    ("permission_leak_count", "Permission-Leak-Checks", "evaluation", "count"),
+    ("evaluation_quality_gate", "Evaluation Quality Gate", "evaluation", "status"),
+    (
+        "evaluation_quality_gate_status",
+        "Evaluation Gate Status",
+        "evaluation",
+        "status",
+    ),
+    (
+        "evaluation_quality_gate_issue_count",
+        "Evaluation Gate Issues",
+        "evaluation",
+        "count",
+    ),
+    ("evaluation_blocking_count", "Evaluation Blocker", "evaluation", "count"),
+    ("evaluation_warning_count", "Evaluation Warnungen", "evaluation", "count"),
+    ("source_metadata_gap_count", "Source-Metadata-Gaps", "evaluation", "count"),
+    (
+        "source_metadata_min_coverage_rate",
+        "Source-Metadata Mindestabdeckung",
+        "evaluation",
+        "rate",
+    ),
+    ("retrieval_action_count", "Retrieval Actions", "retrieval", "count"),
+    ("evaluation_action_count", "Evaluation Actions", "evaluation", "count"),
+    ("feedback", "Feedback", "quality", "count"),
+    ("most_used_documents", "Meistgenutzte Dokumente", "sources", "count"),
+    ("knowledge_gaps", "Knowledge Gaps", "knowledge", "count"),
+)
+
+
+def metric_definition(key: str, label: str, category: str, unit: str) -> dict[str, str]:
+    """Return one stable prompt-safe metric definition."""
+    return {
+        "key": key,
+        "label": label,
+        "category": category,
+        "unit": unit,
+    }
+
+
+def metric_catalog() -> list[dict[str, str]]:
+    """Return stable AI Admin dashboard metric definitions."""
+    return [metric_definition(*entry) for entry in METRIC_CATALOG_ENTRIES]

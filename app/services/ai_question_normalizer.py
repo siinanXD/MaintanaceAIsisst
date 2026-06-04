@@ -66,9 +66,7 @@ def contains_lookup_term(text, term):
         return False
     if " " in normalized_term or "-" in normalized_term:
         return normalized_term in normalized_text
-    return bool(
-        re.search(rf"(?<!\w){re.escape(normalized_term)}(?!\w)", normalized_text)
-    )
+    return bool(re.search(rf"(?<!\w){re.escape(normalized_term)}(?!\w)", normalized_text))
 
 
 def contains_any_lookup_term(text, terms):

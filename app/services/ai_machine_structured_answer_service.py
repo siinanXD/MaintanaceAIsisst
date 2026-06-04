@@ -10,6 +10,8 @@ from app.models import ErrorEntry, Machine
 from app.security import has_dashboard_permission
 from app.services.ai_prompting import permission_denied_answer
 from app.services.ai_question_normalizer import normalize_text
+from app.services.ai_structured_constants import MAX_ANSWER_ITEMS, MAX_LIST_ITEMS
+from app.services.ai_structured_context_helpers import build_structured_context
 from app.services.ai_structured_source_service import (
     incident_source_cards,
     machine_source_card,
@@ -20,8 +22,6 @@ from app.services.visibility_query_service import visible_machines_query
 INCIDENT_TERMS = ("stoerung", "stoerungen", "fehler")
 DOWNTIME_TERMS = ("ausfallzeit", "downtime")
 MAX_GROUPS = 10
-MAX_ITEMS = 20
-MAX_ANSWER_ITEMS = 10
 
 
 def answer_machine_structured_question(message, user, conversation_context=None):
@@ -64,7 +64,7 @@ def _answer_machine_downtime(user):
         },
         "sources": sources,
         "scope": "machines",
-        "structured_context": {"entity_type": "machines"},
+        "structured_context": build_structured_context("machines", query="downtime"),
     }
 
 
@@ -85,10 +85,11 @@ def _answer_machine_incidents(machine, user):
         },
         "sources": _machine_and_incident_sources(machine, incidents),
         "scope": "machines",
-        "structured_context": {
-            "entity_type": "incidents",
-            "machine": machine.name,
-        },
+        "structured_context": build_structured_context(
+            "machines",
+            machine=machine.name,
+            query="machine_incidents",
+        ),
     }
 
 
@@ -117,7 +118,7 @@ def _incidents_for_machine(machine, user):
             )
         )
         .order_by(ErrorEntry.created_at.desc(), ErrorEntry.id.desc())
-        .limit(MAX_ITEMS)
+        .limit(MAX_LIST_ITEMS)
         .all()
     )
 

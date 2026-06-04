@@ -569,9 +569,17 @@ separate monolith:
    `knowledge_gap_service.py` deduplicates unanswered or low-confidence AI
    questions into open knowledge gaps.
 
-Current limitation: RAG retrieval still uses all indexed and visible
-`KnowledgeDocument` rows. The `admin_approved` quality gate is surfaced in
-status diagnostics, but is not enforced during retrieval yet.
+RAG retrieval applies per-document quality gates via
+`retrieval_quality_gate_for_document()` in `knowledge_quality_service.py`.
+Draft, outdated, rejected, and unknown statuses are blocked by default. Set
+`RAG_STRICT_QUALITY_GATE=true` (see `.env.example`) to allow only
+`admin_approved` and `technician_confirmed` chunks during vector/SQL retrieval.
+The admin status API still exposes lifecycle queues and gate diagnostics for
+review workflows.
+
+Employee master data and confidential `EmployeeDocument` files are structured
+chat sources only; they are not embedded into `KnowledgeDocument` unless an
+explicit indexing policy is added later.
 
 Initial RAG-ready data sources:
 - `ErrorEntry`: error code, machine, title, description, possible causes, solution, department, `machine_id`.

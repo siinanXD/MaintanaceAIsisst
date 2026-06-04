@@ -12,15 +12,19 @@ type SimilarErrorsPanelProps = {
 export function SimilarErrorsPanel({ result }: SimilarErrorsPanelProps): ReactNode {
   const matches = result?.results || [];
 
+  if (!result) {
+    return null;
+  }
+
   return (
-    <article className="incident-similar-panel app-card" data-similar-errors-panel hidden={!result}>
-      <header className="panel-header">
-        <div>
-          <h2 className="panel-title">Ähnliche Fehler</h2>
-          <p className="panel-meta">Bestehende Katalogeinträge vor dem Speichern prüfen.</p>
-        </div>
-      </header>
-      <div className="table-wrap bounded-table-wrap">
+    <details className="help-disclosure ui-secondary-panel incident-similar-disclosure" data-similar-errors-panel open>
+      <summary>
+        Ähnliche Fehler
+        {matches.length ? ` (${matches.length})` : ""}
+      </summary>
+      <div className="help-disclosure-body">
+        <p className="panel-meta">Bestehende Katalogeinträge vor dem Speichern prüfen.</p>
+        <div className="table-wrap bounded-table-wrap">
         <table className="table data-table">
           <caption>Ähnliche vorhandene Fehler vor dem Speichern</caption>
           <thead>
@@ -53,7 +57,8 @@ export function SimilarErrorsPanel({ result }: SimilarErrorsPanelProps): ReactNo
             )}
           </tbody>
         </table>
+        </div>
       </div>
-    </article>
+    </details>
   );
 }

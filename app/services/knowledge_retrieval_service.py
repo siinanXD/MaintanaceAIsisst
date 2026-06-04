@@ -27,13 +27,7 @@ def _candidate_payload(candidate):
         "score": int(round(max(float(candidate.raw_score or 0), 0))),
         "context": candidate.content,
     }
-    payload.update(
-        {
-            key: value
-            for key, value in metadata.items()
-            if value not in (None, "")
-        }
-    )
+    payload.update({key: value for key, value in metadata.items() if value not in (None, "")})
     return payload
 
 

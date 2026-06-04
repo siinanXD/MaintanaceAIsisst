@@ -46,9 +46,7 @@ MAINTENANCE_MONGODB_INDEX_SPECS: dict[str, tuple[dict[str, Any], ...]] = {
         {"keys": [("status", 1)], "name": "errors_status"},
     ),
     "documents": ({"keys": [("source_type", 1)], "name": "documents_source_type"},),
-    "document_chunks": (
-        {"keys": [("document_id", 1)], "name": "document_chunks_document_id"},
-    ),
+    "document_chunks": ({"keys": [("document_id", 1)], "name": "document_chunks_document_id"},),
     "chat_sessions": ({"keys": [("user_id", 1)], "name": "chat_sessions_user_id"},),
     "chat_messages": ({"keys": [("session_id", 1)], "name": "chat_messages_session_id"},),
     "ai_answers": ({"keys": [("session_id", 1)], "name": "ai_answers_session_id"},),

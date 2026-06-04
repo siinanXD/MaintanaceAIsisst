@@ -18,7 +18,11 @@ from app.services.ai_question_normalizer import (
     mentions_my_area,
     normalize_text,
 )
-from app.services.ai_structured_context_helpers import should_defer_structured_scope_follow_up
+from app.services.ai_structured_constants import MAX_ANSWER_ITEMS, MAX_LIST_ITEMS
+from app.services.ai_structured_context_helpers import (
+    is_bare_list_refinement,
+    should_defer_structured_scope_follow_up,
+)
 from app.services.ai_structured_source_service import (
     incident_source_cards,
     incident_source_cards_from_payloads,
@@ -56,8 +60,6 @@ TASK_PROGRESS_PATTERNS = (
     "unerledigt",
 )
 SUPPORTED_ENTITIES = {"tasks", "incidents"}
-MAX_ITEMS = 20
-ANSWER_ITEMS = 10
 
 
 def answer_structured_scope_question(message, user, conversation_context=None):
@@ -66,7 +68,9 @@ def answer_structured_scope_question(message, user, conversation_context=None):
     if should_defer_structured_scope_follow_up(text, conversation_context):
         return None
     inherited_context = dict(getattr(conversation_context, "structured_scope", {}) or {})
-    follow_up = is_structured_follow_up(text)
+    follow_up = is_structured_follow_up(text) or (
+        is_bare_list_refinement(text) and bool(inherited_context.get("entity_type"))
+    )
     explicit_entity = _entity_type_from_text(text)
     entity_type = explicit_entity or (inherited_context.get("entity_type") if follow_up else "")
     if entity_type not in SUPPORTED_ENTITIES:
@@ -95,7 +99,7 @@ def _answer_tasks(message, user, filters):
 
     query = _filtered_task_query(user, filters)
     count = query.count()
-    tasks = _ordered_tasks(query, filters).limit(MAX_ITEMS).all()
+    tasks = _ordered_tasks(query, filters).limit(MAX_LIST_ITEMS).all()
     count_question = _is_count_question(message)
     sources = _task_sources(tasks, count, user)
     return {
@@ -122,7 +126,7 @@ def _answer_incidents(message, user, filters):
 
     query = _filtered_incident_query(user, filters)
     count = query.count()
-    incidents = _ordered_incidents(query, filters).limit(MAX_ITEMS).all()
+    incidents = _ordered_incidents(query, filters).limit(MAX_LIST_ITEMS).all()
     count_question = _is_count_question(message)
     sources = _incident_sources(incidents, count, user)
     return {
@@ -160,7 +164,7 @@ def _answer_incident_machine_aggregation(user, filters):
             "aggregation": {
                 "group_by": "machine",
                 "top": top_group,
-                "groups": groups[:ANSWER_ITEMS],
+                "groups": groups[:MAX_ANSWER_ITEMS],
             },
             "items": top_group["examples"] if top_group else [],
         },
@@ -265,10 +269,10 @@ def _format_answer(label, count, items, filters, count_question):
 
     lines.append("")
     lines.append("Sichtbare Treffer:")
-    for item in items[:ANSWER_ITEMS]:
+    for item in items[:MAX_ANSWER_ITEMS]:
         lines.append(_item_line(item))
-    if count > ANSWER_ITEMS:
-        lines.append(f"- ... {count - ANSWER_ITEMS} weitere passende Eintraege")
+    if count > MAX_ANSWER_ITEMS:
+        lines.append(f"- ... {count - MAX_ANSWER_ITEMS} weitere passende Eintraege")
     return "\n".join(lines)
 
 
@@ -319,7 +323,7 @@ def _format_machine_aggregation_answer(top_group, groups, filters):
             "Sichtbare Beispiele:",
         ]
     )
-    for incident in top_group["examples"][:ANSWER_ITEMS]:
+    for incident in top_group["examples"][:MAX_ANSWER_ITEMS]:
         lines.append(
             f"- #{incident['id']} {incident['error_code']} - {incident['title']} "
             f"({incident['status']}, {incident['severity']})"
@@ -327,7 +331,7 @@ def _format_machine_aggregation_answer(top_group, groups, filters):
     if len(groups) > 1:
         lines.append("")
         lines.append("Weitere Maschinen:")
-        for group in groups[1:ANSWER_ITEMS]:
+        for group in groups[1:MAX_ANSWER_ITEMS]:
             lines.append(f"- {group['machine']}: {group['count']}")
     return "\n".join(lines)
 
@@ -491,9 +495,7 @@ def _entity_type_from_text(text):
         return ""
     if any(term in text for term in INCIDENT_ENTITY_TERMS):
         return "incidents"
-    if contains_any_lookup_term(text, TASK_ENTITY_TERMS) or _looks_like_natural_task_request(
-        text
-    ):
+    if contains_any_lookup_term(text, TASK_ENTITY_TERMS) or _looks_like_natural_task_request(text):
         return "tasks"
     return ""
 

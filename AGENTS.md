@@ -29,6 +29,9 @@ You are a senior software engineer working on the Maintenance Assistant App.
 
 ## AI/RAG Standards
 
+- Do not index confidential employee fields or `EmployeeDocument` file content into
+  `KnowledgeDocument` without an explicit data-policy change; use structured employee
+  answers for personnel document metadata instead.
 - Keep AI providers swappable: mock, OpenAI, OpenAI-compatible local endpoints, and future providers.
 - Keep RAG source metadata prompt-safe and permission-aware.
 - Preserve no-answer behavior when sources are weak or unavailable.

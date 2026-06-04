@@ -4,60 +4,78 @@ import { AdminAiSourceTestPanel } from "./AdminAiSectionsSourceCheck";
 import { type AdminAiRagBoardProps } from "./AdminAiRagBoardTypes";
 import { KnowledgeDocumentsPanel } from "./KnowledgeDocumentsPanel";
 import { KnowledgeNetworkPanel } from "./KnowledgeNetworkPanel";
-import { KnowledgeStatusPanel, RagHealthStrip } from "./KnowledgeStatusPanel";
-import { ReindexJobsPanel } from "./ReindexJobsPanel";
+import {
+  KnowledgeStatusPanel,
+  RagHealthRail,
+  RagIndexTrack,
+  SourceHealthBoard
+} from "./KnowledgeStatusPanel";
 import { TrainingEntriesPanel } from "./TrainingEntriesPanel";
 
 /**
- * Render the knowledge base, training and source maintenance areas.
+ * Render knowledge maintenance and source testing in a simple two-column ops layout.
  */
 export function AdminAiRagBoard(props: AdminAiRagBoardProps): ReactNode {
-  const { ragBoardState } = props;
+  const { onQueueStale, onReindexStale, ragBoardState } = props;
 
   return (
     <>
-      <section className="ai-admin-area rag-board-area rag-game-shell" id="ai-rag-board" data-ai-admin-area="rag-board">
-        <div className="ai-admin-area-header">
-          <div>
-            <span className="section-kicker">2. Knowledge & Sources</span>
-            <h3>Wissensbasis, Quellenstatus und Pflegeaktionen</h3>
-            <p className="panel-meta">
-              Bestehende Quellen, Indexstatus, Freigaben und Reindex-Workflows ohne neue Daten.
-            </p>
+      <section className="ai-admin-area rag-board-area" id="ai-rag-board" data-ai-admin-area="rag-board">
+        <div className="rag-ops-layout">
+          <div className="rag-ops-primary">
+            <div className="rag-ops-toolbar">
+              <div>
+                <h3>Index & Quellen</h3>
+                <p className="panel-meta" data-ai-reindex-message>
+                  {ragBoardState.statusMessage || "Quelle → Textabschnitte → Vektoren → Suchbar → Getestet"}
+                </p>
+              </div>
+              <div className="toolbar rag-action-stack">
+                <button
+                  className="btn btn-secondary btn-sm"
+                  disabled={ragBoardState.isSaving}
+                  type="button"
+                  data-ai-queue-stale
+                  onClick={onQueueStale}
+                >
+                  Job planen
+                </button>
+                <button
+                  className="btn btn-primary btn-sm"
+                  disabled={ragBoardState.isSaving}
+                  type="button"
+                  data-ai-reindex-stale
+                  onClick={onReindexStale}
+                >
+                  Reindex
+                </button>
+              </div>
+            </div>
+            {ragBoardState.errorMessage ? (
+              <p className="panel-meta text-error">{ragBoardState.errorMessage}</p>
+            ) : null}
+            <RagHealthRail state={ragBoardState} />
+            <RagIndexTrack state={ragBoardState} />
+            <SourceHealthBoard state={ragBoardState} />
           </div>
-          <span className="badge badge-ai">
-            {ragBoardState.isLoading ? "Wissensbasis wird geladen" : "Wissensbasis geladen"}
-          </span>
+          <aside className="rag-ops-side" aria-label="Quellen-Test">
+            <h3>Antwort-Test</h3>
+            <p className="panel-meta">Dry-run oder Live-Test gegen aktuelle Quellen.</p>
+            <AdminAiSourceTestPanel {...props} layout="arena" />
+          </aside>
         </div>
-        <RagHealthStrip state={ragBoardState} />
-        <ReindexJobsPanel {...props} />
-        <section className="panel mt-4">
-          <div className="panel-header">
-            <h3>Quellen-Test</h3>
-            <span className="panel-meta">Testfrage direkt gegen aktuelle Quellen prüfen</span>
-          </div>
-          <AdminAiSourceTestPanel {...props} />
-        </section>
       </section>
 
-      <section className="ai-admin-area" id="ai-knowledge-sources" data-ai-admin-area="data-sources">
-        <div className="ai-admin-area-header">
-          <div>
-            <span className="section-kicker">Quellenuebersicht</span>
-            <h3>Dokumente, FAQ, Trainingswissen, Fehlerkatalog, Aufgaben und Maschinen</h3>
-            <p className="panel-meta">
-              Fehlerkatalog, Dokumente, Aufgaben, Maschinen, Material, Wartungspläne und
-              Schichtdaten mit Status und Freigaben bewerten.
-            </p>
+      <section className="ai-admin-area rag-board-details-area" id="ai-knowledge-sources" data-ai-admin-area="data-sources">
+        <details className="help-disclosure ui-secondary-panel" open>
+          <summary>Pflege-Listen: Dokumente, Training, Netzwerk, Index-Details</summary>
+          <div className="help-disclosure-body rag-board-details-body">
+            <KnowledgeStatusPanel showSourceBoard={false} state={ragBoardState} />
+            <KnowledgeNetworkPanel {...props} />
+            <TrainingEntriesPanel {...props} />
+            <KnowledgeDocumentsPanel {...props} />
           </div>
-          <span className="badge badge-ai" data-ai-section-status="knowledge">
-            {ragBoardState.isLoading ? "Wissen wird geladen" : "Wissen geladen"}
-          </span>
-        </div>
-        <KnowledgeStatusPanel state={ragBoardState} />
-        <KnowledgeNetworkPanel {...props} />
-        <TrainingEntriesPanel {...props} />
-        <KnowledgeDocumentsPanel {...props} />
+        </details>
       </section>
     </>
   );

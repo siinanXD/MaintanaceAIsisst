@@ -11,6 +11,7 @@ export type AdminAiTechnicalFilters = {
 };
 
 export type AdminAiTechnicalState = {
+  readonly aiStatus: AdminAiPayload | null;
   readonly errorMessage: string;
   readonly filters: AdminAiTechnicalFilters;
   readonly isLoading: boolean;
@@ -19,11 +20,13 @@ export type AdminAiTechnicalState = {
   readonly observability: AdminAiPayload | null;
   readonly operations: AdminAiPayload | null;
   readonly retrievalDebug: readonly AdminAiPayload[];
+  readonly summary: AdminAiPayload | null;
   readonly telemetry: AdminAiPayload | null;
   readonly statusMessage: string;
 };
 
 export const EMPTY_ADMIN_AI_TECHNICAL_STATE: AdminAiTechnicalState = {
+  aiStatus: null,
   errorMessage: "",
   filters: { debugQuery: "", debugType: "" },
   isLoading: false,
@@ -32,6 +35,7 @@ export const EMPTY_ADMIN_AI_TECHNICAL_STATE: AdminAiTechnicalState = {
   observability: null,
   operations: null,
   retrievalDebug: [],
+  summary: null,
   telemetry: null,
   statusMessage: ""
 };
@@ -51,7 +55,7 @@ export function retrievalDebugQueryString(filters: AdminAiTechnicalFilters): str
  * Return a query string for AI observability.
  */
 export function observabilityQueryString(): string {
-  return new URLSearchParams({ days: "30", limit: "5" }).toString();
+  return new URLSearchParams({ days: "30", limit: "12" }).toString();
 }
 
 /**

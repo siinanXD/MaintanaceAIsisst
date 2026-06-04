@@ -67,6 +67,35 @@ def test_query_understanding_classifies_safety_and_routes_retrieval():
     assert result.retrieval_strategy["top_k"] >= 6
 
 
+def test_query_understanding_arbeit_keyword_uses_word_boundaries():
+    """Verify safety questions with Arbeiten are not mis-scored via substring arbeit."""
+    safety = classify_query("Darf ich den Not-Aus bei Arbeiten unter Spannung ueberbruecken?")
+    tasks = classify_query("Welche Arbeiten sind heute offen?")
+
+    assert safety.query_type == "safety_question"
+    assert tasks.query_type == "task_question"
+
+
+def test_query_understanding_not_halt_routes_inventory_maintenance_risk():
+    """Verify spare-part maintenance risk questions include manual training sources."""
+    from app.ai.intent import detect_requested_scopes
+
+    question = "Welche Ersatzteile blockieren Wartung an Hydraulikpresse 03?"
+    result = classify_query(question, requested_scopes=detect_requested_scopes(question))
+
+    assert "manual_training" in result.retrieval_strategy["source_types"]
+    assert result.retrieval_strategy["top_k"] >= 6
+
+
+def test_detect_requested_scopes_includes_errors_for_not_halt_question():
+    """Verify Not-Halt questions request the errors scope."""
+    from app.ai.intent import detect_requested_scopes
+
+    scopes = detect_requested_scopes("Was ist bei Not-Halt-Kreis offen zu pruefen?")
+
+    assert "errors" in scopes
+
+
 def test_query_understanding_routes_employee_questions():
     """Verify employee questions route to permission-aware employee sources."""
     result = classify_query("Welche Mitarbeiter haben Hydraulik Qualifikation?")

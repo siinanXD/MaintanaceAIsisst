@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 
 import {
   loadAdminAiKnowledgeGaps,
+  loadAdminAiSummary,
   loadAdminJobs,
   loadAiObservability,
+  loadAiStatus,
   loadOperationsHealth,
   loadRetrievalDebug,
   loadRetrievalTelemetry,
@@ -51,7 +53,9 @@ export function useAdminAiTechnicalData(adminAiView: AdminAiView, canUseAdminAiA
       observabilityResult,
       gapsResult,
       jobsResult,
-      operationsResult
+      operationsResult,
+      summaryResult,
+      aiStatusResult
     ] =
       await Promise.allSettled([
         loadRetrievalTelemetry(signal),
@@ -59,7 +63,9 @@ export function useAdminAiTechnicalData(adminAiView: AdminAiView, canUseAdminAiA
         loadAiObservability(observabilityQueryString(), signal),
         loadAdminAiKnowledgeGaps(signal),
         loadAdminJobs(signal),
-        loadOperationsHealth(signal)
+        loadOperationsHealth(signal),
+        loadAdminAiSummary(signal),
+        loadAiStatus(signal)
       ]);
 
     if (signal?.aborted) return;
@@ -70,7 +76,9 @@ export function useAdminAiTechnicalData(adminAiView: AdminAiView, canUseAdminAiA
       observabilityResult,
       gapsResult,
       jobsResult,
-      operationsResult
+      operationsResult,
+      summaryResult,
+      aiStatusResult
     ].find((result) => result.status === "rejected");
     const observability =
       observabilityResult.status === "fulfilled"
@@ -83,6 +91,7 @@ export function useAdminAiTechnicalData(adminAiView: AdminAiView, canUseAdminAiA
 
     setTechnicalState((currentState) => ({
       ...currentState,
+      aiStatus: aiStatusResult.status === "fulfilled" ? aiStatusResult.value : currentState.aiStatus,
       errorMessage:
         failedResult?.status === "rejected"
           ? failedTechnicalState(failedResult.reason).errorMessage
@@ -94,6 +103,7 @@ export function useAdminAiTechnicalData(adminAiView: AdminAiView, canUseAdminAiA
         operationsResult.status === "fulfilled" ? operationsResult.value : currentState.operations,
       retrievalDebug:
         debugResult.status === "fulfilled" ? technicalItems(debugResult.value) : currentState.retrievalDebug,
+      summary: summaryResult.status === "fulfilled" ? summaryResult.value : currentState.summary,
       telemetry: telemetryResult.status === "fulfilled" ? telemetryResult.value : currentState.telemetry
     }));
   }

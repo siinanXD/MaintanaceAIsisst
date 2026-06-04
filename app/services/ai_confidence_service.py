@@ -39,6 +39,52 @@ LOW_CONFIDENCE_NOTICE = (
     "nicht eindeutig passenden Quellen. Bitte fachlich pruefen.\n\n"
 )
 LOW_CONFIDENCE_RESPONSE_TYPES = {"assistant", "error_help", "general_chat"}
+LOCAL_ANSWER_EXCLUDED_CONFIDENCE_TYPES = frozenset(
+    {
+        "permission_denied",
+        "general_chat",
+        "order_plan",
+    }
+)
+HIGH_CONFIDENCE_STRUCTURED_RESPONSE_TYPES = frozenset(
+    {
+        "employee_document_count",
+        "employee_document_list",
+        "employee_stored_document_count",
+        "employee_stored_document_list",
+        "employee_count",
+        "employee_list",
+        "employee_department_count",
+        "employee_department_list",
+        "employee_available",
+        "employee_absences",
+        "employee_team_lead_unavailable",
+        "inventory_count",
+        "inventory_low_stock",
+        "inventory_critical",
+        "inventory_machine_materials",
+        "shiftplan_shift_count",
+        "shiftplan_entries",
+        "shiftplan_understaffed",
+        "document_recent",
+        "document_outdated",
+        "document_this_week",
+        "document_department_list",
+        "document_machine_list",
+        "vacation_pending_count",
+        "vacation_pending_list",
+        "vacation_own_pending",
+        "vacation_own_status",
+        "vacation_absences",
+        "machine_downtime",
+        "machine_incidents",
+        "structured_scope",
+        "tasks_today",
+        "tasks_status",
+        "daily_briefing",
+    }
+)
+STRUCTURED_SQL_CONFIDENCE_SCORE = 88
 
 
 @dataclass(frozen=True)
@@ -76,6 +122,7 @@ def attach_confidence_to_result(message, result):
         message=message,
         sources=result.get("sources") or [],
         response_type=result.get("type", "assistant"),
+        result=result,
     )
     payload = confidence.to_dict()
     diagnostics["confidence"] = payload
@@ -87,8 +134,11 @@ def attach_confidence_to_result(message, result):
     return result
 
 
-def calculate_ai_confidence(message, sources, response_type="assistant"):
+def calculate_ai_confidence(message, sources, response_type="assistant", result=None):
     """Return a transparent confidence score for one AI answer context."""
+    safe_type = str(response_type or "assistant")
+    if uses_structured_sql_confidence(safe_type, result):
+        return _structured_sql_confidence(safe_type)
     safe_sources = [source for source in sources if isinstance(source, dict)]
     weights = _confidence_weights()
     factors = {
@@ -129,6 +179,44 @@ def should_mark_low_confidence(result, confidence):
 def mark_low_confidence_answer(answer):
     """Return an answer prefixed with a low-confidence notice."""
     return f"{LOW_CONFIDENCE_NOTICE}{str(answer or '').strip()}".strip()
+
+
+def uses_structured_sql_confidence(response_type, result=None):
+    """Return whether a response should use high-confidence structured SQL scoring."""
+    safe_type = str(response_type or "assistant")
+    if safe_type in HIGH_CONFIDENCE_STRUCTURED_RESPONSE_TYPES:
+        return True
+    if safe_type in LOW_CONFIDENCE_RESPONSE_TYPES:
+        return False
+    if safe_type in LOCAL_ANSWER_EXCLUDED_CONFIDENCE_TYPES:
+        return False
+    if isinstance(result, dict):
+        diagnostics = result.get("diagnostics") or {}
+        if diagnostics.get("status") == "local_answer":
+            return True
+    return False
+
+
+def _structured_sql_confidence(response_type):
+    """Return a high-confidence result for permission-filtered structured SQL answers."""
+    return ConfidenceResult(
+        score=STRUCTURED_SQL_CONFIDENCE_SCORE,
+        level="high",
+        factors={
+            "source_count": 1.0,
+            "retrieval_score": 1.0,
+            "quality": 1.0,
+            "consistency": 1.0,
+            "machine_relevance": 1.0,
+            "feedback": NO_FEEDBACK_SIGNAL,
+        },
+        contributions={key: 0.0 for key in DEFAULT_CONFIDENCE_WEIGHTS},
+        reasons=[
+            "Antwort basiert auf strukturierten App-Daten (SQL), nicht auf Modellwissen.",
+            f"Antworttyp: {response_type}.",
+        ],
+        warning="",
+    )
 
 
 def _confidence_weights():

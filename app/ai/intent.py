@@ -4,7 +4,8 @@
 import logging
 import re
 
-from app.security import employee_access_level, has_dashboard_permission
+from app.permissions import can_read_employee_context
+from app.security import has_dashboard_permission
 from app.services.ai_prompting import (
     permission_denied_answer,
 )
@@ -40,6 +41,10 @@ SCOPE_KEYWORDS = {
         "error",
         "fehlercode",
         "ursache",
+        "not-halt",
+        "not halt",
+        "not-aus",
+        "sicherheitskreis",
     ],
     "employees": [
         "mitarbeiter",
@@ -158,9 +163,7 @@ def looks_like_today_tasks_question(message):
     text = normalize_text(message)
     task_words = ["task", "tasks", "aufgabe", "aufgaben", "arbeit", "arbeiten", "todo"]
     today_words = ["heute", "heutige", "heutigen", "today", "anstehend"]
-    return contains_any_lookup_term(text, task_words) and any(
-        word in text for word in today_words
-    )
+    return contains_any_lookup_term(text, task_words) and any(word in text for word in today_words)
 
 
 def extract_error_query(message):
@@ -241,6 +244,57 @@ def looks_like_count_question(message):
     return any(word in text for word in COUNT_WORDS)
 
 
+COUNT_SCOPES = (
+    "admin_users",
+    "employees",
+    "tasks",
+    "errors",
+    "machines",
+    "inventory",
+    "documents",
+    "shiftplans",
+)
+
+
+def count_scopes_for_message(message, requested_scopes):
+    """Return scopes referenced in a multi-module count question."""
+    if not looks_like_count_question(message):
+        return []
+    text = normalize_text(message)
+    scopes = []
+    for scope in COUNT_SCOPES:
+        if scope not in requested_scopes:
+            continue
+        if contains_any_lookup_term(text, SCOPE_KEYWORDS.get(scope, [])):
+            scopes.append(scope)
+    return _scopes_ordered_in_text(message, scopes)
+
+
+def is_multi_scope_count_question(message, requested_scopes):
+    """Return whether a count question targets two or more modules."""
+    return len(count_scopes_for_message(message, requested_scopes)) >= 2
+
+
+def _scopes_ordered_in_text(message, scopes):
+    """Return scopes sorted by first keyword occurrence in the message."""
+    text = normalize_text(message)
+    ranked = []
+    for scope in scopes:
+        best_index = len(text) + 1
+        for keyword in SCOPE_KEYWORDS.get(scope, []):
+            normalized_keyword = normalize_text(keyword)
+            if not contains_any_lookup_term(text, [keyword]):
+                continue
+            index = text.find(normalized_keyword)
+            if index == -1 and " " in normalized_keyword:
+                index = text.find(normalized_keyword.split()[0])
+            if index != -1 and index < best_index:
+                best_index = index
+        ranked.append((best_index, scope))
+    ranked.sort(key=lambda item: item[0])
+    return [scope for _, scope in ranked]
+
+
 def looks_like_error_question(message):
     """Check whether a message asks for error catalog or fault help."""
     text = str(message or "").lower()
@@ -319,14 +373,6 @@ def format_permission_denied_for_scopes(scopes):
     )
 
 
-def can_read_employee_context(user):
-    """Return whether the user may read employee context through the assistant."""
-    return (
-        has_dashboard_permission(user, "employees", "view")
-        and employee_access_level(user) != "none"
-    )
-
-
 __all__ = [
     "looks_like_today_tasks_question",
     "extract_error_query",
@@ -335,6 +381,8 @@ __all__ = [
     "looks_like_natural_task_data_question",
     "looks_like_problem_incident_question",
     "looks_like_count_question",
+    "count_scopes_for_message",
+    "is_multi_scope_count_question",
     "looks_like_error_question",
     "looks_like_general_knowledge_question",
     "detect_requested_scopes",

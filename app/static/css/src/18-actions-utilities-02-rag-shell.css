@@ -10,20 +10,9 @@
     max-width: none;
   }
 
-  .ai-admin-page[data-ai-admin-view="rag_board"] .ai-admin-hero,
-  .ai-admin-page[data-ai-admin-view="rag_board"] .ai-admin-area-header {
-    display: none;
-  }
-
-  .ai-admin-page[data-ai-admin-view="rag_board"] .ai-admin-nav {
-    margin-bottom: 0;
-    border-radius: 0.75rem 0.75rem 0 0;
-    background: #ffffff;
-  }
-
   .rag-game-shell {
     display: grid;
-    grid-template-columns: 14.5rem minmax(33rem, 1fr) 22rem;
+    grid-template-columns: minmax(12.5rem, 15rem) minmax(0, 1fr) minmax(18rem, 21rem);
     gap: 0;
     overflow: hidden;
     border: 1px solid #dbe4ee;

@@ -6,7 +6,7 @@ import {
   overviewCriticalCards,
   type AdminAiOverviewLoadState
 } from "./adminAiOverviewModel";
-import { displayText, numberText } from "./AdminAiOverviewShared";
+import { displayText } from "./AdminAiOverviewShared";
 
 /**
  * Render a compact Admin-AI operations cockpit focused on quick fault detection.
@@ -52,57 +52,62 @@ export function AdminAiOverviewStatus({ overviewState }: { readonly overviewStat
             {actionItems[0]?.key === "none" ? "Keine Aktion" : `${actionItems.length} offen`}
           </span>
         </div>
-        <div className="document-card-grid">
+        <ul className="action-hint-list" aria-label="Offene Admin-AI Massnahmen">
           {actionItems.map((item) => (
-            <article className={`document-card ${item.tone}`} key={item.key}>
-              <span>{item.label}</span>
-              <strong>{item.key === "none" ? "OK" : "Prüfen"}</strong>
-              <small>{item.detail}</small>
-            </article>
+            <li className={`action-hint-item ${item.tone}`} key={item.key}>
+              <div className="action-hint-copy">
+                <strong>{item.label}</strong>
+                <small>{item.detail}</small>
+              </div>
+              <span>{item.key === "none" ? "OK" : "Prüfen"}</span>
+            </li>
           ))}
-        </div>
+        </ul>
       </section>
 
-      <section className="panel">
-        <div className="panel-header">
-          <div>
-            <h3>Letzte AI-Fehler</h3>
+      <details className="help-disclosure ui-secondary-panel">
+        <summary>
+          Letzte AI-Fehler
+          {errorEvents.length ? ` (${errorEvents.length})` : ""}
+        </summary>
+        <div className="help-disclosure-body">
+          <div className="panel-header">
             <p className="panel-meta">Die letzten acht Audit-Ereignisse mit Fehlerkategorie.</p>
+            <a className="btn btn-ghost btn-sm" href="/admin/ai/technical">
+              Technische Details
+            </a>
           </div>
-          <a className="btn btn-ghost btn-sm" href="/admin/ai/technical">
-            Technische Details
-          </a>
-        </div>
-        <div className="table-wrap">
-          <table className="data-table">
-            <caption>Letzte KI-Fehler fuer schnelle Ursachenanalyse</caption>
-            <thead>
-              <tr>
-                <th scope="col">Zeit</th>
-                <th scope="col">Workflow</th>
-                <th scope="col">Status</th>
-                <th scope="col">Fehler</th>
-              </tr>
-            </thead>
-            <tbody data-ai-events>
-              {errorEvents.length ? errorEvents.map((eventItem) => (
-                <tr key={displayText(eventItem.id || `${eventItem.created_at}-${eventItem.workflow}`)}>
-                  <td>{displayText(eventItem.created_at)}</td>
-                  <td>{displayText(eventItem.workflow)}</td>
-                  <td>{displayText(eventItem.status)}</td>
-                  <td>{displayText(eventItem.error_category)}</td>
-                </tr>
-              )) : (
+          <div className="table-wrap bounded-table-wrap">
+            <table className="data-table">
+              <caption>Letzte KI-Fehler fuer schnelle Ursachenanalyse</caption>
+              <thead>
                 <tr>
-                  <td colSpan={4}>
-                    <span className="empty-state">Keine AI-Fehler in der letzten Auswertung.</span>
-                  </td>
+                  <th scope="col">Zeit</th>
+                  <th scope="col">Workflow</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Fehler</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody data-ai-events>
+                {errorEvents.length ? errorEvents.map((eventItem) => (
+                  <tr key={displayText(eventItem.id || `${eventItem.created_at}-${eventItem.workflow}`)}>
+                    <td>{displayText(eventItem.created_at)}</td>
+                    <td>{displayText(eventItem.workflow)}</td>
+                    <td>{displayText(eventItem.status)}</td>
+                    <td>{displayText(eventItem.error_category)}</td>
+                  </tr>
+                )) : (
+                  <tr>
+                    <td colSpan={4}>
+                      <span className="empty-state">Keine AI-Fehler in der letzten Auswertung.</span>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </section>
+      </details>
     </>
   );
 }
@@ -112,12 +117,14 @@ export function AdminAiOverviewStatus({ overviewState }: { readonly overviewStat
  */
 export function AdminAiOverviewIntro(): ReactNode {
   return (
-    <section className="context-help ai-workflow-help" aria-label="So arbeitet die KI">
-      <strong>So arbeitet die KI</strong>
-      <p className="panel-meta">
-        Frage verstehen, Daten suchen, Kontext bauen, Sicherheit prüfen, Antwort mit Quellen liefern.
-        Details finden Sie unter Testfrage prüfen und Wissensbasis pflegen.
-      </p>
-    </section>
+    <details className="help-disclosure context-help ai-workflow-help" aria-label="So arbeitet die KI">
+      <summary>So arbeitet die KI</summary>
+      <div className="help-disclosure-body">
+        <p className="panel-meta">
+          Frage verstehen, Daten suchen, Kontext bauen, Sicherheit prüfen, Antwort mit Quellen liefern.
+          Details finden Sie unter Testfrage prüfen und Wissensbasis pflegen.
+        </p>
+      </div>
+    </details>
   );
 }

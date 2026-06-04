@@ -13,11 +13,11 @@ from app.services.ai_audit_service import ai_analytics_summary
 from app.services.ai_provider_readiness_service import ai_readiness_summary
 from app.services.ai_routing import workflow_profile
 from app.services.ai_service import OpenAIProvider
-from app.services.langfuse_metrics_service import langfuse_metrics_summary
 from app.services.langfuse_eval_score_service import (
     submit_automatic_eval_scores,
     submit_user_feedback_score,
 )
+from app.services.langfuse_metrics_service import langfuse_metrics_summary
 from app.services.langfuse_service import (
     attach_langfuse_eval_io,
     configure_langfuse_environment,

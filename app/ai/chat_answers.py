@@ -1,160 +1,26 @@
 """AI orchestration services for permission-aware workflows."""
-# ruff: noqa: F401, F821
+
+from __future__ import annotations
 
 import logging
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.ai.handlers.rag_handler import answer_with_rag, try_general_hybrid_answer
+from app.ai.handlers.structured_handler import (
+    try_domain_structured_answers,
+    try_local_structured_routes,
+)
+from app.ai.intent import detect_requested_scopes
 from app.extensions import db
 from app.security import has_dashboard_permission
-from app.services.ai_document_structured_answer_service import (
-    answer_document_structured_question,
-)
-from app.services.ai_employee_structured_answer_service import (
-    answer_employee_structured_question,
-)
 from app.services.ai_history_service import save_chat_exchange
-from app.services.ai_inventory_structured_answer_service import (
-    answer_inventory_structured_question,
-)
-from app.services.ai_machine_structured_answer_service import (
-    answer_machine_structured_question,
-)
-from app.services.ai_prompting import (
-    permission_denied_answer,
-)
-from app.services.ai_retrieval import allowed_ai_scopes, retrieve_ai_context
+from app.services.ai_retrieval import allowed_ai_scopes
 from app.services.ai_service import MockAIProvider
-from app.services.ai_shiftplan_structured_answer_service import (
-    answer_shiftplan_structured_question,
-)
-from app.services.ai_structured_scope_answer_service import answer_structured_scope_question
-from app.services.ai_task_status_answer_service import answer_task_status_question
-from app.services.ai_vacation_structured_answer_service import (
-    answer_vacation_structured_question,
-)
 from app.services.conversation_context_service import conversation_context_for_chat
-from app.services.error_service import search_errors
 from app.services.knowledge_service import knowledge_sources_for_chat
-from app.services.langfuse_service import langfuse_trace_context
-from app.services.order_planning_service import (
-    REQUIRED_SCOPES as REQUIRED_ORDER_PLANNING_SCOPES,
-)
-from app.services.order_planning_service import (
-    format_order_plan_answer,
-    order_planning_payload_from_message,
-    plan_order,
-)
-from app.services.rag_service import build_rag_context
 
-from .briefings import answer_daily_briefing_chat_question
-from .status import (
-    ANSWER_CATEGORY_GENERAL,
-    ANSWER_CATEGORY_RAG,
-    MODEL_KNOWLEDGE_LABEL,
-    ai_diagnostics,
-    attach_audit_metadata,
-    fallback_general_answer,
-    grounded_empty_retrieval_answer,
-    openai_assistant_answer,
-    openai_general_answer,
-    retrieval_has_evidence,
-    should_generate_without_evidence,
-)
-
-LAST_OPENAI_ERROR = None
-OPENAI_PROVIDER = "OpenAI"
 logger = logging.getLogger(__name__)
-
-DASHBOARD_SCOPE_LABELS = {
-    "tasks": "Tasks",
-    "errors": "Fehlerkatalog",
-    "employees": "Mitarbeiter",
-    "machines": "Maschinen",
-    "inventory": "Lager",
-    "documents": "Dokumente",
-    "shiftplans": "Schichtplanung",
-    "admin_users": "Admin Users",
-}
-
-SCOPE_KEYWORDS = {
-    "tasks": ["task", "tasks", "aufgabe", "aufgaben", "todo"],
-    "errors": [
-        "fehler",
-        "stoerung",
-        "störung",
-        "error",
-        "fehlercode",
-        "ursache",
-    ],
-    "employees": [
-        "mitarbeiter",
-        "personal",
-        "personaldaten",
-        "gehalt",
-        "gehaltsklasse",
-        "adresse",
-        "geburtsdatum",
-        "qualifikation",
-    ],
-    "machines": ["maschine", "maschinen", "anlage", "anlagen", "machine"],
-    "inventory": ["lager", "bestand", "material", "ersatzteil", "inventory"],
-    "documents": ["dokument", "dokumente", "bericht", "berichte", "report"],
-    "shiftplans": ["schichtplan", "schichtplanung", "dienstplan", "schicht"],
-    "admin_users": ["user", "users", "nutzer", "benutzer", "accounts"],
-}
-
-COUNT_WORDS = [
-    "wie viele",
-    "wie vile",
-    "wieviele",
-    "wievile",
-    "anzahl",
-    "count",
-    "many",
-]
-
-GENERAL_KNOWLEDGE_PREFIXES = (
-    "was ist",
-    "was bedeutet",
-    "wie funktioniert",
-    "warum",
-    "wer ist",
-    "erklaere",
-    "erkläre",
-    "what is",
-    "how does",
-    "why",
-)
-
-APP_DATA_INTENT_PHRASES = (
-    "bei uns",
-    "im system",
-    "in der app",
-    "in unserer datenbank",
-    "meine",
-    "mein",
-    "unsere",
-    "unser",
-    "sichtbar",
-    "vorhanden",
-    "angelegt",
-    "offen",
-    "heute",
-    "morgen",
-    "anstehend",
-    "zeige",
-    "liste",
-    "auflisten",
-    "anzeigen",
-    "gibt es",
-    "erstellen",
-    "anlegen",
-    "loeschen",
-    "löschen",
-    "aendern",
-    "ändern",
-)
 
 
 def build_action_preview(message, user, sources):
@@ -251,28 +117,6 @@ def _wants_document_review(text):
     )
 
 
-def _daily_briefing_scopes(result):
-    """Return dashboard scopes represented by a daily briefing chat answer."""
-    source_scopes = {
-        str(source.get("module") or "")
-        for source in result.get("sources") or []
-        if isinstance(source, dict)
-    }
-    scopes = {
-        scope
-        for scope in source_scopes
-        if scope in {"tasks", "errors", "inventory", "documents"}
-    }
-    section_types = {
-        str(section.get("type") or "")
-        for section in ((result.get("data") or {}).get("sections") or [])
-        if isinstance(section, dict)
-    }
-    if "recurring_issues" in section_types or "incident_timeline" in section_types:
-        scopes.add("errors")
-    return scopes
-
-
 def answer_chat(message, user, session_id=""):
     """Route the user message to the correct assistant behavior."""
     conversation_context = conversation_context_for_chat(user, message, session_id)
@@ -281,383 +125,43 @@ def answer_chat(message, user, session_id=""):
         requested_scopes |= set(conversation_context.suggested_scopes)
     allowed_scopes = allowed_ai_scopes(user)
 
-    daily_briefing_result = answer_daily_briefing_chat_question(message, user)
-    if daily_briefing_result:
-        daily_briefing_result["diagnostics"] = ai_diagnostics("local_answer")
-        return attach_audit_metadata(
-            user,
-            daily_briefing_result,
-            requested_scopes or _daily_briefing_scopes(daily_briefing_result),
-            allowed_scopes,
-            workflow="daily_briefing",
-            message=message,
-            conversation_context=conversation_context,
-        )
-
-    vacation_structured_result = answer_vacation_structured_question(
+    domain_result = try_domain_structured_answers(
         message,
         user,
-        conversation_context=conversation_context,
-    )
-    if vacation_structured_result:
-        status = (
-            "permission_denied"
-            if vacation_structured_result.get("type") == "permission_denied"
-            else "local_answer"
-        )
-        vacation_structured_result["diagnostics"] = ai_diagnostics(status)
-        return attach_audit_metadata(
-            user,
-            vacation_structured_result,
-            set(requested_scopes or set()) | {"employees"},
-            allowed_scopes,
-            message=message,
-            conversation_context=conversation_context,
-        )
-
-    employee_structured_result = answer_employee_structured_question(
-        message,
-        user,
-        conversation_context=conversation_context,
-    )
-    if employee_structured_result:
-        status = (
-            "permission_denied"
-            if employee_structured_result.get("type") == "permission_denied"
-            else "local_answer"
-        )
-        employee_structured_result["diagnostics"] = ai_diagnostics(status)
-        return attach_audit_metadata(
-            user,
-            employee_structured_result,
-            requested_scopes or {"employees"},
-            allowed_scopes,
-            message=message,
-            conversation_context=conversation_context,
-        )
-
-    document_structured_result = answer_document_structured_question(
-        message,
-        user,
-        conversation_context=conversation_context,
-    )
-    if document_structured_result:
-        status = (
-            "permission_denied"
-            if document_structured_result.get("type") == "permission_denied"
-            else "local_answer"
-        )
-        document_structured_result["diagnostics"] = ai_diagnostics(status)
-        return attach_audit_metadata(
-            user,
-            document_structured_result,
-            requested_scopes or {"documents"},
-            allowed_scopes,
-            message=message,
-            conversation_context=conversation_context,
-        )
-
-    shiftplan_structured_result = answer_shiftplan_structured_question(
-        message,
-        user,
-        conversation_context=conversation_context,
-    )
-    if shiftplan_structured_result:
-        status = (
-            "permission_denied"
-            if shiftplan_structured_result.get("type") == "permission_denied"
-            else "local_answer"
-        )
-        shiftplan_structured_result["diagnostics"] = ai_diagnostics(status)
-        return attach_audit_metadata(
-            user,
-            shiftplan_structured_result,
-            requested_scopes or {"shiftplans"},
-            allowed_scopes,
-            message=message,
-            conversation_context=conversation_context,
-        )
-
-    inventory_structured_result = answer_inventory_structured_question(
-        message,
-        user,
-        conversation_context=conversation_context,
-    )
-    if inventory_structured_result:
-        status = (
-            "permission_denied"
-            if inventory_structured_result.get("type") == "permission_denied"
-            else "local_answer"
-        )
-        inventory_structured_result["diagnostics"] = ai_diagnostics(status)
-        return attach_audit_metadata(
-            user,
-            inventory_structured_result,
-            requested_scopes or {"inventory"},
-            allowed_scopes,
-            message=message,
-            conversation_context=conversation_context,
-        )
-
-    if should_use_general_hybrid_mode(message, requested_scopes):
-        with langfuse_trace_context(
-            "general_chat",
-            user=user,
-            session_id=conversation_context.session_id,
-            metadata={"source_count": 0, "retrieval_used": False},
-            tags=["chat", "general"],
-        ):
-            answer, diagnostics = openai_general_answer(message, "")
-        return attach_audit_metadata(
-            user,
-            {
-                "type": "general_chat",
-                "answer": answer,
-                "diagnostics": diagnostics,
-                "data": {},
-                "sources": [],
-                "answer_category": ANSWER_CATEGORY_GENERAL,
-                "retrieval_used": False,
-                "source_label": MODEL_KNOWLEDGE_LABEL,
-            },
-            requested_scopes,
-            allowed_scopes,
-            workflow="general_chat",
-            message=message,
-            conversation_context=conversation_context,
-        )
-
-    blocked_scopes = blocked_requested_scopes(user, requested_scopes)
-    if blocked_scopes and len(blocked_scopes) == len(requested_scopes):
-        answer = format_permission_denied_for_scopes(blocked_scopes)
-        return attach_audit_metadata(
-            user,
-            {
-                "type": "permission_denied",
-                "answer": answer,
-                "diagnostics": ai_diagnostics("permission_denied"),
-                "data": [],
-                "sources": [],
-            },
-            requested_scopes,
-            allowed_scopes,
-            message=message,
-        )
-
-    if looks_like_today_tasks_question(message):
-        if not has_dashboard_permission(user, "tasks", "view"):
-            answer = permission_denied_answer("Tasks", "tasks")
-            return attach_audit_metadata(
-                user,
-                {
-                    "type": "permission_denied",
-                    "answer": answer,
-                    "diagnostics": ai_diagnostics("permission_denied"),
-                    "data": [],
-                    "sources": [],
-                },
-                requested_scopes,
-                allowed_scopes,
-                message=message,
-            )
-        answer, data = format_tasks_today(user)
-        retrieval = retrieve_ai_context(message, user, {"tasks"})
-        return attach_audit_metadata(
-            user,
-            {
-                "type": "tasks_today",
-                "answer": answer,
-                "diagnostics": ai_diagnostics("local_answer"),
-                "data": data,
-                "sources": retrieval["sources"],
-            },
-            requested_scopes or {"tasks"},
-            allowed_scopes,
-            message=message,
-        )
-
-    machine_structured_result = answer_machine_structured_question(
-        message,
-        user,
-        conversation_context=conversation_context,
-    )
-    if machine_structured_result:
-        status = (
-            "permission_denied"
-            if machine_structured_result.get("type") == "permission_denied"
-            else "local_answer"
-        )
-        machine_structured_result["diagnostics"] = ai_diagnostics(status)
-        return attach_audit_metadata(
-            user,
-            machine_structured_result,
-            set(requested_scopes or set()) | {"machines", "errors"},
-            allowed_scopes,
-            message=message,
-            conversation_context=conversation_context,
-        )
-
-    structured_scope_result = answer_structured_scope_question(
-        message,
-        user,
-        conversation_context=conversation_context,
-    )
-    if structured_scope_result:
-        status = (
-            "permission_denied"
-            if structured_scope_result.get("type") == "permission_denied"
-            else "local_answer"
-        )
-        structured_scope_result["diagnostics"] = ai_diagnostics(status)
-        result_scope = structured_scope_result.get("scope")
-        return attach_audit_metadata(
-            user,
-            structured_scope_result,
-            requested_scopes or ({result_scope} if result_scope else set()),
-            allowed_scopes,
-            message=message,
-            conversation_context=conversation_context,
-        )
-
-    task_status_result = answer_task_status_question(
-        message,
-        user,
-        conversation_context=conversation_context,
-    )
-    if task_status_result:
-        status = (
-            "permission_denied"
-            if task_status_result.get("type") == "permission_denied"
-            else "local_answer"
-        )
-        task_status_result["diagnostics"] = ai_diagnostics(status)
-        return attach_audit_metadata(
-            user,
-            task_status_result,
-            requested_scopes or {"tasks"},
-            allowed_scopes,
-            message=message,
-            conversation_context=conversation_context,
-        )
-
-    if looks_like_employee_count_question(message):
-        answer, data = format_employee_count(user)
-        status = "local_answer" if data else "permission_denied"
-        sources = count_answer_sources("employees", data, user)
-        return attach_audit_metadata(
-            user,
-            {
-                "type": "employee_count" if data else "permission_denied",
-                "answer": answer,
-                "diagnostics": ai_diagnostics(status),
-                "data": data,
-                "sources": sources,
-                "structured_context": {"entity_type": "employees"},
-            },
-            requested_scopes or {"employees"},
-            allowed_scopes,
-            message=message,
-            conversation_context=conversation_context,
-        )
-
-    count_result = answer_count_question(
-        message,
-        user,
+        conversation_context,
         requested_scopes,
         allowed_scopes,
     )
-    if count_result:
-        return count_result
+    if domain_result:
+        return domain_result
 
-    order_payload = order_planning_payload_from_message(message)
-    if order_payload:
-        plan, error, status_code = plan_order(order_payload, user)
-        if error:
-            answer = error.get("message") or error.get("error") or "Auftrag nicht planbar."
-            diagnostic_status = "permission_denied" if status_code == 403 else "local_answer"
-            return attach_audit_metadata(
-                user,
-                {
-                    "type": "permission_denied" if status_code == 403 else "order_plan",
-                    "answer": answer,
-                    "diagnostics": ai_diagnostics(diagnostic_status),
-                    "data": error,
-                    "sources": [],
-                },
-                requested_scopes or REQUIRED_ORDER_PLANNING_SCOPES,
-                allowed_scopes,
-                message=message,
-            )
-        return attach_audit_metadata(
-            user,
-            {
-                "type": "order_plan",
-                "answer": format_order_plan_answer(plan),
-                "diagnostics": plan["diagnostics"],
-                "data": plan,
-                "sources": plan["sources"],
-            },
-            requested_scopes or REQUIRED_ORDER_PLANNING_SCOPES,
-            allowed_scopes,
-            message=message,
-        )
-
-    retrieval = build_rag_context(
+    general_result = try_general_hybrid_answer(
         message,
         user,
+        conversation_context,
         requested_scopes,
-        conversation_context=conversation_context,
+        allowed_scopes,
     )
-    if retrieval_has_evidence(retrieval) or should_generate_without_evidence():
-        with langfuse_trace_context(
-            "chat",
-            user=user,
-            session_id=conversation_context.session_id,
-            metadata={"source_count": len(retrieval.get("sources") or [])},
-            tags=["chat", "rag", *sorted(retrieval.get("requested_scopes") or [])],
-        ):
-            answer, diagnostics = openai_assistant_answer(message, retrieval["context"])
-    else:
-        answer = grounded_empty_retrieval_answer(message, retrieval=retrieval, user=user)
-        diagnostics = ai_diagnostics("local_answer", fallback_used=True)
-    if not answer:
-        logger.warning("ai_fallback workflow=chat type=assistant")
-        retrieval_message = conversation_context.retrieval_query(message)
-        if looks_like_error_question(message) and has_dashboard_permission(
-            user,
-            "errors",
-            "view",
-        ):
-            entries = search_errors(extract_error_query(retrieval_message), user)
-            answer = fallback_error_answer(entries)
-        else:
-            answer = fallback_general_answer(retrieval["data"], blocked_scopes)
-        diagnostics = diagnostics or ai_diagnostics("fallback_used", fallback_used=True)
-    retrieval_message = conversation_context.retrieval_query(message)
-    response_type = "error_help" if looks_like_error_question(retrieval_message) else "assistant"
-    response_data = (
-        retrieval["data"].get("errors", []) if response_type == "error_help" else retrieval["data"]
-    )
-    action_preview = build_action_preview(message, user, retrieval["sources"])
-    result = {
-        "type": response_type,
-        "answer": answer,
-        "diagnostics": diagnostics,
-        "data": response_data,
-        "sources": retrieval["sources"],
-        "rag": retrieval.get("rag", {}),
-        "answer_category": ANSWER_CATEGORY_RAG,
-        "retrieval_used": retrieval_has_evidence(retrieval),
-    }
-    if action_preview:
-        result["action_preview"] = action_preview
-    return attach_audit_metadata(
+    if general_result:
+        return general_result
+
+    local_result = try_local_structured_routes(
+        message,
         user,
-        result,
-        retrieval["requested_scopes"],
-        retrieval["allowed_scopes"],
-        message=message,
-        conversation_context=conversation_context,
+        conversation_context,
+        requested_scopes,
+        allowed_scopes,
+    )
+    if local_result:
+        return local_result
+
+    return answer_with_rag(
+        message,
+        user,
+        conversation_context,
+        requested_scopes,
+        allowed_scopes,
+        build_action_preview=build_action_preview,
     )
 
 
@@ -688,6 +192,13 @@ def with_knowledge_context(retrieval, message, user):
     retrieval["sources"] = (retrieval.get("sources") or []) + knowledge_sources
     retrieval["data"].setdefault("knowledge", knowledge_sources)
     return retrieval
+
+
+def looks_like_count_question(message):
+    """Proxy count-question detection for action preview helpers."""
+    from app.ai.intent import looks_like_count_question as _looks_like_count_question
+
+    return _looks_like_count_question(message)
 
 
 __all__ = [

@@ -85,6 +85,8 @@ RESPONSE_TYPE_SCOPES = {
     "employee_count": {"employees"},
     "employee_document_count": {"employees"},
     "employee_document_list": {"employees"},
+    "employee_stored_document_list": {"employees"},
+    "employee_stored_document_count": {"employees"},
     "employee_department_count": {"employees"},
     "employee_department_list": {"employees"},
     "employee_available": {"employees"},
@@ -133,6 +135,7 @@ class ConversationContext:
     suggested_scopes: frozenset[str] = field(default_factory=frozenset)
     recent_scopes: tuple[str, ...] = ()
     structured_scope: dict = field(default_factory=dict)
+    last_response_type: str = ""
 
     @property
     def applied(self):
@@ -178,6 +181,7 @@ class ConversationContext:
             "suggested_scopes": sorted(self.suggested_scopes),
             "recent_scopes": list(self.recent_scopes),
             "structured_scope": dict(self.structured_scope),
+            "last_response_type": self.last_response_type,
         }
 
 
@@ -215,6 +219,9 @@ def conversation_context_for_chat(user, message, session_id=""):
     previous_solution = _previous_solution(scoped_messages)
     previous_question = _bounded_text(scoped_messages[-1].message, 220)
     structured_scope = _structured_scope(scoped_messages)
+    last_response_type = (
+        str(scoped_messages[-1].response_type or "").strip() if scoped_messages else ""
+    )
     suggested_scopes = _suggested_scopes(
         reference_detected,
         machine_names,
@@ -241,6 +248,7 @@ def conversation_context_for_chat(user, message, session_id=""):
         suggested_scopes=frozenset(suggested_scopes),
         recent_scopes=recent_scopes,
         structured_scope=structured_scope,
+        last_response_type=last_response_type,
     )
 
 

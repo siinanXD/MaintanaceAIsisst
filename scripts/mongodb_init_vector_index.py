@@ -14,11 +14,14 @@ if str(ROOT) not in sys.path:
 
 load_dotenv(ROOT / ".env")
 
-from app.services.atlas_health_service import ensure_atlas_vector_index, load_atlas_settings
-
 
 def main() -> int:
     """Create the configured vector index when missing."""
+    from app.services.atlas_health_service import (
+        ensure_atlas_vector_index,
+        load_atlas_settings,
+    )
+
     settings = load_atlas_settings()
     missing = [
         key
