@@ -384,7 +384,7 @@ def _format_document_answer(title, items):
         count_label="Sichtbare Dokumente",
         formatter=lambda item: (
             f"- {item['title']} ({item['department']}"
-            f"{f', Maschine {item['machine']}' if item.get('machine') else ''})"
+            f"{', Maschine ' + item['machine'] if item.get('machine') else ''})"
         ),
         source="Strukturierte Dokument-Metadaten",
         overflow_suffix="weitere sichtbare Dokumente",
