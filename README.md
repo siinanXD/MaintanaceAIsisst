@@ -1,6 +1,6 @@
 # Maintenance Assistant
 
-[![CI](https://github.com/siinanXD/MaintanaceAIsisst/actions/workflows/ci.yml/badge.svg)](https://github.com/siinanXD/MaintanaceAIsisst/actions/workflows/ci.yml)
+[![CI](https://github.com/siinanXD/maintenance-ai-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/siinanXD/maintenance-ai-assistant/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![Docker](https://img.shields.io/badge/docker-ready-2496ED?logo=docker&logoColor=white)](./Dockerfile)
 
@@ -261,7 +261,7 @@ LANGFUSE_SECRET_KEY=
 LANGFUSE_BASE_URL=https://cloud.langfuse.com
 LANGFUSE_TRACING_ENVIRONMENT=development
 LANGFUSE_RELEASE=
-GITHUB_REPOSITORY=siinanXD/MaintanaceAIsisst
+GITHUB_REPOSITORY=siinanXD/maintenance-ai-assistant
 GITHUB_SHA=
 GITHUB_REF_NAME=
 RAG_ENABLED=true
